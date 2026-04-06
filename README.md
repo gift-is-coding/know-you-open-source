@@ -19,4 +19,4 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 ## Configuration
 
-Copy [KnowYou/Config/Secrets.example.xcconfig](/Users/wutianfu/Documents/code/know-you/KnowYou/Config/Secrets.example.xcconfig) to a local, untracked xcconfig file when later tasks wire secrets into the app target.
+Copy `KnowYou/Config/Secrets.example.xcconfig` to a local, untracked xcconfig file such as `KnowYou/Config/Secrets.local.xcconfig` when later tasks wire secrets into the app target.

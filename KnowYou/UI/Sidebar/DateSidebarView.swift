@@ -6,19 +6,24 @@ struct DateSidebarView: View {
     let onSelect: (String) -> Void
 
     var body: some View {
-        List(dates, id: \.self) { date in
-            Button {
-                onSelect(date)
-            } label: {
-                HStack {
-                    Text(date)
-                        .fontWeight(selectedDate == date ? .semibold : .regular)
-                    Spacer(minLength: 0)
-                }
-                .contentShape(Rectangle())
+        List(selection: selectedDateBinding) {
+            ForEach(dates, id: \.self) { date in
+                Text(date)
+                    .fontWeight(selectedDate == date ? .semibold : .regular)
+                    .tag(date)
             }
-            .buttonStyle(.plain)
         }
         .navigationTitle("Daily Notes")
+    }
+
+    private var selectedDateBinding: Binding<String?> {
+        Binding(
+            get: { selectedDate },
+            set: { newValue in
+                if let newValue {
+                    onSelect(newValue)
+                }
+            }
+        )
     }
 }

@@ -1,1 +1,5 @@
 .superpowers/
+KnowYou/Config/Secrets.xcconfig
+KnowYou/Config/*.local.xcconfig
+KnowYou/Config/*.private.xcconfig
+!KnowYou/Config/Secrets.example.xcconfig

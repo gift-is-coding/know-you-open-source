@@ -1,6 +1,7 @@
 import XCTest
 @testable import KnowYou
 
+@MainActor
 final class MainWindowViewModelTests: XCTestCase {
     func testSelectingDateLoadsMatchingMarkdownPath() {
         let appState = AppState()
@@ -14,5 +15,15 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertEqual(appState.selectedDate, "2026-04-06")
         XCTAssertEqual(appState.selectedMarkdownURL?.path, "/tmp/2026-04-06.md")
+    }
+
+    func testSelectingDateWithoutIndexedFileClearsMarkdownPath() {
+        let appState = AppState()
+        appState.selectedMarkdownURL = URL(fileURLWithPath: "/tmp/existing.md")
+
+        appState.selectDate("2026-04-08")
+
+        XCTAssertEqual(appState.selectedDate, "2026-04-08")
+        XCTAssertNil(appState.selectedMarkdownURL)
     }
 }

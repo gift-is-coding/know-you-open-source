@@ -1,0 +1,452 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000010000000000000001 /* KnowYouApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000001 /* KnowYouApp.swift */; };
+		A10000010000000000000002 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000002 /* AppEnvironment.swift */; };
+		A10000010000000000000003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000003 /* AppState.swift */; };
+		A10000010000000000000004 /* MainWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000004 /* MainWindowView.swift */; };
+		A10000010000000000000005 /* DateSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000005 /* DateSidebarView.swift */; };
+		A10000010000000000000006 /* DailyMarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000006 /* DailyMarkdownView.swift */; };
+		A10000010000000000000007 /* StatusBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000007 /* StatusBannerView.swift */; };
+		A10000010000000000000008 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000008 /* SettingsView.swift */; };
+		A10000010000000000000009 /* MainWindowViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000009 /* MainWindowViewModelTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A10000020000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000030000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A10000040000000000000001;
+			remoteInfo = KnowYou;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A10001010000000000000001 /* KnowYouApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowYouApp.swift; sourceTree = "<group>"; };
+		A10001010000000000000002 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
+		A10001010000000000000003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		A10001010000000000000004 /* MainWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowView.swift; sourceTree = "<group>"; };
+		A10001010000000000000005 /* DateSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateSidebarView.swift; sourceTree = "<group>"; };
+		A10001010000000000000006 /* DailyMarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyMarkdownView.swift; sourceTree = "<group>"; };
+		A10001010000000000000007 /* StatusBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBannerView.swift; sourceTree = "<group>"; };
+		A10001010000000000000008 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A10001010000000000000009 /* MainWindowViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowViewModelTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000010 /* KnowYou.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KnowYou.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10001010000000000000011 /* KnowYouTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KnowYouTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A10000050000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000050000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A10000060000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A10000060000000000000002 /* KnowYou */,
+				A10000060000000000000010 /* KnowYouTests */,
+				A10000060000000000000011 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A10000060000000000000002 /* KnowYou */ = {
+			isa = PBXGroup;
+			children = (
+				A10001010000000000000001 /* KnowYouApp.swift */,
+				A10000060000000000000003 /* App */,
+				A10000060000000000000004 /* UI */,
+			);
+			path = KnowYou;
+			sourceTree = "<group>";
+		};
+		A10000060000000000000003 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A10001010000000000000002 /* AppEnvironment.swift */,
+				A10001010000000000000003 /* AppState.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A10000060000000000000004 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				A10001010000000000000004 /* MainWindowView.swift */,
+				A10000060000000000000005 /* Sidebar */,
+				A10000060000000000000006 /* Reader */,
+				A10000060000000000000007 /* Status */,
+				A10000060000000000000008 /* Settings */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		A10000060000000000000005 /* Sidebar */ = {
+			isa = PBXGroup;
+			children = (
+				A10001010000000000000005 /* DateSidebarView.swift */,
+			);
+			path = Sidebar;
+			sourceTree = "<group>";
+		};
+		A10000060000000000000006 /* Reader */ = {
+			isa = PBXGroup;
+			children = (
+				A10001010000000000000006 /* DailyMarkdownView.swift */,
+			);
+			path = Reader;
+			sourceTree = "<group>";
+		};
+		A10000060000000000000007 /* Status */ = {
+			isa = PBXGroup;
+			children = (
+				A10001010000000000000007 /* StatusBannerView.swift */,
+			);
+			path = Status;
+			sourceTree = "<group>";
+		};
+		A10000060000000000000008 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				A10001010000000000000008 /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		A10000060000000000000010 /* KnowYouTests */ = {
+			isa = PBXGroup;
+			children = (
+				A10001010000000000000009 /* MainWindowViewModelTests.swift */,
+			);
+			path = KnowYouTests;
+			sourceTree = "<group>";
+		};
+		A10000060000000000000011 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A10001010000000000000010 /* KnowYou.app */,
+				A10001010000000000000011 /* KnowYouTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A10000040000000000000001 /* KnowYou */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000070000000000000001 /* Build configuration list for PBXNativeTarget "KnowYou" */;
+			buildPhases = (
+				A10000080000000000000001 /* Sources */,
+				A10000050000000000000001 /* Frameworks */,
+				A10000090000000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KnowYou;
+			packageProductDependencies = (
+			);
+			productName = KnowYou;
+			productReference = A10001010000000000000010 /* KnowYou.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A10000040000000000000002 /* KnowYouTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000070000000000000002 /* Build configuration list for PBXNativeTarget "KnowYouTests" */;
+			buildPhases = (
+				A10000080000000000000002 /* Sources */,
+				A10000050000000000000002 /* Frameworks */,
+				A10000090000000000000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A100000A0000000000000001 /* PBXTargetDependency */,
+			);
+			name = KnowYouTests;
+			packageProductDependencies = (
+			);
+			productName = KnowYouTests;
+			productReference = A10001010000000000000011 /* KnowYouTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A10000030000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2640;
+				LastUpgradeCheck = 2640;
+				TargetAttributes = {
+					A10000040000000000000001 = {
+						CreatedOnToolsVersion = 26.4;
+					};
+					A10000040000000000000002 = {
+						CreatedOnToolsVersion = 26.4;
+						TestTargetID = A10000040000000000000001;
+					};
+				};
+			};
+			buildConfigurationList = A10000070000000000000003 /* Build configuration list for PBXProject "KnowYou" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A10000060000000000000001;
+			productRefGroup = A10000060000000000000011 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A10000040000000000000001 /* KnowYou */,
+				A10000040000000000000002 /* KnowYouTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A10000090000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000090000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A10000080000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000010000000000000001 /* KnowYouApp.swift in Sources */,
+				A10000010000000000000002 /* AppEnvironment.swift in Sources */,
+				A10000010000000000000003 /* AppState.swift in Sources */,
+				A10000010000000000000004 /* MainWindowView.swift in Sources */,
+				A10000010000000000000005 /* DateSidebarView.swift in Sources */,
+				A10000010000000000000006 /* DailyMarkdownView.swift in Sources */,
+				A10000010000000000000007 /* StatusBannerView.swift in Sources */,
+				A10000010000000000000008 /* SettingsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000080000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000010000000000000009 /* MainWindowViewModelTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A100000A0000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A10000040000000000000001 /* KnowYou */;
+			targetProxy = A10000020000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A100000B0000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A100000B0000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A100000B0000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_TESTABILITY = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Know You";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.knowyou.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A100000B0000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Know You";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.knowyou.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A100000B0000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.knowyou.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/KnowYou.app/Contents/MacOS/KnowYou";
+			};
+			name = Debug;
+		};
+		A100000B0000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.knowyou.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/KnowYou.app/Contents/MacOS/KnowYou";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A10000070000000000000001 /* Build configuration list for PBXNativeTarget "KnowYou" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A100000B0000000000000003 /* Debug */,
+				A100000B0000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000070000000000000002 /* Build configuration list for PBXNativeTarget "KnowYouTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A100000B0000000000000005 /* Debug */,
+				A100000B0000000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000070000000000000003 /* Build configuration list for PBXProject "KnowYou" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A100000B0000000000000001 /* Debug */,
+				A100000B0000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A10000030000000000000001 /* Project object */;
+}

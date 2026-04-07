@@ -23,6 +23,7 @@
 		A1000001000000000000000E /* RunRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000012 /* RunRecord.swift */; };
 		A1000001000000000000000F /* Migrations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000013 /* Migrations.swift */; };
 		A10000010000000000000010 /* DatabaseWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000014 /* DatabaseWriter.swift */; };
+		A10000010000000000000011 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A10000110000000000000001 /* GRDB */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -61,6 +62,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000010000000000000011 /* GRDB in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -219,6 +221,7 @@
 			);
 			name = KnowYou;
 			packageProductDependencies = (
+				A10000110000000000000001 /* GRDB */,
 			);
 			productName = KnowYou;
 			productReference = A10001010000000000000010 /* KnowYou.app */;
@@ -272,6 +275,9 @@
 				Base,
 			);
 			mainGroup = A10000060000000000000001;
+			packageReferences = (
+				A10000100000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+			);
 			productRefGroup = A10000060000000000000011 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -507,6 +513,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A10000100000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift";
+			requirement = {
+				kind = exactVersion;
+				version = 7.10.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A10000110000000000000001 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000100000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 	};
 	rootObject = A10000030000000000000001 /* Project object */;

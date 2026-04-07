@@ -1,37 +1,34 @@
 import Foundation
-import SQLite3
+import GRDB
 
 enum Migrations {
-    static func apply(to database: OpaquePointer?) throws {
-        for statement in statements {
-            guard sqlite3_exec(database, statement, nil, nil, nil) == SQLITE_OK else {
-                throw DatabaseWriterError.execute(message: DatabaseWriterError.message(from: database))
+    static func migrator() -> DatabaseMigrator {
+        var migrator = DatabaseMigrator()
+
+        migrator.registerMigration("createEvents") { db in
+            try db.create(table: "events") { table in
+                table.column("id", .text).primaryKey()
+                table.column("sourceType", .text).notNull()
+                table.column("sourceApp", .text).notNull()
+                table.column("capturedAt", .datetime).notNull()
+                table.column("dayKey", .text).notNull()
+                table.column("text", .text)
+                table.column("auditText", .text)
+                table.column("privacyAction", .text).notNull()
+                table.column("contentHash", .text).notNull().unique()
             }
         }
-    }
 
-    private static let statements = [
-        """
-        CREATE TABLE IF NOT EXISTS events (
-            id TEXT PRIMARY KEY,
-            sourceType TEXT NOT NULL,
-            sourceApp TEXT NOT NULL,
-            capturedAt REAL NOT NULL,
-            dayKey TEXT NOT NULL,
-            text TEXT,
-            auditText TEXT,
-            privacyAction TEXT NOT NULL,
-            contentHash TEXT NOT NULL UNIQUE
-        );
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS runs (
-            id TEXT PRIMARY KEY,
-            runType TEXT NOT NULL,
-            startedAt REAL NOT NULL,
-            finishedAt REAL,
-            status TEXT NOT NULL
-        );
-        """,
-    ]
+        migrator.registerMigration("createRuns") { db in
+            try db.create(table: "runs") { table in
+                table.column("id", .text).primaryKey()
+                table.column("runType", .text).notNull()
+                table.column("startedAt", .datetime).notNull()
+                table.column("finishedAt", .datetime)
+                table.column("status", .text).notNull()
+            }
+        }
+
+        return migrator
+    }
 }

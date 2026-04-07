@@ -1,6 +1,6 @@
 # Know You MVP Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build a standalone macOS app that captures clipboard and notification context, filters sensitive content before persistence, generates one Markdown note per day, and renders it in a minimal two-pane reader.
 
@@ -68,7 +68,7 @@
 - Create: `README.md`
 - Create: `KnowYou/Config/Secrets.example.xcconfig`
 
-- [ ] **Step 1: Write the failing app-state test**
+- [x] **Step 1: Write the failing app-state test**
 
 ```swift
 // KnowYouTests/MainWindowViewModelTests.swift
@@ -92,12 +92,12 @@ final class MainWindowViewModelTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/MainWindowViewModelTests`
 Expected: FAIL with `Cannot find 'AppState' in scope` or missing target errors because the app skeleton does not exist yet.
 
-- [ ] **Step 3: Create the app shell and state objects**
+- [x] **Step 3: Create the app shell and state objects**
 
 ```swift
 // KnowYou/App/AppState.swift
@@ -249,12 +249,12 @@ struct SettingsView: View {
 }
 ```
 
-- [ ] **Step 4: Run the focused test again**
+- [x] **Step 4: Run the focused test again**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/MainWindowViewModelTests`
 Expected: PASS for `testSelectingDateLoadsMatchingMarkdownPath`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add README.md KnowYou.xcodeproj KnowYou KnowYouTests/MainWindowViewModelTests.swift
@@ -268,7 +268,7 @@ git commit -m "feat: bootstrap know you macos app shell"
 - Create: `KnowYou/Services/Privacy/PrivacyFilter.swift`
 - Create: `KnowYouTests/PrivacyFilterTests.swift`
 
-- [ ] **Step 1: Write failing privacy filter tests**
+- [x] **Step 1: Write failing privacy filter tests**
 
 ```swift
 // KnowYouTests/PrivacyFilterTests.swift
@@ -297,12 +297,12 @@ final class PrivacyFilterTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/PrivacyFilterTests`
 Expected: FAIL with `Cannot find 'PrivacyFilter' in scope`.
 
-- [ ] **Step 3: Implement the filter and event model**
+- [x] **Step 3: Implement the filter and event model**
 
 ```swift
 // KnowYou/Domain/EventRecord.swift
@@ -373,12 +373,12 @@ struct PrivacyFilter {
 }
 ```
 
-- [ ] **Step 4: Run the privacy tests**
+- [x] **Step 4: Run the privacy tests**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/PrivacyFilterTests`
 Expected: PASS for the drop and redact cases.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add KnowYou/Domain/EventRecord.swift KnowYou/Services/Privacy/PrivacyFilter.swift KnowYouTests/PrivacyFilterTests.swift
@@ -393,7 +393,7 @@ git commit -m "feat: add privacy filter for captured events"
 - Create: `KnowYou/Services/Storage/DatabaseWriter.swift`
 - Create: `KnowYouTests/DatabaseWriterTests.swift`
 
-- [ ] **Step 1: Write failing database tests**
+- [x] **Step 1: Write failing database tests**
 
 ```swift
 // KnowYouTests/DatabaseWriterTests.swift
@@ -424,12 +424,12 @@ final class DatabaseWriterTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/DatabaseWriterTests`
 Expected: FAIL because `DatabaseWriter` is not implemented.
 
-- [ ] **Step 3: Implement migrations and database access**
+- [x] **Step 3: Implement migrations and database access**
 
 ```swift
 // KnowYou/Domain/RunRecord.swift
@@ -544,12 +544,12 @@ final class DatabaseWriter {
 }
 ```
 
-- [ ] **Step 4: Run the database tests**
+- [x] **Step 4: Run the database tests**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/DatabaseWriterTests`
 Expected: PASS with one stored event and the correct privacy action.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add KnowYou/Domain/RunRecord.swift KnowYou/Services/Storage/Migrations.swift KnowYou/Services/Storage/DatabaseWriter.swift KnowYouTests/DatabaseWriterTests.swift
@@ -567,7 +567,7 @@ git commit -m "feat: persist filtered events in sqlite"
 - Create: `KnowYou/Utilities/ISO8601DayKey.swift`
 - Test: `KnowYouTests/DatabaseWriterTests.swift`
 
-- [ ] **Step 1: Extend the database test to prove duplicate clipboard content is ignored**
+- [x] **Step 1: Extend the database test to prove duplicate clipboard content is ignored**
 
 ```swift
 func testDuplicateHashesAreIgnored() throws {
@@ -603,12 +603,12 @@ func testDuplicateHashesAreIgnored() throws {
 }
 ```
 
-- [ ] **Step 2: Run the database test to verify current storage enforces dedupe**
+- [x] **Step 2: Run the database test to verify current storage enforces dedupe**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/DatabaseWriterTests/testDuplicateHashesAreIgnored`
 Expected: PASS because the unique `contentHash` constraint drops duplicates.
 
-- [ ] **Step 3: Implement the capture services and wire them into app startup**
+- [x] **Step 3: Implement the capture services and wire them into app startup**
 
 ```swift
 // KnowYou/Services/Clipboard/ClipboardWatcher.swift
@@ -753,7 +753,7 @@ enum ISO8601DayKey {
 }
 ```
 
-- [ ] **Step 4: Run focused tests and launch the app**
+- [x] **Step 4: Run focused tests and launch the app**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/DatabaseWriterTests`
 Expected: PASS, including the duplicate-hash case.
@@ -761,7 +761,7 @@ Expected: PASS, including the duplicate-hash case.
 Run: `xcodebuild build -scheme KnowYou -destination 'platform=macOS'`
 Expected: BUILD SUCCEEDED.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add KnowYou/Services/Clipboard/ClipboardWatcher.swift KnowYou/Services/Notifications/NotificationCollector.swift KnowYou/App/AppEnvironment.swift KnowYou/App/AppState.swift KnowYou/Utilities/SHA256Hasher.swift KnowYou/Utilities/ISO8601DayKey.swift KnowYouTests/DatabaseWriterTests.swift
@@ -777,7 +777,7 @@ git commit -m "feat: capture clipboard and notification events"
 - Create: `KnowYouTests/DailyMarkdownComposerTests.swift`
 - Create: `KnowYouTests/BackfillPlannerTests.swift`
 
-- [ ] **Step 1: Write failing composer and backfill tests**
+- [x] **Step 1: Write failing composer and backfill tests**
 
 ```swift
 // KnowYouTests/DailyMarkdownComposerTests.swift
@@ -820,12 +820,12 @@ final class BackfillPlannerTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/DailyMarkdownComposerTests -only-testing:KnowYouTests/BackfillPlannerTests`
 Expected: FAIL because composer and backfill planner do not exist.
 
-- [ ] **Step 3: Implement composition and missing-day discovery**
+- [x] **Step 3: Implement composition and missing-day discovery**
 
 ```swift
 // KnowYou/Domain/DailyNote.swift
@@ -907,12 +907,12 @@ struct BackfillPlanner {
 }
 ```
 
-- [ ] **Step 4: Run the composer and backfill tests**
+- [x] **Step 4: Run the composer and backfill tests**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/DailyMarkdownComposerTests -only-testing:KnowYouTests/BackfillPlannerTests`
 Expected: PASS for section order and missing-date detection.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add KnowYou/Domain/DailyNote.swift KnowYou/Services/Composer/DailyMarkdownComposer.swift KnowYou/Services/Backfill/BackfillPlanner.swift KnowYouTests/DailyMarkdownComposerTests.swift KnowYouTests/BackfillPlannerTests.swift
@@ -928,7 +928,7 @@ git commit -m "feat: compose daily markdown and backfill days"
 - Modify: `KnowYou/App/AppState.swift`
 - Test: `KnowYouTests/DailyMarkdownComposerTests.swift`
 
-- [ ] **Step 1: Add a failing composer test for pending summaries**
+- [x] **Step 1: Add a failing composer test for pending summaries**
 
 ```swift
 func testComposerUsesPendingSummaryPlaceholderWhenSummaryFails() {
@@ -939,12 +939,12 @@ func testComposerUsesPendingSummaryPlaceholderWhenSummaryFails() {
 }
 ```
 
-- [ ] **Step 2: Run the composer test**
+- [x] **Step 2: Run the composer test**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/DailyMarkdownComposerTests/testComposerUsesPendingSummaryPlaceholderWhenSummaryFails`
 Expected: PASS if Task 5 is already complete. If it fails, fix the placeholder before proceeding.
 
-- [ ] **Step 3: Implement the summarizer and vault writer**
+- [x] **Step 3: Implement the summarizer and vault writer**
 
 ```swift
 // KnowYou/Services/Summary/CloudSummarizer.swift
@@ -989,7 +989,7 @@ func writeDailyNote(dayKey: String, markdown: String) throws -> URL {
 }
 ```
 
-- [ ] **Step 4: Run tests and build**
+- [x] **Step 4: Run tests and build**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/DailyMarkdownComposerTests`
 Expected: PASS.
@@ -997,7 +997,7 @@ Expected: PASS.
 Run: `xcodebuild build -scheme KnowYou -destination 'platform=macOS'`
 Expected: BUILD SUCCEEDED.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add KnowYou/Services/Summary/CloudSummarizer.swift KnowYou/Services/Composer/DailyMarkdownComposer.swift KnowYou/App/AppEnvironment.swift KnowYou/App/AppState.swift KnowYouTests/DailyMarkdownComposerTests.swift
@@ -1014,7 +1014,7 @@ git commit -m "feat: write vault files and request cloud summaries"
 - Modify: `KnowYou/UI/Settings/SettingsView.swift`
 - Test: `KnowYouTests/MainWindowViewModelTests.swift`
 
-- [ ] **Step 1: Add a failing status test**
+- [x] **Step 1: Add a failing status test**
 
 ```swift
 func testStatusMessageCanReflectMissingSummary() {
@@ -1025,12 +1025,12 @@ func testStatusMessageCanReflectMissingSummary() {
 }
 ```
 
-- [ ] **Step 2: Run the focused status test**
+- [x] **Step 2: Run the focused status test**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/MainWindowViewModelTests/testStatusMessageCanReflectMissingSummary`
 Expected: PASS after the state model from Task 1 remains intact.
 
-- [ ] **Step 3: Implement the final two-pane reader**
+- [x] **Step 3: Implement the final two-pane reader**
 
 ```swift
 // KnowYou/UI/Sidebar/DateSidebarView.swift
@@ -1094,7 +1094,7 @@ struct StatusBannerView: View {
 }
 ```
 
-- [ ] **Step 4: Run tests and a manual UI check**
+- [x] **Step 4: Run tests and a manual UI check**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/MainWindowViewModelTests`
 Expected: PASS.
@@ -1102,7 +1102,7 @@ Expected: PASS.
 Run: `xcodebuild build -scheme KnowYou -destination 'platform=macOS'`
 Expected: BUILD SUCCEEDED, with a sidebar date list and Markdown detail view.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add KnowYou/UI/Sidebar/DateSidebarView.swift KnowYou/UI/Reader/DailyMarkdownView.swift KnowYou/UI/Status/StatusBannerView.swift KnowYou/UI/MainWindowView.swift KnowYou/UI/Settings/SettingsView.swift KnowYouTests/MainWindowViewModelTests.swift
@@ -1121,7 +1121,7 @@ git commit -m "feat: ship two pane markdown reader"
 - Test: `KnowYouTests/BackfillPlannerTests.swift`
 - Test: `KnowYouTests/MainWindowViewModelTests.swift`
 
-- [ ] **Step 1: Add README setup instructions**
+- [x] **Step 1: Add README setup instructions**
 
 ```md
 # Know You
@@ -1141,22 +1141,22 @@ Know You is a macOS app that captures clipboard and notification context, filter
 - `xcodebuild build -scheme KnowYou -destination 'platform=macOS'`
 ```
 
-- [ ] **Step 2: Run the full test suite**
+- [x] **Step 2: Run the full test suite**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS'`
 Expected: PASS for privacy filtering, persistence, composition, backfill, and UI state.
 
-- [ ] **Step 3: Run the final build**
+- [x] **Step 3: Run the final build**
 
 Run: `xcodebuild build -scheme KnowYou -destination 'platform=macOS'`
 Expected: BUILD SUCCEEDED.
 
-- [ ] **Step 4: Review git diff**
+- [x] **Step 4: Review git diff**
 
 Run: `git status --short && git diff --stat`
 Expected: only intentional app, test, and doc files are present.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .gitignore README.md KnowYou/Config/Secrets.example.xcconfig KnowYou.xcodeproj KnowYou KnowYouTests
@@ -1192,3 +1192,655 @@ No spec gaps remain for MVP.
 - `AppState.selectedDate` remains a `String?` across tasks
 - `EventRecord` is the shared event shape across filter, storage, composer, and reader
 - `PrivacyAction` stays aligned between filter results, storage, and tests
+
+---
+
+## Post-MVP Work Completed (beyond original 8 tasks)
+
+These features were added after the MVP tasks, confirmed via git log.
+
+### Automation: Scheduled Notification Import and Backfill (`75577bd`)
+
+- `DailyAutomationPlanner` wires a recurring timer that triggers notification collection and backfill on a schedule
+- App runs the full capture→compose→summary pipeline automatically without manual trigger
+
+### Automation Status Surface in Reader (`68d4dc1`)
+
+- `StatusBannerView` in the reader pane now reflects live automation run state
+- Shows last run time, pending days, and error conditions from `AppState`
+
+### Explicit Service Status in Settings (`ce4bf5d`)
+
+- `SettingsView` exposes three status indicators: notification DB accessibility, OpenAI API key presence, and vault path configuration
+- Users can diagnose misconfiguration without reading logs
+
+### Code Review Hardening (`b3c9d4f`)
+
+- `CloudSummarizer`: extracted static `apiURL` constant, removed force-unwrap
+- `ClipboardWatcher` / `NotificationCollector`: bare `try?` replaced with `do/catch + logging`
+- `AppState`: `automationTimer` invalidated in `deinit`; `nonisolated(unsafe)` added for Swift 6 concurrency
+- `AppEnvironment.loadDailyNotes`: uses `uniquingKeysWith:` to prevent crash on duplicate filenames
+- `PrivacyFilter` drop-list extended with: `secret`, `token`, `bearer`, `private_key`, `-----BEGIN`
+- `PrivacyFilterTests`: added `testBearerTokenIsDropped`
+- `DatabaseWriterTests`: added `testNotificationCollectorIngestsSnapshot` with `StubNotificationReader`
+
+---
+
+## Phase 2: End-to-End Summarizer Integration
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Make the summarizer truly configurable and usable without a separately paid API — supporting OpenAI API key, or any locally installed CLI tool (Claude Code, Codex, Gemini).
+
+**Architecture:** Introduce a `SummarizerConfig` value type persisted to `UserDefaults` that acts as a factory for `SummaryGenerating`. Add a `CLISummarizer` backed by a `ProcessRunning` protocol so it's testable without spawning real subprocesses. Update `SettingsView` with a Picker + parameter inputs and a save button. Wire `AppState` to rebuild its summarizer live when settings change.
+
+**Tech Stack:** Swift 6, SwiftUI, Foundation (`Process`, `UserDefaults`), XCTest
+
+---
+
+### File Structure
+
+- Create: `KnowYou/Services/Summary/CLISummarizer.swift` — `ProcessRunning` protocol + `SystemProcessRunner` + `CLISummarizer: SummaryGenerating`
+- Create: `KnowYou/Services/Summary/SummarizerConfig.swift` — `SummarizerType` enum, `SummarizerConfig` struct with `UserDefaults` load/save and `makeSummarizer()` factory
+- Modify: `KnowYou/UI/Settings/SettingsView.swift` — add Picker, conditional parameter input, and Save button
+- Modify: `KnowYou/App/AppState.swift` — add `applySummarizerConfig(_:)` that rebuilds `environment.summarizer` live
+- Create: `KnowYouTests/CLISummarizerTests.swift`
+- Create: `KnowYouTests/SummarizerConfigTests.swift`
+
+---
+
+## Task 9: Implement CLISummarizer With Injectable Process Runner
+
+**Files:**
+- Create: `KnowYou/Services/Summary/CLISummarizer.swift`
+- Create: `KnowYouTests/CLISummarizerTests.swift`
+
+- [ ] **Step 1: Write the failing CLISummarizer tests**
+
+```swift
+// KnowYouTests/CLISummarizerTests.swift
+import XCTest
+@testable import KnowYou
+
+private struct StubProcessRunner: ProcessRunning {
+    let output: String
+    var capturedExecutable: String?
+    var capturedArguments: [String]?
+
+    // Use a class-wrapped mutable state so the struct can capture it
+    private let state = StubState()
+
+    func run(executable: String, arguments: [String]) async throws -> String {
+        state.executable = executable
+        state.arguments = arguments
+        return output
+    }
+
+    var lastExecutable: String? { state.executable }
+    var lastArguments: [String]? { state.arguments }
+}
+
+private final class StubState {
+    var executable: String?
+    var arguments: [String]?
+}
+
+final class CLISummarizerTests: XCTestCase {
+    func testClaudeCodePassesPromptWithDashPFlag() async throws {
+        let stub = StubProcessRunner(output: "A productive day.")
+        let summarizer = CLISummarizer(tool: .claudeCode, executablePath: "/usr/local/bin/claude", runner: stub)
+
+        let result = try await summarizer.summarize(dayKey: "2026-04-07", markdown: "## Clipboard\n- note")
+
+        XCTAssertEqual(result, "A productive day.")
+        XCTAssertEqual(stub.lastExecutable, "/usr/local/bin/claude")
+        XCTAssertEqual(stub.lastArguments?.first, "-p")
+        XCTAssertTrue(stub.lastArguments?.last?.contains("2026-04-07") == true)
+    }
+
+    func testCodexPassesPromptAsFirstArgument() async throws {
+        let stub = StubProcessRunner(output: "Focused on shipping.")
+        let summarizer = CLISummarizer(tool: .codex, executablePath: "/usr/local/bin/codex", runner: stub)
+
+        let result = try await summarizer.summarize(dayKey: "2026-04-07", markdown: "## Clipboard\n- note")
+
+        XCTAssertEqual(result, "Focused on shipping.")
+        XCTAssertEqual(stub.lastArguments?.count, 1)
+        XCTAssertTrue(stub.lastArguments?.first?.contains("2026-04-07") == true)
+    }
+
+    func testGeminiPassesPromptWithDashPFlag() async throws {
+        let stub = StubProcessRunner(output: "Day summary.")
+        let summarizer = CLISummarizer(tool: .gemini, executablePath: "/usr/local/bin/gemini", runner: stub)
+
+        _ = try await summarizer.summarize(dayKey: "2026-04-07", markdown: "## Clipboard\n- note")
+
+        XCTAssertEqual(stub.lastArguments?.first, "-p")
+    }
+
+    func testEmptyOutputReturnsUnavailableMessage() async throws {
+        let stub = StubProcessRunner(output: "   ")
+        let summarizer = CLISummarizer(tool: .claudeCode, executablePath: "/usr/local/bin/claude", runner: stub)
+
+        let result = try await summarizer.summarize(dayKey: "2026-04-07", markdown: "")
+
+        XCTAssertEqual(result, "Summary unavailable.")
+    }
+}
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/CLISummarizerTests`
+Expected: FAIL with `Cannot find type 'CLISummarizer' in scope` and `Cannot find type 'ProcessRunning' in scope`.
+
+- [ ] **Step 3: Implement CLISummarizer**
+
+```swift
+// KnowYou/Services/Summary/CLISummarizer.swift
+import Foundation
+
+protocol ProcessRunning: Sendable {
+    func run(executable: String, arguments: [String]) async throws -> String
+}
+
+struct SystemProcessRunner: ProcessRunning {
+    func run(executable: String, arguments: [String]) async throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = Pipe()
+
+        try process.run()
+        process.waitUntilExit()
+
+        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        return String(decoding: data, as: UTF8.self)
+    }
+}
+
+struct CLISummarizer: SummaryGenerating {
+    enum Tool: String, Sendable {
+        case claudeCode
+        case codex
+        case gemini
+    }
+
+    let tool: Tool
+    let executablePath: String
+    let runner: ProcessRunning
+
+    init(tool: Tool, executablePath: String, runner: ProcessRunning = SystemProcessRunner()) {
+        self.tool = tool
+        self.executablePath = executablePath
+        self.runner = runner
+    }
+
+    func summarize(dayKey: String, markdown: String) async throws -> String {
+        let prompt = "Summarize this day as a concise diary entry for \(dayKey):\n\n\(markdown)"
+        let arguments: [String]
+        switch tool {
+        case .claudeCode, .gemini:
+            arguments = ["-p", prompt]
+        case .codex:
+            arguments = [prompt]
+        }
+        let raw = try await runner.run(executable: executablePath, arguments: arguments)
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Summary unavailable." : trimmed
+    }
+}
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/CLISummarizerTests`
+Expected: PASS for all four tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add KnowYou/Services/Summary/CLISummarizer.swift KnowYouTests/CLISummarizerTests.swift
+git commit -m "feat: add CLISummarizer backed by injectable process runner"
+```
+
+---
+
+## Task 10: Implement SummarizerConfig With UserDefaults Persistence
+
+**Files:**
+- Create: `KnowYou/Services/Summary/SummarizerConfig.swift`
+- Create: `KnowYouTests/SummarizerConfigTests.swift`
+
+- [ ] **Step 1: Write the failing SummarizerConfig tests**
+
+```swift
+// KnowYouTests/SummarizerConfigTests.swift
+import XCTest
+@testable import KnowYou
+
+final class SummarizerConfigTests: XCTestCase {
+    private var defaults: UserDefaults!
+
+    override func setUp() {
+        super.setUp()
+        defaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: defaults.description)
+        super.tearDown()
+    }
+
+    func testDefaultConfigTypeIsNone() {
+        let config = SummarizerConfig.load(from: defaults)
+        XCTAssertEqual(config.type, .none)
+    }
+
+    func testSaveAndLoadRoundTripsOpenAIConfig() {
+        var config = SummarizerConfig.load(from: defaults)
+        config.type = .openAI
+        config.openAIKey = "sk-test-abc"
+        config.save(to: defaults)
+
+        let loaded = SummarizerConfig.load(from: defaults)
+        XCTAssertEqual(loaded.type, .openAI)
+        XCTAssertEqual(loaded.openAIKey, "sk-test-abc")
+    }
+
+    func testSaveAndLoadRoundTripsCLIPath() {
+        var config = SummarizerConfig.load(from: defaults)
+        config.type = .claudeCLI
+        config.claudeCLIPath = "/opt/homebrew/bin/claude"
+        config.save(to: defaults)
+
+        let loaded = SummarizerConfig.load(from: defaults)
+        XCTAssertEqual(loaded.type, .claudeCLI)
+        XCTAssertEqual(loaded.claudeCLIPath, "/opt/homebrew/bin/claude")
+    }
+
+    func testMakeSummarizerReturnsNilForNoneType() {
+        var config = SummarizerConfig.load(from: defaults)
+        config.type = .none
+        XCTAssertNil(config.makeSummarizer())
+    }
+
+    func testMakeSummarizerReturnsCloudSummarizerForOpenAI() {
+        var config = SummarizerConfig.load(from: defaults)
+        config.type = .openAI
+        config.openAIKey = "sk-test-xyz"
+        XCTAssertNotNil(config.makeSummarizer())
+    }
+
+    func testMakeSummarizerReturnsNilForOpenAIWithEmptyKey() {
+        var config = SummarizerConfig.load(from: defaults)
+        config.type = .openAI
+        config.openAIKey = ""
+        XCTAssertNil(config.makeSummarizer())
+    }
+
+    func testMakeSummarizerReturnsCLISummarizerForClaudeCLI() {
+        var config = SummarizerConfig.load(from: defaults)
+        config.type = .claudeCLI
+        config.claudeCLIPath = "/usr/local/bin/claude"
+        XCTAssertNotNil(config.makeSummarizer())
+    }
+}
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/SummarizerConfigTests`
+Expected: FAIL with `Cannot find type 'SummarizerConfig' in scope`.
+
+- [ ] **Step 3: Implement SummarizerConfig**
+
+```swift
+// KnowYou/Services/Summary/SummarizerConfig.swift
+import Foundation
+
+enum SummarizerType: String, CaseIterable {
+    case none
+    case openAI
+    case claudeCLI
+    case codexCLI
+    case geminiCLI
+
+    var displayName: String {
+        switch self {
+        case .none: return "None"
+        case .openAI: return "OpenAI API"
+        case .claudeCLI: return "Claude Code (CLI)"
+        case .codexCLI: return "Codex (CLI)"
+        case .geminiCLI: return "Gemini (CLI)"
+        }
+    }
+}
+
+struct SummarizerConfig {
+    var type: SummarizerType
+    var openAIKey: String
+    var claudeCLIPath: String
+    var codexCLIPath: String
+    var geminiCLIPath: String
+
+    static let `default` = SummarizerConfig(
+        type: .none,
+        openAIKey: "",
+        claudeCLIPath: "/usr/local/bin/claude",
+        codexCLIPath: "/usr/local/bin/codex",
+        geminiCLIPath: "/usr/local/bin/gemini"
+    )
+
+    private enum Keys {
+        static let type = "summarizerType"
+        static let openAIKey = "summarizerOpenAIKey"
+        static let claudeCLIPath = "summarizerClaudeCLIPath"
+        static let codexCLIPath = "summarizerCodexCLIPath"
+        static let geminiCLIPath = "summarizerGeminiCLIPath"
+    }
+
+    func save(to defaults: UserDefaults = .standard) {
+        defaults.set(type.rawValue, forKey: Keys.type)
+        defaults.set(openAIKey, forKey: Keys.openAIKey)
+        defaults.set(claudeCLIPath, forKey: Keys.claudeCLIPath)
+        defaults.set(codexCLIPath, forKey: Keys.codexCLIPath)
+        defaults.set(geminiCLIPath, forKey: Keys.geminiCLIPath)
+    }
+
+    static func load(from defaults: UserDefaults = .standard) -> SummarizerConfig {
+        let rawType = defaults.string(forKey: Keys.type) ?? ""
+        return SummarizerConfig(
+            type: SummarizerType(rawValue: rawType) ?? .none,
+            openAIKey: defaults.string(forKey: Keys.openAIKey) ?? "",
+            claudeCLIPath: defaults.string(forKey: Keys.claudeCLIPath) ?? SummarizerConfig.default.claudeCLIPath,
+            codexCLIPath: defaults.string(forKey: Keys.codexCLIPath) ?? SummarizerConfig.default.codexCLIPath,
+            geminiCLIPath: defaults.string(forKey: Keys.geminiCLIPath) ?? SummarizerConfig.default.geminiCLIPath
+        )
+    }
+
+    func makeSummarizer() -> SummaryGenerating? {
+        switch type {
+        case .none:
+            return nil
+        case .openAI:
+            let key = openAIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty else { return nil }
+            return CloudSummarizer(apiKey: key)
+        case .claudeCLI:
+            return CLISummarizer(tool: .claudeCode, executablePath: claudeCLIPath)
+        case .codexCLI:
+            return CLISummarizer(tool: .codex, executablePath: codexCLIPath)
+        case .geminiCLI:
+            return CLISummarizer(tool: .gemini, executablePath: geminiCLIPath)
+        }
+    }
+}
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/SummarizerConfigTests`
+Expected: PASS for all seven tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add KnowYou/Services/Summary/SummarizerConfig.swift KnowYouTests/SummarizerConfigTests.swift
+git commit -m "feat: add SummarizerConfig with UserDefaults persistence and summarizer factory"
+```
+
+---
+
+## Task 11: Add Summarizer Configuration UI to Settings
+
+**Files:**
+- Modify: `KnowYou/UI/Settings/SettingsView.swift`
+- Modify: `KnowYouTests/MainWindowViewModelTests.swift`
+
+- [ ] **Step 1: Write the failing settings save test**
+
+Add to `KnowYouTests/MainWindowViewModelTests.swift`:
+
+```swift
+func testApplySummarizerConfigRebuildsSummarizer() {
+    let appState = AppState()
+    // Initially no summarizer (no env var, no saved config in test)
+    let initialSummarizer = appState.environment?.summarizer
+
+    var config = SummarizerConfig.default
+    config.type = .claudeCLI
+    config.claudeCLIPath = "/usr/local/bin/claude"
+    appState.applySummarizerConfig(config)
+
+    // After applying, summarizer should be non-nil
+    XCTAssertNotNil(appState.environment?.summarizer)
+}
+
+func testApplySummarizerConfigWithNoneTypeClearsSummarizer() {
+    let appState = AppState()
+    var config = SummarizerConfig.default
+    config.type = .none
+    appState.applySummarizerConfig(config)
+
+    XCTAssertNil(appState.environment?.summarizer)
+}
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/MainWindowViewModelTests`
+Expected: FAIL with `Value of type 'AppState' has no member 'applySummarizerConfig'`.
+
+- [ ] **Step 3: Add `applySummarizerConfig` to AppState**
+
+Add to `KnowYou/App/AppState.swift`, inside the `AppState` class body (after `runAutomation`):
+
+```swift
+func applySummarizerConfig(_ config: SummarizerConfig) {
+    config.save()
+    environment?.summarizer = config.makeSummarizer()
+    let label = config.type.displayName
+    statusMessage = config.type == .none
+        ? "Summarizer disabled"
+        : "Summarizer set to \(label)"
+}
+```
+
+Also update `AppEnvironment` to make `summarizer` mutable — change the declaration in `AppEnvironment.swift` from:
+
+```swift
+let summarizer: SummaryGenerating?
+```
+
+to:
+
+```swift
+var summarizer: SummaryGenerating?
+```
+
+Also update `makeSummarizer()` in `AppState.swift` to prefer saved config over env var:
+
+```swift
+private static func makeSummarizer() -> SummaryGenerating? {
+    let saved = SummarizerConfig.load()
+    if let s = saved.makeSummarizer() {
+        return s
+    }
+    // Fall back to legacy env var for backwards compatibility
+    let apiKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"]?
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let apiKey, !apiKey.isEmpty else { return nil }
+    return CloudSummarizer(apiKey: apiKey)
+}
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/MainWindowViewModelTests`
+Expected: PASS for all tests including the two new ones.
+
+- [ ] **Step 5: Update SettingsView with Picker and inputs**
+
+Replace the contents of `KnowYou/UI/Settings/SettingsView.swift` with:
+
+```swift
+import SwiftUI
+
+struct SettingsView: View {
+    @Environment(AppState.self) private var appState
+    @State private var config = SummarizerConfig.load()
+
+    var body: some View {
+        Form {
+            Section("Status") {
+                Text(appState.statusMessage ?? "Idle")
+                Text(appState.automationStatusText)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Services") {
+                StatusRow(
+                    label: "Local storage",
+                    detail: appState.environment?.vaultURL.path ?? "Unavailable",
+                    ok: appState.environment != nil
+                )
+                StatusRow(
+                    label: "Notification import",
+                    detail: appState.environment?.notificationReader.isAvailable == true
+                        ? "Notification Center database found"
+                        : "Notification Center database not accessible — notifications will not be imported",
+                    ok: appState.environment?.notificationReader.isAvailable == true
+                )
+                StatusRow(
+                    label: "Summarizer",
+                    detail: appState.environment?.summarizer != nil
+                        ? "\(config.type.displayName) active"
+                        : "No summarizer configured",
+                    ok: appState.environment?.summarizer != nil
+                )
+            }
+
+            Section("Summarizer") {
+                Picker("Type", selection: $config.type) {
+                    ForEach(SummarizerType.allCases, id: \.self) { type in
+                        Text(type.displayName).tag(type)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                switch config.type {
+                case .none:
+                    EmptyView()
+                case .openAI:
+                    SecureField("OpenAI API Key", text: $config.openAIKey)
+                        .textFieldStyle(.roundedBorder)
+                case .claudeCLI:
+                    TextField("claude path", text: $config.claudeCLIPath)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
+                case .codexCLI:
+                    TextField("codex path", text: $config.codexCLIPath)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
+                case .geminiCLI:
+                    TextField("gemini path", text: $config.geminiCLIPath)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
+                }
+
+                Button("Save") {
+                    appState.applySummarizerConfig(config)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+            Section("Automation") {
+                Text("Runs on launch and every 15 minutes")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .frame(width: 440)
+    }
+}
+
+private struct StatusRow: View {
+    let label: String
+    let detail: String
+    let ok: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(ok ? .green : .orange)
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .fontWeight(.medium)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+}
+```
+
+- [ ] **Step 6: Build and manual check**
+
+Run: `xcodebuild build -scheme KnowYou -destination 'platform=macOS'`
+Expected: BUILD SUCCEEDED.
+
+Launch the app, open Settings (⌘,). Verify:
+- Picker shows all five options
+- Selecting "Claude Code (CLI)" shows a path field pre-filled with `/usr/local/bin/claude`
+- Clicking Save updates the status row to "Claude Code (CLI) active"
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add KnowYou/UI/Settings/SettingsView.swift KnowYou/App/AppState.swift KnowYou/App/AppEnvironment.swift KnowYouTests/MainWindowViewModelTests.swift
+git commit -m "feat: add summarizer config UI with hot-swap and CLI support"
+```
+
+---
+
+## Self-Review (Phase 2)
+
+### Spec coverage
+
+- CLISummarizer shells out to `claude`, `codex`, `gemini` via injectable `ProcessRunning` ✅
+- `SummarizerConfig` persists to `UserDefaults` with round-trip tests ✅
+- Settings Picker covers all five types ✅
+- Hot-swap: `applySummarizerConfig` replaces summarizer without restart ✅
+- Backwards-compat: `OPENAI_API_KEY` env var still works as fallback ✅
+
+### Placeholder scan
+
+- No TBD, no TODO, no "implement later"
+- Every step has exact code or exact shell commands
+
+### Type consistency
+
+- `SummarizerType` enum defined in Task 10, used in Task 11 `SettingsView` `Picker` — `allCases` requires `CaseIterable`, which is declared ✅
+- `SummarizerConfig.makeSummarizer()` returns `SummaryGenerating?` — matches `AppEnvironment.summarizer: SummaryGenerating?` ✅
+- `CLISummarizer.Tool` cases `.claudeCode`, `.codex`, `.gemini` used consistently across Tasks 9 and 10 ✅
+- `AppEnvironment.summarizer` changed from `let` to `var` in Task 11 Step 3 — required for `applySummarizerConfig` to mutate it ✅
+
+---
+
+## What Remains (deferred to V2)
+
+Per the design spec, these are explicitly out of scope for MVP and not yet started:
+
+- Weekly / story push notifications
+- One-click Claude Code or OpenClaw export
+- Advanced full-text search
+- Cross-device sync
+- Rich context visualizations / knowledge graph UI
+- Onboarding flow (permission request wizard, first-launch vault setup)

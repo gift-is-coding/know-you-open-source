@@ -5,26 +5,44 @@ protocol ProcessRunning: Sendable {
 }
 
 struct SystemProcessRunner: ProcessRunning {
+    static let timeoutSeconds: Double = 120
+
     func run(executable: String, arguments: [String]) async throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global().async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: executable)
+                process.arguments = arguments
 
-        let outputPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = Pipe()
+                let outputPipe = Pipe()
+                process.standardOutput = outputPipe
+                process.standardError = Pipe()
 
-        try process.run()
-        process.waitUntilExit()
+                let timeoutItem = DispatchWorkItem {
+                    process.terminate()
+                    continuation.resume(throwing: CocoaError(.executableLoad,
+                        userInfo: [NSLocalizedDescriptionKey: "Summarizer CLI timed out after \(Int(Self.timeoutSeconds))s"]))
+                }
+                DispatchQueue.global().asyncAfter(deadline: .now() + Self.timeoutSeconds, execute: timeoutItem)
 
-        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        return String(decoding: data, as: UTF8.self)
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    timeoutItem.cancel()
+                    let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                    continuation.resume(returning: String(decoding: data, as: UTF8.self))
+                } catch {
+                    timeoutItem.cancel()
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 }
 
 struct CLISummarizer: SummaryGenerating {
     enum Tool: String, Sendable {
-        case claudeCode
+        case claude
         case codex
         case gemini
     }
@@ -43,7 +61,7 @@ struct CLISummarizer: SummaryGenerating {
         let prompt = "Summarize this day as a concise diary entry for \(dayKey):\n\n\(markdown)"
         let arguments: [String]
         switch tool {
-        case .claudeCode, .gemini:
+        case .claude, .gemini:
             arguments = ["-p", prompt]
         case .codex:
             arguments = [prompt]

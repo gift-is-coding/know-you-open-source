@@ -7,7 +7,7 @@ struct OnboardingView: View {
 
     @State private var step = 0
     @State private var vaultPath: String = (try? AppState.defaultVaultURL().path) ?? ""
-    @State private var summarizerConfig = SummarizerConfig.load()
+    @State private var summarizerConfig = SummarizerConfig.default
 
     var body: some View {
         VStack(spacing: 0) {
@@ -182,7 +182,7 @@ struct OnboardingView: View {
         let vaultURL = URL(fileURLWithPath: vaultPath, isDirectory: true)
         appState.applyVaultURL(vaultURL)
         appState.applySummarizerConfig(summarizerConfig)
-        UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+        UserDefaults.standard.set(true, forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
         onComplete()
     }
 }

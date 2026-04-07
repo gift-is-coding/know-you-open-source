@@ -1,29 +1,24 @@
 import XCTest
 @testable import KnowYou
 
-private final class StubState: @unchecked Sendable {
-    var executable: String?
-    var arguments: [String]?
-}
-
-private struct StubProcessRunner: ProcessRunning {
+private final class StubProcessRunner: ProcessRunning, @unchecked Sendable {
     let output: String
-    private let state = StubState()
+    private(set) var lastExecutable: String?
+    private(set) var lastArguments: [String]?
+
+    init(output: String) { self.output = output }
 
     func run(executable: String, arguments: [String]) async throws -> String {
-        state.executable = executable
-        state.arguments = arguments
+        lastExecutable = executable
+        lastArguments = arguments
         return output
     }
-
-    var lastExecutable: String? { state.executable }
-    var lastArguments: [String]? { state.arguments }
 }
 
 final class CLISummarizerTests: XCTestCase {
     func testClaudeCodePassesPromptWithDashPFlag() async throws {
         let stub = StubProcessRunner(output: "A productive day.")
-        let summarizer = CLISummarizer(tool: .claudeCode, executablePath: "/usr/local/bin/claude", runner: stub)
+        let summarizer = CLISummarizer(tool: .claude, executablePath: "/usr/local/bin/claude", runner: stub)
 
         let result = try await summarizer.summarize(dayKey: "2026-04-07", markdown: "## Clipboard\n- note")
 
@@ -55,7 +50,7 @@ final class CLISummarizerTests: XCTestCase {
 
     func testEmptyOutputReturnsUnavailableMessage() async throws {
         let stub = StubProcessRunner(output: "   ")
-        let summarizer = CLISummarizer(tool: .claudeCode, executablePath: "/usr/local/bin/claude", runner: stub)
+        let summarizer = CLISummarizer(tool: .claude, executablePath: "/usr/local/bin/claude", runner: stub)
 
         let result = try await summarizer.summarize(dayKey: "2026-04-07", markdown: "")
 

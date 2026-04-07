@@ -35,25 +35,30 @@ struct SummarizerConfig {
 
     private enum Keys {
         static let type = "summarizerType"
-        static let openAIKey = "summarizerOpenAIKey"
         static let claudeCLIPath = "summarizerClaudeCLIPath"
         static let codexCLIPath = "summarizerCodexCLIPath"
         static let geminiCLIPath = "summarizerGeminiCLIPath"
+        // openAIKey is stored in Keychain, not UserDefaults
+        static let openAIKey = "summarizerOpenAIKey"
     }
 
     func save(to defaults: UserDefaults = .standard) {
         defaults.set(type.rawValue, forKey: Keys.type)
-        defaults.set(openAIKey, forKey: Keys.openAIKey)
         defaults.set(claudeCLIPath, forKey: Keys.claudeCLIPath)
         defaults.set(codexCLIPath, forKey: Keys.codexCLIPath)
         defaults.set(geminiCLIPath, forKey: Keys.geminiCLIPath)
+        if openAIKey.isEmpty {
+            KeychainHelper.delete(forKey: Keys.openAIKey)
+        } else {
+            KeychainHelper.save(openAIKey, forKey: Keys.openAIKey)
+        }
     }
 
     static func load(from defaults: UserDefaults = .standard) -> SummarizerConfig {
         let rawType = defaults.string(forKey: Keys.type) ?? ""
         return SummarizerConfig(
             type: SummarizerType(rawValue: rawType) ?? .none,
-            openAIKey: defaults.string(forKey: Keys.openAIKey) ?? "",
+            openAIKey: KeychainHelper.load(forKey: Keys.openAIKey) ?? "",
             claudeCLIPath: defaults.string(forKey: Keys.claudeCLIPath) ?? SummarizerConfig.default.claudeCLIPath,
             codexCLIPath: defaults.string(forKey: Keys.codexCLIPath) ?? SummarizerConfig.default.codexCLIPath,
             geminiCLIPath: defaults.string(forKey: Keys.geminiCLIPath) ?? SummarizerConfig.default.geminiCLIPath
@@ -69,10 +74,13 @@ struct SummarizerConfig {
             guard !key.isEmpty else { return nil }
             return CloudSummarizer(apiKey: key)
         case .claudeCLI:
-            return CLISummarizer(tool: .claudeCode, executablePath: claudeCLIPath)
+            guard FileManager.default.isExecutableFile(atPath: claudeCLIPath) else { return nil }
+            return CLISummarizer(tool: .claude, executablePath: claudeCLIPath)
         case .codexCLI:
+            guard FileManager.default.isExecutableFile(atPath: codexCLIPath) else { return nil }
             return CLISummarizer(tool: .codex, executablePath: codexCLIPath)
         case .geminiCLI:
+            guard FileManager.default.isExecutableFile(atPath: geminiCLIPath) else { return nil }
             return CLISummarizer(tool: .gemini, executablePath: geminiCLIPath)
         }
     }

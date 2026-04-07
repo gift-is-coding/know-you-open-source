@@ -4,7 +4,7 @@ import AppKit
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var summarizerConfig = SummarizerConfig.load()
-    @State private var vaultPath: String = UserDefaults.standard.string(forKey: "vaultPath") ?? ""
+    @State private var vaultPath: String = UserDefaults.standard.string(forKey: AppState.UserDefaultsKeys.vaultPath) ?? ""
 
     var body: some View {
         Form {
@@ -79,6 +79,9 @@ struct SettingsView: View {
                 }
 
                 Button("Save") {
+                    if !vaultPath.isEmpty {
+                        appState.applyVaultURL(URL(fileURLWithPath: vaultPath, isDirectory: true))
+                    }
                     appState.applySummarizerConfig(summarizerConfig)
                 }
                 .buttonStyle(.borderedProminent)
@@ -102,7 +105,7 @@ struct SettingsView: View {
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             vaultPath = url.path
-            appState.applyVaultURL(url)
+            // Not applied yet — user must press Save
         }
     }
 }

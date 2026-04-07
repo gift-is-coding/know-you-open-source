@@ -62,9 +62,17 @@ final class SummarizerConfigTests: XCTestCase {
     }
 
     func testMakeSummarizerReturnsCLISummarizerForClaudeCLI() {
+        // Use the test binary itself as a stand-in executable that is guaranteed to exist
         var config = SummarizerConfig.load(from: defaults)
         config.type = .claudeCLI
-        config.claudeCLIPath = "/usr/local/bin/claude"
+        config.claudeCLIPath = "/bin/sh"
         XCTAssertNotNil(config.makeSummarizer())
+    }
+
+    func testMakeSummarizerReturnsNilForCLIWithInvalidPath() {
+        var config = SummarizerConfig.load(from: defaults)
+        config.type = .claudeCLI
+        config.claudeCLIPath = "/nonexistent/path/claude"
+        XCTAssertNil(config.makeSummarizer())
     }
 }

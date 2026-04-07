@@ -140,6 +140,12 @@ final class AppState {
         }
     }
 
+    enum UserDefaultsKeys {
+        static let vaultPath = "vaultPath"
+        static let hasCompletedOnboarding = "hasCompletedOnboarding"
+    }
+
+    /// Returns the default vault URL without creating it on disk.
     static func defaultVaultURL() throws -> URL {
         let applicationSupportURL = try FileManager.default.url(
             for: .applicationSupportDirectory,
@@ -147,20 +153,20 @@ final class AppState {
             appropriateFor: nil,
             create: true
         )
-        let appDirectoryURL = applicationSupportURL.appending(path: "KnowYou", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: appDirectoryURL, withIntermediateDirectories: true)
-        return appDirectoryURL.appending(path: "Vault", directoryHint: .isDirectory)
+        return applicationSupportURL
+            .appending(path: "KnowYou", directoryHint: .isDirectory)
+            .appending(path: "Vault", directoryHint: .isDirectory)
     }
 
     private static func makeVaultURL() throws -> URL {
-        if let saved = UserDefaults.standard.string(forKey: "vaultPath"), !saved.isEmpty {
+        if let saved = UserDefaults.standard.string(forKey: UserDefaultsKeys.vaultPath), !saved.isEmpty {
             return URL(fileURLWithPath: saved, isDirectory: true)
         }
         return try defaultVaultURL()
     }
 
     func applyVaultURL(_ url: URL) {
-        UserDefaults.standard.set(url.path, forKey: "vaultPath")
+        UserDefaults.standard.set(url.path, forKey: UserDefaultsKeys.vaultPath)
         guard let environment else { return }
         environment.vaultURL = url
         refreshNotesIndex()

@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct KnowYouApp: App {
     @State private var appState = AppState()
-    @State private var hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+    @State private var hasCompletedOnboarding = UserDefaults.standard.bool(forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
 
     var body: some Scene {
         WindowGroup("Know You") {

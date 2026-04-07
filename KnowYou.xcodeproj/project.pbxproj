@@ -43,6 +43,7 @@
 		A10000010000000000000022 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000025 /* OnboardingView.swift */; };
 		A10000010000000000000023 /* CLISummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000026 /* CLISummarizerTests.swift */; };
 		A10000010000000000000024 /* SummarizerConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000027 /* SummarizerConfigTests.swift */; };
+		A10000010000000000000025 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000028 /* KeychainHelper.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -93,6 +94,7 @@
 		A10001010000000000000025 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		A10001010000000000000026 /* CLISummarizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLISummarizerTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000027 /* SummarizerConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummarizerConfigTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000028 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -270,6 +272,7 @@
 			children = (
 				A10001010000000000000017 /* SHA256Hasher.swift */,
 				A10001010000000000000018 /* ISO8601DayKey.swift */,
+				A10001010000000000000028 /* KeychainHelper.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -457,6 +460,7 @@
 				A10000010000000000000020 /* CLISummarizer.swift in Sources */,
 				A10000010000000000000021 /* SummarizerConfig.swift in Sources */,
 				A10000010000000000000022 /* OnboardingView.swift in Sources */,
+				A10000010000000000000025 /* KeychainHelper.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

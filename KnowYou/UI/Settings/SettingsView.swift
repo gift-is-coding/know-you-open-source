@@ -9,8 +9,13 @@ struct SettingsView: View {
                 Text(appState.statusMessage ?? "Idle")
             }
 
-            Section("Configuration") {
-                Text("Vault and API settings will live here.")
+            Section("Storage") {
+                Text(appState.environment?.vaultURL.path ?? "Vault unavailable")
+                    .textSelection(.enabled)
+            }
+
+            Section("Summary") {
+                Text(appState.environment?.summarizer == nil ? "OpenAI key not configured" : "Cloud summary ready")
             }
         }
         .padding()

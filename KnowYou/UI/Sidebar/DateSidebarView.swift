@@ -13,7 +13,8 @@ struct DateSidebarView: View {
                     .tag(date)
             }
         }
-        .navigationTitle("Daily Notes")
+        .listStyle(.sidebar)
+        .navigationTitle("Days")
     }
 
     private var selectedDateBinding: Binding<String?> {

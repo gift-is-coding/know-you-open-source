@@ -8,8 +8,9 @@ struct StatusBannerView: View {
             Text(message)
                 .font(.callout)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(.quaternary.opacity(0.4))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Color(nsColor: .controlAccentColor).opacity(0.08))
         }
     }
 }

@@ -26,4 +26,11 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.selectedDate, "2026-04-08")
         XCTAssertNil(appState.selectedMarkdownURL)
     }
+
+    func testStatusMessageCanReflectMissingSummary() {
+        let appState = AppState()
+        appState.statusMessage = "Summary pending for 2026-04-07"
+
+        XCTAssertEqual(appState.statusMessage, "Summary pending for 2026-04-07")
+    }
 }

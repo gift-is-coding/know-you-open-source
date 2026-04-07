@@ -59,9 +59,10 @@ final class AppEnvironment {
         )
 
         return Dictionary(
-            uniqueKeysWithValues: fileURLs
+            fileURLs
                 .filter { $0.pathExtension == "md" }
-                .map { ($0.deletingPathExtension().lastPathComponent, $0) }
+                .map { ($0.deletingPathExtension().lastPathComponent, $0) },
+            uniquingKeysWith: { _, new in new }
         )
     }
 }

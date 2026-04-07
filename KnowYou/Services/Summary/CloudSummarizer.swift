@@ -15,8 +15,10 @@ struct CloudSummarizer: SummaryGenerating {
         self.model = model
     }
 
+    private static let apiURL = URL(string: "https://api.openai.com/v1/responses")!
+
     func summarize(dayKey: String, markdown: String) async throws -> String {
-        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/responses")!)
+        var request = URLRequest(url: Self.apiURL)
         request.httpMethod = "POST"
         request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")

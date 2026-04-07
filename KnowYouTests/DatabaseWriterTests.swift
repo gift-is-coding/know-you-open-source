@@ -2,6 +2,10 @@ import XCTest
 import GRDB
 @testable import KnowYou
 
+private struct StubNotificationReader: NotificationDatabaseReading {
+    func fetchDeliveredNotifications(since: Date) throws -> [NotificationSnapshot] { [] }
+}
+
 final class DatabaseWriterTests: XCTestCase {
     func testInsertFilteredEventPersistsPrivacyAction() throws {
         let writer = try DatabaseWriter.inMemory()
@@ -155,6 +159,32 @@ final class DatabaseWriterTests: XCTestCase {
         try writer.finishRun(id: second, status: "succeeded")
 
         XCTAssertEqual(try writer.fetchLatestSuccessfulRunDay(runType: "daily-note"), "2026-04-08")
+    }
+
+    func testNotificationCollectorIngestsSnapshot() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let filter = PrivacyFilter()
+        let collector = NotificationCollector(
+            privacyFilter: filter,
+            databaseWriter: writer,
+            databaseReader: StubNotificationReader()
+        )
+
+        let deliveredAt = Date(timeIntervalSince1970: 1_775_000_000)
+        let snapshot = NotificationSnapshot(
+            appName: "Calendar",
+            deliveredAt: deliveredAt,
+            body: "Meeting in 10 minutes"
+        )
+
+        collector.ingest([snapshot])
+
+        // dayKey is derived from local timezone so we compute it the same way
+        let dayKey = ISO8601DayKey.format(deliveredAt)
+        let events = try writer.fetchEvents(dayKey: dayKey)
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events.first?.sourceType, .notification)
+        XCTAssertEqual(events.first?.sourceApp, "Calendar")
     }
 
     private func makeEvent(contentHash: String) -> EventRecord {

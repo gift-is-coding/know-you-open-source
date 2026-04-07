@@ -40,7 +40,11 @@ final class NotificationCollector {
                 contentHash: SHA256Hasher.hash(snapshot.appName + payload + dayKey)
             )
 
-            try? databaseWriter.insert(event)
+            do {
+                try databaseWriter.insert(event)
+            } catch {
+                print("NotificationCollector: failed to insert event: \(error)")
+            }
             ingestedCount += 1
         }
 

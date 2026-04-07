@@ -67,6 +67,10 @@ final class ClipboardWatcher {
             contentHash: SHA256Hasher.hash(payload)
         )
 
-        try? databaseWriter.insert(event)
+        do {
+            try databaseWriter.insert(event)
+        } catch {
+            print("ClipboardWatcher: failed to insert event: \(error)")
+        }
     }
 }

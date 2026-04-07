@@ -42,6 +42,12 @@ final class PrivacyFilterTests: XCTestCase {
         XCTAssertEqual(result.auditText, "Sensitive content redacted")
     }
 
+    func testBearerTokenIsDropped() {
+        let filter = PrivacyFilter()
+        let result = filter.classify("Authorization: Bearer eyJhbGciOiJSUzI1NiJ9.foo.bar")
+        XCTAssertEqual(result.action, .drop)
+    }
+
     func testLongNumericRunIsRedactedWithoutLeakingTrailingDigits() {
         let filter = PrivacyFilter()
 

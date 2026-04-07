@@ -15,7 +15,13 @@ struct PrivacyFilter {
         if lowered.contains("password")
             || lowered.contains("otp")
             || lowered.contains("api_key")
-            || lowered.contains("session=") {
+            || lowered.contains("session=")
+            || lowered.contains("secret")
+            || lowered.contains("token")
+            || lowered.contains("bearer")
+            || lowered.contains("private_key")
+            || lowered.contains("begin private key")
+            || lowered.contains("-----begin") {
             return PrivacyFilterResult(
                 action: .drop,
                 persistedText: nil,

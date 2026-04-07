@@ -13,7 +13,7 @@ final class AppState {
     var lastImportedNotificationCount = 0
     var pendingBackfillDays: [String] = []
     private(set) var environment: AppEnvironment?
-    private var automationTimer: Timer?
+    nonisolated(unsafe) private var automationTimer: Timer?
 
     init() {
         do {
@@ -95,7 +95,7 @@ final class AppState {
         let today = ISO8601DayKey.format(now)
         let latestCompletedDay = try? environment.databaseWriter.fetchLatestSuccessfulRunDay(runType: "daily-note")
         let pendingDays = environment.dailyAutomationPlanner.pendingDays(
-            latestCompletedDay: latestCompletedDay ?? nil,
+            latestCompletedDay: latestCompletedDay,
             existingNoteDays: Set(noteIndex.keys),
             today: today
         )
@@ -176,6 +176,10 @@ final class AppState {
         Task { @MainActor in
             await runAutomation()
         }
+    }
+
+    deinit {
+        automationTimer?.invalidate()
     }
 
     var automationStatusText: String {

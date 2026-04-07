@@ -35,6 +35,10 @@ struct NotificationDatabaseReader: NotificationDatabaseReading {
         }
     }
 
+    var isAvailable: Bool {
+        existingDatabaseURL() != nil
+    }
+
     private func existingDatabaseURL() -> URL? {
         candidateDatabaseURLs.first(where: { fileManager.fileExists(atPath: $0.path) })
     }

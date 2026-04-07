@@ -8,6 +8,7 @@ final class AppEnvironment {
     let privacyFilter: PrivacyFilter
     let clipboardWatcher: ClipboardWatcher
     let notificationCollector: NotificationCollector
+    let notificationReader: NotificationDatabaseReader
     let composer: DailyMarkdownComposer
     let summarizer: SummaryGenerating?
     let dailyAutomationPlanner: DailyAutomationPlanner
@@ -22,6 +23,7 @@ final class AppEnvironment {
         self.vaultURL = vaultURL
         self.databaseWriter = databaseWriter
         self.privacyFilter = privacyFilter
+        self.notificationReader = notificationReader
         self.composer = DailyMarkdownComposer()
         self.summarizer = summarizer
         self.dailyAutomationPlanner = DailyAutomationPlanner(

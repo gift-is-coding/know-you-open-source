@@ -16,6 +16,9 @@
 		A10000010000000000000007 /* StatusBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000007 /* StatusBannerView.swift */; };
 		A10000010000000000000008 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000008 /* SettingsView.swift */; };
 		A10000010000000000000009 /* MainWindowViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000009 /* MainWindowViewModelTests.swift */; };
+		A1000001000000000000000A /* PrivacyFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000000A /* PrivacyFilterTests.swift */; };
+		A1000001000000000000000B /* EventRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000000B /* EventRecord.swift */; };
+		A1000001000000000000000C /* PrivacyFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000000C /* PrivacyFilter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -38,6 +41,9 @@
 		A10001010000000000000007 /* StatusBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBannerView.swift; sourceTree = "<group>"; };
 		A10001010000000000000008 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A10001010000000000000009 /* MainWindowViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowViewModelTests.swift; sourceTree = "<group>"; };
+		A1000101000000000000000A /* PrivacyFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyFilterTests.swift; sourceTree = "<group>"; };
+		A1000101000000000000000B /* EventRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventRecord.swift; sourceTree = "<group>"; };
+		A1000101000000000000000C /* PrivacyFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyFilter.swift; sourceTree = "<group>"; };
 		A10001010000000000000010 /* KnowYou.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KnowYou.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10001010000000000000011 /* KnowYouTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KnowYouTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -74,6 +80,8 @@
 			children = (
 				A10001010000000000000001 /* KnowYouApp.swift */,
 				A10000060000000000000003 /* App */,
+				A10000060000000000000012 /* Domain */,
+				A10000060000000000000013 /* Services */,
 				A10000060000000000000004 /* UI */,
 			);
 			path = KnowYou;
@@ -136,8 +144,33 @@
 			isa = PBXGroup;
 			children = (
 				A10001010000000000000009 /* MainWindowViewModelTests.swift */,
+				A1000101000000000000000A /* PrivacyFilterTests.swift */,
 			);
 			path = KnowYouTests;
+			sourceTree = "<group>";
+		};
+		A10000060000000000000012 /* Domain */ = {
+			isa = PBXGroup;
+			children = (
+				A1000101000000000000000B /* EventRecord.swift */,
+			);
+			path = Domain;
+			sourceTree = "<group>";
+		};
+		A10000060000000000000013 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				A10000060000000000000014 /* Privacy */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		A10000060000000000000014 /* Privacy */ = {
+			isa = PBXGroup;
+			children = (
+				A1000101000000000000000C /* PrivacyFilter.swift */,
+			);
+			path = Privacy;
 			sourceTree = "<group>";
 		};
 		A10000060000000000000011 /* Products */ = {
@@ -254,9 +287,11 @@
 				A10000010000000000000001 /* KnowYouApp.swift in Sources */,
 				A10000010000000000000002 /* AppEnvironment.swift in Sources */,
 				A10000010000000000000003 /* AppState.swift in Sources */,
+				A1000001000000000000000B /* EventRecord.swift in Sources */,
 				A10000010000000000000004 /* MainWindowView.swift in Sources */,
 				A10000010000000000000005 /* DateSidebarView.swift in Sources */,
 				A10000010000000000000006 /* DailyMarkdownView.swift in Sources */,
+				A1000001000000000000000C /* PrivacyFilter.swift in Sources */,
 				A10000010000000000000007 /* StatusBannerView.swift in Sources */,
 				A10000010000000000000008 /* SettingsView.swift in Sources */,
 			);
@@ -267,6 +302,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000010000000000000009 /* MainWindowViewModelTests.swift in Sources */,
+				A1000001000000000000000A /* PrivacyFilterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -2,4 +2,6 @@
 KnowYou/Config/Secrets.xcconfig
 KnowYou/Config/*.local.xcconfig
 KnowYou/Config/*.private.xcconfig
+*.xcuserstate
+**/xcuserdata/
 !KnowYou/Config/Secrets.example.xcconfig

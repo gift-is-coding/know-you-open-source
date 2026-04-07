@@ -7,6 +7,7 @@ struct SettingsView: View {
         Form {
             Section("Status") {
                 Text(appState.statusMessage ?? "Idle")
+                Text(appState.automationStatusText)
             }
 
             Section("Storage") {

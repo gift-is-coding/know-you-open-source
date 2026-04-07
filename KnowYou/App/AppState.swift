@@ -9,6 +9,9 @@ final class AppState {
     var selectedMarkdownURL: URL?
     var noteIndex: [String: URL] = [:]
     var statusMessage: String?
+    var lastAutomationRunAt: Date?
+    var lastImportedNotificationCount = 0
+    var pendingBackfillDays: [String] = []
     private(set) var environment: AppEnvironment?
     private var automationTimer: Timer?
 
@@ -83,8 +86,10 @@ final class AppState {
             return
         }
 
+        lastAutomationRunAt = now
         let notificationSince = Calendar(identifier: .gregorian).date(byAdding: .day, value: -2, to: now) ?? now
         let importedNotifications = (try? environment.notificationCollector.importDeliveredNotifications(since: notificationSince)) ?? 0
+        lastImportedNotificationCount = importedNotifications
         refreshNotesIndex()
 
         let today = ISO8601DayKey.format(now)
@@ -94,6 +99,7 @@ final class AppState {
             existingNoteDays: Set(noteIndex.keys),
             today: today
         )
+        pendingBackfillDays = pendingDays
 
         for dayKey in pendingDays {
             await generateDailyNote(for: dayKey, recordsRun: true)
@@ -103,6 +109,7 @@ final class AppState {
             statusMessage = importedNotifications == 0
                 ? "Capture services ready"
                 : "Imported \(importedNotifications) notifications"
+            pendingBackfillDays = []
         }
     }
 
@@ -169,5 +176,24 @@ final class AppState {
         Task { @MainActor in
             await runAutomation()
         }
+    }
+
+    var automationStatusText: String {
+        let lastRunText: String
+        if let lastAutomationRunAt {
+            lastRunText = DateFormatter.localizedString(
+                from: lastAutomationRunAt,
+                dateStyle: .none,
+                timeStyle: .short
+            )
+        } else {
+            lastRunText = "Never"
+        }
+
+        let backfillText = pendingBackfillDays.isEmpty
+            ? "No pending backfill"
+            : "Pending: \(pendingBackfillDays.joined(separator: ", "))"
+
+        return "Last run: \(lastRunText) · Notifications: \(lastImportedNotificationCount) · \(backfillText)"
     }
 }

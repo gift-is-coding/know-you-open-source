@@ -33,4 +33,14 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertEqual(appState.statusMessage, "Summary pending for 2026-04-07")
     }
+
+    func testAutomationStatusTextReflectsBackfillDays() {
+        let appState = AppState()
+        appState.lastImportedNotificationCount = 3
+        appState.pendingBackfillDays = ["2026-04-06", "2026-04-07"]
+
+        XCTAssertTrue(appState.automationStatusText.contains("Notifications: 3"))
+        XCTAssertTrue(appState.automationStatusText.contains("2026-04-06"))
+        XCTAssertTrue(appState.automationStatusText.contains("2026-04-07"))
+    }
 }

@@ -7,6 +7,8 @@ struct PrivacyFilterResult: Equatable {
 }
 
 struct PrivacyFilter {
+    private let sensitiveNumberPattern = #/\d{16,}/#
+
     func classify(_ input: String) -> PrivacyFilterResult {
         let lowered = input.lowercased()
 
@@ -21,9 +23,9 @@ struct PrivacyFilter {
             )
         }
 
-        if let range = input.range(of: #"\d{16}"#, options: .regularExpression) {
-            let suffix = input[range].suffix(4)
-            let redacted = input.replacingCharacters(in: range, with: "************" + suffix)
+        let redacted = redactSensitiveNumbers(in: input)
+
+        if redacted != input {
             return PrivacyFilterResult(
                 action: .redact,
                 persistedText: redacted,
@@ -36,5 +38,30 @@ struct PrivacyFilter {
             persistedText: input,
             auditText: nil
         )
+    }
+
+    private func redactSensitiveNumbers(in input: String) -> String {
+        let matches = input.matches(of: sensitiveNumberPattern)
+
+        guard !matches.isEmpty else {
+            return input
+        }
+
+        var redacted = ""
+        var currentIndex = input.startIndex
+
+        for match in matches {
+            redacted += input[currentIndex..<match.range.lowerBound]
+
+            let digits = input[match.range]
+            let suffix = digits.suffix(4)
+            let maskedDigits = String(repeating: "*", count: digits.count - 4) + suffix
+            redacted += maskedDigits
+
+            currentIndex = match.range.upperBound
+        }
+
+        redacted += input[currentIndex...]
+        return redacted
     }
 }

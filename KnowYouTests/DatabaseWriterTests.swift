@@ -128,6 +128,35 @@ final class DatabaseWriterTests: XCTestCase {
         XCTAssertThrowsError(try writer.fetchEvents(dayKey: "2026-04-07"))
     }
 
+    func testRunLifecyclePersistsDayKeyAndStatus() throws {
+        let writer = try DatabaseWriter.inMemory()
+
+        let runID = try writer.startRun(runType: "daily-note", dayKey: "2026-04-07")
+        try writer.finishRun(id: runID, status: "succeeded")
+
+        let runs = try writer.fetchRuns(runType: "daily-note")
+        XCTAssertEqual(runs.count, 1)
+        XCTAssertEqual(runs[0].id, runID)
+        XCTAssertEqual(runs[0].dayKey, "2026-04-07")
+        XCTAssertEqual(runs[0].status, "succeeded")
+        XCTAssertNotNil(runs[0].finishedAt)
+    }
+
+    func testFetchLatestSuccessfulRunDayReturnsMostRecentSucceededDay() throws {
+        let writer = try DatabaseWriter.inMemory()
+
+        let first = try writer.startRun(runType: "daily-note", dayKey: "2026-04-06")
+        try writer.finishRun(id: first, status: "succeeded")
+
+        let failed = try writer.startRun(runType: "daily-note", dayKey: "2026-04-07")
+        try writer.finishRun(id: failed, status: "failed")
+
+        let second = try writer.startRun(runType: "daily-note", dayKey: "2026-04-08")
+        try writer.finishRun(id: second, status: "succeeded")
+
+        XCTAssertEqual(try writer.fetchLatestSuccessfulRunDay(runType: "daily-note"), "2026-04-08")
+    }
+
     private func makeEvent(contentHash: String) -> EventRecord {
         EventRecord(
             id: UUID(),

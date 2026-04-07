@@ -10,6 +10,7 @@ final class AppState {
     var noteIndex: [String: URL] = [:]
     var statusMessage: String?
     private(set) var environment: AppEnvironment?
+    private var automationTimer: Timer?
 
     init() {
         do {
@@ -22,8 +23,9 @@ final class AppState {
             )
             environment.clipboardWatcher.start()
             self.environment = environment
-            self.statusMessage = "Capture services ready"
             refreshNotesIndex()
+            self.statusMessage = "Capture services ready"
+            startAutomation()
         } catch {
             self.statusMessage = "Capture unavailable: \(error.localizedDescription)"
         }
@@ -39,11 +41,16 @@ final class AppState {
     }
 
     func generateDailyNote(for dayKey: String) async {
+        await generateDailyNote(for: dayKey, recordsRun: true)
+    }
+
+    private func generateDailyNote(for dayKey: String, recordsRun: Bool) async {
         guard let environment else {
             statusMessage = "Capture unavailable"
             return
         }
 
+        let runID = recordsRun ? try? environment.databaseWriter.startRun(runType: "daily-note", dayKey: dayKey) : nil
         do {
             let events = try environment.databaseWriter.fetchEvents(dayKey: dayKey)
             let baseMarkdown = environment.composer.compose(dayKey: dayKey, events: events, summary: nil)
@@ -51,6 +58,9 @@ final class AppState {
             let summary = try await environment.summarizer?.summarize(dayKey: dayKey, markdown: baseMarkdown)
             let finalMarkdown = environment.composer.compose(dayKey: dayKey, events: events, summary: summary)
             let fileURL = try environment.writeDailyNote(dayKey: dayKey, markdown: finalMarkdown)
+            if let runID {
+                try environment.databaseWriter.finishRun(id: runID, status: "succeeded")
+            }
 
             noteIndex[dayKey] = fileURL
             availableDates = noteIndex.keys.sorted(by: >)
@@ -60,7 +70,39 @@ final class AppState {
             }
             statusMessage = summary == nil ? "Summary pending for \(dayKey)" : "Summary ready for \(dayKey)"
         } catch {
+            if let runID {
+                try? environment.databaseWriter.finishRun(id: runID, status: "failed")
+            }
             statusMessage = "Daily note failed: \(error.localizedDescription)"
+        }
+    }
+
+    func runAutomation(now: Date = Date()) async {
+        guard let environment else {
+            statusMessage = "Capture unavailable"
+            return
+        }
+
+        let notificationSince = Calendar(identifier: .gregorian).date(byAdding: .day, value: -2, to: now) ?? now
+        let importedNotifications = (try? environment.notificationCollector.importDeliveredNotifications(since: notificationSince)) ?? 0
+        refreshNotesIndex()
+
+        let today = ISO8601DayKey.format(now)
+        let latestCompletedDay = try? environment.databaseWriter.fetchLatestSuccessfulRunDay(runType: "daily-note")
+        let pendingDays = environment.dailyAutomationPlanner.pendingDays(
+            latestCompletedDay: latestCompletedDay ?? nil,
+            existingNoteDays: Set(noteIndex.keys),
+            today: today
+        )
+
+        for dayKey in pendingDays {
+            await generateDailyNote(for: dayKey, recordsRun: true)
+        }
+
+        if pendingDays.isEmpty {
+            statusMessage = importedNotifications == 0
+                ? "Capture services ready"
+                : "Imported \(importedNotifications) notifications"
         }
     }
 
@@ -110,5 +152,22 @@ final class AppState {
         }
 
         return CloudSummarizer(apiKey: apiKey)
+    }
+
+    private func startAutomation() {
+        automationTimer?.invalidate()
+        automationTimer = Timer.scheduledTimer(withTimeInterval: 900, repeats: true) { [weak self] _ in
+            guard let self else {
+                return
+            }
+
+            Task { @MainActor in
+                await self.runAutomation()
+            }
+        }
+
+        Task { @MainActor in
+            await runAutomation()
+        }
     }
 }

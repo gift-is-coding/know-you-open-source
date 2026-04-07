@@ -6,8 +6,10 @@ The current MVP branch already includes:
 
 - clipboard capture with privacy filtering
 - notification ingestion with the same privacy boundary
+- read-only import from the local macOS Notification Center SQLite store when a supported database path is available
 - SQLite persistence via GRDB
 - daily Markdown composition and missing-day planning
+- automatic note generation on launch plus a 15-minute catch-up loop for missed days
 - vault writing under the user's Application Support directory
 - optional cloud summarization through OpenAI's Responses API
 - a minimal two-pane reader with dates on the left and raw Markdown on the right

@@ -23,9 +23,23 @@ enum Migrations {
             try db.create(table: "runs") { table in
                 table.column("id", .text).primaryKey()
                 table.column("runType", .text).notNull()
+                table.column("dayKey", .text)
                 table.column("startedAt", .datetime).notNull()
                 table.column("finishedAt", .datetime)
                 table.column("status", .text).notNull()
+            }
+        }
+
+        migrator.registerMigration("addDayKeyToRuns") { db in
+            guard try db.tableExists("runs") else {
+                return
+            }
+
+            let columns = try db.columns(in: "runs").map(\.name)
+            if !columns.contains("dayKey") {
+                try db.alter(table: "runs") { table in
+                    table.add(column: "dayKey", .text)
+                }
             }
         }
 

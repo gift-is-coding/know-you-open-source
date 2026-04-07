@@ -10,11 +10,13 @@ final class AppEnvironment {
     let notificationCollector: NotificationCollector
     let composer: DailyMarkdownComposer
     let summarizer: SummaryGenerating?
+    let dailyAutomationPlanner: DailyAutomationPlanner
 
     init(databasePath: String, vaultURL: URL, summarizer: SummaryGenerating? = nil) throws {
         let databaseURL = URL(fileURLWithPath: databasePath)
         let databaseWriter = try DatabaseWriter(path: databasePath)
         let privacyFilter = PrivacyFilter()
+        let notificationReader = NotificationDatabaseReader()
 
         self.databaseURL = databaseURL
         self.vaultURL = vaultURL
@@ -22,13 +24,17 @@ final class AppEnvironment {
         self.privacyFilter = privacyFilter
         self.composer = DailyMarkdownComposer()
         self.summarizer = summarizer
+        self.dailyAutomationPlanner = DailyAutomationPlanner(
+            backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+        )
         self.clipboardWatcher = ClipboardWatcher(
             privacyFilter: privacyFilter,
             databaseWriter: databaseWriter
         )
         self.notificationCollector = NotificationCollector(
             privacyFilter: privacyFilter,
-            databaseWriter: databaseWriter
+            databaseWriter: databaseWriter,
+            databaseReader: notificationReader
         )
     }
 

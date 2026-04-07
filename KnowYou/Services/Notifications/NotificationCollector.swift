@@ -9,13 +9,21 @@ struct NotificationSnapshot {
 final class NotificationCollector {
     private let privacyFilter: PrivacyFilter
     private let databaseWriter: DatabaseWriter
+    private let databaseReader: NotificationDatabaseReading?
 
-    init(privacyFilter: PrivacyFilter, databaseWriter: DatabaseWriter) {
+    init(
+        privacyFilter: PrivacyFilter,
+        databaseWriter: DatabaseWriter,
+        databaseReader: NotificationDatabaseReading? = nil
+    ) {
         self.privacyFilter = privacyFilter
         self.databaseWriter = databaseWriter
+        self.databaseReader = databaseReader
     }
 
-    func ingest(_ snapshots: [NotificationSnapshot]) {
+    @discardableResult
+    func ingest(_ snapshots: [NotificationSnapshot]) -> Int {
+        var ingestedCount = 0
         for snapshot in snapshots {
             let filtered = privacyFilter.classify(snapshot.body)
             let payload = filtered.persistedText ?? filtered.auditText ?? ""
@@ -33,6 +41,19 @@ final class NotificationCollector {
             )
 
             try? databaseWriter.insert(event)
+            ingestedCount += 1
         }
+
+        return ingestedCount
+    }
+
+    @discardableResult
+    func importDeliveredNotifications(since: Date) throws -> Int {
+        guard let databaseReader else {
+            return 0
+        }
+
+        let snapshots = try databaseReader.fetchDeliveredNotifications(since: since)
+        return ingest(snapshots)
     }
 }

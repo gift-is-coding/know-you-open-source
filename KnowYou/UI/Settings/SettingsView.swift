@@ -14,6 +14,11 @@ struct SettingsView: View {
                     .textSelection(.enabled)
             }
 
+            Section("Automation") {
+                Text("Runs on launch and every 15 minutes")
+                Text("Notification import uses a read-only snapshot of macOS Notification Center storage when available")
+            }
+
             Section("Summary") {
                 Text(appState.environment?.summarizer == nil ? "OpenAI key not configured" : "Cloud summary ready")
             }

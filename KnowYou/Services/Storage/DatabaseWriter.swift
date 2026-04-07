@@ -91,4 +91,94 @@ final class DatabaseWriter {
             }
         }
     }
+
+    func startRun(runType: String, dayKey: String?) throws -> UUID {
+        let runID = UUID()
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO runs
+                (id, runType, dayKey, startedAt, finishedAt, status)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    runID.uuidString,
+                    runType,
+                    dayKey,
+                    Date(),
+                    nil,
+                    "running",
+                ]
+            )
+        }
+
+        return runID
+    }
+
+    func finishRun(id: UUID, status: String) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                UPDATE runs
+                SET finishedAt = ?, status = ?
+                WHERE id = ?
+                """,
+                arguments: [
+                    Date(),
+                    status,
+                    id.uuidString,
+                ]
+            )
+        }
+    }
+
+    func fetchLatestSuccessfulRunDay(runType: String) throws -> String? {
+        try dbQueue.read { db in
+            try String.fetchOne(
+                db,
+                sql: """
+                SELECT dayKey
+                FROM runs
+                WHERE runType = ? AND status = 'succeeded' AND dayKey IS NOT NULL
+                ORDER BY dayKey DESC, finishedAt DESC
+                LIMIT 1
+                """,
+                arguments: [runType]
+            )
+        }
+    }
+
+    func fetchRuns(runType: String? = nil) throws -> [RunRecord] {
+        try dbQueue.read { db in
+            let rows: [Row]
+            if let runType {
+                rows = try Row.fetchAll(
+                    db,
+                    sql: "SELECT * FROM runs WHERE runType = ? ORDER BY startedAt ASC",
+                    arguments: [runType]
+                )
+            } else {
+                rows = try Row.fetchAll(
+                    db,
+                    sql: "SELECT * FROM runs ORDER BY startedAt ASC"
+                )
+            }
+
+            return try rows.map { row in
+                let idString: String = row["id"]
+                guard let id = UUID(uuidString: idString) else {
+                    throw DatabaseWriterRowError.invalidValue(field: "runs.id", value: idString)
+                }
+
+                return RunRecord(
+                    id: id,
+                    runType: row["runType"],
+                    dayKey: row["dayKey"],
+                    startedAt: row["startedAt"],
+                    finishedAt: row["finishedAt"],
+                    status: row["status"]
+                )
+            }
+        }
+    }
 }

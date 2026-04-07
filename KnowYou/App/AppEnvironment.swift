@@ -3,14 +3,14 @@ import Foundation
 @MainActor
 final class AppEnvironment {
     let databaseURL: URL
-    let vaultURL: URL
+    var vaultURL: URL
     let databaseWriter: DatabaseWriter
     let privacyFilter: PrivacyFilter
     let clipboardWatcher: ClipboardWatcher
     let notificationCollector: NotificationCollector
     let notificationReader: NotificationDatabaseReader
     let composer: DailyMarkdownComposer
-    let summarizer: SummaryGenerating?
+    var summarizer: SummaryGenerating?
     let dailyAutomationPlanner: DailyAutomationPlanner
 
     init(databasePath: String, vaultURL: URL, summarizer: SummaryGenerating? = nil) throws {

@@ -140,7 +140,7 @@ final class AppState {
         }
     }
 
-    private static func makeVaultURL() throws -> URL {
+    static func defaultVaultURL() throws -> URL {
         let applicationSupportURL = try FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
@@ -152,12 +152,38 @@ final class AppState {
         return appDirectoryURL.appending(path: "Vault", directoryHint: .isDirectory)
     }
 
-    private static func makeSummarizer() -> SummaryGenerating? {
-        let apiKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let apiKey, !apiKey.isEmpty else {
-            return nil
+    private static func makeVaultURL() throws -> URL {
+        if let saved = UserDefaults.standard.string(forKey: "vaultPath"), !saved.isEmpty {
+            return URL(fileURLWithPath: saved, isDirectory: true)
         }
+        return try defaultVaultURL()
+    }
 
+    func applyVaultURL(_ url: URL) {
+        UserDefaults.standard.set(url.path, forKey: "vaultPath")
+        guard let environment else { return }
+        environment.vaultURL = url
+        refreshNotesIndex()
+        statusMessage = "Vault set to \(url.lastPathComponent)"
+    }
+
+    func applySummarizerConfig(_ config: SummarizerConfig) {
+        config.save()
+        environment?.summarizer = config.makeSummarizer()
+        statusMessage = config.type == .none
+            ? "Summarizer disabled"
+            : "Summarizer set to \(config.type.displayName)"
+    }
+
+    private static func makeSummarizer() -> SummaryGenerating? {
+        let saved = SummarizerConfig.load()
+        if let s = saved.makeSummarizer() {
+            return s
+        }
+        // Fallback: legacy OPENAI_API_KEY env var
+        let apiKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let apiKey, !apiKey.isEmpty else { return nil }
         return CloudSummarizer(apiKey: apiKey)
     }
 

@@ -38,6 +38,38 @@ final class DatabaseWriterTests: XCTestCase {
         XCTAssertEqual(rows.first?.contentHash, first.contentHash)
     }
 
+    func testDuplicateHashesAreIgnored() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let first = EventRecord(
+            id: UUID(),
+            sourceType: .clipboard,
+            sourceApp: "Taio",
+            capturedAt: Date(timeIntervalSince1970: 1_775_000_001),
+            dayKey: "2026-04-07",
+            text: "same payload",
+            auditText: nil,
+            privacyAction: .keep,
+            contentHash: "same-hash"
+        )
+
+        let second = EventRecord(
+            id: UUID(),
+            sourceType: .clipboard,
+            sourceApp: "Taio",
+            capturedAt: Date(timeIntervalSince1970: 1_775_000_002),
+            dayKey: "2026-04-07",
+            text: "same payload",
+            auditText: nil,
+            privacyAction: .keep,
+            contentHash: "same-hash"
+        )
+
+        try writer.insert(first)
+        try writer.insert(second)
+
+        XCTAssertEqual(try writer.fetchEvents(dayKey: "2026-04-07").count, 1)
+    }
+
     func testFetchEventsThrowsWhenStoredRowHasInvalidUUID() throws {
         let databaseURL = URL.temporaryDirectory.appending(path: "\(UUID().uuidString).sqlite")
         let writer = try DatabaseWriter(path: databaseURL.path)

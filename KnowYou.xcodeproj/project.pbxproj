@@ -24,6 +24,10 @@
 		A1000001000000000000000F /* Migrations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000013 /* Migrations.swift */; };
 		A10000010000000000000010 /* DatabaseWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000014 /* DatabaseWriter.swift */; };
 		A10000010000000000000011 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A10000110000000000000001 /* GRDB */; };
+		A10000010000000000000012 /* ClipboardWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000015 /* ClipboardWatcher.swift */; };
+		A10000010000000000000013 /* NotificationCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000016 /* NotificationCollector.swift */; };
+		A10000010000000000000014 /* SHA256Hasher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000017 /* SHA256Hasher.swift */; };
+		A10000010000000000000015 /* ISO8601DayKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000018 /* ISO8601DayKey.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -55,6 +59,10 @@
 		A10001010000000000000012 /* RunRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunRecord.swift; sourceTree = "<group>"; };
 		A10001010000000000000013 /* Migrations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Migrations.swift; sourceTree = "<group>"; };
 		A10001010000000000000014 /* DatabaseWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseWriter.swift; sourceTree = "<group>"; };
+		A10001010000000000000015 /* ClipboardWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardWatcher.swift; sourceTree = "<group>"; };
+		A10001010000000000000016 /* NotificationCollector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationCollector.swift; sourceTree = "<group>"; };
+		A10001010000000000000017 /* SHA256Hasher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SHA256Hasher.swift; sourceTree = "<group>"; };
+		A10001010000000000000018 /* ISO8601DayKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ISO8601DayKey.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -92,6 +100,7 @@
 				A10000060000000000000003 /* App */,
 				A10000060000000000000012 /* Domain */,
 				A10000060000000000000013 /* Services */,
+				A10000060000000000000018 /* Utilities */,
 				A10000060000000000000004 /* UI */,
 			);
 			path = KnowYou;
@@ -172,6 +181,8 @@
 		A10000060000000000000013 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A10000060000000000000016 /* Clipboard */,
+				A10000060000000000000017 /* Notifications */,
 				A10000060000000000000014 /* Privacy */,
 				A10000060000000000000015 /* Storage */,
 			);
@@ -193,6 +204,31 @@
 				A10001010000000000000014 /* DatabaseWriter.swift */,
 			);
 			path = Storage;
+			sourceTree = "<group>";
+		};
+		A10000060000000000000016 /* Clipboard */ = {
+			isa = PBXGroup;
+			children = (
+				A10001010000000000000015 /* ClipboardWatcher.swift */,
+			);
+			path = Clipboard;
+			sourceTree = "<group>";
+		};
+		A10000060000000000000017 /* Notifications */ = {
+			isa = PBXGroup;
+			children = (
+				A10001010000000000000016 /* NotificationCollector.swift */,
+			);
+			path = Notifications;
+			sourceTree = "<group>";
+		};
+		A10000060000000000000018 /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				A10001010000000000000017 /* SHA256Hasher.swift */,
+				A10001010000000000000018 /* ISO8601DayKey.swift */,
+			);
+			path = Utilities;
 			sourceTree = "<group>";
 		};
 		A10000060000000000000011 /* Products */ = {
@@ -313,6 +349,10 @@
 				A10000010000000000000001 /* KnowYouApp.swift in Sources */,
 				A10000010000000000000002 /* AppEnvironment.swift in Sources */,
 				A10000010000000000000003 /* AppState.swift in Sources */,
+				A10000010000000000000012 /* ClipboardWatcher.swift in Sources */,
+				A10000010000000000000013 /* NotificationCollector.swift in Sources */,
+				A10000010000000000000014 /* SHA256Hasher.swift in Sources */,
+				A10000010000000000000015 /* ISO8601DayKey.swift in Sources */,
 				A1000001000000000000000B /* EventRecord.swift in Sources */,
 				A1000001000000000000000E /* RunRecord.swift in Sources */,
 				A10000010000000000000004 /* MainWindowView.swift in Sources */,

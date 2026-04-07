@@ -36,4 +36,12 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertTrue(markdown.contains("## Clipboard"))
         XCTAssertTrue(markdown.contains("## Notifications"))
     }
+
+    func testComposerUsesPendingSummaryPlaceholderWhenSummaryFails() {
+        let composer = DailyMarkdownComposer()
+
+        let markdown = composer.compose(dayKey: "2026-04-07", events: [], summary: nil)
+
+        XCTAssertTrue(markdown.contains("_Pending summary_"))
+    }
 }

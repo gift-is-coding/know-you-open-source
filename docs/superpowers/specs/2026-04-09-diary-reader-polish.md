@@ -14,6 +14,7 @@ Four user-facing issues identified during hands-on testing:
 2. **Keyboard navigation is fully broken** — arrow keys, Enter, and Escape have no effect. The `onMoveCommand` approach breaks inside `NavigationSplitView` because `List` consumes arrow key events and focus propagation is unreliable.
 3. **Blue vertical divider line** between the diary column and the source detail column is draggable, produces a blue highlight on drag, and behaves incorrectly. Needs to be locked.
 4. **Refresh button is buried in the window toolbar** — contextually disconnected from the diary being viewed. Users cannot tell it operates on the selected day.
+5. **Status banner wastes prominent screen space** — the blue `StatusBannerView` at the top of the content area displays diagnostic text (clipboard status, notification errors, summarizer info) that has no value during normal reading.
 
 ---
 
@@ -135,8 +136,18 @@ This pipeline is already implemented. The only code change needed is wiring the 
 | File | Change |
 |------|--------|
 | `KnowYou/UI/Reader/DailyMarkdownView.swift` | Notebook layout, remove card styles, remove isFocused border, add header with date + refresh button |
-| `KnowYou/UI/MainWindowView.swift` | Add `onKeyPress`, fix detail column width, remove focusable/focused, remove toolbar button |
+| `KnowYou/UI/MainWindowView.swift` | Add `onKeyPress`, fix detail column width, remove focusable/focused, remove toolbar button, remove StatusBannerView |
 | `KnowYou/UI/Sidebar/DateSidebarView.swift` | Remove onMoveCommand, remove isFocused border overlay |
+
+---
+
+### 5. Remove Status Banner
+
+**File:** `KnowYou/UI/MainWindowView.swift`
+
+Remove `StatusBannerView` and the `VStack` wrapping it from the `content` column. The `DailyMarkdownView` fills the full column height directly.
+
+The `AppState.statusMessage` and `AppState.statusDetails` properties are left in place — they may still be useful for the menu bar extra or future diagnostics — but nothing in the main window reads or displays them.
 
 ---
 

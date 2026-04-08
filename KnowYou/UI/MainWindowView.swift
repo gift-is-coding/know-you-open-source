@@ -10,28 +10,37 @@ struct MainWindowView: View {
                 selectedDate: appState.selectedDate,
                 onSelect: appState.selectDate
             )
-        } detail: {
+            .navigationSplitViewColumnWidth(min: 180, ideal: 220)
+        } content: {
             VStack(spacing: 0) {
                 StatusBannerView(
                     message: appState.statusMessage,
                     details: appState.statusDetails
                 )
                 DailyMarkdownView(
-                    markdownURL: appState.selectedMarkdownURL,
-                    contentVersion: appState.selectedContentVersion
+                    story: appState.selectedStory,
+                    selectedParagraphID: appState.selectedStoryParagraphID,
+                    onSelectParagraph: appState.selectStoryParagraph,
+                    onMoveSelection: appState.selectAdjacentStoryParagraph(step:)
                 )
             }
+        } detail: {
+            StorySourceDetailView(
+                selectedParagraph: appState.selectedStoryParagraph,
+                selectedEvents: appState.selectedStorySourceEvents,
+                allEvents: appState.selectedDayEvents
+            )
         }
-        .frame(minWidth: 960, minHeight: 640)
+        .frame(minWidth: 1240, minHeight: 720)
         .toolbar {
             Button(action: {
                 Task { @MainActor in
                     await appState.refreshSelectedDay()
                 }
             }) {
-                Label("Refresh Selected Day", systemImage: "arrow.clockwise")
+                Label("Regenerate Selected Day", systemImage: "arrow.clockwise.circle")
             }
-            .help("Refresh Selected Day")
+            .help("Regenerate the selected day")
         }
     }
 }

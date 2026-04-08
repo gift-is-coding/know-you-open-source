@@ -48,6 +48,10 @@ final class AppState {
     var dayRefreshStatus = DayRefreshStatus()
     var summarizerStatus = SummarizerRuntimeStatus()
     var selectedContentVersion = 0
+    var selectedStory: DailyStory?
+    var selectedStoryParagraphID: String?
+    var selectedStorySourceEvents: [EventRecord] = []
+    var selectedDayEvents: [EventRecord] = []
     private(set) var environment: AppEnvironment?
     @ObservationIgnored private var automationTimer: Timer?
 
@@ -94,6 +98,25 @@ final class AppState {
     func selectDate(_ date: String) {
         selectedDate = date
         selectedMarkdownURL = noteIndex[date]
+        loadDayPresentation(for: date)
+    }
+
+    func selectStoryParagraph(_ paragraphID: String) {
+        selectedStoryParagraphID = paragraphID
+        syncSelectedStorySources()
+    }
+
+    func selectAdjacentStoryParagraph(step: Int) {
+        let paragraphs = selectedStoryParagraphs
+        guard !paragraphs.isEmpty else { return }
+        guard let selectedStoryParagraphID,
+              let currentIndex = paragraphs.firstIndex(where: { $0.id == selectedStoryParagraphID })
+        else {
+            selectStoryParagraph(paragraphs[0].id)
+            return
+        }
+        let nextIndex = min(max(currentIndex + step, 0), paragraphs.count - 1)
+        selectStoryParagraph(paragraphs[nextIndex].id)
     }
 
     func ingestNotifications(_ snapshots: [NotificationSnapshot]) {
@@ -120,116 +143,6 @@ final class AppState {
 
     func generateDailyNote(for dayKey: String) async {
         await generateDailyNote(for: dayKey, recordsRun: true)
-    }
-
-    private func generateDailyNote(for dayKey: String, recordsRun: Bool) async {
-        guard let environment else {
-            statusMessage = "Capture unavailable"
-            return
-        }
-
-        let runID = recordsRun ? try? environment.databaseWriter.startRun(runType: "daily-note", dayKey: dayKey) : nil
-        do {
-            let events = try environment.databaseWriter.fetchEvents(dayKey: dayKey)
-            let baseMarkdown = environment.composer.compose(dayKey: dayKey, events: events, summary: nil)
-            let summary: String?
-            do {
-                summary = try await environment.summarizer?.summarize(dayKey: dayKey, markdown: baseMarkdown)
-                if environment.summarizer != nil {
-                    summarizerStatus.lastCompletedAt = Date()
-                    summarizerStatus.lastError = nil
-                }
-            } catch {
-                summary = nil
-                summarizerStatus.lastError = error.localizedDescription
-            }
-            let finalMarkdown = environment.composer.compose(dayKey: dayKey, events: events, summary: summary)
-            let fileURL = try environment.writeDailyNote(dayKey: dayKey, markdown: finalMarkdown)
-            if let runID {
-                try environment.databaseWriter.finishRun(id: runID, status: "succeeded")
-            }
-
-            noteIndex[dayKey] = fileURL
-            availableDates = noteIndex.keys.sorted(by: >)
-            if selectedDate == dayKey || selectedDate == nil {
-                selectedDate = dayKey
-                selectedMarkdownURL = fileURL
-                selectedContentVersion += 1
-            }
-            dayRefreshStatus.lastRequestedDay = dayKey
-            dayRefreshStatus.lastRefreshedAt = Date()
-            dayRefreshStatus.lastError = nil
-            dayRefreshStatus.detail = events.isEmpty
-                ? "Refreshed \(dayKey) with no captured events"
-                : "Refreshed \(dayKey) with \(events.count) event\(events.count == 1 ? "" : "s")"
-            if environment.summarizer == nil {
-                statusMessage = "Refreshed \(dayKey) without summary"
-            } else {
-                statusMessage = summary == nil
-                    ? "Refreshed \(dayKey); summary unavailable"
-                    : "Refreshed \(dayKey) with summary"
-            }
-        } catch {
-            if let runID {
-                try? environment.databaseWriter.finishRun(id: runID, status: "failed")
-            }
-            dayRefreshStatus.lastRequestedDay = dayKey
-            dayRefreshStatus.lastRefreshedAt = Date()
-            dayRefreshStatus.lastError = error.localizedDescription
-            statusMessage = "Daily note failed: \(error.localizedDescription)"
-        }
-    }
-
-    func runAutomation(now: Date = Date()) async {
-        guard let environment else {
-            statusMessage = "Capture unavailable"
-            return
-        }
-
-        lastAutomationRunAt = now
-        refreshNotesIndex()
-        let today = ISO8601DayKey.format(now)
-        let latestCompletedDay = try? environment.databaseWriter.fetchLatestSuccessfulRunDay(runType: "daily-note")
-        let pendingDays = environment.dailyAutomationPlanner.pendingDays(
-            latestCompletedDay: latestCompletedDay,
-            existingNoteDays: Set(noteIndex.keys),
-            today: today
-        )
-        let notificationSince = Self.importStartDate(for: pendingDays, now: now)
-        updateNotificationAccessStatus(using: environment.notificationReader)
-
-        do {
-            let importResult = try environment.notificationCollector.importDeliveredNotifications(since: notificationSince)
-            lastImportedNotificationCount = importResult.importedCount
-            notificationStatus.lastImportedAt = importResult.importedAt
-            notificationStatus.lastImportedCount = importResult.importedCount
-            if notificationStatus.isDatabaseAvailable {
-                notificationStatus.lastError = nil
-            }
-        } catch {
-            lastImportedNotificationCount = 0
-            notificationStatus.lastImportedAt = Date()
-            notificationStatus.lastImportedCount = 0
-            notificationStatus.lastError = error.localizedDescription
-        }
-
-        refreshNotesIndex()
-        pendingBackfillDays = pendingDays.filter { $0 != today }
-
-        for dayKey in pendingDays {
-            await generateDailyNote(for: dayKey, recordsRun: true)
-        }
-
-        if pendingDays.isEmpty {
-            if let lastError = notificationStatus.lastError {
-                statusMessage = "Refresh completed with notification issue: \(lastError)"
-            } else {
-                statusMessage = lastImportedNotificationCount == 0
-                    ? "Capture services ready"
-                    : "Imported \(lastImportedNotificationCount) notifications"
-            }
-            pendingBackfillDays = []
-        }
     }
 
     func applyVaultURL(_ url: URL) {
@@ -305,12 +218,20 @@ final class AppState {
         ].filter { !$0.isEmpty }
     }
 
+    var selectedStoryParagraphs: [DailyStoryParagraph] {
+        selectedStory?.sections.flatMap(\.paragraphs) ?? []
+    }
+
+    var selectedStoryParagraph: DailyStoryParagraph? {
+        guard let selectedStoryParagraphID else { return nil }
+        return selectedStoryParagraphs.first(where: { $0.id == selectedStoryParagraphID })
+    }
+
     enum UserDefaultsKeys {
         static let vaultPath = "vaultPath"
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
     }
 
-    /// Returns the default vault URL without creating it on disk.
     static func defaultVaultURL() throws -> URL {
         let applicationSupportURL = try FileManager.default.url(
             for: .applicationSupportDirectory,
@@ -330,13 +251,117 @@ final class AppState {
         return try defaultVaultURL()
     }
 
+    private func generateDailyNote(for dayKey: String, recordsRun: Bool) async {
+        guard let environment else {
+            statusMessage = "Capture unavailable"
+            return
+        }
+
+        let runID = recordsRun ? try? environment.databaseWriter.startRun(runType: "daily-note", dayKey: dayKey) : nil
+        do {
+            let events = try environment.databaseWriter.fetchEvents(dayKey: dayKey)
+            let story = await generateStory(dayKey: dayKey, events: events, environment: environment)
+            let finalMarkdown = environment.composer.compose(dayKey: dayKey, events: events, story: story)
+            let fileURL = try environment.writeDailyNote(dayKey: dayKey, markdown: finalMarkdown)
+                _ = try environment.writeDailyStory(story)
+            if let runID {
+                try environment.databaseWriter.finishRun(id: runID, status: "succeeded")
+            }
+
+            noteIndex[dayKey] = fileURL
+            availableDates = noteIndex.keys.sorted(by: >)
+            if selectedDate == dayKey || selectedDate == nil {
+                selectedDate = dayKey
+                selectedMarkdownURL = fileURL
+                selectedContentVersion += 1
+            }
+
+            updateSelectedPresentation(dayKey: dayKey, story: story, events: events)
+            dayRefreshStatus.lastRequestedDay = dayKey
+            dayRefreshStatus.lastRefreshedAt = Date()
+            dayRefreshStatus.lastError = nil
+            dayRefreshStatus.detail = events.isEmpty
+                ? "Refreshed \(dayKey) with no captured events"
+                : "Refreshed \(dayKey) into \(story.sections.flatMap(\.paragraphs).count) story segment(s)"
+
+            if environment.summarizer == nil {
+                statusMessage = "Refreshed \(dayKey) with local story fallback"
+            } else if summarizerStatus.lastError != nil {
+                statusMessage = "Refreshed \(dayKey); story fell back to local summary"
+            } else {
+                statusMessage = "Refreshed \(dayKey) with story view"
+            }
+        } catch {
+            if let runID {
+                try? environment.databaseWriter.finishRun(id: runID, status: "failed")
+            }
+            dayRefreshStatus.lastRequestedDay = dayKey
+            dayRefreshStatus.lastRefreshedAt = Date()
+            dayRefreshStatus.lastError = error.localizedDescription
+            statusMessage = "Daily note failed: \(error.localizedDescription)"
+        }
+    }
+
+    func runAutomation(now: Date = Date()) async {
+        guard let environment else {
+            statusMessage = "Capture unavailable"
+            return
+        }
+
+        lastAutomationRunAt = now
+        refreshNotesIndex()
+        let today = ISO8601DayKey.format(now)
+        let latestCompletedDay = try? environment.databaseWriter.fetchLatestSuccessfulRunDay(runType: "daily-note")
+        let pendingDays = environment.dailyAutomationPlanner.pendingDays(
+            latestCompletedDay: latestCompletedDay,
+            existingNoteDays: Set(noteIndex.keys),
+            today: today
+        )
+        let notificationSince = Self.importStartDate(for: pendingDays, now: now)
+        updateNotificationAccessStatus(using: environment.notificationReader)
+
+        do {
+            let importResult = try environment.notificationCollector.importDeliveredNotifications(since: notificationSince)
+            lastImportedNotificationCount = importResult.importedCount
+            notificationStatus.lastImportedAt = importResult.importedAt
+            notificationStatus.lastImportedCount = importResult.importedCount
+            if notificationStatus.isDatabaseAvailable {
+                notificationStatus.lastError = nil
+            }
+        } catch {
+            lastImportedNotificationCount = 0
+            notificationStatus.lastImportedAt = Date()
+            notificationStatus.lastImportedCount = 0
+            notificationStatus.lastError = error.localizedDescription
+        }
+
+        refreshNotesIndex()
+        pendingBackfillDays = pendingDays.filter { $0 != today }
+
+        for dayKey in pendingDays {
+            await generateDailyNote(for: dayKey, recordsRun: true)
+        }
+
+        if pendingDays.isEmpty {
+            if let lastError = notificationStatus.lastError {
+                statusMessage = "Refresh completed with notification issue: \(lastError)"
+            } else {
+                statusMessage = lastImportedNotificationCount == 0
+                    ? "Capture services ready"
+                    : "Imported \(lastImportedNotificationCount) notifications"
+            }
+            pendingBackfillDays = []
+        }
+    }
 }
 
 private extension AppState {
     func refreshToday(now: Date, environment: AppEnvironment) async {
         await runAutomation(now: now)
-        selectedDate = ISO8601DayKey.format(now)
-        selectedMarkdownURL = noteIndex[selectedDate ?? ""]
+        let today = ISO8601DayKey.format(now)
+        selectedDate = today
+        selectedMarkdownURL = noteIndex[today]
+        loadDayPresentation(for: today)
         selectedContentVersion += 1
         if dayRefreshStatus.lastError != nil {
             return
@@ -358,6 +383,67 @@ private extension AppState {
         }
     }
 
+    func generateStory(dayKey: String, events: [EventRecord], environment: AppEnvironment) async -> DailyStory {
+        let fallbackStory = environment.composer.fallbackStory(dayKey: dayKey, events: events)
+        guard let summarizer = environment.summarizer else {
+            return fallbackStory
+        }
+
+        do {
+            let raw = try await summarizer.summarize(
+                dayKey: dayKey,
+                markdown: environment.composer.storyPrompt(dayKey: dayKey, events: events)
+            )
+            if let parsed = environment.composer.parseStory(dayKey: dayKey, raw: raw),
+               parsed.sections.flatMap(\.paragraphs).isEmpty == false {
+                summarizerStatus.lastCompletedAt = Date()
+                summarizerStatus.lastError = nil
+                return parsed
+            }
+            summarizerStatus.lastError = "Story output was not valid structured JSON"
+        } catch {
+            summarizerStatus.lastError = error.localizedDescription
+        }
+
+        return fallbackStory
+    }
+
+    func loadDayPresentation(for dayKey: String) {
+        guard let environment else {
+            selectedStory = nil
+            selectedStoryParagraphID = nil
+            selectedStorySourceEvents = []
+            selectedDayEvents = []
+            return
+        }
+
+        let events = (try? environment.databaseWriter.fetchEvents(dayKey: dayKey)) ?? []
+        let story = (try? environment.loadDailyStory(dayKey: dayKey)) ?? environment.composer.fallbackStory(dayKey: dayKey, events: events)
+        updateSelectedPresentation(dayKey: dayKey, story: story, events: events)
+    }
+
+    func updateSelectedPresentation(dayKey: String, story: DailyStory, events: [EventRecord]) {
+        selectedDate = dayKey
+        selectedStory = story
+        selectedDayEvents = events
+        if let currentID = selectedStoryParagraphID,
+           story.sections.flatMap(\.paragraphs).contains(where: { $0.id == currentID }) {
+            selectedStoryParagraphID = currentID
+        } else {
+            selectedStoryParagraphID = story.sections.flatMap(\.paragraphs).first?.id
+        }
+        syncSelectedStorySources()
+    }
+
+    func syncSelectedStorySources() {
+        guard let paragraph = selectedStoryParagraph else {
+            selectedStorySourceEvents = []
+            return
+        }
+        let sourceSet = Set(paragraph.sourceEventIDs)
+        selectedStorySourceEvents = selectedDayEvents.filter { sourceSet.contains($0.id) }
+    }
+
     func recordClipboardCapture(_ snapshot: ClipboardCaptureSnapshot) {
         clipboardStatus.isActive = true
         clipboardStatus.lastCapturedAt = snapshot.capturedAt
@@ -370,7 +456,7 @@ private extension AppState {
         }
     }
 
-    private var clipboardStatusSummary: String {
+    var clipboardStatusSummary: String {
         guard clipboardStatus.isActive else {
             return "Clipboard watcher inactive"
         }
@@ -382,7 +468,7 @@ private extension AppState {
         return "Clipboard active · waiting for the next capture"
     }
 
-    private var notificationStatusSummary: String {
+    var notificationStatusSummary: String {
         let base = notificationStatus.isDatabaseAvailable
             ? "Notifications available"
             : "Notifications unavailable"
@@ -400,7 +486,7 @@ private extension AppState {
         return "\(base)\(pathSuffix)"
     }
 
-    private var dayRefreshSummary: String {
+    var dayRefreshSummary: String {
         if let lastError = dayRefreshStatus.lastError, let dayKey = dayRefreshStatus.lastRequestedDay {
             return "Refresh failed for \(dayKey): \(lastError)"
         }
@@ -410,7 +496,7 @@ private extension AppState {
         return ""
     }
 
-    private var summarizerSummary: String {
+    var summarizerSummary: String {
         let base = "Summarizer: \(summarizerStatus.mode)"
         if let lastError = summarizerStatus.lastError {
             return "\(base) · last error: \(lastError)"
@@ -422,7 +508,7 @@ private extension AppState {
         return summarizerStatus.isConfigured ? "\(base) · ready" : "\(base) · disabled"
     }
 
-    private static func makeSummarizer() -> SummaryGenerating? {
+    static func makeSummarizer() -> SummaryGenerating? {
         let saved = SummarizerConfig.load()
         if let s = saved.makeSummarizer() {
             return s
@@ -433,7 +519,7 @@ private extension AppState {
         return CloudSummarizer(apiKey: apiKey)
     }
 
-    private static func makeSummarizerStatus(from summarizer: SummaryGenerating?, configuredType: String? = nil) -> SummarizerRuntimeStatus {
+    static func makeSummarizerStatus(from summarizer: SummaryGenerating?, configuredType: String? = nil) -> SummarizerRuntimeStatus {
         SummarizerRuntimeStatus(
             mode: configuredType ?? {
                 switch summarizer {
@@ -448,21 +534,21 @@ private extension AppState {
         )
     }
 
-    private static func importStartDate(for pendingDays: [String], now: Date) -> Date {
+    static func importStartDate(for pendingDays: [String], now: Date) -> Date {
         if let oldestPendingDay = pendingDays.first, let startDate = startOfDay(for: oldestPendingDay) {
             return startDate
         }
         return Calendar(identifier: .gregorian).date(byAdding: .day, value: -2, to: now) ?? now
     }
 
-    private static func startOfDay(for dayKey: String) -> Date? {
+    static func startOfDay(for dayKey: String) -> Date? {
         let parts = dayKey.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
         let calendar = Calendar(identifier: .gregorian)
         return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 
-    private static func makeDatabaseURL() throws -> URL {
+    static func makeDatabaseURL() throws -> URL {
         let applicationSupportURL = try FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
@@ -474,7 +560,7 @@ private extension AppState {
         return appDirectoryURL.appending(path: "events.sqlite")
     }
 
-    private func refreshNotesIndex() {
+    func refreshNotesIndex() {
         guard let notes = try? environment?.loadDailyNotes() else {
             return
         }
@@ -483,20 +569,22 @@ private extension AppState {
         availableDates = notes.keys.sorted(by: >)
         if let selectedDate {
             selectedMarkdownURL = noteIndex[selectedDate]
+            loadDayPresentation(for: selectedDate)
         } else if let firstDate = availableDates.first {
             selectedDate = firstDate
             selectedMarkdownURL = noteIndex[firstDate]
+            loadDayPresentation(for: firstDate)
         }
     }
 
-    private func updateNotificationAccessStatus(using reader: NotificationDatabaseReader) {
+    func updateNotificationAccessStatus(using reader: NotificationDatabaseReader) {
         let accessStatus = reader.accessStatus()
         notificationStatus.isDatabaseAvailable = accessStatus.isAvailable
         notificationStatus.databasePath = accessStatus.databaseURL?.path
         notificationStatus.availabilityMessage = accessStatus.message
     }
 
-    private func startAutomation() {
+    func startAutomation() {
         automationTimer?.invalidate()
         automationTimer = Timer.scheduledTimer(withTimeInterval: 900, repeats: true) { [weak self] _ in
             guard let self else {

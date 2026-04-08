@@ -20,15 +20,20 @@ private final class InMemoryKeychainStore: KeychainStoring, @unchecked Sendable 
 final class SummarizerConfigTests: XCTestCase {
     private var defaults: UserDefaults!
     private var keychain: InMemoryKeychainStore!
+    private var temporaryDirectoryURL: URL!
 
     override func setUp() {
         super.setUp()
         defaults = UserDefaults(suiteName: "test-\(UUID().uuidString)")!
         keychain = InMemoryKeychainStore()
+        temporaryDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: temporaryDirectoryURL, withIntermediateDirectories: true)
     }
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: defaults.description)
+        try? FileManager.default.removeItem(at: temporaryDirectoryURL)
         super.tearDown()
     }
 
@@ -108,5 +113,20 @@ final class SummarizerConfigTests: XCTestCase {
         config.type = .claudeCLI
         config.claudeCLIPath = "/nonexistent/path/claude"
         XCTAssertNil(config.makeSummarizer())
+    }
+
+    func testMakeSummarizerFallsBackToExecutableDiscoveredOnPATH() throws {
+        let executableURL = temporaryDirectoryURL.appendingPathComponent("gemini")
+        let script = "#!/bin/sh\nprintf '{}'\n"
+        try script.write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+
+        var config = SummarizerConfig.load(from: defaults)
+        config.type = .geminiCLI
+        config.geminiCLIPath = "/usr/local/bin/gemini"
+
+        let summarizer = config.makeSummarizer(environment: ["PATH": temporaryDirectoryURL.path])
+
+        XCTAssertNotNil(summarizer)
     }
 }

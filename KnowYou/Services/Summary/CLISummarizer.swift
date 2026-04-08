@@ -91,6 +91,9 @@ struct CLISummarizer: SummaryGenerating {
     let tool: Tool
     let executablePath: String
     let runner: ProcessRunning
+    private static let dailyStorySchema = """
+    {"type":"object","additionalProperties":false,"required":["sections"],"properties":{"sections":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","paragraphs"],"properties":{"id":{"type":"string","const":"daily-journal"},"paragraphs":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","additionalProperties":false,"required":["text","sourceEventIDs"],"properties":{"text":{"type":"string"},"sourceEventIDs":{"type":"array","minItems":1,"items":{"type":"string","pattern":"^[0-9A-Fa-f-]{36}$"}}}}}}}}}}
+    """
 
     init(tool: Tool, executablePath: String, runner: ProcessRunning = SystemProcessRunner()) {
         self.tool = tool
@@ -99,16 +102,105 @@ struct CLISummarizer: SummaryGenerating {
     }
 
     func summarize(dayKey: String, markdown: String) async throws -> String {
-        let prompt = "Summarize this day as a concise diary entry for \(dayKey):\n\n\(markdown)"
         let arguments: [String]
         switch tool {
-        case .claude, .gemini:
-            arguments = ["-p", prompt]
+        case .claude:
+            arguments = [
+                "-p", markdown,
+                "--output-format", "json",
+                "--json-schema", Self.dailyStorySchema,
+            ]
+        case .gemini:
+            arguments = [
+                "-p", markdown,
+                "--output-format", "text",
+            ]
         case .codex:
-            arguments = [prompt]
+            arguments = [markdown]
         }
         let raw = try await runner.run(executable: executablePath, arguments: arguments)
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed: String
+        if tool == .claude, let structuredOutput = extractClaudeStructuredOutput(from: raw) {
+            trimmed = structuredOutput
+        } else {
+            trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         return trimmed.isEmpty ? "Summary unavailable." : trimmed
+    }
+
+    private func extractClaudeStructuredOutput(from raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let data = trimmed.data(using: .utf8),
+              let envelope = try? JSONDecoder().decode(ClaudeStructuredEnvelope.self, from: data),
+              let structuredOutput = envelope.structuredOutput,
+              let structuredData = try? JSONSerialization.data(withJSONObject: structuredOutput, options: []),
+              let structuredText = String(data: structuredData, encoding: .utf8)
+        else {
+            return nil
+        }
+
+        return structuredText
+    }
+}
+
+private struct ClaudeStructuredEnvelope: Decodable {
+    let structuredOutput: JSONObjectValue?
+
+    enum CodingKeys: String, CodingKey {
+        case structuredOutput = "structured_output"
+    }
+}
+
+private enum JSONObjectValue: Decodable {
+    case string(String)
+    case number(Double)
+    case bool(Bool)
+    case array([JSONObjectValue])
+    case object([String: JSONObjectValue])
+    case null
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .number(value)
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? container.decode([String: JSONObjectValue].self) {
+            self = .object(value)
+        } else if let value = try? container.decode([JSONObjectValue].self) {
+            self = .array(value)
+        } else {
+            throw DecodingError.typeMismatch(
+                JSONObjectValue.self,
+                DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unsupported JSON value")
+            )
+        }
+    }
+
+    var foundationValue: Any {
+        switch self {
+        case .string(let value):
+            return value
+        case .number(let value):
+            return value
+        case .bool(let value):
+            return value
+        case .array(let values):
+            return values.map(\.foundationValue)
+        case .object(let values):
+            return values.mapValues(\.foundationValue)
+        case .null:
+            return NSNull()
+        }
+    }
+}
+
+private extension JSONSerialization {
+    static func data(withJSONObject value: JSONObjectValue, options: WritingOptions = []) throws -> Data {
+        try data(withJSONObject: value.foundationValue, options: options)
     }
 }

@@ -90,9 +90,14 @@ final class MainWindowViewModelTests: XCTestCase {
         await appState.generateDailyNote(for: "2026-04-07")
 
         let savedURL = vaultURL.appending(path: "2026-04-07.md")
+        let storyURL = vaultURL.appending(path: "2026-04-07.story.json")
         XCTAssertTrue(FileManager.default.fileExists(atPath: savedURL.path))
-        XCTAssertEqual(appState.statusMessage, "Refreshed 2026-04-07; summary unavailable")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: storyURL.path))
+        XCTAssertEqual(appState.statusMessage, "Refreshed 2026-04-07; story fell back to local summary")
         XCTAssertEqual(appState.summarizerStatus.lastError, URLError(.cannotConnectToHost).localizedDescription)
+        XCTAssertEqual(appState.selectedStory?.dayKey, "2026-04-07")
+        XCTAssertEqual(appState.selectedStoryParagraphID, appState.selectedStory?.sections.first?.paragraphs.first?.id)
+        XCTAssertFalse(appState.selectedStorySourceEvents.isEmpty)
         XCTAssertEqual(try writer.fetchRuns(runType: "daily-note").last?.status, "succeeded")
     }
 
@@ -330,5 +335,61 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertEqual(appState.summarizerStatus.lastCompletedAt, completedAt)
         XCTAssertEqual(appState.summarizerStatus.lastError, "timed out")
+    }
+
+    func testSelectStoryParagraphUpdatesVisibleSourceEvents() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let dayKey = "2026-04-07"
+        let baseDate = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 7, hour: 9).date!
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Drafts",
+                capturedAt: baseDate,
+                dayKey: dayKey,
+                text: "Outlined launch story",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "story-a"
+            )
+        )
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .notification,
+                sourceApp: "Calendar",
+                capturedAt: baseDate.addingTimeInterval(300),
+                dayKey: dayKey,
+                text: "Design review in 10 minutes",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "story-b"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let appState = AppState(environment: environment)
+
+        await appState.generateDailyNote(for: dayKey)
+
+        let paragraphIDs = appState.selectedStory?.sections.flatMap(\.paragraphs).map(\.id) ?? []
+        XCTAssertGreaterThanOrEqual(paragraphIDs.count, 2)
+
+        appState.selectStoryParagraph(paragraphIDs[1])
+
+        XCTAssertEqual(appState.selectedStoryParagraphID, paragraphIDs[1])
+        XCTAssertEqual(appState.selectedStorySourceEvents.count, 1)
+        XCTAssertEqual(appState.selectedStorySourceEvents.first?.sourceType, .notification)
     }
 }

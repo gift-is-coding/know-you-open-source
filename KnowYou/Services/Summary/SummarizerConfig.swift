@@ -73,7 +73,7 @@ struct SummarizerConfig {
         )
     }
 
-    func makeSummarizer() -> SummaryGenerating? {
+    func makeSummarizer(environment: [String: String] = ProcessInfo.processInfo.environment) -> SummaryGenerating? {
         switch type {
         case .none:
             return nil
@@ -82,14 +82,45 @@ struct SummarizerConfig {
             guard !key.isEmpty else { return nil }
             return CloudSummarizer(apiKey: key)
         case .claudeCLI:
-            guard FileManager.default.isExecutableFile(atPath: claudeCLIPath) else { return nil }
-            return CLISummarizer(tool: .claude, executablePath: claudeCLIPath)
+            guard let path = resolvedExecutablePath(configuredPath: claudeCLIPath, commandName: "claude", environment: environment) else {
+                return nil
+            }
+            return CLISummarizer(tool: .claude, executablePath: path)
         case .codexCLI:
-            guard FileManager.default.isExecutableFile(atPath: codexCLIPath) else { return nil }
-            return CLISummarizer(tool: .codex, executablePath: codexCLIPath)
+            guard let path = resolvedExecutablePath(configuredPath: codexCLIPath, commandName: "codex", environment: environment) else {
+                return nil
+            }
+            return CLISummarizer(tool: .codex, executablePath: path)
         case .geminiCLI:
-            guard FileManager.default.isExecutableFile(atPath: geminiCLIPath) else { return nil }
-            return CLISummarizer(tool: .gemini, executablePath: geminiCLIPath)
+            guard let path = resolvedExecutablePath(configuredPath: geminiCLIPath, commandName: "gemini", environment: environment) else {
+                return nil
+            }
+            return CLISummarizer(tool: .gemini, executablePath: path)
         }
+    }
+
+    private func resolvedExecutablePath(
+        configuredPath: String,
+        commandName: String,
+        environment: [String: String]
+    ) -> String? {
+        let trimmedConfiguredPath = configuredPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if FileManager.default.isExecutableFile(atPath: trimmedConfiguredPath) {
+            return trimmedConfiguredPath
+        }
+
+        let pathEntries = (environment["PATH"] ?? "")
+            .split(separator: ":")
+            .map(String.init)
+            .filter { !$0.isEmpty }
+
+        for entry in pathEntries {
+            let candidate = URL(fileURLWithPath: entry).appendingPathComponent(commandName).path
+            if FileManager.default.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+
+        return nil
     }
 }

@@ -30,11 +30,14 @@ struct DateSidebarView: View {
     }
     
     private func formattedDate(_ dateString: String) -> String {
+        let parser = DateFormatter()
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        parser.dateFormat = "yyyy-MM-dd"
+        guard let date = parser.date(from: dateString) else { return dateString }
+
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        guard let date = formatter.date(from: dateString) else { return dateString }
-        
-        formatter.dateFormat = "EEEE, MMM d"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MM-dd EEE"
         return formatter.string(from: date)
     }
 }

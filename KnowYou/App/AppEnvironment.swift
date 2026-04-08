@@ -75,6 +75,23 @@ final class AppEnvironment {
         return fileURL
     }
 
+    func writeDailyStory(_ story: DailyStory) throws -> URL {
+        try FileManager.default.createDirectory(at: vaultURL, withIntermediateDirectories: true)
+        let fileURL = vaultURL.appending(path: "\(story.dayKey).story.json")
+        let data = try JSONEncoder.pretty.encode(story)
+        try data.write(to: fileURL, options: .atomic)
+        return fileURL
+    }
+
+    func loadDailyStory(dayKey: String) throws -> DailyStory? {
+        let fileURL = vaultURL.appending(path: "\(dayKey).story.json")
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            return nil
+        }
+        let data = try Data(contentsOf: fileURL)
+        return try JSONDecoder().decode(DailyStory.self, from: data)
+    }
+
     func loadDailyNotes() throws -> [String: URL] {
         guard FileManager.default.fileExists(atPath: vaultURL.path) else {
             return [:]
@@ -92,4 +109,12 @@ final class AppEnvironment {
             uniquingKeysWith: { _, new in new }
         )
     }
+}
+
+private extension JSONEncoder {
+    static let pretty: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return encoder
+    }()
 }

@@ -8,11 +8,12 @@
 
 ## Problem
 
-Three user-facing issues identified during hands-on testing:
+Four user-facing issues identified during hands-on testing:
 
 1. **Diary reading experience is fragmented** — paragraphs render as isolated cards with visible borders, background fills, and "N linked sources" text. Reads like a list of UI elements, not a journal entry.
 2. **Keyboard navigation is fully broken** — arrow keys, Enter, and Escape have no effect. The `onMoveCommand` approach breaks inside `NavigationSplitView` because `List` consumes arrow key events and focus propagation is unreliable.
 3. **Blue vertical divider line** between the diary column and the source detail column is draggable, produces a blue highlight on drag, and behaves incorrectly. Needs to be locked.
+4. **Refresh button is buried in the window toolbar** — contextually disconnected from the diary being viewed. Users cannot tell it operates on the selected day.
 
 ---
 
@@ -95,12 +96,46 @@ Remove the duplicate `.frame(minWidth: 320, idealWidth: 360, maxWidth: 420, maxH
 
 ---
 
+### 4. Refresh Button — Moved Into Diary Header
+
+**Files:** `KnowYou/UI/Reader/DailyMarkdownView.swift`, `KnowYou/UI/MainWindowView.swift`
+
+#### Position
+The refresh button moves from the window toolbar into the diary content area header, right-aligned on the same row as the date title:
+
+```
+[ 4月8日 · Wednesday ]                    [ ↻ ]
+────────────────────────────────────────────────
+凌晨两点多，开始处理 KnowYou 的...
+```
+
+The toolbar button in `MainWindowView` is removed entirely.
+
+#### Appearance
+- Icon: `arrow.clockwise` (SF Symbol), no label
+- Style: `.plain` button, secondary foreground color
+- Loading state: show `ProgressView()` (spinning indicator) in place of the icon while regeneration is in progress — driven by a `@State var isRefreshing: Bool`
+
+#### Backend — what the refresh does
+`appState.refreshSelectedDay()` already exists and handles both today and historical dates. The fix applied earlier ensures historical-day refresh imports notifications with `since = startOfDay(targetDate)` before generating the story.
+
+Full pipeline on button tap:
+1. **Import notifications** for the selected day (since midnight of that day)
+2. **Import clipboard events** (already in the database from the continuous watcher)
+3. **Call LLM** (`CLISummarizer`) with the full `storyPrompt` built from all events
+4. **Parse response** and write `story.json` + regenerate the markdown file
+5. **Reload** the UI
+
+This pipeline is already implemented. The only code change needed is wiring the button into `DailyMarkdownView`'s header and removing it from the toolbar.
+
+---
+
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `KnowYou/UI/Reader/DailyMarkdownView.swift` | Notebook layout, remove card styles, remove isFocused border |
-| `KnowYou/UI/MainWindowView.swift` | Add `onKeyPress`, fix detail column width, remove focusable/focused |
+| `KnowYou/UI/Reader/DailyMarkdownView.swift` | Notebook layout, remove card styles, remove isFocused border, add header with date + refresh button |
+| `KnowYou/UI/MainWindowView.swift` | Add `onKeyPress`, fix detail column width, remove focusable/focused, remove toolbar button |
 | `KnowYou/UI/Sidebar/DateSidebarView.swift` | Remove onMoveCommand, remove isFocused border overlay |
 
 ---
@@ -110,4 +145,3 @@ Remove the duplicate `.frame(minWidth: 320, idealWidth: 360, maxWidth: 420, maxH
 - Content quality / LLM prompt changes (separate concern)
 - Source detail panel UI changes
 - Sidebar date formatting changes
-- Any new features

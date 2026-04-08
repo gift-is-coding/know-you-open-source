@@ -11,6 +11,7 @@ struct MainWindowView: View {
             DateSidebarView(
                 dates: appState.availableDates,
                 selectedDate: appState.selectedDate,
+                isActive: appState.readerFocus == .dateList,
                 onSelect: appState.selectDate
             )
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
@@ -20,6 +21,7 @@ struct MainWindowView: View {
                 selectedParagraphID: appState.selectedStoryParagraphID,
                 dayKey: appState.selectedDate,
                 isRefreshing: isRefreshing,
+                isActive: appState.readerFocus == .storyParagraphs,
                 onSelectParagraph: { paragraphID in
                     appState.focusStoryParagraphs()
                     appState.selectStoryParagraph(paragraphID)

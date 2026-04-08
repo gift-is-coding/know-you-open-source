@@ -3,14 +3,17 @@ import SwiftUI
 struct DateSidebarView: View {
     let dates: [String]
     let selectedDate: String?
+    let isActive: Bool
     let onSelect: (String) -> Void
 
     var body: some View {
-        List(selection: selectedDateBinding) {
+        List(selection: activeBinding) {
             ForEach(dates, id: \.self) { date in
+                let isSelected = selectedDate == date
                 Label(formattedDate(date), systemImage: "doc.plaintext")
                     .padding(.vertical, 4)
-                    .fontWeight(selectedDate == date ? .semibold : .regular)
+                    .fontWeight(isSelected ? .semibold : .regular)
+                    .foregroundStyle(isActive || isSelected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                     .tag(date)
             }
         }
@@ -19,9 +22,9 @@ struct DateSidebarView: View {
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
-    private var selectedDateBinding: Binding<String?> {
+    private var activeBinding: Binding<String?> {
         Binding(
-            get: { selectedDate },
+            get: { isActive ? selectedDate : nil },
             set: { newValue in
                 if let newValue {
                     onSelect(newValue)

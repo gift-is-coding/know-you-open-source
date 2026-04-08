@@ -5,6 +5,7 @@ struct DailyMarkdownView: View {
     let selectedParagraphID: String?
     let dayKey: String?
     let isRefreshing: Bool
+    let isActive: Bool
     let onSelectParagraph: (String) -> Void
     let onFocusStory: () -> Void
     let onRefresh: () -> Void
@@ -71,7 +72,7 @@ struct DailyMarkdownView: View {
 
     @ViewBuilder
     private func paragraphRow(_ paragraph: DailyStoryParagraph) -> some View {
-        let isSelected = paragraph.id == selectedParagraphID
+        let isSelected = isActive && paragraph.id == selectedParagraphID
         let isHovered = hoveredParagraphID == paragraph.id
 
         Button {

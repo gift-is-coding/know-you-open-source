@@ -1,6 +1,18 @@
 import Foundation
 import Observation
 
+enum ReaderFocusZone: Hashable {
+    case dateList
+    case storyParagraphs
+}
+
+enum ReaderMoveDirection {
+    case up
+    case down
+    case left
+    case right
+}
+
 struct ClipboardMonitorStatus {
     var isActive = false
     var lastCapturedAt: Date?
@@ -52,8 +64,10 @@ final class AppState {
     var selectedStoryParagraphID: String?
     var selectedStorySourceEvents: [EventRecord] = []
     var selectedDayEvents: [EventRecord] = []
+    var readerFocus: ReaderFocusZone = .dateList
     private(set) var environment: AppEnvironment?
     @ObservationIgnored private var automationTimer: Timer?
+    @ObservationIgnored private var paragraphSelectionByDay: [String: String] = [:]
 
     init(environment: AppEnvironment? = nil, bootstrapServices: Bool = true) {
         if let environment {
@@ -83,6 +97,7 @@ final class AppState {
                 }
             )
             environment.clipboardWatcher.start()
+            try? environment.databaseWriter.markOrphanRunsAsFailed()
             self.environment = environment
             clipboardStatus.isActive = true
             updateNotificationAccessStatus(using: environment.notificationReader)
@@ -96,6 +111,7 @@ final class AppState {
     }
 
     func selectDate(_ date: String) {
+        readerFocus = .dateList
         selectedDate = date
         selectedMarkdownURL = noteIndex[date]
         loadDayPresentation(for: date)
@@ -103,6 +119,9 @@ final class AppState {
 
     func selectStoryParagraph(_ paragraphID: String) {
         selectedStoryParagraphID = paragraphID
+        if let selectedDate {
+            paragraphSelectionByDay[selectedDate] = paragraphID
+        }
         syncSelectedStorySources()
     }
 
@@ -215,6 +234,8 @@ final class AppState {
             notificationStatusSummary,
             dayRefreshSummary,
             summarizerSummary,
+            clipboardServiceDetail,
+            notificationServiceDetail,
         ].filter { !$0.isEmpty }
     }
 
@@ -355,7 +376,48 @@ final class AppState {
     }
 }
 
-private extension AppState {
+extension AppState {
+    func focusDateList() {
+        readerFocus = .dateList
+    }
+
+    func focusStoryParagraphs() {
+        guard selectedDate != nil else { return }
+        readerFocus = .storyParagraphs
+        restoreParagraphSelectionForCurrentDay()
+    }
+
+    func handleReaderMove(_ direction: ReaderMoveDirection) {
+        switch readerFocus {
+        case .dateList:
+            switch direction {
+            case .up:
+                selectAdjacentDate(step: -1)
+            case .down:
+                selectAdjacentDate(step: 1)
+            case .right:
+                focusStoryParagraphs()
+            case .left:
+                break
+            }
+        case .storyParagraphs:
+            switch direction {
+            case .up:
+                selectAdjacentStoryParagraph(step: -1)
+            case .down:
+                selectAdjacentStoryParagraph(step: 1)
+            case .left:
+                focusDateList()
+            case .right:
+                break
+            }
+        }
+    }
+
+    func handleReaderExit() {
+        focusDateList()
+    }
+
     func refreshToday(now: Date, environment: AppEnvironment) async {
         await runAutomation(now: now)
         let today = ISO8601DayKey.format(now)
@@ -426,11 +488,18 @@ private extension AppState {
         selectedDate = dayKey
         selectedStory = story
         selectedDayEvents = events
-        if let currentID = selectedStoryParagraphID,
-           story.sections.flatMap(\.paragraphs).contains(where: { $0.id == currentID }) {
+        let paragraphs = story.sections.flatMap(\.paragraphs)
+        if let rememberedID = paragraphSelectionByDay[dayKey],
+           paragraphs.contains(where: { $0.id == rememberedID }) {
+            selectedStoryParagraphID = rememberedID
+        } else if let currentID = selectedStoryParagraphID,
+                  paragraphs.contains(where: { $0.id == currentID }) {
             selectedStoryParagraphID = currentID
         } else {
-            selectedStoryParagraphID = story.sections.flatMap(\.paragraphs).first?.id
+            selectedStoryParagraphID = paragraphs.first?.id
+        }
+        if let selectedStoryParagraphID {
+            paragraphSelectionByDay[dayKey] = selectedStoryParagraphID
         }
         syncSelectedStorySources()
     }
@@ -506,6 +575,18 @@ private extension AppState {
             return "\(base) · last success \(time)"
         }
         return summarizerStatus.isConfigured ? "\(base) · ready" : "\(base) · disabled"
+    }
+
+    var clipboardServiceDetail: String {
+        "Clipboard capture uses the native macOS pasteboard, not Maccy."
+    }
+
+    var notificationServiceDetail: String {
+        let base = "Notification import reads the local Notification Center database."
+        if notificationStatus.isDatabaseAvailable {
+            return "\(base) Some banners are never persisted by macOS, so an empty import can be machine-dependent."
+        }
+        return "\(base) If the database is missing or unreadable, notifications will not appear until macOS exposes a readable store."
     }
 
     static func makeSummarizer() -> SummaryGenerating? {
@@ -599,5 +680,33 @@ private extension AppState {
         Task { @MainActor in
             await runAutomation()
         }
+    }
+
+    private func selectAdjacentDate(step: Int) {
+        guard !availableDates.isEmpty else { return }
+        guard let selectedDate,
+              let currentIndex = availableDates.firstIndex(of: selectedDate)
+        else {
+            selectDate(availableDates[0])
+            return
+        }
+        let nextIndex = min(max(currentIndex + step, 0), availableDates.count - 1)
+        guard nextIndex != currentIndex else { return }
+        selectDate(availableDates[nextIndex])
+    }
+
+    private func restoreParagraphSelectionForCurrentDay() {
+        guard let selectedDate else { return }
+        let paragraphs = selectedStoryParagraphs
+        guard !paragraphs.isEmpty else { return }
+
+        if let rememberedID = paragraphSelectionByDay[selectedDate],
+           paragraphs.contains(where: { $0.id == rememberedID }) {
+            selectedStoryParagraphID = rememberedID
+        } else {
+            selectedStoryParagraphID = paragraphs[0].id
+            paragraphSelectionByDay[selectedDate] = paragraphs[0].id
+        }
+        syncSelectedStorySources()
     }
 }

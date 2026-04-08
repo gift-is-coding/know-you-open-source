@@ -18,18 +18,24 @@ struct MainWindowView: View {
         }
         .frame(minWidth: 960, minHeight: 640)
         .toolbar {
-            Button("Catch Up Now") {
+            Button(action: {
                 Task { @MainActor in
                     await appState.runAutomation()
                 }
+            }) {
+                Label("Catch Up Now", systemImage: "arrow.clockwise.circle")
             }
+            .help("Catch Up Now")
 
             if let selectedDate = appState.selectedDate {
-                Button("Rebuild Day") {
+                Button(action: {
                     Task { @MainActor in
                         await appState.generateDailyNote(for: selectedDate)
                     }
+                }) {
+                    Label("Rebuild Day", systemImage: "hammer")
                 }
+                .help("Rebuild Day")
             }
         }
     }

@@ -44,6 +44,7 @@
 		A10000010000000000000023 /* CLISummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000026 /* CLISummarizerTests.swift */; };
 		A10000010000000000000024 /* SummarizerConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000027 /* SummarizerConfigTests.swift */; };
 		A10000010000000000000025 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000028 /* KeychainHelper.swift */; };
+		DB2772FFED33760F5D742D9B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -95,6 +96,7 @@
 		A10001010000000000000026 /* CLISummarizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLISummarizerTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000027 /* SummarizerConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummarizerConfigTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000028 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+		CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = KnowYou/Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -122,6 +124,7 @@
 				A10000060000000000000002 /* KnowYou */,
 				A10000060000000000000010 /* KnowYouTests */,
 				A10000060000000000000011 /* Products */,
+				CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */,
 			);
 			sourceTree = "<group>";
 		};
@@ -206,6 +209,15 @@
 				A10001010000000000000027 /* SummarizerConfigTests.swift */,
 			);
 			path = KnowYouTests;
+			sourceTree = "<group>";
+		};
+		A10000060000000000000011 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A10001010000000000000010 /* KnowYou.app */,
+				A10001010000000000000011 /* KnowYouTests.xctest */,
+			);
+			name = Products;
 			sourceTree = "<group>";
 		};
 		A10000060000000000000012 /* Domain */ = {
@@ -303,14 +315,6 @@
 			path = Summary;
 			sourceTree = "<group>";
 		};
-		A1000006000000000000001D /* Onboarding */ = {
-			isa = PBXGroup;
-			children = (
-				A10001010000000000000025 /* OnboardingView.swift */,
-			);
-			path = Onboarding;
-			sourceTree = "<group>";
-		};
 		A1000006000000000000001C /* Scheduling */ = {
 			isa = PBXGroup;
 			children = (
@@ -319,13 +323,12 @@
 			path = Scheduling;
 			sourceTree = "<group>";
 		};
-		A10000060000000000000011 /* Products */ = {
+		A1000006000000000000001D /* Onboarding */ = {
 			isa = PBXGroup;
 			children = (
-				A10001010000000000000010 /* KnowYou.app */,
-				A10001010000000000000011 /* KnowYouTests.xctest */,
+				A10001010000000000000025 /* OnboardingView.swift */,
 			);
-			name = Products;
+			path = Onboarding;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -365,8 +368,6 @@
 				A100000A0000000000000001 /* PBXTargetDependency */,
 			);
 			name = KnowYouTests;
-			packageProductDependencies = (
-			);
 			productName = KnowYouTests;
 			productReference = A10001010000000000000011 /* KnowYouTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -417,6 +418,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DB2772FFED33760F5D742D9B /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -530,16 +532,17 @@
 		A100000B0000000000000003 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
-				ENABLE_TESTABILITY = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Know You";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -559,10 +562,11 @@
 		A100000B0000000000000004 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -588,9 +592,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
@@ -609,9 +613,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
@@ -676,7 +680,6 @@
 			productName = GRDB;
 		};
 /* End XCSwiftPackageProductDependency section */
-
 	};
 	rootObject = A10000030000000000000001 /* Project object */;
 }

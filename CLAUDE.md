@@ -16,3 +16,7 @@ Key routing rules:
 - Design system, brand → invoke design-consultation
 - Visual audit, design polish → invoke design-review
 - Architecture review → invoke plan-eng-review
+
+## Global Rules
+
+- ALWAYS create a Pull Request (PR) for any tasks, features, or changes from now on (e.g. use @codex PR or ship tool). Do not commit directly to the default branch without creating a PR first.

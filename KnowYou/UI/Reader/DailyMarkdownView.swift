@@ -9,9 +9,11 @@ struct DailyMarkdownView: View {
                 ScrollView {
                     Text(markdown)
                         .font(.system(.body, design: .monospaced))
+                        .lineSpacing(6)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .padding(28)
+                        .padding(.horizontal, 40)
+                        .padding(.vertical, 32)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
             } else {

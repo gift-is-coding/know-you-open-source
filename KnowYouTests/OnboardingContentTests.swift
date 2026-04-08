@@ -2,6 +2,16 @@ import XCTest
 @testable import KnowYou
 
 final class OnboardingContentTests: XCTestCase {
+    private struct ValueRowExpectation: Equatable {
+        let title: String
+        let detail: String
+    }
+
+    private struct LinkExpectation: Equatable {
+        let title: String
+        let url: String
+    }
+
     private struct PreviewExpectation {
         let title: String
         let time: String
@@ -17,6 +27,9 @@ final class OnboardingContentTests: XCTestCase {
         let bullets: [String]
         let primaryCTA: String
         let preview: PreviewExpectation?
+        let valueRows: [ValueRowExpectation]
+        let helperLinks: [LinkExpectation]
+        let settingsNudge: String?
     }
 
     func testOnboardingStepAllCasesAreInStoryOrder() {
@@ -54,12 +67,15 @@ final class OnboardingContentTests: XCTestCase {
                 caption: "Stored as Markdown on this Mac first, so trust starts before setup does.",
                 bullets: [],
                 primaryCTA: "Show me the story",
-                preview: nil
+                preview: nil,
+                valueRows: [],
+                helperLinks: [],
+                settingsNudge: nil
             ),
             StepExpectation(
                 step: .capture,
                 title: "A day starts taking shape",
-                body: "From the first copied note to the last notification at night, Know You gathers the signal already around you.",
+                body: "From the first copied note to the last notification at night, Know You captures the signal around you automatically.",
                 caption: "Clipboard and notifications become a day you can actually revisit.",
                 bullets: [
                     "The quick copy from a morning planning note",
@@ -67,20 +83,26 @@ final class OnboardingContentTests: XCTestCase {
                     "The late tab, message, or snippet that closed the loop",
                 ],
                 primaryCTA: "How it stays private",
-                preview: nil
+                preview: nil,
+                valueRows: [],
+                helperLinks: [],
+                settingsNudge: nil
             ),
             StepExpectation(
                 step: .safety,
                 title: "Private before it becomes a story",
-                body: "Before anything is saved, filtering keeps sensitive data out. Claude can help shape the story, Openclaw can help with local processing, and optional sync is there only if you want it.",
-                caption: "Local-first by default, with extra help only when you ask for it.",
+                body: "Before anything is saved, filtering keeps sensitive data out. Sensitive items should not be retained in local Markdown files or uploaded in cloud sync.",
+                caption: "You can now or later sync filtered Markdown files to Openclaw or Claude for better agent memory and context.",
                 bullets: [
                     "Filtering happens before storage",
-                    "Claude can help summarize safely",
-                    "Openclaw keeps the workflow local",
+                    "Capture stays automatic even while filtering protects the archive",
+                    "Sync is optional and improves agent memory and context when you want it",
                 ],
                 primaryCTA: "Show me a real preview",
-                preview: nil
+                preview: nil,
+                valueRows: [],
+                helperLinks: [],
+                settingsNudge: nil
             ),
             StepExpectation(
                 step: .preview,
@@ -97,19 +119,48 @@ final class OnboardingContentTests: XCTestCase {
                     time: "8:10 AM",
                     paragraph: "The morning started quietly in Notes, then a copied outline and a Calendar nudge turned the first hour into a clear plan instead of a scramble.",
                     sources: ["Notes", "Calendar", "Clipboard"]
-                )
+                ),
+                valueRows: [],
+                helperLinks: [],
+                settingsNudge: nil
             ),
             StepExpectation(
                 step: .permissions,
-                title: "Finish the first-run setup",
-                body: "Grant the remaining permissions, choose where the vault lives, and start building your private day-by-day memory.",
-                caption: "You can change permissions later in Settings.",
+                title: "Turn on the signals that let Know You rebuild your day",
+                body: "Each permission fills in a specific part of the story. Know You explains the value first so local-reading access never feels abstract.",
+                caption: "Your files stay local as Markdown, and Settings is the place to revisit permissions or add an optional summarizer later.",
                 bullets: [
-                    "Clipboard access stays automatic",
-                    "Notification import may need Full Disk Access",
+                    "Clipboard capture is automatic",
+                    "Notifications are captured automatically after Full Disk Access is granted",
+                    "Sensitive details are filtered before anything is kept locally or synced",
                 ],
                 primaryCTA: "Start my first story",
-                preview: nil
+                preview: nil,
+                valueRows: [
+                    ValueRowExpectation(
+                        title: "Clipboard fills in what you were reading and writing",
+                        detail: "Copied text is captured automatically, so short notes, snippets, and pasted ideas can anchor the story without extra effort."
+                    ),
+                    ValueRowExpectation(
+                        title: "Notifications explain who reached you and when",
+                        detail: "Full Disk Access lets Know You read the local Notification Center store on this Mac so reminders and replies show up in the right place."
+                    ),
+                    ValueRowExpectation(
+                        title: "Voice tools can feed context through the clipboard",
+                        detail: "If you dictate into a clipboard-friendly helper, Know You can pick up that text automatically just like any other copied note."
+                    ),
+                ],
+                helperLinks: [
+                    LinkExpectation(
+                        title: "Maccy clipboard helper",
+                        url: "https://maccy.app/"
+                    ),
+                    LinkExpectation(
+                        title: "MacWhisper voice input helper",
+                        url: "https://www.macwhisper.com/"
+                    ),
+                ],
+                settingsNudge: "Summarizer setup is optional. Finish onboarding first, then open Settings whenever you want Claude, Codex, Gemini, or OpenAI help with story drafting."
             )
         ]
 
@@ -121,6 +172,17 @@ final class OnboardingContentTests: XCTestCase {
             XCTAssertEqual(content.caption, expectation.caption, "\(expectation.step)")
             XCTAssertEqual(content.bullets, expectation.bullets, "\(expectation.step)")
             XCTAssertEqual(content.primaryCTA, expectation.primaryCTA, "\(expectation.step)")
+            XCTAssertEqual(
+                content.valueRows.map { ValueRowExpectation(title: $0.title, detail: $0.detail) },
+                expectation.valueRows,
+                "\(expectation.step)"
+            )
+            XCTAssertEqual(
+                content.helperLinks.map { LinkExpectation(title: $0.title, url: $0.url.absoluteString) },
+                expectation.helperLinks,
+                "\(expectation.step)"
+            )
+            XCTAssertEqual(content.settingsNudge, expectation.settingsNudge, "\(expectation.step)")
 
             if let expectedPreview = expectation.preview {
                 let preview = try XCTUnwrap(content.preview, "\(expectation.step)")

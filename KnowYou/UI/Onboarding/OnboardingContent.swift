@@ -50,6 +50,16 @@ struct OnboardingPreview: Equatable {
     let entries: [OnboardingPreviewEntry]
 }
 
+struct OnboardingValueRow: Equatable {
+    let title: String
+    let detail: String
+}
+
+struct OnboardingHelperLink: Equatable {
+    let title: String
+    let url: URL
+}
+
 struct OnboardingStepContent {
     let title: String
     let body: String
@@ -57,6 +67,9 @@ struct OnboardingStepContent {
     let bullets: [String]
     let primaryCTA: String
     let preview: OnboardingPreview?
+    let valueRows: [OnboardingValueRow]
+    let helperLinks: [OnboardingHelperLink]
+    let settingsNudge: String?
 }
 
 enum OnboardingContent {
@@ -69,12 +82,15 @@ enum OnboardingContent {
                 caption: "Stored as Markdown on this Mac first, so trust starts before setup does.",
                 bullets: [],
                 primaryCTA: "Show me the story",
-                preview: nil
+                preview: nil,
+                valueRows: [],
+                helperLinks: [],
+                settingsNudge: nil
             )
         case .capture:
             return OnboardingStepContent(
                 title: "A day starts taking shape",
-                body: "From the first copied note to the last notification at night, Know You gathers the signal already around you.",
+                body: "From the first copied note to the last notification at night, Know You captures the signal around you automatically.",
                 caption: "Clipboard and notifications become a day you can actually revisit.",
                 bullets: [
                     "The quick copy from a morning planning note",
@@ -82,20 +98,26 @@ enum OnboardingContent {
                     "The late tab, message, or snippet that closed the loop",
                 ],
                 primaryCTA: "How it stays private",
-                preview: nil
+                preview: nil,
+                valueRows: [],
+                helperLinks: [],
+                settingsNudge: nil
             )
         case .safety:
             return OnboardingStepContent(
                 title: "Private before it becomes a story",
-                body: "Before anything is saved, filtering keeps sensitive data out. Claude can help shape the story, Openclaw can help with local processing, and optional sync is there only if you want it.",
-                caption: "Local-first by default, with extra help only when you ask for it.",
+                body: "Before anything is saved, filtering keeps sensitive data out. Sensitive items should not be retained in local Markdown files or uploaded in cloud sync.",
+                caption: "You can now or later sync filtered Markdown files to Openclaw or Claude for better agent memory and context.",
                 bullets: [
                     "Filtering happens before storage",
-                    "Claude can help summarize safely",
-                    "Openclaw keeps the workflow local",
+                    "Capture stays automatic even while filtering protects the archive",
+                    "Sync is optional and improves agent memory and context when you want it",
                 ],
                 primaryCTA: "Show me a real preview",
-                preview: nil
+                preview: nil,
+                valueRows: [],
+                helperLinks: [],
+                settingsNudge: nil
             )
         case .preview:
             return OnboardingStepContent(
@@ -126,19 +148,48 @@ enum OnboardingContent {
                             sources: ["Safari", "Messages", "Clipboard"]
                         ),
                     ]
-                )
+                ),
+                valueRows: [],
+                helperLinks: [],
+                settingsNudge: nil
             )
         case .permissions:
             return OnboardingStepContent(
-                title: "Finish the first-run setup",
-                body: "Grant the remaining permissions, choose where the vault lives, and start building your private day-by-day memory.",
-                caption: "You can change permissions later in Settings.",
+                title: "Turn on the signals that let Know You rebuild your day",
+                body: "Each permission fills in a specific part of the story. Know You explains the value first so local-reading access never feels abstract.",
+                caption: "Your files stay local as Markdown, and Settings is the place to revisit permissions or add an optional summarizer later.",
                 bullets: [
-                    "Clipboard access stays automatic",
-                    "Notification import may need Full Disk Access",
+                    "Clipboard capture is automatic",
+                    "Notifications are captured automatically after Full Disk Access is granted",
+                    "Sensitive details are filtered before anything is kept locally or synced",
                 ],
                 primaryCTA: "Start my first story",
-                preview: nil
+                preview: nil,
+                valueRows: [
+                    OnboardingValueRow(
+                        title: "Clipboard fills in what you were reading and writing",
+                        detail: "Copied text is captured automatically, so short notes, snippets, and pasted ideas can anchor the story without extra effort."
+                    ),
+                    OnboardingValueRow(
+                        title: "Notifications explain who reached you and when",
+                        detail: "Full Disk Access lets Know You read the local Notification Center store on this Mac so reminders and replies show up in the right place."
+                    ),
+                    OnboardingValueRow(
+                        title: "Voice tools can feed context through the clipboard",
+                        detail: "If you dictate into a clipboard-friendly helper, Know You can pick up that text automatically just like any other copied note."
+                    ),
+                ],
+                helperLinks: [
+                    OnboardingHelperLink(
+                        title: "Maccy clipboard helper",
+                        url: URL(string: "https://maccy.app/")!
+                    ),
+                    OnboardingHelperLink(
+                        title: "MacWhisper voice input helper",
+                        url: URL(string: "https://www.macwhisper.com/")!
+                    ),
+                ],
+                settingsNudge: "Summarizer setup is optional. Finish onboarding first, then open Settings whenever you want Claude, Codex, Gemini, or OpenAI help with story drafting."
             )
         }
     }

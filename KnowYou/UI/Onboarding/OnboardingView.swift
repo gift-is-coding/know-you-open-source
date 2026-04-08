@@ -208,20 +208,71 @@ struct OnboardingView: View {
 
                 Divider()
 
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(content.bullets, id: \.self) { bullet in
+                        Label(bullet, systemImage: "checkmark.circle")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(Array(content.valueRows.enumerated()), id: \.offset) { index, row in
+                        PermissionValueRow(
+                            icon: permissionValueIcon(for: index),
+                            title: row.title,
+                            detail: row.detail
+                        )
+                    }
+                }
+
                 PermissionRow(
                     icon: "doc.on.clipboard",
                     title: "Clipboard",
-                    detail: "No permission required. Know You reads your clipboard automatically.",
+                    detail: "No extra permission required. Clipboard capture is automatic and stays local to your Markdown vault.",
                     ok: true
                 )
                 PermissionRow(
                     icon: "bell.badge",
                     title: "Notifications (Full Disk Access)",
                     detail: notificationsAvailable
-                        ? "Full Disk Access detected. Notifications can be imported into the story."
-                        : "To import notifications, grant Full Disk Access: System Settings → Privacy & Security → Full Disk Access → add Know You.",
+                        ? "Full Disk Access detected. Notifications can be imported into the story automatically."
+                        : "Grant Full Disk Access so Know You can read the local Notification Center store and place reminders, replies, and alerts back into the right part of the day.",
                     ok: notificationsAvailable
                 )
+
+                if !notificationsAvailable {
+                    Button("Open Full Disk Access") {
+                        openFullDiskAccess()
+                    }
+                    .buttonStyle(.link)
+                }
+
+                if !content.helperLinks.isEmpty {
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Helpful add-ons")
+                            .font(.headline)
+
+                        Text("Clipboard history and voice-input tools can make the automatic capture richer without changing the local-first model.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+
+                        ForEach(Array(content.helperLinks.enumerated()), id: \.offset) { _, link in
+                            Link(link.title, destination: link.url)
+                                .font(.callout.weight(.medium))
+                        }
+                    }
+                }
+
+                if let settingsNudge = content.settingsNudge {
+                    Divider()
+
+                    Text(settingsNudge)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding(22)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -393,11 +444,48 @@ struct OnboardingView: View {
         }
     }
 
+    private func permissionValueIcon(for index: Int) -> String {
+        switch index {
+        case 0:
+            return "text.clipboard"
+        case 1:
+            return "bell.badge"
+        default:
+            return "waveform.and.mic"
+        }
+    }
+
+    private func openFullDiskAccess() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") else {
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
     private func finish() {
         let vaultURL = URL(fileURLWithPath: vaultPath, isDirectory: true)
         appState.applyVaultURL(vaultURL)
         UserDefaults.standard.set(true, forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
         onComplete()
+    }
+}
+
+private struct PermissionValueRow: View {
+    let icon: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(title, systemImage: icon)
+                .font(.headline)
+
+            Text(detail)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 

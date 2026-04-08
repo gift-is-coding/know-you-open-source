@@ -187,6 +187,13 @@ final class DatabaseWriterTests: XCTestCase {
         XCTAssertEqual(events.first?.sourceApp, "Calendar")
     }
 
+    func testClipboardHashesIncludeDayKeySoCrossDayCopiesPersistSeparately() {
+        let first = ClipboardWatcher.contentHash(for: "same payload", dayKey: "2026-04-07")
+        let second = ClipboardWatcher.contentHash(for: "same payload", dayKey: "2026-04-08")
+
+        XCTAssertNotEqual(first, second)
+    }
+
     private func makeEvent(contentHash: String) -> EventRecord {
         EventRecord(
             id: UUID(),

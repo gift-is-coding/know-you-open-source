@@ -42,23 +42,31 @@ struct SummarizerConfig {
         static let openAIKey = "summarizerOpenAIKey"
     }
 
-    func save(to defaults: UserDefaults = .standard) {
+    func save(
+        to defaults: UserDefaults = .standard,
+        keychain: KeychainStoring = KeychainHelper.shared,
+        keychainService: String = KeychainHelper.service
+    ) {
         defaults.set(type.rawValue, forKey: Keys.type)
         defaults.set(claudeCLIPath, forKey: Keys.claudeCLIPath)
         defaults.set(codexCLIPath, forKey: Keys.codexCLIPath)
         defaults.set(geminiCLIPath, forKey: Keys.geminiCLIPath)
         if openAIKey.isEmpty {
-            KeychainHelper.delete(forKey: Keys.openAIKey)
+            keychain.delete(forKey: Keys.openAIKey, service: keychainService)
         } else {
-            KeychainHelper.save(openAIKey, forKey: Keys.openAIKey)
+            keychain.save(openAIKey, forKey: Keys.openAIKey, service: keychainService)
         }
     }
 
-    static func load(from defaults: UserDefaults = .standard) -> SummarizerConfig {
+    static func load(
+        from defaults: UserDefaults = .standard,
+        keychain: KeychainStoring = KeychainHelper.shared,
+        keychainService: String = KeychainHelper.service
+    ) -> SummarizerConfig {
         let rawType = defaults.string(forKey: Keys.type) ?? ""
         return SummarizerConfig(
             type: SummarizerType(rawValue: rawType) ?? .none,
-            openAIKey: KeychainHelper.load(forKey: Keys.openAIKey) ?? "",
+            openAIKey: keychain.load(forKey: Keys.openAIKey, service: keychainService) ?? "",
             claudeCLIPath: defaults.string(forKey: Keys.claudeCLIPath) ?? SummarizerConfig.default.claudeCLIPath,
             codexCLIPath: defaults.string(forKey: Keys.codexCLIPath) ?? SummarizerConfig.default.codexCLIPath,
             geminiCLIPath: defaults.string(forKey: Keys.geminiCLIPath) ?? SummarizerConfig.default.geminiCLIPath

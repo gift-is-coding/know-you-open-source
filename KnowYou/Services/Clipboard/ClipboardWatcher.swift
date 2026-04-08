@@ -64,7 +64,7 @@ final class ClipboardWatcher {
             text: filtered.persistedText,
             auditText: filtered.auditText,
             privacyAction: filtered.action,
-            contentHash: SHA256Hasher.hash(payload)
+            contentHash: Self.contentHash(for: payload, dayKey: ISO8601DayKey.format(capturedAt))
         )
 
         do {
@@ -72,5 +72,9 @@ final class ClipboardWatcher {
         } catch {
             print("ClipboardWatcher: failed to insert event: \(error)")
         }
+    }
+
+    nonisolated static func contentHash(for payload: String, dayKey: String) -> String {
+        SHA256Hasher.hash("\(dayKey):\(payload)")
     }
 }

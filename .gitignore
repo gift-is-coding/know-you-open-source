@@ -4,4 +4,5 @@ KnowYou/Config/*.local.xcconfig
 KnowYou/Config/*.private.xcconfig
 *.xcuserstate
 **/xcuserdata/
+.DS_Store
 !KnowYou/Config/Secrets.example.xcconfig

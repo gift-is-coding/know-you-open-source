@@ -15,7 +15,11 @@ final class AppState {
     private(set) var environment: AppEnvironment?
     nonisolated(unsafe) private var automationTimer: Timer?
 
-    init() {
+    init(bootstrapServices: Bool = true) {
+        guard bootstrapServices else {
+            return
+        }
+
         do {
             let databaseURL = try Self.makeDatabaseURL()
             let vaultURL = try Self.makeVaultURL()

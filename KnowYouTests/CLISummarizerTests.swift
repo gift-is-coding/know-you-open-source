@@ -56,4 +56,11 @@ final class CLISummarizerTests: XCTestCase {
 
         XCTAssertEqual(result, "Summary unavailable.")
     }
+
+    func testContinuationGateOnlyResumesOnce() {
+        let gate = ContinuationGate<String>()
+
+        XCTAssertTrue(gate.resume(returning: "first"))
+        XCTAssertFalse(gate.resume(returning: "second"))
+    }
 }

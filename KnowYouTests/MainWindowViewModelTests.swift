@@ -1,10 +1,10 @@
 import XCTest
 @testable import KnowYou
 
-@MainActor
-final class MainWindowViewModelTests: XCTestCase {
-    func testSelectingDateLoadsMatchingMarkdownPath() {
-        let appState = AppState()
+    @MainActor
+    final class MainWindowViewModelTests: XCTestCase {
+        func testSelectingDateLoadsMatchingMarkdownPath() {
+        let appState = AppState(bootstrapServices: false)
         appState.availableDates = ["2026-04-07", "2026-04-06"]
         appState.noteIndex = [
             "2026-04-07": URL(fileURLWithPath: "/tmp/2026-04-07.md"),
@@ -18,7 +18,7 @@ final class MainWindowViewModelTests: XCTestCase {
     }
 
     func testSelectingDateWithoutIndexedFileClearsMarkdownPath() {
-        let appState = AppState()
+        let appState = AppState(bootstrapServices: false)
         appState.selectedMarkdownURL = URL(fileURLWithPath: "/tmp/existing.md")
 
         appState.selectDate("2026-04-08")
@@ -28,14 +28,14 @@ final class MainWindowViewModelTests: XCTestCase {
     }
 
     func testStatusMessageCanReflectMissingSummary() {
-        let appState = AppState()
+        let appState = AppState(bootstrapServices: false)
         appState.statusMessage = "Summary pending for 2026-04-07"
 
         XCTAssertEqual(appState.statusMessage, "Summary pending for 2026-04-07")
     }
 
     func testAutomationStatusTextReflectsBackfillDays() {
-        let appState = AppState()
+        let appState = AppState(bootstrapServices: false)
         appState.lastImportedNotificationCount = 3
         appState.pendingBackfillDays = ["2026-04-06", "2026-04-07"]
 

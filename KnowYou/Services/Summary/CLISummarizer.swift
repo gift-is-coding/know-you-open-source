@@ -4,12 +4,34 @@ protocol ProcessRunning: Sendable {
     func run(executable: String, arguments: [String]) async throws -> String
 }
 
+final class ContinuationGate<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var hasResumed = false
+
+    func resume(returning value: T) -> Bool {
+        lock.withLock {
+            guard !hasResumed else { return false }
+            hasResumed = true
+            return true
+        }
+    }
+
+    func resume(throwing error: Error) -> Bool {
+        lock.withLock {
+            guard !hasResumed else { return false }
+            hasResumed = true
+            return true
+        }
+    }
+}
+
 struct SystemProcessRunner: ProcessRunning {
     static let timeoutSeconds: Double = 120
 
     func run(executable: String, arguments: [String]) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global().async {
+                let gate = ContinuationGate<String>()
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: executable)
                 process.arguments = arguments
@@ -20,8 +42,12 @@ struct SystemProcessRunner: ProcessRunning {
 
                 let timeoutItem = DispatchWorkItem {
                     process.terminate()
-                    continuation.resume(throwing: CocoaError(.executableLoad,
-                        userInfo: [NSLocalizedDescriptionKey: "Summarizer CLI timed out after \(Int(Self.timeoutSeconds))s"]))
+                    let error = CocoaError(
+                        .executableLoad,
+                        userInfo: [NSLocalizedDescriptionKey: "Summarizer CLI timed out after \(Int(Self.timeoutSeconds))s"]
+                    )
+                    guard gate.resume(throwing: error) else { return }
+                    continuation.resume(throwing: error)
                 }
                 DispatchQueue.global().asyncAfter(deadline: .now() + Self.timeoutSeconds, execute: timeoutItem)
 
@@ -30,9 +56,12 @@ struct SystemProcessRunner: ProcessRunning {
                     process.waitUntilExit()
                     timeoutItem.cancel()
                     let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-                    continuation.resume(returning: String(decoding: data, as: UTF8.self))
+                    let output = String(decoding: data, as: UTF8.self)
+                    guard gate.resume(returning: output) else { return }
+                    continuation.resume(returning: output)
                 } catch {
                     timeoutItem.cancel()
+                    guard gate.resume(throwing: error) else { return }
                     continuation.resume(throwing: error)
                 }
             }

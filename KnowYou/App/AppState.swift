@@ -15,7 +15,13 @@ final class AppState {
     private(set) var environment: AppEnvironment?
     nonisolated(unsafe) private var automationTimer: Timer?
 
-    init(bootstrapServices: Bool = true) {
+    init(environment: AppEnvironment? = nil, bootstrapServices: Bool = true) {
+        if let environment {
+            self.environment = environment
+            refreshNotesIndex()
+            return
+        }
+
         guard bootstrapServices else {
             return
         }
@@ -61,8 +67,12 @@ final class AppState {
         do {
             let events = try environment.databaseWriter.fetchEvents(dayKey: dayKey)
             let baseMarkdown = environment.composer.compose(dayKey: dayKey, events: events, summary: nil)
-
-            let summary = try await environment.summarizer?.summarize(dayKey: dayKey, markdown: baseMarkdown)
+            let summary: String?
+            do {
+                summary = try await environment.summarizer?.summarize(dayKey: dayKey, markdown: baseMarkdown)
+            } catch {
+                summary = nil
+            }
             let finalMarkdown = environment.composer.compose(dayKey: dayKey, events: events, summary: summary)
             let fileURL = try environment.writeDailyNote(dayKey: dayKey, markdown: finalMarkdown)
             if let runID {
@@ -91,11 +101,7 @@ final class AppState {
         }
 
         lastAutomationRunAt = now
-        let notificationSince = Calendar(identifier: .gregorian).date(byAdding: .day, value: -2, to: now) ?? now
-        let importedNotifications = (try? environment.notificationCollector.importDeliveredNotifications(since: notificationSince)) ?? 0
-        lastImportedNotificationCount = importedNotifications
         refreshNotesIndex()
-
         let today = ISO8601DayKey.format(now)
         let latestCompletedDay = try? environment.databaseWriter.fetchLatestSuccessfulRunDay(runType: "daily-note")
         let pendingDays = environment.dailyAutomationPlanner.pendingDays(
@@ -103,6 +109,10 @@ final class AppState {
             existingNoteDays: Set(noteIndex.keys),
             today: today
         )
+        let notificationSince = Self.importStartDate(for: pendingDays, now: now)
+        let importedNotifications = (try? environment.notificationCollector.importDeliveredNotifications(since: notificationSince)) ?? 0
+        lastImportedNotificationCount = importedNotifications
+        refreshNotesIndex()
         pendingBackfillDays = pendingDays
 
         for dayKey in pendingDays {
@@ -115,6 +125,20 @@ final class AppState {
                 : "Imported \(importedNotifications) notifications"
             pendingBackfillDays = []
         }
+    }
+
+    private static func importStartDate(for pendingDays: [String], now: Date) -> Date {
+        if let oldestPendingDay = pendingDays.first, let startDate = startOfDay(for: oldestPendingDay) {
+            return startDate
+        }
+        return Calendar(identifier: .gregorian).date(byAdding: .day, value: -2, to: now) ?? now
+    }
+
+    private static func startOfDay(for dayKey: String) -> Date? {
+        let parts = dayKey.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        let calendar = Calendar(identifier: .gregorian)
+        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 
     private static func makeDatabaseURL() throws -> URL {

@@ -37,8 +37,9 @@ struct SystemProcessRunner: ProcessRunning {
                 process.arguments = arguments
 
                 let outputPipe = Pipe()
+                let errorPipe = Pipe()
                 process.standardOutput = outputPipe
-                process.standardError = Pipe()
+                process.standardError = errorPipe
 
                 let timeoutItem = DispatchWorkItem {
                     process.terminate()
@@ -55,8 +56,19 @@ struct SystemProcessRunner: ProcessRunning {
                     try process.run()
                     process.waitUntilExit()
                     timeoutItem.cancel()
-                    let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-                    let output = String(decoding: data, as: UTF8.self)
+                    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                    let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    let output = String(decoding: outputData, as: UTF8.self)
+                    let errorOutput = String(decoding: errorData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if process.terminationStatus != 0 {
+                        let description = errorOutput.isEmpty
+                            ? "Summarizer CLI exited with status \(process.terminationStatus)"
+                            : errorOutput
+                        let error = CocoaError(.executableLoad, userInfo: [NSLocalizedDescriptionKey: description])
+                        guard gate.resume(throwing: error) else { return }
+                        continuation.resume(throwing: error)
+                        return
+                    }
                     guard gate.resume(returning: output) else { return }
                     continuation.resume(returning: output)
                 } catch {

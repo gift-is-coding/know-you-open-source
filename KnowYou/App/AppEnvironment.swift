@@ -13,22 +13,41 @@ final class AppEnvironment {
     var summarizer: SummaryGenerating?
     let dailyAutomationPlanner: DailyAutomationPlanner
 
-    init(databasePath: String, vaultURL: URL, summarizer: SummaryGenerating? = nil) throws {
+    convenience init(databasePath: String, vaultURL: URL, summarizer: SummaryGenerating? = nil) throws {
         let databaseURL = URL(fileURLWithPath: databasePath)
         let databaseWriter = try DatabaseWriter(path: databasePath)
-        let privacyFilter = PrivacyFilter()
         let notificationReader = NotificationDatabaseReader()
+        self.init(
+            databaseURL: databaseURL,
+            vaultURL: vaultURL,
+            databaseWriter: databaseWriter,
+            summarizer: summarizer,
+            notificationReader: notificationReader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+    }
+
+    init(
+        databaseURL: URL,
+        vaultURL: URL,
+        databaseWriter: DatabaseWriter,
+        summarizer: SummaryGenerating?,
+        notificationReader: NotificationDatabaseReading,
+        dailyAutomationPlanner: DailyAutomationPlanner
+    ) {
+        let privacyFilter = PrivacyFilter()
+        let concreteNotificationReader = notificationReader as? NotificationDatabaseReader ?? NotificationDatabaseReader()
 
         self.databaseURL = databaseURL
         self.vaultURL = vaultURL
         self.databaseWriter = databaseWriter
         self.privacyFilter = privacyFilter
-        self.notificationReader = notificationReader
+        self.notificationReader = concreteNotificationReader
         self.composer = DailyMarkdownComposer()
         self.summarizer = summarizer
-        self.dailyAutomationPlanner = DailyAutomationPlanner(
-            backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
-        )
+        self.dailyAutomationPlanner = dailyAutomationPlanner
         self.clipboardWatcher = ClipboardWatcher(
             privacyFilter: privacyFilter,
             databaseWriter: databaseWriter

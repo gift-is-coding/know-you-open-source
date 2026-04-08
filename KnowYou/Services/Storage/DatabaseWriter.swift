@@ -1,11 +1,15 @@
 import Foundation
 import GRDB
 
+protocol EventWriting {
+    func insert(_ event: EventRecord) throws
+}
+
 private enum DatabaseWriterRowError: Error {
     case invalidValue(field: String, value: String)
 }
 
-final class DatabaseWriter {
+final class DatabaseWriter: EventWriting {
     private let dbQueue: DatabaseQueue
 
     init(path: String) throws {

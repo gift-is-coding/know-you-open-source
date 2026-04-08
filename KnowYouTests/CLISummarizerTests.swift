@@ -63,4 +63,27 @@ final class CLISummarizerTests: XCTestCase {
         XCTAssertTrue(gate.resume(returning: "first"))
         XCTAssertFalse(gate.resume(returning: "second"))
     }
+
+    func testSystemProcessRunnerThrowsOnNonZeroExit() async {
+        let runner = SystemProcessRunner()
+
+        await XCTAssertThrowsErrorAsync(
+            try await runner.run(
+                executable: "/bin/sh",
+                arguments: ["-c", "echo auth failed 1>&2; exit 7"]
+            )
+        )
+    }
+}
+
+private func XCTAssertThrowsErrorAsync(
+    _ expression: @autoclosure () async throws -> String,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async {
+    do {
+        _ = try await expression()
+        XCTFail("Expected error to be thrown", file: file, line: line)
+    } catch {
+    }
 }

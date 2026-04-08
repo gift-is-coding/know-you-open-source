@@ -6,6 +6,12 @@ private struct StubNotificationReader: NotificationDatabaseReading {
     func fetchDeliveredNotifications(since: Date) throws -> [NotificationSnapshot] { [] }
 }
 
+private struct FailingEventWriter: EventWriting {
+    func insert(_ event: EventRecord) throws {
+        throw CocoaError(.fileWriteUnknown)
+    }
+}
+
 final class DatabaseWriterTests: XCTestCase {
     func testInsertFilteredEventPersistsPrivacyAction() throws {
         let writer = try DatabaseWriter.inMemory()
@@ -192,6 +198,24 @@ final class DatabaseWriterTests: XCTestCase {
         let second = ClipboardWatcher.contentHash(for: "same payload", dayKey: "2026-04-08")
 
         XCTAssertNotEqual(first, second)
+    }
+
+    func testNotificationCollectorCountsOnlySuccessfulInserts() {
+        let collector = NotificationCollector(
+            privacyFilter: PrivacyFilter(),
+            databaseWriter: FailingEventWriter(),
+            databaseReader: StubNotificationReader()
+        )
+
+        let count = collector.ingest([
+            NotificationSnapshot(
+                appName: "Calendar",
+                deliveredAt: Date(timeIntervalSince1970: 1_775_000_000),
+                body: "Meeting in 10 minutes"
+            )
+        ])
+
+        XCTAssertEqual(count, 0)
     }
 
     private func makeEvent(contentHash: String) -> EventRecord {

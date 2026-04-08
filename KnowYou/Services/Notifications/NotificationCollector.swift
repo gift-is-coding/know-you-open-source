@@ -8,12 +8,12 @@ struct NotificationSnapshot {
 
 final class NotificationCollector {
     private let privacyFilter: PrivacyFilter
-    private let databaseWriter: DatabaseWriter
+    private let databaseWriter: EventWriting
     private let databaseReader: NotificationDatabaseReading?
 
     init(
         privacyFilter: PrivacyFilter,
-        databaseWriter: DatabaseWriter,
+        databaseWriter: EventWriting,
         databaseReader: NotificationDatabaseReading? = nil
     ) {
         self.privacyFilter = privacyFilter
@@ -42,10 +42,10 @@ final class NotificationCollector {
 
             do {
                 try databaseWriter.insert(event)
+                ingestedCount += 1
             } catch {
                 print("NotificationCollector: failed to insert event: \(error)")
             }
-            ingestedCount += 1
         }
 
         return ingestedCount

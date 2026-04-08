@@ -12,6 +12,11 @@ struct SettingsView: View {
                 Text(appState.statusMessage ?? "Idle")
                 Text(appState.automationStatusText)
                     .foregroundStyle(.secondary)
+                ForEach(appState.statusDetails, id: \.self) { detail in
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Services") {
@@ -22,18 +27,28 @@ struct SettingsView: View {
                 )
                 StatusRow(
                     label: "Notification import",
-                    detail: appState.environment?.notificationReader.isAvailable == true
-                        ? "Notification Center database found"
-                        : "Notification Center database not accessible — grant Full Disk Access in System Settings",
-                    ok: appState.environment?.notificationReader.isAvailable == true
+                    detail: appState.notificationStatus.availabilityMessage
+                        ?? (appState.notificationStatus.isDatabaseAvailable
+                            ? "Notification Center database found"
+                            : "Notification Center database not accessible — grant Full Disk Access in System Settings"),
+                    ok: appState.notificationStatus.isDatabaseAvailable
                 )
                 StatusRow(
                     label: "Summarizer",
-                    detail: appState.environment?.summarizer != nil
-                        ? "\(summarizerConfig.type.displayName) active"
+                    detail: appState.summarizerStatus.isConfigured
+                        ? "\(appState.summarizerStatus.mode) active"
                         : "No summarizer configured",
-                    ok: appState.environment?.summarizer != nil
+                    ok: appState.summarizerStatus.isConfigured
                 )
+
+                HStack {
+                    Button("Re-check Services") {
+                        appState.refreshServiceStatuses()
+                    }
+                    Button("Open Full Disk Access") {
+                        openFullDiskAccess()
+                    }
+                }
             }
 
             Section("Vault Folder") {
@@ -94,6 +109,9 @@ struct SettingsView: View {
         }
         .padding()
         .frame(width: 460)
+        .onAppear {
+            appState.refreshServiceStatuses()
+        }
     }
 
     private func chooseVaultFolder() {
@@ -106,6 +124,12 @@ struct SettingsView: View {
             guard response == .OK, let url = panel.url else { return }
             vaultPath = url.path
             // Not applied yet — user must press Save
+        }
+    }
+
+    private func openFullDiskAccess() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+            NSWorkspace.shared.open(url)
         }
     }
 }

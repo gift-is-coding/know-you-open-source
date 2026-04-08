@@ -6,6 +6,11 @@ struct NotificationSnapshot {
     let body: String
 }
 
+struct NotificationImportResult {
+    let importedCount: Int
+    let importedAt: Date
+}
+
 final class NotificationCollector {
     private let privacyFilter: PrivacyFilter
     private let databaseWriter: EventWriting
@@ -51,13 +56,15 @@ final class NotificationCollector {
         return ingestedCount
     }
 
-    @discardableResult
-    func importDeliveredNotifications(since: Date) throws -> Int {
+    func importDeliveredNotifications(since: Date) throws -> NotificationImportResult {
         guard let databaseReader else {
-            return 0
+            return NotificationImportResult(importedCount: 0, importedAt: Date())
         }
 
         let snapshots = try databaseReader.fetchDeliveredNotifications(since: since)
-        return ingest(snapshots)
+        return NotificationImportResult(
+            importedCount: ingest(snapshots),
+            importedAt: Date()
+        )
     }
 }

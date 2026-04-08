@@ -12,7 +12,7 @@ The current MVP branch already includes:
 - automatic note generation on launch plus a 15-minute catch-up loop for missed days
 - vault writing under the user's Application Support directory
 - optional cloud summarization through OpenAI's Responses API
-- a minimal two-pane reader with dates on the left and raw Markdown on the right
+- a minimal two-pane reader with dates on the left and rendered Markdown on the right
 
 ## Local Development
 
@@ -42,3 +42,15 @@ Run a focused test target while iterating:
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/MainWindowViewModelTests
 ```
+
+## Real-Machine Verification
+
+For a real clipboard + notification smoke test on this Mac, run:
+
+```bash
+./scripts/verify-real-machine.sh
+```
+
+The harness prints the exact SQLite and Markdown follow-up commands and documents the notification persistence fallback in [`docs/real-machine-verification.md`](docs/real-machine-verification.md).
+
+For reproducibility, the harness relaunches the app and relies on launch-time clipboard bootstrap plus launch-time refresh to verify the real clipboard -> SQLite -> Markdown path on this Mac.

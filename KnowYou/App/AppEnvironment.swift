@@ -13,7 +13,12 @@ final class AppEnvironment {
     var summarizer: SummaryGenerating?
     let dailyAutomationPlanner: DailyAutomationPlanner
 
-    convenience init(databasePath: String, vaultURL: URL, summarizer: SummaryGenerating? = nil) throws {
+    convenience init(
+        databasePath: String,
+        vaultURL: URL,
+        summarizer: SummaryGenerating? = nil,
+        onClipboardCapture: ((ClipboardCaptureSnapshot) -> Void)? = nil
+    ) throws {
         let databaseURL = URL(fileURLWithPath: databasePath)
         let databaseWriter = try DatabaseWriter(path: databasePath)
         let notificationReader = NotificationDatabaseReader()
@@ -25,7 +30,8 @@ final class AppEnvironment {
             notificationReader: notificationReader,
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
-            )
+            ),
+            onClipboardCapture: onClipboardCapture
         )
     }
 
@@ -35,7 +41,8 @@ final class AppEnvironment {
         databaseWriter: DatabaseWriter,
         summarizer: SummaryGenerating?,
         notificationReader: NotificationDatabaseReading,
-        dailyAutomationPlanner: DailyAutomationPlanner
+        dailyAutomationPlanner: DailyAutomationPlanner,
+        onClipboardCapture: ((ClipboardCaptureSnapshot) -> Void)? = nil
     ) {
         let privacyFilter = PrivacyFilter()
         let concreteNotificationReader = notificationReader as? NotificationDatabaseReader ?? NotificationDatabaseReader()
@@ -50,7 +57,8 @@ final class AppEnvironment {
         self.dailyAutomationPlanner = dailyAutomationPlanner
         self.clipboardWatcher = ClipboardWatcher(
             privacyFilter: privacyFilter,
-            databaseWriter: databaseWriter
+            databaseWriter: databaseWriter,
+            onCapture: onClipboardCapture
         )
         self.notificationCollector = NotificationCollector(
             privacyFilter: privacyFilter,

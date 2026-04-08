@@ -27,7 +27,7 @@ final class DailyAutomationPlannerTests: XCTestCase {
         )
     }
 
-    func testPendingDaysReturnsEmptyWhenTodayAlreadyExistsWithoutRuns() {
+    func testPendingDaysStillIncludesTodayWhenTodayAlreadyExistsWithoutRuns() {
         let planner = DailyAutomationPlanner(
             backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
         )
@@ -38,7 +38,22 @@ final class DailyAutomationPlannerTests: XCTestCase {
                 existingNoteDays: ["2026-04-07"],
                 today: "2026-04-07"
             ),
-            []
+            ["2026-04-07"]
+        )
+    }
+
+    func testPendingDaysStillIncludesTodayWhenTodayWasAlreadyCompleted() {
+        let planner = DailyAutomationPlanner(
+            backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+        )
+
+        XCTAssertEqual(
+            planner.pendingDays(
+                latestCompletedDay: "2026-04-07",
+                existingNoteDays: ["2026-04-07"],
+                today: "2026-04-07"
+            ),
+            ["2026-04-07"]
         )
     }
 }

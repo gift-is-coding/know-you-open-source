@@ -8,14 +8,14 @@ struct DailyAutomationPlanner {
         let baseline = [latestCompletedDay, latestExistingNoteDay].compactMap { $0 }.max()
 
         guard let baseline else {
-            return existingNoteDays.contains(today) ? [] : [today]
+            return [today]
         }
 
-        let missingDays = backfillPlanner.missingDates(lastCompletedDay: baseline, today: today)
-        if !missingDays.isEmpty {
-            return missingDays
+        var pendingDays = backfillPlanner.missingDates(lastCompletedDay: baseline, today: today)
+        if !pendingDays.contains(today) {
+            pendingDays.append(today)
         }
 
-        return existingNoteDays.contains(today) ? [] : [today]
+        return pendingDays
     }
 }

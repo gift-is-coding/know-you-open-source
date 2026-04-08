@@ -52,6 +52,23 @@ final class NotificationDatabaseReaderTests: XCTestCase {
         XCTAssertTrue(try reader.fetchDeliveredNotifications(since: .distantPast).isEmpty)
     }
 
+    func testAccessStatusReportsPermissionDeniedForUnreadableDatabase() throws {
+        let databaseURL = URL.temporaryDirectory.appending(path: "\(UUID().uuidString).sqlite")
+        FileManager.default.createFile(atPath: databaseURL.path, contents: Data(), attributes: nil)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: databaseURL.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: databaseURL.path)
+            try? FileManager.default.removeItem(at: databaseURL)
+        }
+
+        let reader = NotificationDatabaseReader(candidateDatabaseURLs: [databaseURL])
+        let accessStatus = reader.accessStatus()
+
+        XCTAssertEqual(accessStatus.state, .permissionDenied)
+        XCTAssertEqual(accessStatus.databaseURL, databaseURL)
+        XCTAssertFalse(reader.isAvailable)
+    }
+
     private func makePayload(title: String, subtitle: String, body: String) throws -> Data {
         let payload: [String: Any] = [
             "req": [

@@ -1,28 +1,45 @@
 import AppKit
 import Foundation
 
+struct ClipboardCaptureSnapshot: Sendable {
+    let capturedAt: Date
+    let sourceApp: String
+    let persistedText: String?
+    let auditText: String?
+}
+
 @MainActor
 final class ClipboardWatcher {
     private let pasteboard: NSPasteboard
     private let privacyFilter: PrivacyFilter
     private let databaseWriter: DatabaseWriter
+    private let onCapture: ((ClipboardCaptureSnapshot) -> Void)?
     private var timer: Timer?
     private var lastChangeCount: Int
 
     init(
         pasteboard: NSPasteboard = .general,
         privacyFilter: PrivacyFilter,
-        databaseWriter: DatabaseWriter
+        databaseWriter: DatabaseWriter,
+        onCapture: ((ClipboardCaptureSnapshot) -> Void)? = nil
     ) {
         self.pasteboard = pasteboard
         self.privacyFilter = privacyFilter
         self.databaseWriter = databaseWriter
+        self.onCapture = onCapture
         self.lastChangeCount = pasteboard.changeCount
     }
 
     func start() {
         guard timer == nil else {
             return
+        }
+
+        // Bootstrap the current clipboard contents so launch-time automation can
+        // include the latest real clipboard item in today's note.
+        if lastChangeCount == pasteboard.changeCount {
+            lastChangeCount -= 1
+            poll()
         }
 
         let timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
@@ -55,10 +72,11 @@ final class ClipboardWatcher {
         let filtered = privacyFilter.classify(text)
         let payload = filtered.persistedText ?? filtered.auditText ?? ""
         let capturedAt = Date()
+        let sourceApp = NSWorkspace.shared.frontmostApplication?.localizedName ?? "Unknown"
         let event = EventRecord(
             id: UUID(),
             sourceType: .clipboard,
-            sourceApp: NSWorkspace.shared.frontmostApplication?.localizedName ?? "Unknown",
+            sourceApp: sourceApp,
             capturedAt: capturedAt,
             dayKey: ISO8601DayKey.format(capturedAt),
             text: filtered.persistedText,
@@ -69,6 +87,14 @@ final class ClipboardWatcher {
 
         do {
             try databaseWriter.insert(event)
+            onCapture?(
+                ClipboardCaptureSnapshot(
+                    capturedAt: capturedAt,
+                    sourceApp: sourceApp,
+                    persistedText: filtered.persistedText,
+                    auditText: filtered.auditText
+                )
+            )
         } catch {
             print("ClipboardWatcher: failed to insert event: \(error)")
         }

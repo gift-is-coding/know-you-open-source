@@ -5,6 +5,38 @@ protocol NotificationDatabaseReading {
     func fetchDeliveredNotifications(since: Date) throws -> [NotificationSnapshot]
 }
 
+struct NotificationDatabaseAccessStatus: Equatable {
+    enum State: Equatable {
+        case available
+        case permissionDenied
+        case missing
+    }
+
+    let state: State
+    let databaseURL: URL?
+
+    var isAvailable: Bool {
+        state == .available
+    }
+
+    var message: String {
+        switch state {
+        case .available:
+            if let databaseURL {
+                return "Notification Center database available at \(databaseURL.path)"
+            }
+            return "Notification Center database available"
+        case .permissionDenied:
+            if let databaseURL {
+                return "Notification Center database exists at \(databaseURL.path) but is not readable. Grant Full Disk Access."
+            }
+            return "Notification Center database exists but is not readable. Grant Full Disk Access."
+        case .missing:
+            return "Notification Center database not found on this Mac."
+        }
+    }
+}
+
 struct NotificationDatabaseReader: NotificationDatabaseReading {
     let candidateDatabaseURLs: [URL]
     private let fileManager: FileManager
@@ -15,8 +47,12 @@ struct NotificationDatabaseReader: NotificationDatabaseReading {
     }
 
     func fetchDeliveredNotifications(since: Date) throws -> [NotificationSnapshot] {
-        guard let databaseURL = existingDatabaseURL() else {
+        let accessStatus = accessStatus()
+        guard let databaseURL = accessStatus.databaseURL else {
             return []
+        }
+        guard accessStatus.isAvailable else {
+            throw NotificationDatabaseReaderError.permissionDenied(path: databaseURL.path)
         }
 
         let snapshotURL = try makeReadableSnapshot(from: databaseURL)
@@ -36,11 +72,23 @@ struct NotificationDatabaseReader: NotificationDatabaseReading {
     }
 
     var isAvailable: Bool {
-        existingDatabaseURL() != nil
+        accessStatus().isAvailable
     }
 
-    private func existingDatabaseURL() -> URL? {
-        candidateDatabaseURLs.first(where: { fileManager.fileExists(atPath: $0.path) })
+    func accessStatus() -> NotificationDatabaseAccessStatus {
+        for candidateURL in candidateDatabaseURLs {
+            guard fileManager.fileExists(atPath: candidateURL.path) else {
+                continue
+            }
+
+            if fileManager.isReadableFile(atPath: candidateURL.path) {
+                return NotificationDatabaseAccessStatus(state: .available, databaseURL: candidateURL)
+            }
+
+            return NotificationDatabaseAccessStatus(state: .permissionDenied, databaseURL: candidateURL)
+        }
+
+        return NotificationDatabaseAccessStatus(state: .missing, databaseURL: nil)
     }
 
     private func makeReadableSnapshot(from liveDatabaseURL: URL) throws -> URL {
@@ -199,6 +247,18 @@ private struct NotificationQuery {
 
 private enum NotificationDatabaseReaderError: Error {
     case unsupportedSchema(tables: [String])
+    case permissionDenied(path: String)
+}
+
+extension NotificationDatabaseReaderError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedSchema(let tables):
+            return "Unsupported Notification Center schema: \(tables.joined(separator: ", "))"
+        case .permissionDenied(let path):
+            return "Notification Center database exists at \(path) but is not readable. Grant Full Disk Access."
+        }
+    }
 }
 
 private func confstrDarwinUserDir() -> [CChar] {

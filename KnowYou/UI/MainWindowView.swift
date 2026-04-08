@@ -12,31 +12,26 @@ struct MainWindowView: View {
             )
         } detail: {
             VStack(spacing: 0) {
-                StatusBannerView(message: appState.statusMessage)
-                DailyMarkdownView(markdownURL: appState.selectedMarkdownURL)
+                StatusBannerView(
+                    message: appState.statusMessage,
+                    details: appState.statusDetails
+                )
+                DailyMarkdownView(
+                    markdownURL: appState.selectedMarkdownURL,
+                    contentVersion: appState.selectedContentVersion
+                )
             }
         }
         .frame(minWidth: 960, minHeight: 640)
         .toolbar {
             Button(action: {
                 Task { @MainActor in
-                    await appState.runAutomation()
+                    await appState.refreshSelectedDay()
                 }
             }) {
-                Label("Catch Up Now", systemImage: "arrow.clockwise.circle")
+                Label("Refresh Selected Day", systemImage: "arrow.clockwise")
             }
-            .help("Catch Up Now")
-
-            if let selectedDate = appState.selectedDate {
-                Button(action: {
-                    Task { @MainActor in
-                        await appState.generateDailyNote(for: selectedDate)
-                    }
-                }) {
-                    Label("Rebuild Day", systemImage: "hammer")
-                }
-                .help("Rebuild Day")
-            }
+            .help("Refresh Selected Day")
         }
     }
 }

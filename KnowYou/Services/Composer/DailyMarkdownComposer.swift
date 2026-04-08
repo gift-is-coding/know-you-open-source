@@ -6,6 +6,9 @@ struct DailyMarkdownComposer {
     ]
 
     func compose(dayKey: String, events: [EventRecord], story: DailyStory) -> String {
+        let language = dominantNarrativeLanguage(for: events)
+        let storyHeading = language == .chinese ? "## 今日小记" : "## Story"
+        let sourcesHeading = language == .chinese ? "## 线索来源" : "## Source Notes"
         let storySections = story.sections
             .map { section in
                 let paragraphTexts: [String] = section.paragraphs
@@ -13,7 +16,9 @@ struct DailyMarkdownComposer {
                     .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
                 let paragraphs = paragraphTexts.joined(separator: "\n\n")
-                guard !paragraphs.isEmpty else { return "_No story for this day_" }
+                guard !paragraphs.isEmpty else {
+                    return language == .chinese ? "_今天还没有可读的小记_" : "_No story for this day_"
+                }
                 guard !section.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     return paragraphs
                 }
@@ -28,17 +33,20 @@ struct DailyMarkdownComposer {
         return """
         # \(dayKey)
 
-        ## Story
+        \(storyHeading)
 
         \(storySections)
 
-        ## Source Notes
+        ---
+
+        \(sourcesHeading)
 
         \(sourceLines)
         """
     }
 
     func fallbackStory(dayKey: String, events: [EventRecord]) -> DailyStory {
+        let language = dominantNarrativeLanguage(for: events)
         let allEvents = events.sorted { $0.capturedAt < $1.capturedAt }
         let meaningfulWorkEvents = allEvents.filter { event in
             let theme = event.fallbackTheme
@@ -76,7 +84,7 @@ struct DailyMarkdownComposer {
             paragraphs.append(
                 DailyStoryParagraph(
                     id: "daily-journal-\(index)",
-                    text: journalParagraphText(index: index, mainEvents: mainThreadEvents, group: group),
+                    text: journalParagraphText(index: index, mainEvents: mainThreadEvents, group: group, language: language),
                     sourceEventIDs: group.map(\.id)
                 )
             )
@@ -106,7 +114,7 @@ struct DailyMarkdownComposer {
         }.joined(separator: "\n")
 
         return """
-        You are turning one day of raw computer context into a clean diary-style daily summary.
+        You are turning one day of raw computer context into a first-person diary entry written by the person who lived that day.
 
         Return strict JSON only. Do not use markdown fences.
 
@@ -119,14 +127,20 @@ struct DailyMarkdownComposer {
 
         Rules:
         - Keep the single section id exactly as given.
-        - Write this as a diary-style summary of what the user did today.
-        - Use 2 to 4 short paragraphs in natural prose.
+        - Write in first person (I / 我). Never describe the user in third person. Write as if the user is writing their own diary.
+        - Base the content strictly on the source events. Do not invent, infer, or embellish anything not directly supported by the events.
+        - Follow the actual chronological order of events. Do not reorder or group events in a way that distorts the timeline.
+        - Write all narration in the same dominant language as the source events.
+        - If the day is mainly Chinese, write all prose in Chinese.
+        - Do not mix Chinese and English in the narration except for app names, product names, commands, or URLs copied from the source material.
+        - Do not force a fixed paragraph count; let the day decide how many short-to-medium paragraphs it needs.
+        - Use light inline Markdown sparingly for emphasis when it helps readability.
         - Do not use headings inside the paragraph text.
         - Do not use bullet lists.
         - Only reference sourceEventIDs that appear below.
         - Put all narrative paragraphs inside the single daily-journal section.
-        - Preserve the user's language when possible.
         - Prefer summarizing the main work, decisions, communication, and notable side context instead of listing every fragment.
+        - Use natural transitions between paragraphs, but never introduce facts, emotions, or context that are not present in the source events.
 
         Day: \(dayKey)
         Source events:
@@ -202,28 +216,78 @@ struct DailyMarkdownComposer {
         }
     }
 
-    private func journalParagraphText(index: Int, mainEvents: [EventRecord], group: [EventRecord]) -> String {
+    private func journalParagraphText(
+        index: Int,
+        mainEvents: [EventRecord],
+        group: [EventRecord],
+        language: NarrativeLanguage
+    ) -> String {
         if index == 0 {
             let snippets = group.prefix(3).map { "\($0.sourceApp) \($0.storySnippet)" }.joined(separator: "; ")
-            return "Today I mostly focused on \(snippets)."
+            switch language {
+            case .english:
+                return "The day mostly revolved around \(snippets), and that set the tone for the rest of it."
+            case .chinese:
+                return "这一天大致围绕着\(snippets)展开，也由此定下了后面的节奏。"
+            }
         }
 
         let theme = group.first?.fallbackTheme ?? .context
-        let snippets = group.prefix(3).map { "\($0.sourceApp) \($0.storySnippet)" }.joined(separator: "; ")
-        let suffix = group.count > 3 ? " There were also \(group.count - 3) other related signals in the same thread." : ""
+        let separator = language == .chinese ? "；" : "; "
+        let snippets = group.prefix(3).map { "\($0.sourceApp) \($0.storySnippet)" }.joined(separator: separator)
+        let suffix: String = {
+            guard group.count > 3 else { return "" }
+            switch language {
+            case .english:
+                return " There were also \(group.count - 3) other related signals in the same thread."
+            case .chinese:
+                return " 同一条线里还有\(group.count - 3)个相关片段。"
+            }
+        }()
 
         switch theme {
         case .communication:
-            return "There was also some coordination and conversation around \(snippets).\(suffix)"
+            switch language {
+            case .english:
+                return "Later on, a thread of coordination and conversation kept surfacing around \(snippets).\(suffix)"
+            case .chinese:
+                return "到后面，和\(snippets)有关的沟通与协同也反复出现。\(suffix)"
+            }
         case .reference:
-            return "Supporting references and materials that fed into the day included \(snippets).\(suffix)"
+            switch language {
+            case .english:
+                return "I also kept pulling in supporting references and materials, including \(snippets).\(suffix)"
+            case .chinese:
+                return "我也一直在补充参考资料和线索，包括\(snippets)。\(suffix)"
+            }
         case .verification:
-            return "Part of the work involved verification and instrumentation, including \(snippets).\(suffix)"
+            switch language {
+            case .english:
+                return "Part of the day turned into verification and instrumentation work, including \(snippets).\(suffix)"
+            case .chinese:
+                return "这一天里还有一部分时间落在验证和排查上，比如\(snippets)。\(suffix)"
+            }
         case .logistics:
-            return "A smaller practical thread in the day involved \(snippets).\(suffix)"
+            switch language {
+            case .english:
+                return "There was a smaller practical thread running underneath it all, involving \(snippets).\(suffix)"
+            case .chinese:
+                return "除此之外，还夹着一条更偏事务性的线索，涉及\(snippets)。\(suffix)"
+            }
         case .context:
-            return "Other context that shaped the day included \(snippets).\(suffix)"
+            switch language {
+            case .english:
+                return "Other context quietly shaping the day included \(snippets).\(suffix)"
+            case .chinese:
+                return "还有一些背景片段也在悄悄影响这一天，比如\(snippets)。\(suffix)"
+            }
         }
+    }
+
+    private func dominantNarrativeLanguage(for events: [EventRecord]) -> NarrativeLanguage {
+        let chineseEventCount = events.filter(\.containsChineseText).count
+        let latinEventCount = events.filter(\.containsLatinText).count
+        return chineseEventCount > 0 && chineseEventCount >= latinEventCount ? .chinese : .english
     }
 
     private func groupedLooseFragments(from events: [EventRecord]) -> [[EventRecord]] {
@@ -270,6 +334,11 @@ struct DailyMarkdownComposer {
         formatter.dateFormat = "HH:mm"
         return formatter
     }()
+}
+
+private enum NarrativeLanguage {
+    case english
+    case chinese
 }
 
 private struct GeneratedStoryPayload: Decodable {
@@ -344,5 +413,21 @@ private extension EventRecord {
         }
 
         return .context
+    }
+
+    var containsChineseText: Bool {
+        displayText.contains { $0.isChineseIdeograph }
+    }
+
+    var containsLatinText: Bool {
+        displayText.unicodeScalars.contains { CharacterSet.letters.contains($0) && $0.properties.isAlphabetic && $0.value < 128 }
+    }
+}
+
+private extension Character {
+    var isChineseIdeograph: Bool {
+        unicodeScalars.contains { scalar in
+            (0x4E00...0x9FFF).contains(scalar.value)
+        }
     }
 }

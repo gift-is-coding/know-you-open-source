@@ -182,7 +182,6 @@ struct StorySourceDetailView: View {
                 ContentUnavailableView("No Sources Loaded", systemImage: "tray")
             }
         }
-        .frame(minWidth: 320, idealWidth: 360, maxWidth: 420, maxHeight: .infinity)
     }
 }
 

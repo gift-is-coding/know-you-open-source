@@ -1,7 +1,10 @@
 import SwiftUI
+import AppKit
 
 struct MainWindowView: View {
     @Environment(AppState.self) private var appState
+    @State private var isRefreshing = false
+    @State private var keyMonitor: Any?
 
     var body: some View {
         NavigationSplitView {
@@ -12,35 +15,78 @@ struct MainWindowView: View {
             )
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
         } content: {
-            VStack(spacing: 0) {
-                StatusBannerView(
-                    message: appState.statusMessage,
-                    details: appState.statusDetails
-                )
-                DailyMarkdownView(
-                    story: appState.selectedStory,
-                    selectedParagraphID: appState.selectedStoryParagraphID,
-                    onSelectParagraph: appState.selectStoryParagraph,
-                    onMoveSelection: appState.selectAdjacentStoryParagraph(step:)
-                )
-            }
+            DailyMarkdownView(
+                story: appState.selectedStory,
+                selectedParagraphID: appState.selectedStoryParagraphID,
+                dayKey: appState.selectedDate,
+                isRefreshing: isRefreshing,
+                onSelectParagraph: { paragraphID in
+                    appState.focusStoryParagraphs()
+                    appState.selectStoryParagraph(paragraphID)
+                },
+                onFocusStory: {
+                    appState.focusStoryParagraphs()
+                },
+                onRefresh: {
+                    guard !isRefreshing else { return }
+                    isRefreshing = true
+                    Task { @MainActor in
+                        await appState.refreshSelectedDay()
+                        isRefreshing = false
+                    }
+                }
+            )
         } detail: {
             StorySourceDetailView(
                 selectedParagraph: appState.selectedStoryParagraph,
                 selectedEvents: appState.selectedStorySourceEvents,
                 allEvents: appState.selectedDayEvents
             )
+            .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
         }
         .frame(minWidth: 1240, minHeight: 720)
-        .toolbar {
-            Button(action: {
-                Task { @MainActor in
-                    await appState.refreshSelectedDay()
-                }
-            }) {
-                Label("Regenerate Selected Day", systemImage: "arrow.clockwise.circle")
+        .onAppear {
+            startKeyMonitor()
+        }
+        .onDisappear {
+            stopKeyMonitor()
+        }
+    }
+
+    private func startKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak appState] event in
+            guard let appState else { return event }
+            let handled = handleKeyEvent(event, appState: appState)
+            return handled ? nil : event
+        }
+    }
+
+    private func stopKeyMonitor() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+    }
+
+    @MainActor
+    private func handleKeyEvent(_ event: NSEvent, appState: AppState) -> Bool {
+        switch appState.readerFocus {
+        case .dateList:
+            switch event.keyCode {
+            case 126: appState.handleReaderMove(.up);    return true  // ↑
+            case 125: appState.handleReaderMove(.down);  return true  // ↓
+            case 124: appState.handleReaderMove(.right); return true  // →
+            case 36:  appState.handleReaderMove(.right); return true  // Return
+            default:  return false
             }
-            .help("Regenerate the selected day")
+        case .storyParagraphs:
+            switch event.keyCode {
+            case 126: appState.handleReaderMove(.up);   return true  // ↑
+            case 125: appState.handleReaderMove(.down); return true  // ↓
+            case 123: appState.handleReaderMove(.left); return true  // ←
+            case 53:  appState.handleReaderExit();      return true  // Escape
+            default:  return false
+            }
         }
     }
 }

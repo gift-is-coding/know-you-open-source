@@ -16,6 +16,7 @@ struct DateSidebarView: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("Journals")
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private var selectedDateBinding: Binding<String?> {
@@ -28,7 +29,7 @@ struct DateSidebarView: View {
             }
         )
     }
-    
+
     private func formattedDate(_ dateString: String) -> String {
         let parser = DateFormatter()
         parser.locale = Locale(identifier: "en_US_POSIX")

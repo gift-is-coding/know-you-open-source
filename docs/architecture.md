@@ -184,7 +184,7 @@ flowchart LR
 - `YYYY-MM-DD.story.json`
 - `YYYY-MM-DD.md`
 
-其中 `.story.json` 是 UI 读取主工件，`.md` 是可移植的阅读/导出工件。onboarding 首屏与权限页都会把这个“本地 Markdown”事实直接展示给用户。
+其中 `.story.json` 仍是 UI 的主交互工件，`.md` 主要承担可移植导出。主阅读器会继续用 `.story.json` 里的段落和 `sourceEventIDs` 维护段落级 source link，并在正文区按 Markdown 富文本渲染 story 段落；`Source Notes` 不在中间栏显示，而是继续通过右侧来源面板承接追溯交互。onboarding 首屏与权限页都会把这个“本地 Markdown”事实直接展示给用户。
 
 ## 7. 生成层
 
@@ -213,6 +213,21 @@ flowchart LR
 7. 更新 UI 状态、run 状态与状态栏信息
 
 因此 summarizer 是增强路径，不是首次生成内容的阻塞条件。
+
+如果 summarizer 成功返回结构化 JSON，`DailyStoryParagraph.text` 当前允许承载 Markdown 富文本，而不是只存纯 prose。现在的 prompt 会要求模型把当天内容组织成单个 `daily-journal` section 下的 Markdown 日记骨架，包含：
+
+- `# 你今天做得很棒`
+- `# 今日总结`
+- `# 详情`
+- `# 待办事项`
+
+其中：
+
+- `今日总结` 使用 bullet list
+- `详情` 使用 `##` 二级标题组织事务线程
+- `待办事项` 使用 Markdown task list
+
+这意味着 `.story.json` 仍然维持“段落 + sourceEventIDs”的交互模型，但段落文本本身已经升级为可渲染的 Markdown 片段。
 
 ### 7.3 Fallback story
 
@@ -259,6 +274,9 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - OpenAI key 存 Keychain
 - CLI 路径存 UserDefaults
 - 若未显式配置 summarizer，启动时也会尝试读取 `OPENAI_API_KEY`
+- `CloudSummarizer` 已兼容 OpenAI Responses API 的两类文本返回形式：
+  - 顶层 `output_text`
+  - `output[].content[].text`
 
 ## 8. 调度与自动化
 
@@ -321,10 +339,14 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 
 - 日期按 `MM-dd EEE` 格式显示
 - story 段落可点击选中
+- 中栏段落按 Markdown 富文本渲染，而不是原样 plain text 输出
+- 中栏会根据当天语言显示显式标题：`今日小记` 或 `Story`
 - 右栏展示该段落关联的原始事件
 - 可展开 `View All Sources` 查看全日来源
 - 中栏阅读区内支持“重生成当前选中日期”
 - 主界面不再依赖顶部 status banner 承载运行时状态
+
+需要注意的是，当前实现虽然在 `AppState` 中已经保存了从 `.md` 提取出来的 `selectedSourceNotesMarkdown`，但主阅读器仍然不在中栏重复显示 `Source Notes`；来源追溯继续主要通过右栏 source detail 完成。
 
 ### 9.3 键盘焦点模型
 
@@ -395,6 +417,8 @@ sequenceDiagram
 3. 若存在 `.story.json`，优先加载该工件
 4. 否则基于事件即时构建 fallback story
 5. 中栏显示段落，右栏显示段落来源事件
+
+当 `.md` 文件存在时，`AppState` 还会尝试从中提取 `Source Notes` 区块；如果缺失，则退回到根据当天 `EventRecord` 重新生成 source-notes Markdown。这条路径当前主要用于保持导出工件与阅读器状态同步，并由测试覆盖，但 UI 仍然以右栏 source detail 为主。
 
 ### 10.3 首次用户完成 onboarding
 

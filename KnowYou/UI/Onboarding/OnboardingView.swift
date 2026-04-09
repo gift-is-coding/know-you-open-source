@@ -8,29 +8,42 @@ struct OnboardingView: View {
     @State private var step: OnboardingStep = .intro
     @State private var vaultPath: String = (try? AppState.defaultVaultURL().path) ?? ""
 
+    init(
+        onComplete: @escaping () -> Void,
+        initialStep: OnboardingStep = .intro
+    ) {
+        self.onComplete = onComplete
+        _step = State(initialValue: initialStep)
+        _vaultPath = State(initialValue: (try? AppState.defaultVaultURL().path) ?? "")
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             progressDots
                 .padding(.top, 28)
                 .padding(.horizontal, 32)
 
-            Group {
-                switch step {
-                case .intro:
-                    introScene
-                case .capture:
-                    captureScene
-                case .safety:
-                    safetyScene
-                case .preview:
-                    previewScene
-                case .permissions:
-                    permissionsScene
+            ScrollView(.vertical, showsIndicators: false) {
+                Group {
+                    switch step {
+                    case .intro:
+                        introScene
+                    case .capture:
+                        captureScene
+                    case .safety:
+                        safetyScene
+                    case .preview:
+                        previewScene
+                    case .permissions:
+                        permissionsScene
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .top)
+                .padding(.horizontal, 32)
+                .padding(.top, 20)
+                .padding(.bottom, 20)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(.horizontal, 32)
-            .padding(.top, 20)
 
             navigationBar
                 .padding(.horizontal, 32)

@@ -43,10 +43,11 @@
 		A10000010000000000000022 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000025 /* OnboardingView.swift */; };
 		A10000010000000000000023 /* CLISummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000026 /* CLISummarizerTests.swift */; };
 		A10000010000000000000024 /* SummarizerConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000027 /* SummarizerConfigTests.swift */; };
-		A10000010000000000000025 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000028 /* KeychainHelper.swift */; };
-		A10000010000000000000026 /* OnboardingContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000029 /* OnboardingContent.swift */; };
-		A10000010000000000000027 /* OnboardingContentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000002A /* OnboardingContentTests.swift */; };
-		DB2772FFED33760F5D742D9B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */; };
+			A10000010000000000000025 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000028 /* KeychainHelper.swift */; };
+			A10000010000000000000026 /* OnboardingContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000029 /* OnboardingContent.swift */; };
+			A10000010000000000000027 /* OnboardingContentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000002A /* OnboardingContentTests.swift */; };
+			A10000010000000000000028 /* OnboardingViewLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000002B /* OnboardingViewLayoutTests.swift */; };
+			DB2772FFED33760F5D742D9B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -97,10 +98,11 @@
 		A10001010000000000000025 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		A10001010000000000000026 /* CLISummarizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLISummarizerTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000027 /* SummarizerConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummarizerConfigTests.swift; sourceTree = "<group>"; };
-		A10001010000000000000028 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
-		A10001010000000000000029 /* OnboardingContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingContent.swift; sourceTree = "<group>"; };
-		A1000101000000000000002A /* OnboardingContentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingContentTests.swift; sourceTree = "<group>"; };
-		CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = KnowYou/Assets.xcassets; sourceTree = "<group>"; };
+			A10001010000000000000028 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+			A10001010000000000000029 /* OnboardingContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingContent.swift; sourceTree = "<group>"; };
+			A1000101000000000000002A /* OnboardingContentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingContentTests.swift; sourceTree = "<group>"; };
+			A1000101000000000000002B /* OnboardingViewLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewLayoutTests.swift; sourceTree = "<group>"; };
+			CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = KnowYou/Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -212,6 +214,7 @@
 				A10001010000000000000026 /* CLISummarizerTests.swift */,
 				A10001010000000000000027 /* SummarizerConfigTests.swift */,
 				A1000101000000000000002A /* OnboardingContentTests.swift */,
+				A1000101000000000000002B /* OnboardingViewLayoutTests.swift */,
 			);
 			path = KnowYouTests;
 			sourceTree = "<group>";
@@ -487,6 +490,7 @@
 				A10000010000000000000023 /* CLISummarizerTests.swift in Sources */,
 				A10000010000000000000024 /* SummarizerConfigTests.swift in Sources */,
 				A10000010000000000000027 /* OnboardingContentTests.swift in Sources */,
+				A10000010000000000000028 /* OnboardingViewLayoutTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

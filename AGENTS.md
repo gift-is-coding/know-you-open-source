@@ -12,6 +12,15 @@ For any feature, bugfix, refactor, or behavior change, the agent must follow thi
 4. `test-driven-development` before production code changes
 5. `verification-before-completion` before claiming success
 
+Simple one-off tasks do not require the Superpower workflow. This includes requests such as:
+
+- generating or updating demo/sample data
+- small content edits
+- local documentation wording tweaks
+- lightweight inspection or explanation tasks
+
+When a task stays in that lightweight bucket and does not change product behavior, the agent may execute it directly without the Superpower sequence.
+
 ## Required Outputs
 
 For substantial product work, the agent must keep `docs/superpowers/` in sync with implementation:

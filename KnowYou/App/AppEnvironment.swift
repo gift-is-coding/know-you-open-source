@@ -92,6 +92,10 @@ final class AppEnvironment {
         return try JSONDecoder().decode(DailyStory.self, from: data)
     }
 
+    func loadDailyNoteMarkdown(from fileURL: URL) throws -> String {
+        try String(contentsOf: fileURL, encoding: .utf8)
+    }
+
     func loadDailyNotes() throws -> [String: URL] {
         guard FileManager.default.fileExists(atPath: vaultURL.path) else {
             return [:]

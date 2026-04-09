@@ -13,8 +13,10 @@ struct DailyMarkdownView: View {
     @State private var hoveredParagraphID: String?
 
     var body: some View {
+        let presentation = DailyMarkdownPresentation(story: story)
+
         Group {
-            if let story, story.sections.flatMap(\.paragraphs).isEmpty == false {
+            if presentation.showsEmptyState == false {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         // Date header row
@@ -45,12 +47,16 @@ struct DailyMarkdownView: View {
                         Divider()
                             .padding(.horizontal, 28)
 
-                        // Paragraphs
                         VStack(alignment: .leading, spacing: 0) {
-                            ForEach(story.sections) { section in
-                                ForEach(section.paragraphs) { paragraph in
-                                    paragraphRow(paragraph)
-                                }
+                            Text(presentation.storyHeading)
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 14)
+                                .padding(.top, 4)
+                                .padding(.bottom, 16)
+
+                            ForEach(presentation.paragraphs) { paragraph in
+                                paragraphRow(paragraph)
                             }
                         }
                         .padding(.horizontal, 28)
@@ -60,9 +66,6 @@ struct DailyMarkdownView: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
-                .simultaneousGesture(TapGesture().onEnded {
-                    onFocusStory()
-                })
             } else {
                 ContentUnavailableView("No Story Yet", systemImage: "text.book.closed")
             }
@@ -86,10 +89,7 @@ struct DailyMarkdownView: View {
                     .frame(width: 2)
                     .padding(.vertical, 4)
 
-                Text(.init(paragraph.text))
-                    .font(.body)
-                    .multilineTextAlignment(.leading)
-                    .lineSpacing(3)
+                MarkdownParagraphContent(markdown: paragraph.text)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
@@ -120,6 +120,83 @@ struct DailyMarkdownView: View {
         weekday.dateFormat = "EEEE"
         weekday.locale = Locale(identifier: "en_US")
         return "\(monthDay.string(from: date)) · \(weekday.string(from: date))"
+    }
+}
+
+struct DailyMarkdownPresentation: Equatable {
+    let paragraphs: [DailyStoryParagraph]
+    let storyHeading: String
+
+    init(story: DailyStory?) {
+        paragraphs = story?.sections.flatMap(\.paragraphs) ?? []
+        storyHeading = Self.resolvedStoryHeading(for: story, paragraphs: paragraphs)
+    }
+
+    var showsEmptyState: Bool {
+        paragraphs.isEmpty
+    }
+
+    private static func resolvedStoryHeading(
+        for story: DailyStory?,
+        paragraphs: [DailyStoryParagraph]
+    ) -> String {
+        let combinedText = paragraphs.map(\.text).joined(separator: "\n")
+        if combinedText.contains(where: \.isChineseIdeograph) {
+            return "今日小记"
+        }
+
+        if story?.dayKey.isEmpty == false {
+            return "Story"
+        }
+
+        return "Story"
+    }
+}
+
+enum DailyMarkdownRenderer {
+    enum Content {
+        case attributed(AttributedString)
+        case plainText(String)
+    }
+
+    static func content(
+        from markdown: String,
+        parser: (String) throws -> AttributedString = parseAttributedString(from:)
+    ) -> Content {
+        do {
+            return .attributed(try parser(markdown))
+        } catch {
+            return .plainText(markdown)
+        }
+    }
+
+    private static func parseAttributedString(from markdown: String) throws -> AttributedString {
+        try AttributedString(
+            markdown: markdown,
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
+        )
+    }
+}
+
+private struct MarkdownParagraphContent: View {
+    let markdown: String
+
+    var body: some View {
+        markdownText
+            .font(.body)
+            .multilineTextAlignment(.leading)
+            .lineSpacing(3)
+            .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private var markdownText: some View {
+        switch DailyMarkdownRenderer.content(from: markdown) {
+        case .attributed(let attributed):
+            Text(attributed)
+        case .plainText(let rawText):
+            Text(verbatim: rawText)
+        }
     }
 }
 
@@ -222,4 +299,12 @@ private struct SourceEventCard: View {
         formatter.dateFormat = "HH:mm"
         return formatter
     }()
+}
+
+private extension Character {
+    var isChineseIdeograph: Bool {
+        unicodeScalars.contains { scalar in
+            (0x4E00...0x9FFF).contains(scalar.value)
+        }
+    }
 }

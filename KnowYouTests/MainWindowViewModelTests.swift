@@ -47,6 +47,109 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertNil(appState.selectedMarkdownURL)
     }
 
+    func testSelectingDateLoadsSourceNotesMarkdownFromSavedFile() throws {
+        let environment = try makeReaderEnvironment()
+        let appState = AppState(environment: environment)
+
+        appState.selectDate("2026-04-08")
+
+        XCTAssertEqual(
+            appState.selectedSourceNotesMarkdown,
+            """
+            ## Source Notes
+
+            - [09:00] Notes (clipboard): Important note
+            - [09:15] Mail (notification): Investor replied
+
+            Saved in the source notebook.
+            """
+        )
+    }
+
+    func testSelectingDateFallsBackToGeneratedSourceNotesWhenMarkdownFileIsMissing() throws {
+        let environment = try makeReaderEnvironment()
+        let appState = AppState(environment: environment)
+        let fileURL = environment.vaultURL.appending(path: "2026-04-08.md")
+        try FileManager.default.removeItem(at: fileURL)
+
+        appState.selectDate("2026-04-08")
+
+        XCTAssertEqual(
+            appState.selectedSourceNotesMarkdown,
+            """
+            ## Source Notes
+
+            - [09:00] Notes (clipboard): Important note
+            - [09:15] Mail (notification): Investor replied
+            """
+        )
+    }
+
+    func testSelectingDateFallsBackToGeneratedSourceNotesWhenSavedMarkdownHasNoSourceNotesSection() throws {
+        let environment = try makeReaderEnvironment()
+        let appState = AppState(environment: environment)
+        let fileURL = environment.vaultURL.appending(path: "2026-04-08.md")
+        try """
+        # 2026-04-08
+
+        ## Story
+
+        First paragraph with **bold** emphasis.
+
+        ## Appendix
+
+        This file was saved without source notes.
+        """.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        appState.selectDate("2026-04-08")
+
+        XCTAssertEqual(
+            appState.selectedSourceNotesMarkdown,
+            """
+            ## Source Notes
+
+            - [09:00] Notes (clipboard): Important note
+            - [09:15] Mail (notification): Investor replied
+            """
+        )
+    }
+
+    func testSelectingChineseDateLoadsLocalizedSourceNotesMarkdown() throws {
+        let environment = try makeChineseReaderEnvironment()
+        let appState = AppState(environment: environment)
+
+        appState.selectDate("2026-04-09")
+
+        XCTAssertEqual(
+            appState.selectedSourceNotesMarkdown,
+            """
+            ## 线索来源
+
+            - [10:00] 微信 (clipboard): 今天要先处理发货
+            - [10:15] 邮件 (notification): 客户确认了收货时间
+            """
+        )
+    }
+
+    func testSelectingChineseDateFallsBackToLocalizedGeneratedSourceNotesWhenMarkdownFileIsMissing() throws {
+        let environment = try makeChineseReaderEnvironment()
+        let appState = AppState(environment: environment)
+        let fileURL = environment.vaultURL.appending(path: "2026-04-09.md")
+        try FileManager.default.removeItem(at: fileURL)
+
+        appState.selectDate("2026-04-09")
+
+        XCTAssertEqual(
+            appState.selectedSourceNotesMarkdown,
+            """
+            ## 线索来源
+
+            - [10:00] 微信 (clipboard): 今天要先处理发货
+            - [10:15] 邮件 (notification): 客户确认了收货时间
+            """
+        )
+    }
+
     func testAutomationStatusTextReflectsBackfillDays() {
         let appState = AppState(bootstrapServices: false)
         appState.lastImportedNotificationCount = 3
@@ -331,9 +434,56 @@ final class MainWindowViewModelTests: XCTestCase {
             )
         )
 
+        let firstID = UUID()
+        let secondID = UUID()
+        let baseCalendar = Calendar(identifier: .gregorian)
+        try writer.insert(
+            EventRecord(
+                id: firstID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: DateComponents(calendar: baseCalendar, year: 2026, month: 4, day: 8, hour: 9, minute: 0).date!,
+                dayKey: "2026-04-08",
+                text: "Important note",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "source-note-first"
+            )
+        )
+        try writer.insert(
+            EventRecord(
+                id: secondID,
+                sourceType: .notification,
+                sourceApp: "Mail",
+                capturedAt: DateComponents(calendar: baseCalendar, year: 2026, month: 4, day: 8, hour: 9, minute: 15).date!,
+                dayKey: "2026-04-08",
+                text: "Investor replied",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "source-note-second"
+            )
+        )
+
         try writeStoryDay(
             dayKey: "2026-04-08",
-            markdown: "# 2026-04-08\n\nStory",
+            markdown: """
+            # 2026-04-08
+
+            ## Story
+
+            First paragraph with **bold** emphasis.
+
+            Second paragraph with a [link](https://example.com).
+
+            ---
+
+            ## Source Notes
+
+            - [09:00] Notes (clipboard): Important note
+            - [09:15] Mail (notification): Investor replied
+
+            Saved in the source notebook.
+            """,
             story: DailyStory(
                 dayKey: "2026-04-08",
                 generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
@@ -342,8 +492,8 @@ final class MainWindowViewModelTests: XCTestCase {
                         id: "daily-journal",
                         title: "",
                         paragraphs: [
-                            DailyStoryParagraph(id: "daily-journal-0", text: "First paragraph", sourceEventIDs: [UUID()]),
-                            DailyStoryParagraph(id: "daily-journal-1", text: "Second paragraph", sourceEventIDs: [UUID()]),
+                            DailyStoryParagraph(id: "daily-journal-0", text: "First paragraph with **bold** emphasis.", sourceEventIDs: [firstID]),
+                            DailyStoryParagraph(id: "daily-journal-1", text: "Second paragraph with a [link](https://example.com).", sourceEventIDs: [secondID]),
                         ]
                     )
                 ]
@@ -363,6 +513,87 @@ final class MainWindowViewModelTests: XCTestCase {
                         title: "",
                         paragraphs: [
                             DailyStoryParagraph(id: "daily-journal-0", text: "Only paragraph", sourceEventIDs: [UUID()])
+                        ]
+                    )
+                ]
+            ),
+            environment: environment
+        )
+
+        return environment
+    }
+
+    private func makeChineseReaderEnvironment() throws -> AppEnvironment {
+        let writer = try DatabaseWriter.inMemory()
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: vaultURL, withIntermediateDirectories: true)
+
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+
+        let firstID = UUID()
+        let secondID = UUID()
+        let baseCalendar = Calendar(identifier: .gregorian)
+        try writer.insert(
+            EventRecord(
+                id: firstID,
+                sourceType: .clipboard,
+                sourceApp: "微信",
+                capturedAt: DateComponents(calendar: baseCalendar, year: 2026, month: 4, day: 9, hour: 10, minute: 0).date!,
+                dayKey: "2026-04-09",
+                text: "今天要先处理发货",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "cn-source-note-first"
+            )
+        )
+        try writer.insert(
+            EventRecord(
+                id: secondID,
+                sourceType: .notification,
+                sourceApp: "邮件",
+                capturedAt: DateComponents(calendar: baseCalendar, year: 2026, month: 4, day: 9, hour: 10, minute: 15).date!,
+                dayKey: "2026-04-09",
+                text: "客户确认了收货时间",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "cn-source-note-second"
+            )
+        )
+
+        try writeStoryDay(
+            dayKey: "2026-04-09",
+            markdown: """
+            # 2026-04-09
+
+            ## 今日小记
+
+            上午主要在处理发货和确认时间。
+
+            ---
+
+            ## 线索来源
+
+            - [10:00] 微信 (clipboard): 今天要先处理发货
+            - [10:15] 邮件 (notification): 客户确认了收货时间
+            """,
+            story: DailyStory(
+                dayKey: "2026-04-09",
+                generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                sections: [
+                    DailyStorySection(
+                        id: "daily-journal",
+                        title: "",
+                        paragraphs: [
+                            DailyStoryParagraph(id: "daily-journal-0", text: "上午主要在处理发货和确认时间。", sourceEventIDs: [firstID, secondID]),
                         ]
                     )
                 ]

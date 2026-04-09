@@ -4,11 +4,13 @@ struct DailyMarkdownComposer {
     private static let sectionTemplates: [(id: String, title: String)] = [
         ("daily-journal", ""),
     ]
+    private static let englishSourceNotesHeading = "## Source Notes"
+    private static let chineseSourceNotesHeading = "## 线索来源"
 
     func compose(dayKey: String, events: [EventRecord], story: DailyStory) -> String {
         let language = dominantNarrativeLanguage(for: events)
-        let storyHeading = language == .chinese ? "## 今日小记" : "## Story"
-        let sourcesHeading = language == .chinese ? "## 线索来源" : "## Source Notes"
+        let storyHeading = storyHeading(for: events)
+        let sourcesHeading = sourceNotesHeading(for: events)
         let storySections = story.sections
             .map { section in
                 let paragraphTexts: [String] = section.paragraphs
@@ -28,7 +30,8 @@ struct DailyMarkdownComposer {
         let sourceLines = bulletList(
             for: events.map { event in
                 "[\(Self.timeFormatter.string(from: event.capturedAt))] \(event.sourceApp) (\(event.sourceType.rawValue)): \(event.displayText)"
-            }
+            },
+            emptyState: sourceNotesEmptyState(for: events)
         )
         return """
         # \(dayKey)
@@ -43,6 +46,48 @@ struct DailyMarkdownComposer {
 
         \(sourceLines)
         """
+    }
+
+    func storyHeading(for events: [EventRecord]) -> String {
+        dominantNarrativeLanguage(for: events) == .chinese ? "## 今日小记" : "## Story"
+    }
+
+    func sourceNotesHeading(for events: [EventRecord]) -> String {
+        dominantNarrativeLanguage(for: events) == .chinese ? Self.chineseSourceNotesHeading : Self.englishSourceNotesHeading
+    }
+
+    func sourceNotesEmptyState(for events: [EventRecord]) -> String {
+        dominantNarrativeLanguage(for: events) == .chinese ? "_暂无记录_" : "_No entries_"
+    }
+
+    func sourceNotesMarkdown(for events: [EventRecord]) -> String {
+        let lines = events.map { event in
+            "- [\(Self.timeFormatter.string(from: event.capturedAt))] \(event.sourceApp) (\(event.sourceType.rawValue)): \(event.displayText)"
+        }
+        let body = lines.isEmpty ? sourceNotesEmptyState(for: events) : lines.joined(separator: "\n")
+        return "\(sourceNotesHeading(for: events))\n\n\(body)"
+    }
+
+    func extractSourceNotesSection(from markdown: String) -> String? {
+        let lines = markdown.components(separatedBy: .newlines)
+        let headings = Self.sourceNotesSectionHeadings
+
+        guard let startIndex = lines.firstIndex(where: { headings.contains($0.trimmingCharacters(in: .whitespaces)) }) else {
+            return nil
+        }
+
+        let endIndex = lines[(startIndex + 1)...].firstIndex(where: {
+            $0.trimmingCharacters(in: .whitespaces).hasPrefix("## ")
+        }) ?? lines.endIndex
+
+        let section = lines[startIndex..<endIndex].joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return section.isEmpty ? nil : section
+    }
+
+    static var sourceNotesSectionHeadings: [String] {
+        [englishSourceNotesHeading, chineseSourceNotesHeading]
     }
 
     func fallbackStory(dayKey: String, events: [EventRecord]) -> DailyStory {
@@ -129,18 +174,28 @@ struct DailyMarkdownComposer {
         - Keep the single section id exactly as given.
         - Write in first person (I / 我). Never describe the user in third person. Write as if the user is writing their own diary.
         - Base the content strictly on the source events. Do not invent, infer, or embellish anything not directly supported by the events.
-        - Follow the actual chronological order of events. Do not reorder or group events in a way that distorts the timeline.
+        - Follow the actual chronology at the thread level, but you may merge related events into the same workstream when it reads more naturally.
         - Write all narration in the same dominant language as the source events.
         - If the day is mainly Chinese, write all prose in Chinese.
-        - Do not mix Chinese and English in the narration except for app names, product names, commands, or URLs copied from the source material.
-        - Do not force a fixed paragraph count; let the day decide how many short-to-medium paragraphs it needs.
-        - Use light inline Markdown sparingly for emphasis when it helps readability.
-        - Do not use headings inside the paragraph text.
-        - Do not use bullet lists.
+        - Do not mix Chinese and English in the narration except for app names or product names that already appear in the source material.
+        - The final combined markdown across paragraph texts must render exactly these first-level headings, in this order:
+          1. # 你今天做得很棒
+          2. # 今日总结
+          3. # 详情
+          4. # 待办事项
+        - Do not emit any other first-level heading. In particular, do not include # 今日节奏.
+        - The "你今天做得很棒" section must be positive, encouraging, and grounded in concrete things the person actually did well that day. It should feel supportive, not generic or fake.
+        - The "今日总结" section should use markdown bullet points.
+        - The "详情" section should use markdown second-level headings (##) for the main workstreams or threads of the day.
+        - The "待办事项" section should use markdown task list items like - [ ].
+        - Markdown headings, bullet lists, and task lists are allowed inside paragraph text and should be used deliberately.
         - Only reference sourceEventIDs that appear below.
         - Put all narrative paragraphs inside the single daily-journal section.
-        - Prefer summarizing the main work, decisions, communication, and notable side context instead of listing every fragment.
-        - Use natural transitions between paragraphs, but never introduce facts, emotions, or context that are not present in the source events.
+        - Organize the day by major threads or workstreams, not by raw fragment order.
+        - Notifications, meetings, task reminders, and incoming messages are important when they changed the day's priorities or pushed work forward. Integrate them into the relevant thread instead of dumping them as noise.
+        - Do not copy file paths, branch names, commit hashes, URLs, file names, or tool instructions into the diary unless they are absolutely central. Abstract technical debris into normal diary language.
+        - Prefer summarizing the main work, coordination, decisions, and next steps instead of listing every fragment.
+        - Use natural transitions between blocks, but never introduce facts, emotions, or context that are not present in the source events.
 
         Day: \(dayKey)
         Source events:
@@ -180,13 +235,13 @@ struct DailyMarkdownComposer {
         return DailyStory(dayKey: dayKey, generatedAt: Date(), sections: sections)
     }
 
-    private func bulletList(for items: [String]) -> String {
+    private func bulletList(for items: [String], emptyState: String) -> String {
         let lines = items
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .map { "- \($0)" }
 
-        return lines.isEmpty ? "_No entries_" : lines.joined(separator: "\n")
+        return lines.isEmpty ? emptyState : lines.joined(separator: "\n")
     }
 
     private func makeParagraphs(for sectionID: String, events: [EventRecord]) -> [DailyStoryParagraph] {

@@ -82,10 +82,38 @@ final class DailyMarkdownComposerTests: XCTestCase {
 
         XCTAssertTrue(prompt.contains("\"id\": \"daily-journal\""), prompt)
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("diary"), prompt)
-        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("do not force a fixed paragraph count"), prompt)
-        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("light inline markdown"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("single section id"), prompt)
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("same dominant language"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("first person"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("major threads or workstreams"), prompt)
         XCTAssertFalse(prompt.contains("\"main-thread\""), prompt)
+    }
+
+    func testStoryPromptRequestsStructuredMarkdownDiarySections() {
+        let composer = DailyMarkdownComposer()
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .notification,
+                sourceApp: "com.microsoft.teams2",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: "2026-04-09",
+                text: "讨论新财年的软件研发智能体需求",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "prompt-structure-check"
+            )
+        ]
+
+        let prompt = composer.storyPrompt(dayKey: "2026-04-09", events: events)
+
+        XCTAssertTrue(prompt.contains("# 你今天做得很棒"), prompt)
+        XCTAssertTrue(prompt.contains("# 今日总结"), prompt)
+        XCTAssertTrue(prompt.contains("# 详情"), prompt)
+        XCTAssertTrue(prompt.contains("# 待办事项"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("do not include # 今日节奏"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("task list"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("markdown"), prompt)
     }
 
     func testComposerAddsLightweightMarkdownStructure() {

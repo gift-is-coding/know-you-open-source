@@ -64,6 +64,8 @@ final class AppState {
     var selectedStoryParagraphID: String?
     var selectedStorySourceEvents: [EventRecord] = []
     var selectedDayEvents: [EventRecord] = []
+    var selectedMarkdownText: String?
+    var selectedSourceNotesMarkdown: String?
     var readerFocus: ReaderFocusZone = .dateList
     private(set) var environment: AppEnvironment?
     @ObservationIgnored private var automationTimer: Timer?
@@ -272,6 +274,12 @@ final class AppState {
         return try defaultVaultURL()
     }
 
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
     private func generateDailyNote(for dayKey: String, recordsRun: Bool) async {
         guard let environment else {
             statusMessage = "Capture unavailable"
@@ -476,6 +484,8 @@ extension AppState {
             selectedStoryParagraphID = nil
             selectedStorySourceEvents = []
             selectedDayEvents = []
+            selectedMarkdownText = nil
+            selectedSourceNotesMarkdown = nil
             return
         }
 
@@ -488,6 +498,12 @@ extension AppState {
         selectedDate = dayKey
         selectedStory = story
         selectedDayEvents = events
+        selectedMarkdownURL = preferredMarkdownURL(for: dayKey)
+        let markdown = loadSelectedMarkdownText()
+        selectedMarkdownText = markdown
+        selectedSourceNotesMarkdown =
+            markdown.flatMap(extractSourceNotesMarkdown(from:))
+            ?? generatedSourceNotesMarkdown(from: events)
         let paragraphs = story.sections.flatMap(\.paragraphs)
         if let rememberedID = paragraphSelectionByDay[dayKey],
            paragraphs.contains(where: { $0.id == rememberedID }) {
@@ -708,5 +724,36 @@ extension AppState {
             paragraphSelectionByDay[selectedDate] = paragraphs[0].id
         }
         syncSelectedStorySources()
+    }
+
+    private func preferredMarkdownURL(for dayKey: String) -> URL? {
+        if let selectedMarkdownURL,
+           selectedMarkdownURL.deletingPathExtension().lastPathComponent == dayKey {
+            return selectedMarkdownURL
+        }
+        if let indexedURL = noteIndex[dayKey] {
+            return indexedURL
+        }
+        guard let environment else {
+            return nil
+        }
+        let fileURL = environment.vaultURL.appending(path: "\(dayKey).md")
+        return FileManager.default.fileExists(atPath: fileURL.path) ? fileURL : nil
+    }
+
+    private func loadSelectedMarkdownText() -> String? {
+        guard let environment, let selectedMarkdownURL else {
+            return nil
+        }
+        return try? environment.loadDailyNoteMarkdown(from: selectedMarkdownURL)
+    }
+
+    private func extractSourceNotesMarkdown(from markdown: String) -> String? {
+        environment?.composer.extractSourceNotesSection(from: markdown)
+            ?? DailyMarkdownComposer().extractSourceNotesSection(from: markdown)
+    }
+
+    private func generatedSourceNotesMarkdown(from events: [EventRecord]) -> String {
+        environment?.composer.sourceNotesMarkdown(for: events) ?? DailyMarkdownComposer().sourceNotesMarkdown(for: events)
     }
 }

@@ -49,8 +49,33 @@ private struct ResponsesRequest: Encodable {
 
 private struct ResponsesResponse: Decodable {
     let outputText: String?
+    let output: [ResponseOutputItem]?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let directOutputText = try container.decodeIfPresent(String.self, forKey: .outputText)
+        let output = try container.decodeIfPresent([ResponseOutputItem].self, forKey: .output)
+        self.output = output
+        self.outputText = directOutputText ?? output?
+            .filter { $0.type == "message" }
+            .flatMap(\.content)
+            .filter { $0.type == "output_text" }
+            .map(\.text)
+            .joined(separator: "\n")
+    }
 
     enum CodingKeys: String, CodingKey {
         case outputText = "output_text"
+        case output
     }
+}
+
+private struct ResponseOutputItem: Decodable {
+    let type: String
+    let content: [ResponseOutputContent]
+}
+
+private struct ResponseOutputContent: Decodable {
+    let type: String
+    let text: String
 }

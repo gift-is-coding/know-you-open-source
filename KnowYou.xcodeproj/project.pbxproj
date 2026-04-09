@@ -47,6 +47,7 @@
 			A10000010000000000000026 /* OnboardingContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000029 /* OnboardingContent.swift */; };
 			A10000010000000000000027 /* OnboardingContentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000002A /* OnboardingContentTests.swift */; };
 			A10000010000000000000028 /* OnboardingViewLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000002B /* OnboardingViewLayoutTests.swift */; };
+			A10000010000000000000030 /* DailyMarkdownViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000030 /* DailyMarkdownViewTests.swift */; };
 			DB2772FFED33760F5D742D9B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -102,6 +103,7 @@
 			A10001010000000000000029 /* OnboardingContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingContent.swift; sourceTree = "<group>"; };
 			A1000101000000000000002A /* OnboardingContentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingContentTests.swift; sourceTree = "<group>"; };
 			A1000101000000000000002B /* OnboardingViewLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewLayoutTests.swift; sourceTree = "<group>"; };
+			A10001010000000000000030 /* DailyMarkdownViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyMarkdownViewTests.swift; sourceTree = "<group>"; };
 			CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = KnowYou/Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -215,6 +217,7 @@
 					A10001010000000000000027 /* SummarizerConfigTests.swift */,
 					A1000101000000000000002A /* OnboardingContentTests.swift */,
 					A1000101000000000000002B /* OnboardingViewLayoutTests.swift */,
+					A10001010000000000000030 /* DailyMarkdownViewTests.swift */,
 				);
 			path = KnowYouTests;
 			sourceTree = "<group>";
@@ -491,6 +494,7 @@
 					A10000010000000000000024 /* SummarizerConfigTests.swift in Sources */,
 					A10000010000000000000027 /* OnboardingContentTests.swift in Sources */,
 					A10000010000000000000028 /* OnboardingViewLayoutTests.swift in Sources */,
+					A10000010000000000000030 /* DailyMarkdownViewTests.swift in Sources */,
 				);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

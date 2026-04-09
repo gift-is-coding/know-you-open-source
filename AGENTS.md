@@ -37,3 +37,4 @@ Do not claim a feature is complete, fixed, or passing without fresh command outp
 
 - User instructions override this file.
 - If the task is too small to justify a spec/plan, the agent should say so explicitly.
+- For any large PR or significant product/code change, the agent must review and update `docs/architecture.md` and `docs/requirements-spec.md` before completion or push.

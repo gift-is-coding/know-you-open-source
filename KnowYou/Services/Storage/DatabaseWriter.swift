@@ -152,6 +152,15 @@ final class DatabaseWriter: EventWriting {
         }
     }
 
+    func markOrphanRunsAsFailed() throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE runs SET status = 'failed', finishedAt = ? WHERE status = 'running'",
+                arguments: [Date()]
+            )
+        }
+    }
+
     func fetchRuns(runType: String? = nil) throws -> [RunRecord] {
         try dbQueue.read { db in
             let rows: [Row]

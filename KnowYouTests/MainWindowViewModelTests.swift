@@ -259,6 +259,125 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.statusMessage, "Refreshed 2026-04-06")
     }
 
+    func testReaderNavigationRestoresPerDayParagraphMemory() throws {
+        let environment = try makeReaderEnvironment()
+        let appState = AppState(environment: environment)
+        appState.refreshNotesIndex()
+
+        XCTAssertEqual(appState.readerFocus, .dateList)
+        XCTAssertEqual(appState.selectedDate, "2026-04-08")
+
+        appState.handleReaderMove(.right)
+        appState.selectStoryParagraph("daily-journal-1")
+        XCTAssertEqual(appState.readerFocus, .storyParagraphs)
+        XCTAssertEqual(appState.selectedStoryParagraphID, "daily-journal-1")
+
+        appState.handleReaderMove(.left)
+        XCTAssertEqual(appState.readerFocus, .dateList)
+
+        appState.handleReaderMove(.down)
+        XCTAssertEqual(appState.selectedDate, "2026-04-07")
+        appState.handleReaderMove(.right)
+        XCTAssertEqual(appState.readerFocus, .storyParagraphs)
+        XCTAssertEqual(appState.selectedStoryParagraphID, "daily-journal-0")
+
+        appState.handleReaderMove(.left)
+        appState.handleReaderMove(.up)
+        XCTAssertEqual(appState.selectedDate, "2026-04-08")
+        appState.handleReaderMove(.right)
+        XCTAssertEqual(appState.selectedStoryParagraphID, "daily-journal-1")
+    }
+
+    func testEscapeReturnsStoryFocusToDateList() throws {
+        let environment = try makeReaderEnvironment()
+        let appState = AppState(environment: environment)
+        appState.refreshNotesIndex()
+
+        appState.handleReaderMove(.right)
+        XCTAssertEqual(appState.readerFocus, .storyParagraphs)
+
+        appState.handleReaderExit()
+
+        XCTAssertEqual(appState.readerFocus, .dateList)
+        XCTAssertEqual(appState.selectedDate, "2026-04-08")
+    }
+
+    func testStatusDetailsExplainClipboardAndNotificationSources() {
+        let appState = AppState(bootstrapServices: false)
+        appState.clipboardStatus.isActive = true
+        appState.notificationStatus.isDatabaseAvailable = false
+        appState.notificationStatus.availabilityMessage = "Notification Center database not found on this Mac."
+
+        let details = appState.statusDetails
+
+        XCTAssertTrue(details.contains(where: { $0.localizedCaseInsensitiveContains("pasteboard") }))
+        XCTAssertTrue(details.contains(where: { $0.localizedCaseInsensitiveContains("not maccy") }))
+        XCTAssertTrue(details.contains(where: { $0.localizedCaseInsensitiveContains("notification center") }))
+    }
+
+    private func makeReaderEnvironment() throws -> AppEnvironment {
+        let writer = try DatabaseWriter.inMemory()
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: vaultURL, withIntermediateDirectories: true)
+
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+
+        try writeStoryDay(
+            dayKey: "2026-04-08",
+            markdown: "# 2026-04-08\n\nStory",
+            story: DailyStory(
+                dayKey: "2026-04-08",
+                generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                sections: [
+                    DailyStorySection(
+                        id: "daily-journal",
+                        title: "",
+                        paragraphs: [
+                            DailyStoryParagraph(id: "daily-journal-0", text: "First paragraph", sourceEventIDs: [UUID()]),
+                            DailyStoryParagraph(id: "daily-journal-1", text: "Second paragraph", sourceEventIDs: [UUID()]),
+                        ]
+                    )
+                ]
+            ),
+            environment: environment
+        )
+
+        try writeStoryDay(
+            dayKey: "2026-04-07",
+            markdown: "# 2026-04-07\n\nStory",
+            story: DailyStory(
+                dayKey: "2026-04-07",
+                generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                sections: [
+                    DailyStorySection(
+                        id: "daily-journal",
+                        title: "",
+                        paragraphs: [
+                            DailyStoryParagraph(id: "daily-journal-0", text: "Only paragraph", sourceEventIDs: [UUID()])
+                        ]
+                    )
+                ]
+            ),
+            environment: environment
+        )
+
+        return environment
+    }
+
+    private func writeStoryDay(dayKey: String, markdown: String, story: DailyStory, environment: AppEnvironment) throws {
+        _ = try environment.writeDailyNote(dayKey: dayKey, markdown: markdown)
+        _ = try environment.writeDailyStory(story)
+    }
+
     func testRunAutomationSurfacesNotificationImportError() async throws {
         let writer = try DatabaseWriter.inMemory()
         let reader = RecordingNotificationReader()

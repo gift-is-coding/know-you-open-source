@@ -20,3 +20,4 @@ Key routing rules:
 ## Global Rules
 
 - ALWAYS create a Pull Request (PR) for any tasks, features, or changes from now on (e.g. use @codex PR or ship tool). Do not commit directly to the default branch without creating a PR first.
+- For any large PR or significant product/code change, review and update `docs/architecture.md` and `docs/requirements-spec.md` before completion or push.

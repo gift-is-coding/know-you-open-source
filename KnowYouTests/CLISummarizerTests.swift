@@ -100,6 +100,17 @@ final class CLISummarizerTests: XCTestCase {
             )
         )
     }
+
+    func testSystemProcessRunnerPrependsExecutableDirectoryToPATH() {
+        let runner = SystemProcessRunner(environment: ["PATH": "/usr/bin"])
+
+        let environment = runner.processEnvironment(for: "/Users/wutianfu/.nvm/versions/node/v22.22.0/bin/claude")
+
+        XCTAssertEqual(
+            environment["PATH"],
+            "/Users/wutianfu/.nvm/versions/node/v22.22.0/bin:/usr/bin"
+        )
+    }
 }
 
 private func XCTAssertThrowsErrorAsync(

@@ -6,7 +6,7 @@ struct KnowYouApp: App {
     @State private var hasCompletedOnboarding = UserDefaults.standard.bool(forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
 
     var body: some Scene {
-        WindowGroup("Know You") {
+        WindowGroup("Know You", id: "main") {
             if hasCompletedOnboarding {
                 MainWindowView()
                     .environment(appState)
@@ -32,6 +32,7 @@ struct KnowYouApp: App {
 
 private struct MenuBarContentView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -47,6 +48,11 @@ private struct MenuBarContentView: View {
             }
 
             Divider()
+
+            Button("Open Know You") {
+                openWindow(id: "main")
+                NSApp.activate(ignoringOtherApps: true)
+            }
 
             Button("Refresh Selected Day") {
                 Task { @MainActor in

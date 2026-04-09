@@ -27,6 +27,11 @@ final class ContinuationGate<T>: @unchecked Sendable {
 
 struct SystemProcessRunner: ProcessRunning {
     static let timeoutSeconds: Double = 120
+    private let environment: [String: String]
+
+    init(environment: [String: String] = ProcessInfo.processInfo.environment) {
+        self.environment = environment
+    }
 
     func run(executable: String, arguments: [String]) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
@@ -35,6 +40,7 @@ struct SystemProcessRunner: ProcessRunning {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: executable)
                 process.arguments = arguments
+                process.environment = processEnvironment(for: executable)
 
                 let outputPipe = Pipe()
                 let errorPipe = Pipe()
@@ -78,6 +84,18 @@ struct SystemProcessRunner: ProcessRunning {
                 }
             }
         }
+    }
+
+    func processEnvironment(for executable: String) -> [String: String] {
+        var mergedEnvironment = environment
+        let executableDirectory = URL(fileURLWithPath: executable).deletingLastPathComponent().path
+        let existingPath = mergedEnvironment["PATH"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let pathEntries = existingPath
+            .split(separator: ":")
+            .map(String.init)
+        let newPathEntries = [executableDirectory] + pathEntries.filter { $0 != executableDirectory }
+        mergedEnvironment["PATH"] = newPathEntries.joined(separator: ":")
+        return mergedEnvironment
     }
 }
 

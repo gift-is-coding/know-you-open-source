@@ -82,7 +82,78 @@ final class DailyMarkdownComposerTests: XCTestCase {
 
         XCTAssertTrue(prompt.contains("\"id\": \"daily-journal\""), prompt)
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("diary"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("do not force a fixed paragraph count"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("light inline markdown"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("same dominant language"), prompt)
         XCTAssertFalse(prompt.contains("\"main-thread\""), prompt)
+    }
+
+    func testComposerAddsLightweightMarkdownStructure() {
+        let composer = DailyMarkdownComposer()
+        let paragraph = DailyStoryParagraph(
+            id: "daily-journal-0",
+            text: "I kept moving through the main tasks and left a few **important** notes for later.",
+            sourceEventIDs: [UUID()]
+        )
+        let story = DailyStory(
+            dayKey: "2026-04-08",
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
+            sections: [DailyStorySection(id: "daily-journal", title: "", paragraphs: [paragraph])]
+        )
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: "2026-04-08",
+                text: "Important note",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "markdown-structure"
+            )
+        ]
+
+        let markdown = composer.compose(dayKey: "2026-04-08", events: events, story: story)
+
+        XCTAssertTrue(markdown.contains("## Story"), markdown)
+        XCTAssertTrue(markdown.contains("---\n\n## Source Notes"), markdown)
+        XCTAssertFalse(markdown.contains("A softer story pass"), markdown)
+    }
+
+    func testFallbackStoryUsesChineseNarrationForChineseDominantDay() {
+        let composer = DailyMarkdownComposer()
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "微信",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: "2026-04-08",
+                text: "整理今天的发布文案，并和团队确认排期",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "zh-1"
+            ),
+            EventRecord(
+                id: UUID(),
+                sourceType: .notification,
+                sourceApp: "飞书",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_300),
+                dayKey: "2026-04-08",
+                text: "下午三点同步版本细节",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "zh-2"
+            ),
+        ]
+
+        let story = composer.fallbackStory(dayKey: "2026-04-08", events: events)
+        let combined = story.sections.flatMap(\.paragraphs).map(\.text).joined(separator: "\n")
+
+        XCTAssertTrue(combined.contains(where: \.isChineseIdeograph), combined)
+        XCTAssertFalse(combined.localizedCaseInsensitiveContains("the day mostly revolved around"), combined)
+        XCTAssertFalse(combined.localizedCaseInsensitiveContains("later on"), combined)
     }
 
     func testFallbackStoryCompressesNoisyDaysIntoFewDiaryParagraphs() {
@@ -140,5 +211,13 @@ final class DailyMarkdownComposerTests: XCTestCase {
             privacyAction: .keep,
             contentHash: UUID().uuidString
         )
+    }
+}
+
+private extension Character {
+    var isChineseIdeograph: Bool {
+        unicodeScalars.contains { scalar in
+            (0x4E00...0x9FFF).contains(scalar.value)
+        }
     }
 }

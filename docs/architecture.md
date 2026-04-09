@@ -53,7 +53,7 @@ flowchart LR
 
 ### 3.1 App 启动
 
-应用入口是 [KnowYouApp.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/KnowYouApp.swift)。
+应用入口是 [KnowYouApp.swift](/Users/wutianfu/Code/know-you/KnowYou/KnowYouApp.swift)。
 
 启动后会创建单例式的 `AppState`，并挂接三个界面入口：
 
@@ -65,7 +65,7 @@ flowchart LR
 
 ### 3.2 AppState 作为编排中心
 
-[AppState.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/App/AppState.swift) 是当前实现的运行时编排中心，负责：
+[AppState.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppState.swift) 是当前实现的运行时编排中心，负责：
 
 - 创建并持有 `AppEnvironment`
 - 启动剪贴板监听
@@ -75,13 +75,13 @@ flowchart LR
 - 触发“按天刷新”与“历史日补跑”
 - 在 onboarding 完成时应用 vault 目录，并持久化完成状态
 
-`AppEnvironment` 本身则负责组装主要依赖，包括数据库、隐私过滤器、采集器、composer 与 summarizer，见 [AppEnvironment.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/App/AppEnvironment.swift)。
+`AppEnvironment` 本身则负责组装主要依赖，包括数据库、隐私过滤器、采集器、composer 与 summarizer，见 [AppEnvironment.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppEnvironment.swift)。
 
 ## 4. 采集层
 
 ### 4.1 剪贴板采集
 
-[ClipboardWatcher.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/Services/Clipboard/ClipboardWatcher.swift) 基于 `NSPasteboard.general` 轮询系统剪贴板。
+[ClipboardWatcher.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Clipboard/ClipboardWatcher.swift) 基于 `NSPasteboard.general` 轮询系统剪贴板。
 
 当前实现特征：
 
@@ -97,8 +97,8 @@ flowchart LR
 
 通知采集分为读取与导入两段：
 
-- [NotificationDatabaseReader.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/Services/Notifications/NotificationDatabaseReader.swift)
-- [NotificationCollector.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/Services/Notifications/NotificationCollector.swift)
+- [NotificationDatabaseReader.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Notifications/NotificationDatabaseReader.swift)
+- [NotificationCollector.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Notifications/NotificationCollector.swift)
 
 `NotificationDatabaseReader` 负责：
 
@@ -118,7 +118,7 @@ flowchart LR
 
 ## 5. 隐私与数据边界
 
-[PrivacyFilter.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/Services/Privacy/PrivacyFilter.swift) 是所有持久化前的统一边界。
+[PrivacyFilter.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Privacy/PrivacyFilter.swift) 是所有持久化前的统一边界。
 
 当前规则比较直接，分为三类：
 
@@ -141,7 +141,7 @@ flowchart LR
 
 ### 6.1 事件与运行记录
 
-[DatabaseWriter.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/Services/Storage/DatabaseWriter.swift) 基于 GRDB 封装 SQLite。
+[DatabaseWriter.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Storage/DatabaseWriter.swift) 基于 GRDB 封装 SQLite。
 
 当前主要职责：
 
@@ -156,7 +156,7 @@ flowchart LR
 - `events`
 - `runs`
 
-事件的核心结构定义在 [EventRecord.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/Domain/EventRecord.swift)：
+事件的核心结构定义在 [EventRecord.swift](/Users/wutianfu/Code/know-you/KnowYou/Domain/EventRecord.swift)：
 
 - `id`
 - `sourceType`
@@ -170,7 +170,7 @@ flowchart LR
 
 ### 6.2 文件工件
 
-文件工件由 [AppEnvironment.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/App/AppEnvironment.swift) 写入 vault 目录。
+文件工件由 [AppEnvironment.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppEnvironment.swift) 写入 vault 目录。
 
 当前默认位置：
 
@@ -188,7 +188,7 @@ flowchart LR
 
 ### 7.1 DailyStory 数据模型
 
-结构定义在 [DailyNote.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/Domain/DailyNote.swift)。
+结构定义在 [DailyNote.swift](/Users/wutianfu/Code/know-you/KnowYou/Domain/DailyNote.swift)。
 
 当前模型为：
 
@@ -214,7 +214,7 @@ flowchart LR
 
 ### 7.3 Fallback story
 
-[DailyMarkdownComposer.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/Services/Composer/DailyMarkdownComposer.swift) 同时承担：
+[DailyMarkdownComposer.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Composer/DailyMarkdownComposer.swift) 同时承担：
 
 - fallback story 生成
 - summarizer prompt 构造
@@ -235,7 +235,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 ### 7.4 Summarizer 抽象
 
-总结器协议定义在 [CloudSummarizer.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/Services/Summary/CloudSummarizer.swift)：
+总结器协议定义在 [CloudSummarizer.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Summary/CloudSummarizer.swift)：
 
 - `SummaryGenerating`
 
@@ -244,7 +244,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - `CloudSummarizer`
 - `CLISummarizer`
 
-配置入口定义在 [SummarizerConfig.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/Services/Summary/SummarizerConfig.swift)，支持：
+配置入口定义在 [SummarizerConfig.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Summary/SummarizerConfig.swift)，支持：
 
 - `None`
 - `OpenAI API`
@@ -260,7 +260,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 ## 8. 调度与自动化
 
-[DailyAutomationPlanner.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/Services/Scheduling/DailyAutomationPlanner.swift) 负责决定待补跑日期。
+[DailyAutomationPlanner.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Scheduling/DailyAutomationPlanner.swift) 负责决定待补跑日期。
 
 自动化行为由 `AppState.startAutomation()` 触发，规则是：
 
@@ -275,7 +275,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 ### 9.1 Onboarding
 
-[OnboardingView.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/UI/Onboarding/OnboardingView.swift) 当前是一个五步 story onboarding，由 [OnboardingContent.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/UI/Onboarding/OnboardingContent.swift) 提供静态叙事内容与 CTA。
+[OnboardingView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Onboarding/OnboardingView.swift) 当前是一个五步 story onboarding，由 [OnboardingContent.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Onboarding/OnboardingContent.swift) 提供静态叙事内容与 CTA。
 
 步骤顺序固定为：
 
@@ -304,7 +304,7 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 
 ### 9.2 主阅读器
 
-主阅读器入口在 [MainWindowView.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/UI/MainWindowView.swift)，当前是三栏结构：
+主阅读器入口在 [MainWindowView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/MainWindowView.swift)，当前是三栏结构：
 
 - 左栏：日期列表
 - 中栏：DailyStory 段落阅读
@@ -312,8 +312,8 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 
 对应子视图：
 
-- [DateSidebarView.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/UI/Sidebar/DateSidebarView.swift)
-- [DailyMarkdownView.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/UI/Reader/DailyMarkdownView.swift)
+- [DateSidebarView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Sidebar/DateSidebarView.swift)
+- [DailyMarkdownView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Reader/DailyMarkdownView.swift)
 
 当前界面能力包括：
 
@@ -342,7 +342,7 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 
 ### 9.4 设置页与菜单栏
 
-[SettingsView.swift](/Users/wutianfu/.config/superpowers/worktrees/know-you/onboarding-story-flow/KnowYou/UI/Settings/SettingsView.swift) 提供：
+[SettingsView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Settings/SettingsView.swift) 提供：
 
 - 服务状态检查
 - Full Disk Access 跳转

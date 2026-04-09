@@ -21,6 +21,11 @@ struct SettingsView: View {
 
             Section("Services") {
                 StatusRow(
+                    label: "Clipboard capture",
+                    detail: appState.clipboardServiceDetail,
+                    ok: appState.clipboardStatus.isActive
+                )
+                StatusRow(
                     label: "Local storage",
                     detail: appState.environment?.vaultURL.path ?? "Unavailable",
                     ok: appState.environment != nil
@@ -28,9 +33,8 @@ struct SettingsView: View {
                 StatusRow(
                     label: "Notification import",
                     detail: appState.notificationStatus.availabilityMessage
-                        ?? (appState.notificationStatus.isDatabaseAvailable
-                            ? "Notification Center database found"
-                            : "Notification Center database not accessible — grant Full Disk Access in System Settings"),
+                        .map { "\($0) \(appState.notificationServiceDetail)" }
+                        ?? appState.notificationServiceDetail,
                     ok: appState.notificationStatus.isDatabaseAvailable
                 )
                 StatusRow(

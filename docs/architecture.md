@@ -57,11 +57,13 @@ flowchart LR
 
 启动后会创建单例式的 `AppState`，并挂接三个界面入口：
 
-- 主窗口
+- 主窗口（`WindowGroup(id: "main")`）
 - 菜单栏入口
 - Settings 窗口
 
 如果用户尚未完成 onboarding，则先进入五步 story flow；否则直接进入主阅读器。
+
+菜单栏中的 `Open Know You` 会显式调用 `openWindow(id: "main")` 并激活应用，因此主窗口既能由正常启动拉起，也能由菜单栏重新唤起。
 
 ### 3.2 AppState 作为编排中心
 
@@ -321,7 +323,8 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 - story 段落可点击选中
 - 右栏展示该段落关联的原始事件
 - 可展开 `View All Sources` 查看全日来源
-- 工具栏支持“重生成当前选中日期”
+- 中栏阅读区内支持“重生成当前选中日期”
+- 主界面不再依赖顶部 status banner 承载运行时状态
 
 ### 9.3 键盘焦点模型
 
@@ -358,6 +361,8 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 - 打开主窗口
 - 刷新选中日期
 - 进入 Settings
+
+当前运行时状态的主出口已经收敛为 Settings 与菜单栏，而不是主阅读器顶部 banner。
 
 ## 10. 关键数据流
 
@@ -410,6 +415,7 @@ sequenceDiagram
 - 当前原始事件来源只有两类：clipboard 与 notification
 - story 结构当前已经简化为单 section 的日记式输出，而不是多 section 报表
 - onboarding preview 使用静态叙事内容，不是从真实用户数据实时生成
+- 当前 Xcode 工程对本地 Debug 构建使用手动代码签名，以减少重启后 TCC 权限丢失带来的验证噪音
 
 ## 12. 设计取向总结
 

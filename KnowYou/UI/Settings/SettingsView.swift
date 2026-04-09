@@ -66,6 +66,14 @@ struct SettingsView: View {
             }
 
             Section("Summarizer") {
+                Text("Optional after onboarding. Your vault, clipboard capture, and notification capture keep working even if you leave summarization off.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                Text("Set up Claude, Codex, Gemini, or OpenAI here whenever you want extra help shaping the daily story.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 Picker("Type", selection: $summarizerConfig.type) {
                     ForEach(SummarizerType.allCases, id: \.self) { type in
                         Text(type.displayName).tag(type)
@@ -93,7 +101,7 @@ struct SettingsView: View {
                         .font(.system(.body, design: .monospaced))
                 }
 
-                Button("Save") {
+                Button("Save Summarizer Settings") {
                     if !vaultPath.isEmpty {
                         appState.applyVaultURL(URL(fileURLWithPath: vaultPath, isDirectory: true))
                     }

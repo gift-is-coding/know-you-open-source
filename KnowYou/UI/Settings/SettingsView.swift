@@ -78,19 +78,26 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Picker("Type", selection: $summarizerConfig.type) {
-                    ForEach(SummarizerType.allCases, id: \.self) { type in
-                        Text(type.displayName).tag(type)
+                Picker("Type", selection: $summarizerConfig.defaultEngine) {
+                    ForEach(DiaryEngine.allCases, id: \.self) { engine in
+                        Text(engine.displayName).tag(engine)
                     }
                 }
                 .pickerStyle(.menu)
 
-                switch summarizerConfig.type {
+                switch summarizerConfig.defaultEngine {
                 case .none:
                     EmptyView()
                 case .openAI:
-                    SecureField("OpenAI API Key", text: $summarizerConfig.openAIKey)
-                        .textFieldStyle(.roundedBorder)
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("API base URL", text: $summarizerConfig.apiBaseURL)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(.body, design: .monospaced))
+                        TextField("Model", text: $summarizerConfig.apiModel)
+                            .textFieldStyle(.roundedBorder)
+                        SecureField("API token", text: $summarizerConfig.apiToken)
+                            .textFieldStyle(.roundedBorder)
+                    }
                 case .claudeCLI:
                     TextField("claude executable path", text: $summarizerConfig.claudeCLIPath)
                         .textFieldStyle(.roundedBorder)
@@ -101,6 +108,10 @@ struct SettingsView: View {
                         .font(.system(.body, design: .monospaced))
                 case .geminiCLI:
                     TextField("gemini executable path", text: $summarizerConfig.geminiCLIPath)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
+                case .openclawCLI:
+                    TextField("openclaw executable path", text: $summarizerConfig.openclawCLIPath)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(.body, design: .monospaced))
                 }

@@ -63,6 +63,16 @@ final class CLISummarizerTests: XCTestCase {
         XCTAssertEqual(stub.lastArguments?.first, prompt)
     }
 
+    func testOpenclawPassesPromptAsFirstArgument() async throws {
+        let stub = StubProcessRunner(output: "OK")
+        let summarizer = CLISummarizer(tool: .openclaw, executablePath: "/usr/local/bin/openclaw", runner: stub)
+        let prompt = "Reply with OK."
+
+        _ = try await summarizer.summarize(dayKey: "2026-04-07", markdown: prompt)
+
+        XCTAssertEqual(stub.lastArguments, [prompt])
+    }
+
     func testGeminiPassesPromptWithTextOutputFlag() async throws {
         let stub = StubProcessRunner(output: "Day summary.")
         let summarizer = CLISummarizer(tool: .gemini, executablePath: "/usr/local/bin/gemini", runner: stub)

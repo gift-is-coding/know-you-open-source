@@ -104,6 +104,7 @@ struct CLISummarizer: SummaryGenerating {
         case claude
         case codex
         case gemini
+        case openclaw
     }
 
     let tool: Tool
@@ -133,7 +134,7 @@ struct CLISummarizer: SummaryGenerating {
                 "-p", markdown,
                 "--output-format", "text",
             ]
-        case .codex:
+        case .codex, .openclaw:
             arguments = [markdown]
         }
         let raw = try await runner.run(executable: executablePath, arguments: arguments)

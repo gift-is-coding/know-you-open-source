@@ -1,45 +1,53 @@
 import Foundation
 
-enum SummarizerType: String, CaseIterable {
-    case none
-    case openAI
-    case claudeCLI
-    case codexCLI
-    case geminiCLI
-
-    var displayName: String {
-        switch self {
-        case .none: return "None"
-        case .openAI: return "OpenAI API"
-        case .claudeCLI: return "Claude Code (CLI)"
-        case .codexCLI: return "Codex (CLI)"
-        case .geminiCLI: return "Gemini (CLI)"
-        }
-    }
-}
-
 struct SummarizerConfig {
-    var type: SummarizerType
-    var openAIKey: String
+    var defaultEngine: DiaryEngine
     var claudeCLIPath: String
     var codexCLIPath: String
     var geminiCLIPath: String
+    var openclawCLIPath: String
+    var apiBaseURL: String
+    var apiModel: String
+    var apiToken: String
+
+    var type: DiaryEngine {
+        get { defaultEngine }
+        set { defaultEngine = newValue }
+    }
+
+    var openAIKey: String {
+        get { apiToken }
+        set { apiToken = newValue }
+    }
+
+    var apiConfigurationIsComplete: Bool {
+        validatedAPIBaseURL() != nil &&
+        !apiModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !apiToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     static let `default` = SummarizerConfig(
-        type: .none,
-        openAIKey: "",
+        defaultEngine: .none,
         claudeCLIPath: "/usr/local/bin/claude",
         codexCLIPath: "/usr/local/bin/codex",
-        geminiCLIPath: "/usr/local/bin/gemini"
+        geminiCLIPath: "/usr/local/bin/gemini",
+        openclawCLIPath: "/usr/local/bin/openclaw",
+        apiBaseURL: "https://api.openai.com/v1/responses",
+        apiModel: "gpt-5",
+        apiToken: ""
     )
 
     private enum Keys {
-        static let type = "summarizerType"
+        static let defaultEngine = "summarizerDefaultEngine"
+        static let legacyType = "summarizerType"
         static let claudeCLIPath = "summarizerClaudeCLIPath"
         static let codexCLIPath = "summarizerCodexCLIPath"
         static let geminiCLIPath = "summarizerGeminiCLIPath"
-        // openAIKey is stored in Keychain, not UserDefaults
-        static let openAIKey = "summarizerOpenAIKey"
+        static let openclawCLIPath = "summarizerOpenclawCLIPath"
+        static let apiBaseURL = "summarizerAPIBaseURL"
+        static let apiModel = "summarizerAPIModel"
+        static let apiToken = "summarizerAPIToken"
+        static let legacyOpenAIKey = "summarizerOpenAIKey"
     }
 
     func save(
@@ -47,14 +55,20 @@ struct SummarizerConfig {
         keychain: KeychainStoring = KeychainHelper.shared,
         keychainService: String = KeychainHelper.service
     ) {
-        defaults.set(type.rawValue, forKey: Keys.type)
+        defaults.set(defaultEngine.rawValue, forKey: Keys.defaultEngine)
+        defaults.set(defaultEngine.rawValue, forKey: Keys.legacyType)
         defaults.set(claudeCLIPath, forKey: Keys.claudeCLIPath)
         defaults.set(codexCLIPath, forKey: Keys.codexCLIPath)
         defaults.set(geminiCLIPath, forKey: Keys.geminiCLIPath)
-        if openAIKey.isEmpty {
-            keychain.delete(forKey: Keys.openAIKey, service: keychainService)
+        defaults.set(openclawCLIPath, forKey: Keys.openclawCLIPath)
+        defaults.set(apiBaseURL, forKey: Keys.apiBaseURL)
+        defaults.set(apiModel, forKey: Keys.apiModel)
+        if apiToken.isEmpty {
+            keychain.delete(forKey: Keys.apiToken, service: keychainService)
+            keychain.delete(forKey: Keys.legacyOpenAIKey, service: keychainService)
         } else {
-            keychain.save(openAIKey, forKey: Keys.openAIKey, service: keychainService)
+            keychain.save(apiToken, forKey: Keys.apiToken, service: keychainService)
+            keychain.save(apiToken, forKey: Keys.legacyOpenAIKey, service: keychainService)
         }
     }
 
@@ -63,24 +77,38 @@ struct SummarizerConfig {
         keychain: KeychainStoring = KeychainHelper.shared,
         keychainService: String = KeychainHelper.service
     ) -> SummarizerConfig {
-        let rawType = defaults.string(forKey: Keys.type) ?? ""
+        let rawType = defaults.string(forKey: Keys.defaultEngine)
+            ?? defaults.string(forKey: Keys.legacyType)
+            ?? ""
         return SummarizerConfig(
-            type: SummarizerType(rawValue: rawType) ?? .none,
-            openAIKey: keychain.load(forKey: Keys.openAIKey, service: keychainService) ?? "",
+            defaultEngine: DiaryEngine(rawValue: rawType) ?? .none,
             claudeCLIPath: defaults.string(forKey: Keys.claudeCLIPath) ?? SummarizerConfig.default.claudeCLIPath,
             codexCLIPath: defaults.string(forKey: Keys.codexCLIPath) ?? SummarizerConfig.default.codexCLIPath,
-            geminiCLIPath: defaults.string(forKey: Keys.geminiCLIPath) ?? SummarizerConfig.default.geminiCLIPath
+            geminiCLIPath: defaults.string(forKey: Keys.geminiCLIPath) ?? SummarizerConfig.default.geminiCLIPath,
+            openclawCLIPath: defaults.string(forKey: Keys.openclawCLIPath) ?? SummarizerConfig.default.openclawCLIPath,
+            apiBaseURL: defaults.string(forKey: Keys.apiBaseURL) ?? SummarizerConfig.default.apiBaseURL,
+            apiModel: defaults.string(forKey: Keys.apiModel) ?? SummarizerConfig.default.apiModel,
+            apiToken: keychain.load(forKey: Keys.apiToken, service: keychainService)
+                ?? keychain.load(forKey: Keys.legacyOpenAIKey, service: keychainService)
+                ?? ""
         )
     }
 
     func makeSummarizer(environment: [String: String] = ProcessInfo.processInfo.environment) -> SummaryGenerating? {
-        switch type {
+        switch defaultEngine {
         case .none:
             return nil
         case .openAI:
-            let key = openAIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !key.isEmpty else { return nil }
-            return CloudSummarizer(apiKey: key)
+            let key = apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedModel = apiModel.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard
+                !key.isEmpty,
+                !trimmedModel.isEmpty,
+                let url = validatedAPIBaseURL()
+            else {
+                return nil
+            }
+            return CloudSummarizer(apiKey: key, apiURL: url, model: trimmedModel)
         case .claudeCLI:
             guard let path = resolvedExecutablePath(configuredPath: claudeCLIPath, commandName: "claude", environment: environment) else {
                 return nil
@@ -96,6 +124,11 @@ struct SummarizerConfig {
                 return nil
             }
             return CLISummarizer(tool: .gemini, executablePath: path)
+        case .openclawCLI:
+            guard let path = resolvedExecutablePath(configuredPath: openclawCLIPath, commandName: "openclaw", environment: environment) else {
+                return nil
+            }
+            return CLISummarizer(tool: .openclaw, executablePath: path)
         }
     }
 
@@ -122,5 +155,24 @@ struct SummarizerConfig {
         }
 
         return nil
+    }
+
+    private func validatedAPIBaseURL() -> URL? {
+        let trimmedBaseURL = apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedBaseURL.isEmpty else {
+            return nil
+        }
+
+        guard
+            let components = URLComponents(string: trimmedBaseURL),
+            let scheme = components.scheme?.lowercased(),
+            scheme == "http" || scheme == "https",
+            components.host != nil,
+            let url = components.url
+        else {
+            return nil
+        }
+
+        return url
     }
 }

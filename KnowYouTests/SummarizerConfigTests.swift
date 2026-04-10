@@ -64,6 +64,76 @@ final class SummarizerConfigTests: XCTestCase {
         XCTAssertEqual(loaded.claudeCLIPath, "/opt/homebrew/bin/claude")
     }
 
+    func testSaveAndLoadRoundTripsOpenclawCLIPath() {
+        var config = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+        config.defaultEngine = .openclawCLI
+        config.openclawCLIPath = "/opt/homebrew/bin/openclaw"
+        config.save(to: defaults, keychain: keychain, keychainService: "tests")
+
+        let loaded = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+        XCTAssertEqual(loaded.defaultEngine, .openclawCLI)
+        XCTAssertEqual(loaded.openclawCLIPath, "/opt/homebrew/bin/openclaw")
+    }
+
+    func testSaveAndLoadRoundTripsOpenAICompatibleAPISettings() {
+        var config = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+        config.defaultEngine = .openAI
+        config.apiBaseURL = "https://example.com/v1/responses"
+        config.apiModel = "gpt-4.1-mini"
+        config.apiToken = "token-test-123"
+        config.save(to: defaults, keychain: keychain, keychainService: "tests")
+
+        let loaded = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+        XCTAssertEqual(loaded.defaultEngine, .openAI)
+        XCTAssertEqual(loaded.apiBaseURL, "https://example.com/v1/responses")
+        XCTAssertEqual(loaded.apiModel, "gpt-4.1-mini")
+        XCTAssertEqual(loaded.apiToken, "token-test-123")
+    }
+
+    func testMakeSummarizerRejectsMalformedAPIBaseURL() {
+        var config = SummarizerConfig.load(from: defaults)
+        config.defaultEngine = .openAI
+        config.apiBaseURL = "not-a-url"
+        config.apiModel = "gpt-4.1-mini"
+        config.apiToken = "token-test-123"
+
+        XCTAssertFalse(config.apiConfigurationIsComplete)
+        XCTAssertNil(config.makeSummarizer())
+    }
+
+    func testMakeSummarizerPlumbsCustomAPIBaseURLAndModelIntoCloudSummarizer() throws {
+        var config = SummarizerConfig.load(from: defaults)
+        config.defaultEngine = .openAI
+        config.apiBaseURL = "https://example.com/v1/responses"
+        config.apiModel = "gpt-4.1-mini"
+        config.apiToken = "token-test-123"
+
+        let summarizer = try XCTUnwrap(config.makeSummarizer() as? CloudSummarizer)
+        XCTAssertEqual(summarizer.apiURL, URL(string: "https://example.com/v1/responses"))
+        XCTAssertEqual(summarizer.model, "gpt-4.1-mini")
+    }
+
+    func testLoadReadsLegacyEngineAndOpenAIKeychainValues() {
+        defaults.set("openAI", forKey: "summarizerType")
+        keychain.save("sk-legacy-123", forKey: "summarizerOpenAIKey", service: "tests")
+
+        let loaded = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+
+        XCTAssertEqual(loaded.defaultEngine, .openAI)
+        XCTAssertEqual(loaded.apiToken, "sk-legacy-123")
+    }
+
+    func testMakeSummarizerReturnsNilForIncompleteOpenAICompatibleAPISettings() {
+        var config = SummarizerConfig.load(from: defaults)
+        config.defaultEngine = .openAI
+        config.apiBaseURL = ""
+        config.apiModel = ""
+        config.apiToken = ""
+
+        XCTAssertFalse(config.apiConfigurationIsComplete)
+        XCTAssertNil(config.makeSummarizer())
+    }
+
     func testKeychainStorageIsScopedByService() {
         var config = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests-a")
         config.type = .openAI

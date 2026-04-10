@@ -195,8 +195,8 @@ final class SummarizerConfigTests: XCTestCase {
         config.type = .geminiCLI
         config.geminiCLIPath = "/usr/local/bin/gemini"
 
-        let summarizer = config.makeSummarizer(environment: ["PATH": temporaryDirectoryURL.path])
+        let summarizer = try XCTUnwrap(config.makeSummarizer(environment: ["PATH": temporaryDirectoryURL.path]) as? CLISummarizer)
 
-        XCTAssertNotNil(summarizer)
+        XCTAssertEqual(summarizer.executablePath, executableURL.path)
     }
 }

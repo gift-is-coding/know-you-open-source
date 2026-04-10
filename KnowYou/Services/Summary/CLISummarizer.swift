@@ -121,25 +121,9 @@ struct CLISummarizer: SummaryGenerating {
     }
 
     func summarize(dayKey: String, markdown: String) async throws -> String {
-        let arguments: [String]
-        switch tool {
-        case .claude:
-            arguments = [
-                "-p", markdown,
-                "--output-format", "json",
-                "--json-schema", Self.dailyStorySchema,
-            ]
-        case .gemini:
-            arguments = [
-                "-p", markdown,
-                "--output-format", "text",
-            ]
-        case .codex, .openclaw:
-            arguments = [markdown]
-        }
-        let raw = try await runner.run(executable: executablePath, arguments: arguments)
+        let raw = try await runner.run(executable: executablePath, arguments: arguments(for: markdown))
         let trimmed: String
-        if tool == .claude, let structuredOutput = extractClaudeStructuredOutput(from: raw) {
+        if tool == .claude, let structuredOutput = validatedClaudeStoryJSON(from: raw) {
             trimmed = structuredOutput
         } else {
             trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -147,11 +131,65 @@ struct CLISummarizer: SummaryGenerating {
         return trimmed.isEmpty ? "Summary unavailable." : trimmed
     }
 
+    func smokeTest(prompt: String? = nil) async throws -> String {
+        let probePrompt = prompt ?? smokeTestPrompt()
+        let output = try await runner.run(executable: executablePath, arguments: arguments(for: probePrompt))
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw CocoaError(
+                .executableLoad,
+                userInfo: [NSLocalizedDescriptionKey: "Smoke test returned empty output"]
+            )
+        }
+        if tool == .claude {
+            if let validatedStructuredOutput = validatedClaudeStoryJSON(from: trimmed) {
+                return validatedStructuredOutput
+            }
+
+            guard let validatedRawOutput = validatedDailyStoryJSON(from: trimmed) else {
+                throw CocoaError(
+                    .executableLoad,
+                    userInfo: [NSLocalizedDescriptionKey: "Smoke test returned invalid Claude output"]
+                )
+            }
+            return validatedRawOutput
+        }
+        guard let validatedRawOutput = validatedDailyStoryJSON(from: trimmed) else {
+            throw CocoaError(
+                .executableLoad,
+                userInfo: [NSLocalizedDescriptionKey: "Smoke test returned invalid story JSON"]
+            )
+        }
+        return validatedRawOutput
+    }
+
+    func arguments(for prompt: String) -> [String] {
+        switch tool {
+        case .claude:
+            return [
+                "-p", prompt,
+                "--output-format", "json",
+                "--json-schema", Self.dailyStorySchema,
+            ]
+        case .gemini:
+            return [
+                "-p", prompt,
+                "--output-format", "text",
+            ]
+        case .codex, .openclaw:
+            return [prompt]
+        }
+    }
+
+    private func smokeTestPrompt() -> String {
+        "Return a minimal valid JSON object that matches the daily story schema."
+    }
+
     private func extractClaudeStructuredOutput(from raw: String) -> String? {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let data = trimmed.data(using: .utf8),
-              let envelope = try? JSONDecoder().decode(ClaudeStructuredEnvelope.self, from: data),
-              let structuredOutput = envelope.structuredOutput,
+        guard let normalized = normalizedStoryJSONText(from: raw),
+              let data = normalized.data(using: .utf8),
+              let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let structuredOutput = envelope["structured_output"],
               let structuredData = try? JSONSerialization.data(withJSONObject: structuredOutput, options: []),
               let structuredText = String(data: structuredData, encoding: .utf8)
         else {
@@ -160,66 +198,99 @@ struct CLISummarizer: SummaryGenerating {
 
         return structuredText
     }
-}
 
-private struct ClaudeStructuredEnvelope: Decodable {
-    let structuredOutput: JSONObjectValue?
-
-    enum CodingKeys: String, CodingKey {
-        case structuredOutput = "structured_output"
-    }
-}
-
-private enum JSONObjectValue: Decodable {
-    case string(String)
-    case number(Double)
-    case bool(Bool)
-    case array([JSONObjectValue])
-    case object([String: JSONObjectValue])
-    case null
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if container.decodeNil() {
-            self = .null
-        } else if let value = try? container.decode(Bool.self) {
-            self = .bool(value)
-        } else if let value = try? container.decode(Double.self) {
-            self = .number(value)
-        } else if let value = try? container.decode(String.self) {
-            self = .string(value)
-        } else if let value = try? container.decode([String: JSONObjectValue].self) {
-            self = .object(value)
-        } else if let value = try? container.decode([JSONObjectValue].self) {
-            self = .array(value)
-        } else {
-            throw DecodingError.typeMismatch(
-                JSONObjectValue.self,
-                DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unsupported JSON value")
-            )
+    private func validatedClaudeStoryJSON(from raw: String) -> String? {
+        if let structuredOutput = extractClaudeStructuredOutput(from: raw),
+           let validatedStructuredOutput = validatedDailyStoryJSON(from: structuredOutput) {
+            return validatedStructuredOutput
         }
+
+        return validatedDailyStoryJSON(from: raw)
     }
 
-    var foundationValue: Any {
-        switch self {
-        case .string(let value):
-            return value
-        case .number(let value):
-            return value
-        case .bool(let value):
-            return value
-        case .array(let values):
-            return values.map(\.foundationValue)
-        case .object(let values):
-            return values.mapValues(\.foundationValue)
-        case .null:
-            return NSNull()
+    private func validatedDailyStoryJSON(from raw: String) -> String? {
+        guard
+            let normalized = normalizedStoryJSONText(from: raw),
+            let data = normalized.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data),
+            isValidDailyStoryPayload(json),
+            let serialized = try? JSONSerialization.data(withJSONObject: json, options: []),
+            let text = String(data: serialized, encoding: .utf8)
+        else {
+            return nil
         }
-    }
-}
 
-private extension JSONSerialization {
-    static func data(withJSONObject value: JSONObjectValue, options: WritingOptions = []) throws -> Data {
-        try data(withJSONObject: value.foundationValue, options: options)
+        return text
+    }
+
+    private func normalizedStoryJSONText(from raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
+        if let fenced = strippedMarkdownCodeFence(from: trimmed) {
+            return fenced
+        }
+
+        return trimmed
+    }
+
+    private func strippedMarkdownCodeFence(from raw: String) -> String? {
+        let lines = raw.components(separatedBy: .newlines)
+        guard
+            lines.count >= 3,
+            let firstLine = lines.first?.trimmingCharacters(in: .whitespacesAndNewlines),
+            firstLine.hasPrefix("```"),
+            let lastLine = lines.last?.trimmingCharacters(in: .whitespacesAndNewlines),
+            lastLine == "```"
+        else {
+            return nil
+        }
+
+        return lines.dropFirst().dropLast().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func isValidDailyStoryPayload(_ value: Any) -> Bool {
+        guard let object = value as? [String: Any],
+              object.keys.count == 1,
+              let sections = object["sections"] as? [Any],
+              !sections.isEmpty
+        else {
+            return false
+        }
+
+        return sections.allSatisfy { sectionValue in
+            guard let section = sectionValue as? [String: Any],
+                  section.keys.count == 2,
+                  let id = section["id"] as? String,
+                  id == "daily-journal",
+                  let paragraphs = section["paragraphs"] as? [Any],
+                  !paragraphs.isEmpty,
+                  paragraphs.count <= 4
+            else {
+                return false
+            }
+
+            return paragraphs.allSatisfy { paragraphValue in
+                guard let paragraph = paragraphValue as? [String: Any],
+                      paragraph.keys.count == 2,
+                      let text = paragraph["text"] as? String,
+                      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      let sourceEventIDs = paragraph["sourceEventIDs"] as? [Any],
+                      !sourceEventIDs.isEmpty
+                else {
+                    return false
+                }
+
+                return sourceEventIDs.allSatisfy { sourceValue in
+                    guard let sourceID = sourceValue as? String else {
+                        return false
+                    }
+
+                    return UUID(uuidString: sourceID) != nil
+                }
+            }
+        }
     }
 }

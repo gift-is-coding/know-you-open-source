@@ -110,29 +110,29 @@ struct SummarizerConfig {
             }
             return CloudSummarizer(apiKey: key, apiURL: url, model: trimmedModel)
         case .claudeCLI:
-            guard let path = resolvedExecutablePath(configuredPath: claudeCLIPath, commandName: "claude", environment: environment) else {
+            guard let path = Self.resolvedExecutablePath(configuredPath: claudeCLIPath, commandName: "claude", environment: environment) else {
                 return nil
             }
             return CLISummarizer(tool: .claude, executablePath: path)
         case .codexCLI:
-            guard let path = resolvedExecutablePath(configuredPath: codexCLIPath, commandName: "codex", environment: environment) else {
+            guard let path = Self.resolvedExecutablePath(configuredPath: codexCLIPath, commandName: "codex", environment: environment) else {
                 return nil
             }
             return CLISummarizer(tool: .codex, executablePath: path)
         case .geminiCLI:
-            guard let path = resolvedExecutablePath(configuredPath: geminiCLIPath, commandName: "gemini", environment: environment) else {
+            guard let path = Self.resolvedExecutablePath(configuredPath: geminiCLIPath, commandName: "gemini", environment: environment) else {
                 return nil
             }
             return CLISummarizer(tool: .gemini, executablePath: path)
         case .openclawCLI:
-            guard let path = resolvedExecutablePath(configuredPath: openclawCLIPath, commandName: "openclaw", environment: environment) else {
+            guard let path = Self.resolvedExecutablePath(configuredPath: openclawCLIPath, commandName: "openclaw", environment: environment) else {
                 return nil
             }
             return CLISummarizer(tool: .openclaw, executablePath: path)
         }
     }
 
-    private func resolvedExecutablePath(
+    static func resolvedExecutablePath(
         configuredPath: String,
         commandName: String,
         environment: [String: String]

@@ -125,6 +125,8 @@ struct CLISummarizer: SummaryGenerating {
         let trimmed: String
         if tool == .claude, let structuredOutput = validatedClaudeStoryJSON(from: raw) {
             trimmed = structuredOutput
+        } else if let extractedText = extractedTextOutput(from: raw) {
+            trimmed = extractedText
         } else {
             trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         }
@@ -134,7 +136,7 @@ struct CLISummarizer: SummaryGenerating {
     func smokeTest(prompt: String? = nil) async throws -> String {
         let probePrompt = prompt ?? smokeTestPrompt()
         let output = try await runner.run(executable: executablePath, arguments: arguments(for: probePrompt))
-        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = extractedTextOutput(from: output) ?? output.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw CocoaError(
                 .executableLoad,
@@ -153,6 +155,10 @@ struct CLISummarizer: SummaryGenerating {
                 )
             }
             return validatedRawOutput
+        }
+        if acceptsAcknowledgementSmokeTest,
+           normalizedAcknowledgement(from: trimmed) != nil {
+            return trimmed
         }
         guard let validatedRawOutput = validatedDailyStoryJSON(from: trimmed) else {
             throw CocoaError(
@@ -174,15 +180,41 @@ struct CLISummarizer: SummaryGenerating {
         case .gemini:
             return [
                 "-p", prompt,
-                "--output-format", "text",
+                "--output-format", "json",
             ]
-        case .codex, .openclaw:
-            return [prompt]
+        case .codex:
+            return [
+                "exec",
+                "--skip-git-repo-check",
+                prompt,
+            ]
+        case .openclaw:
+            return [
+                "agent",
+                "--agent", "main",
+                "--message", prompt,
+                "--local",
+                "--json",
+            ]
         }
     }
 
     private func smokeTestPrompt() -> String {
-        "Return a minimal valid JSON object that matches the daily story schema."
+        switch tool {
+        case .claude:
+            return "Return a minimal valid JSON object that matches the daily story schema."
+        case .codex, .gemini, .openclaw:
+            return "Reply with OK."
+        }
+    }
+
+    private var acceptsAcknowledgementSmokeTest: Bool {
+        switch tool {
+        case .claude:
+            return false
+        case .codex, .gemini, .openclaw:
+            return true
+        }
     }
 
     private func extractClaudeStructuredOutput(from raw: String) -> String? {
@@ -221,6 +253,102 @@ struct CLISummarizer: SummaryGenerating {
         }
 
         return text
+    }
+
+    private func extractedTextOutput(from raw: String) -> String? {
+        switch tool {
+        case .claude:
+            return nil
+        case .codex:
+            return extractedCodexResponse(from: raw)
+        case .gemini:
+            return extractedGeminiResponse(from: raw)
+        case .openclaw:
+            return extractedOpenclawPayloadText(from: raw)
+        }
+    }
+
+    private func extractedCodexResponse(from raw: String) -> String? {
+        if let jsonObject = extractedJSONObject(from: raw),
+           let data = try? JSONSerialization.data(withJSONObject: jsonObject, options: []),
+           let text = String(data: data, encoding: .utf8) {
+            return text
+        }
+
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let fenced = strippedMarkdownCodeFence(from: trimmed) {
+            return fenced
+        }
+
+        let lines = raw
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        return lines.last
+    }
+
+    private func extractedGeminiResponse(from raw: String) -> String? {
+        guard
+            let object = extractedJSONObject(from: raw),
+            let response = object["response"] as? String
+        else {
+            return nil
+        }
+
+        return response.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func extractedOpenclawPayloadText(from raw: String) -> String? {
+        guard
+            let object = extractedJSONObject(from: raw),
+            let payloads = object["payloads"] as? [[String: Any]],
+            let firstPayload = payloads.first,
+            let text = firstPayload["text"] as? String
+        else {
+            return nil
+        }
+
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func extractedJSONObject(from raw: String) -> [String: Any]? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
+        let indices = trimmed.indices.filter { trimmed[$0] == "{" }
+        for index in indices {
+            let candidate = String(trimmed[index...])
+            guard let data = candidate.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else {
+                continue
+            }
+
+            return object
+        }
+
+        return nil
+    }
+
+    private func normalizedAcknowledgement(from raw: String) -> String? {
+        let normalized = raw
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".!?"))
+
+        guard !normalized.isEmpty else {
+            return nil
+        }
+
+        switch normalized {
+        case "ok", "okay":
+            return normalized
+        default:
+            return nil
+        }
     }
 
     private func normalizedStoryJSONText(from raw: String) -> String? {

@@ -51,7 +51,7 @@ final class CLISummarizerTests: XCTestCase {
         XCTAssertEqual(result, raw)
     }
 
-    func testCodexPassesPromptAsFirstArgument() async throws {
+    func testCodexPassesPromptViaExecSubcommand() async throws {
         let stub = StubProcessRunner(output: "Focused on shipping.")
         let summarizer = CLISummarizer(tool: .codex, executablePath: "/usr/local/bin/codex", runner: stub)
         let prompt = "Return strict JSON for the day journal."
@@ -59,8 +59,7 @@ final class CLISummarizerTests: XCTestCase {
         let result = try await summarizer.summarize(dayKey: "2026-04-07", markdown: prompt)
 
         XCTAssertEqual(result, "Focused on shipping.")
-        XCTAssertEqual(stub.lastArguments?.count, 1)
-        XCTAssertEqual(stub.lastArguments?.first, prompt)
+        XCTAssertEqual(stub.lastArguments, ["exec", "--skip-git-repo-check", prompt])
     }
 
     func testClaudeSmokeTestAcceptsStructuredOutputPayload() async throws {
@@ -118,7 +117,7 @@ final class CLISummarizerTests: XCTestCase {
     func testTextSmokeTestAcceptsRawValidStoryJSON() async throws {
         let raw = #"{"sections":[{"id":"daily-journal","paragraphs":[{"text":"A productive day.","sourceEventIDs":["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]}]}]}"#
 
-        for tool in [CLISummarizer.Tool.codex, .gemini, .openclaw] {
+        for tool in [CLISummarizer.Tool.gemini] {
             let stub = StubProcessRunner(output: raw)
             let summarizer = CLISummarizer(tool: tool, executablePath: "/usr/local/bin/\(tool.rawValue)", runner: stub)
 
@@ -133,15 +132,8 @@ final class CLISummarizerTests: XCTestCase {
             XCTAssertEqual(firstSection["id"] as? String, "daily-journal")
             XCTAssertEqual(firstParagraph["text"] as? String, "A productive day.")
             XCTAssertEqual(firstParagraph["sourceEventIDs"] as? [String], ["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"])
-            switch tool {
-            case .gemini:
-                XCTAssertEqual(stub.lastArguments?.prefix(2).map { $0 }, ["-p", "Return a minimal valid JSON object that matches the daily story schema."])
-                XCTAssertEqual(stub.lastArguments?.suffix(2).map { $0 }, ["--output-format", "text"])
-            case .codex, .openclaw:
-                XCTAssertEqual(stub.lastArguments, ["Return a minimal valid JSON object that matches the daily story schema."])
-            case .claude:
-                XCTFail("Claude is covered by dedicated smoke-test cases")
-            }
+            XCTAssertEqual(stub.lastArguments?.prefix(2).map { $0 }, ["-p", "Reply with OK."])
+            XCTAssertEqual(stub.lastArguments?.suffix(2).map { $0 }, ["--output-format", "json"])
         }
     }
 
@@ -154,30 +146,29 @@ final class CLISummarizerTests: XCTestCase {
         let stub = StubProcessRunner(output: fenced)
         let summarizer = CLISummarizer(tool: .codex, executablePath: "/usr/local/bin/codex", runner: stub)
 
-        let result = try await summarizer.smokeTest()
+        let result = try await summarizer.smokeTest(prompt: "Return a minimal valid JSON object that matches the daily story schema.")
 
         let payload = try XCTUnwrap(result.data(using: .utf8))
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: payload) as? [String: Any])
         let sections = try XCTUnwrap(object["sections"] as? [[String: Any]])
         let firstSection = try XCTUnwrap(sections.first)
         XCTAssertEqual(firstSection["id"] as? String, "daily-journal")
-        XCTAssertEqual(stub.lastArguments, ["Return a minimal valid JSON object that matches the daily story schema."])
+        XCTAssertEqual(stub.lastArguments, ["exec", "--skip-git-repo-check", "Return a minimal valid JSON object that matches the daily story schema."])
     }
 
-    func testOpenclawPassesPromptAsFirstArgument() async throws {
-        let raw = #"{"sections":[{"id":"daily-journal","paragraphs":[{"text":"A productive day.","sourceEventIDs":["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]}]}]}"#
+    func testOpenclawPassesPromptViaAgentCommand() async throws {
+        let raw = #"{"payloads":[{"text":"OK","mediaUrl":null}]}"#
         let stub = StubProcessRunner(output: raw)
         let summarizer = CLISummarizer(tool: .openclaw, executablePath: "/usr/local/bin/openclaw", runner: stub)
-        let prompt = "Return a minimal valid JSON object that matches the daily story schema."
+        let prompt = "Reply with OK."
 
         let result = try await summarizer.smokeTest(prompt: prompt)
 
-        let payload = try XCTUnwrap(result.data(using: .utf8))
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: payload) as? [String: Any])
-        let sections = try XCTUnwrap(object["sections"] as? [[String: Any]])
-        let firstSection = try XCTUnwrap(sections.first)
-        XCTAssertEqual(firstSection["id"] as? String, "daily-journal")
-        XCTAssertEqual(stub.lastArguments, [prompt])
+        XCTAssertEqual(result, "OK")
+        XCTAssertEqual(
+            stub.lastArguments,
+            ["agent", "--agent", "main", "--message", prompt, "--local", "--json"]
+        )
     }
 
     func testCodexSmokeTestRejectsUnrelatedNonEmptyOutput() async throws {
@@ -187,6 +178,22 @@ final class CLISummarizerTests: XCTestCase {
         await XCTAssertThrowsErrorAsync(
             try await summarizer.smokeTest(prompt: "Return a minimal valid JSON object that matches the daily story schema.")
         )
+    }
+
+    func testCodexSmokeTestAcceptsTrailingAcknowledgementFromExecOutput() async throws {
+        let stub = StubProcessRunner(output: """
+        codex
+        OK
+        tokens used
+        33,968
+        OK
+        """)
+        let summarizer = CLISummarizer(tool: .codex, executablePath: "/usr/local/bin/codex", runner: stub)
+
+        let result = try await summarizer.smokeTest()
+
+        XCTAssertEqual(result, "OK")
+        XCTAssertEqual(stub.lastArguments, ["exec", "--skip-git-repo-check", "Reply with OK."])
     }
 
     func testClaudeSmokeTestRejectsMalformedStructuredOutput() async throws {
@@ -200,14 +207,44 @@ final class CLISummarizerTests: XCTestCase {
     }
 
     func testGeminiPassesPromptWithTextOutputFlag() async throws {
-        let stub = StubProcessRunner(output: "Day summary.")
+        let stub = StubProcessRunner(output: """
+        Loaded cached credentials.
+        {"response":"Day summary.","stats":{"models":{}}}
+        """)
         let summarizer = CLISummarizer(tool: .gemini, executablePath: "/usr/local/bin/gemini", runner: stub)
         let prompt = "Return strict JSON for the day journal."
 
-        _ = try await summarizer.summarize(dayKey: "2026-04-07", markdown: prompt)
+        let result = try await summarizer.summarize(dayKey: "2026-04-07", markdown: prompt)
 
+        XCTAssertEqual(result, "Day summary.")
         XCTAssertEqual(stub.lastArguments?.prefix(2).map { $0 }, ["-p", prompt])
-        XCTAssertEqual(stub.lastArguments?.suffix(2).map { $0 }, ["--output-format", "text"])
+        XCTAssertEqual(stub.lastArguments?.suffix(2).map { $0 }, ["--output-format", "json"])
+    }
+
+    func testGeminiSmokeTestAcceptsAcknowledgementFromJSONEnvelope() async throws {
+        let stub = StubProcessRunner(output: """
+        Loaded cached credentials.
+        {"response":"OK","stats":{"models":{}}}
+        """)
+        let summarizer = CLISummarizer(tool: .gemini, executablePath: "/usr/local/bin/gemini", runner: stub)
+
+        let result = try await summarizer.smokeTest()
+
+        XCTAssertEqual(result, "OK")
+        XCTAssertEqual(stub.lastArguments?.prefix(2).map { $0 }, ["-p", "Reply with OK."])
+    }
+
+    func testOpenclawSummarizeExtractsPayloadTextFromJSONEnvelope() async throws {
+        let raw = """
+        [plugins] feishu_doc: Registered feishu_doc, feishu_app_scopes
+        {"payloads":[{"text":"Story output","mediaUrl":null}],"meta":{"durationMs":10}}
+        """
+        let stub = StubProcessRunner(output: raw)
+        let summarizer = CLISummarizer(tool: .openclaw, executablePath: "/usr/local/bin/openclaw", runner: stub)
+
+        let result = try await summarizer.summarize(dayKey: "2026-04-07", markdown: "prompt")
+
+        XCTAssertEqual(result, "Story output")
     }
 
     func testEmptyOutputReturnsUnavailableMessage() async throws {

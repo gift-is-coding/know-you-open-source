@@ -67,6 +67,31 @@ private actor ProbeGate {
     }
 }
 
+private actor ProbeStartTracker {
+    private var started: Set<DiaryEngine> = []
+    private var waiters: [(Set<DiaryEngine>, CheckedContinuation<Void, Never>)] = []
+
+    func markStarted(_ engine: DiaryEngine) {
+        started.insert(engine)
+        var remaining: [(Set<DiaryEngine>, CheckedContinuation<Void, Never>)] = []
+        for (required, continuation) in waiters {
+            if required.isSubset(of: started) {
+                continuation.resume()
+            } else {
+                remaining.append((required, continuation))
+            }
+        }
+        waiters = remaining
+    }
+
+    func waitUntilStarted(_ engines: Set<DiaryEngine>) async {
+        guard !engines.isSubset(of: started) else { return }
+        await withCheckedContinuation { continuation in
+            waiters.append((engines, continuation))
+        }
+    }
+}
+
 @MainActor
 final class MainWindowViewModelTests: XCTestCase {
     private var engineDefaultsSuiteName: String!
@@ -1111,6 +1136,49 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.detail, "Executable found. Retest required.")
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.lastVerifiedAt, nil)
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.configurationSignature, "codex|\(updatedExecutableURL.path)")
+    }
+
+    func testRetestAllEnginesStartsProbesInParallel() async {
+        let codexGate = ProbeGate()
+        let tracker = ProbeStartTracker()
+
+        let appState = AppState(
+            bootstrapServices: false,
+            probeEngine: { engine, _, _ in
+                await tracker.markStarted(engine)
+                if engine == .codexCLI {
+                    await codexGate.markStarted()
+                    await codexGate.waitForRelease()
+                }
+                return EngineProbeResult(
+                    engine: engine,
+                    state: .green,
+                    detail: "Smoke test succeeded.",
+                    verifiedAt: Date(timeIntervalSince1970: 1_775_310_000)
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let retestTask = Task {
+            await appState.retestAllEngines()
+        }
+
+        await codexGate.waitUntilStarted()
+        await tracker.waitUntilStarted([.codexCLI, .geminiCLI])
+
+        XCTAssertTrue(appState.isRetestingEngines)
+        XCTAssertTrue(appState.retestingEngines.contains(.codexCLI))
+
+        await codexGate.release()
+        await retestTask.value
+
+        XCTAssertFalse(appState.isRetestingEngines)
+        XCTAssertTrue(appState.retestingEngines.isEmpty)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
+        XCTAssertEqual(appState.engineStatuses[.geminiCLI]?.state, .green)
     }
 
     func testSummarizerStatusReflectsDegradedActiveEngineAfterConfigInvalidation() throws {

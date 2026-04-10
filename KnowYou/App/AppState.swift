@@ -364,11 +364,51 @@ final class AppState {
     }
 
     func retestAllEngines() async {
+        let engines = DiaryEngine.allCases.filter { $0 != .none }
+        let configSnapshot = summarizerConfig
+        let signatures = Dictionary(
+            uniqueKeysWithValues: engines.map { engine in
+                (
+                    engine,
+                    Self.configurationSignature(
+                        for: engine,
+                        config: configSnapshot,
+                        environment: processEnvironment
+                    )
+                )
+            }
+        )
+
+        retestingEngines.formUnion(engines)
         isRetestingEngines = true
-        for engine in DiaryEngine.allCases where engine != .none {
-            await retestEngine(engine)
+
+        await withTaskGroup(of: (DiaryEngine, EngineProbeResult, String).self) { group in
+            for engine in engines {
+                let signature = signatures[engine] ?? ""
+                group.addTask { [probeEngine, processEnvironment] in
+                    let result = await probeEngine(engine, configSnapshot, processEnvironment)
+                    return (engine, result, signature)
+                }
+            }
+
+            for await (engine, result, signature) in group {
+                if Self.configurationSignature(
+                    for: engine,
+                    config: summarizerConfig,
+                    environment: processEnvironment
+                ) == signature {
+                    engineStatuses[engine] = EngineRuntimeStatus(
+                        state: result.state,
+                        detail: result.detail,
+                        lastVerifiedAt: result.verifiedAt ?? engineStatuses[engine]?.lastVerifiedAt,
+                        configurationSignature: signature
+                    )
+                }
+
+                retestingEngines.remove(engine)
+                isRetestingEngines = !retestingEngines.isEmpty
+            }
         }
-        isRetestingEngines = false
     }
 
     func retestEngine(_ engine: DiaryEngine) async {

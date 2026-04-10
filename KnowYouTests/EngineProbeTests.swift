@@ -125,7 +125,7 @@ final class EngineProbeTests: XCTestCase {
         XCTAssertEqual(runner.invocations.first?.executable, executableURL.path)
         XCTAssertEqual(
             runner.invocations.first?.arguments,
-            ["Return a minimal valid JSON object that matches the daily story schema."]
+            ["exec", "--skip-git-repo-check", "Reply with OK."]
         )
     }
 
@@ -203,7 +203,7 @@ final class EngineProbeTests: XCTestCase {
         XCTAssertEqual(runner.invocations.count, 1)
         XCTAssertEqual(
             runner.invocations.first?.arguments,
-            ["Return a minimal valid JSON object that matches the daily story schema."]
+            ["agent", "--agent", "main", "--message", "Reply with OK.", "--local", "--json"]
         )
     }
 
@@ -228,7 +228,7 @@ final class EngineProbeTests: XCTestCase {
         XCTAssertEqual(runner.invocations.count, 1)
         XCTAssertEqual(
             runner.invocations.first?.arguments,
-            ["Return a minimal valid JSON object that matches the daily story schema."]
+            ["exec", "--skip-git-repo-check", "Reply with OK."]
         )
     }
 

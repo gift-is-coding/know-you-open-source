@@ -147,6 +147,9 @@ struct DailyMarkdownComposer {
     }
 
     func storyPrompt(dayKey: String, events: [EventRecord]) -> String {
+        let language = dominantNarrativeLanguage(for: events)
+        let journalHeadings = journalHeadings(for: language)
+        let forbiddenHeading = language == .chinese ? "# 今日节奏" : "# Today's Rhythm"
         let eventLines = events.enumerated().map { index, event in
             let eventID = event.id.uuidString
             return """
@@ -175,19 +178,21 @@ struct DailyMarkdownComposer {
         - Write in first person (I / 我). Never describe the user in third person. Write as if the user is writing their own diary.
         - Base the content strictly on the source events. Do not invent, infer, or embellish anything not directly supported by the events.
         - Follow the actual chronology at the thread level, but you may merge related events into the same workstream when it reads more naturally.
-        - Write all narration in the same dominant language as the source events.
-        - If the day is mainly Chinese, write all prose in Chinese.
-        - Do not mix Chinese and English in the narration except for app names or product names that already appear in the source material.
+        - Determine whether the day is mainly English or mainly Chinese from the source events.
+        - Write all diary prose and all diary headings in that same dominant language.
+        - If the day is mainly English, use English for all diary prose and headings.
+        - If the day is mainly Chinese, use Chinese for all diary prose and headings.
+        - Do not mix Chinese and English in the diary except for app names or product names that already appear in the source material.
         - The final combined markdown across paragraph texts must render exactly these first-level headings, in this order:
-          1. # 你今天做得很棒
-          2. # 今日总结
-          3. # 详情
-          4. # 待办事项
-        - Do not emit any other first-level heading. In particular, do not include # 今日节奏.
-        - The "你今天做得很棒" section must be positive, encouraging, and grounded in concrete things the person actually did well that day. It should feel supportive, not generic or fake.
-        - The "今日总结" section should use markdown bullet points.
-        - The "详情" section should use markdown second-level headings (##) for the main workstreams or threads of the day.
-        - The "待办事项" section should use markdown task list items like - [ ].
+          1. \(journalHeadings.encouragement)
+          2. \(journalHeadings.summary)
+          3. \(journalHeadings.details)
+          4. \(journalHeadings.todo)
+        - Do not emit any other first-level heading. In particular, do not include \(forbiddenHeading).
+        - The "\(journalHeadings.encouragement)" section must be positive, encouraging, and grounded in concrete things the person actually did well that day. It should feel supportive, not generic or fake.
+        - The "\(journalHeadings.summary)" section should use markdown bullet points.
+        - The "\(journalHeadings.details)" section should use markdown second-level headings (##) for the main workstreams or threads of the day.
+        - The "\(journalHeadings.todo)" section should use markdown task list items like - [ ].
         - Markdown headings, bullet lists, and task lists are allowed inside paragraph text and should be used deliberately.
         - Only reference sourceEventIDs that appear below.
         - Put all narrative paragraphs inside the single daily-journal section.
@@ -201,6 +206,30 @@ struct DailyMarkdownComposer {
         Source events:
         \(eventLines)
         """
+    }
+
+    private func journalHeadings(for language: NarrativeLanguage) -> (
+        encouragement: String,
+        summary: String,
+        details: String,
+        todo: String
+    ) {
+        switch language {
+        case .english:
+            return (
+                encouragement: "# You did a good job today",
+                summary: "# Summary",
+                details: "# Details",
+                todo: "# To-do"
+            )
+        case .chinese:
+            return (
+                encouragement: "# 你今天做得很棒",
+                summary: "# 今日总结",
+                details: "# 详情",
+                todo: "# 待办事项"
+            )
+        }
     }
 
     func parseStory(dayKey: String, raw: String) -> DailyStory? {

@@ -116,6 +116,54 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("markdown"), prompt)
     }
 
+    func testStoryPromptUsesEnglishDiaryHeadingsForEnglishDominantDay() {
+        let composer = DailyMarkdownComposer()
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: "2026-04-10",
+                text: "Refined the prompt to switch headings by language",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "prompt-english-headings"
+            )
+        ]
+
+        let prompt = composer.storyPrompt(dayKey: "2026-04-10", events: events)
+
+        XCTAssertTrue(prompt.contains("# You did a good job today"), prompt)
+        XCTAssertTrue(prompt.contains("# Summary"), prompt)
+        XCTAssertTrue(prompt.contains("# Details"), prompt)
+        XCTAssertTrue(prompt.contains("# To-do"), prompt)
+        XCTAssertFalse(prompt.contains("# 你今天做得很棒"), prompt)
+    }
+
+    func testStoryPromptExplicitlyTiesOutputLanguageToInputLanguage() {
+        let composer = DailyMarkdownComposer()
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: "2026-04-10",
+                text: "Refined the prompt to switch headings by language",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "prompt-language-rule"
+            )
+        ]
+
+        let prompt = composer.storyPrompt(dayKey: "2026-04-10", events: events)
+
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("determine whether the day is mainly English or mainly Chinese"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("use English for all diary prose and headings"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("use Chinese for all diary prose and headings"), prompt)
+    }
+
     func testComposerAddsLightweightMarkdownStructure() {
         let composer = DailyMarkdownComposer()
         let paragraph = DailyStoryParagraph(

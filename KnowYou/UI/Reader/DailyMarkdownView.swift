@@ -154,27 +154,183 @@ struct DailyMarkdownPresentation: Equatable {
 }
 
 enum DailyMarkdownRenderer {
-    enum Content {
-        case attributed(AttributedString)
-        case plainText(String)
+    struct TaskItem: Equatable {
+        let isCompleted: Bool
+        let content: InlineContent
     }
 
-    static func content(
-        from markdown: String,
-        parser: (String) throws -> AttributedString = parseAttributedString(from:)
-    ) -> Content {
-        do {
-            return .attributed(try parser(markdown))
-        } catch {
-            return .plainText(markdown)
+    struct OrderedItem: Equatable {
+        let index: Int
+        let content: InlineContent
+    }
+
+    struct InlineContent: Equatable {
+        let attributed: AttributedString?
+        let plainText: String
+
+        init(markdown: String) {
+            plainText = markdown
+            attributed = try? AttributedString(
+                markdown: markdown,
+                options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+            )
         }
     }
 
-    private static func parseAttributedString(from markdown: String) throws -> AttributedString {
-        try AttributedString(
-            markdown: markdown,
-            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
-        )
+    enum Block: Equatable {
+        case heading(level: Int, content: InlineContent)
+        case paragraph(InlineContent)
+        case bulletList([InlineContent])
+        case orderedList([OrderedItem])
+        case taskList([TaskItem])
+        case quote([InlineContent])
+        case codeBlock(String)
+    }
+
+    static func blocks(from markdown: String) -> [Block] {
+        let lines = markdown
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+
+        var blocks: [Block] = []
+        var index = 0
+
+        while index < lines.count {
+            let rawLine = lines[index]
+            let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
+
+            if trimmed.isEmpty {
+                index += 1
+                continue
+            }
+
+            if trimmed.hasPrefix("```") {
+                var codeLines: [String] = []
+                index += 1
+                while index < lines.count && lines[index].trimmingCharacters(in: .whitespaces) != "```" {
+                    codeLines.append(lines[index])
+                    index += 1
+                }
+                if index < lines.count {
+                    index += 1
+                }
+                blocks.append(.codeBlock(codeLines.joined(separator: "\n")))
+                continue
+            }
+
+            if let heading = parseHeading(from: trimmed) {
+                blocks.append(heading)
+                index += 1
+                continue
+            }
+
+            if let task = parseTaskItem(from: trimmed) {
+                var items = [task]
+                index += 1
+                while index < lines.count, let nextTask = parseTaskItem(from: lines[index].trimmingCharacters(in: .whitespaces)) {
+                    items.append(nextTask)
+                    index += 1
+                }
+                blocks.append(.taskList(items))
+                continue
+            }
+
+            if let bullet = parseBulletItem(from: trimmed) {
+                var items = [bullet]
+                index += 1
+                while index < lines.count, let nextBullet = parseBulletItem(from: lines[index].trimmingCharacters(in: .whitespaces)) {
+                    items.append(nextBullet)
+                    index += 1
+                }
+                blocks.append(.bulletList(items))
+                continue
+            }
+
+            if let ordered = parseOrderedItem(from: trimmed) {
+                var items = [ordered]
+                index += 1
+                while index < lines.count, let nextOrdered = parseOrderedItem(from: lines[index].trimmingCharacters(in: .whitespaces)) {
+                    items.append(nextOrdered)
+                    index += 1
+                }
+                blocks.append(.orderedList(items))
+                continue
+            }
+
+            if trimmed.hasPrefix(">") {
+                var quotes = [InlineContent(markdown: String(trimmed.dropFirst().trimmingCharacters(in: .whitespaces)))]
+                index += 1
+                while index < lines.count {
+                    let nextTrimmed = lines[index].trimmingCharacters(in: .whitespaces)
+                    guard nextTrimmed.hasPrefix(">") else { break }
+                    quotes.append(InlineContent(markdown: String(nextTrimmed.dropFirst().trimmingCharacters(in: .whitespaces))))
+                    index += 1
+                }
+                blocks.append(.quote(quotes))
+                continue
+            }
+
+            var paragraphLines = [trimmed]
+            index += 1
+            while index < lines.count {
+                let nextTrimmed = lines[index].trimmingCharacters(in: .whitespaces)
+                if nextTrimmed.isEmpty || startsNewBlock(nextTrimmed) {
+                    break
+                }
+                paragraphLines.append(nextTrimmed)
+                index += 1
+            }
+            blocks.append(.paragraph(InlineContent(markdown: paragraphLines.joined(separator: "\n"))))
+        }
+
+        return blocks
+    }
+
+    private static func startsNewBlock(_ line: String) -> Bool {
+        parseHeading(from: line) != nil
+            || parseTaskItem(from: line) != nil
+            || parseBulletItem(from: line) != nil
+            || parseOrderedItem(from: line) != nil
+            || line.hasPrefix(">")
+            || line.hasPrefix("```")
+    }
+
+    private static func parseHeading(from line: String) -> Block? {
+        guard line.hasPrefix("#") else { return nil }
+        let hashes = line.prefix(while: { $0 == "#" }).count
+        guard hashes > 0, hashes <= 6 else { return nil }
+        let text = line.dropFirst(hashes).trimmingCharacters(in: .whitespaces)
+        guard text.isEmpty == false else { return nil }
+        return .heading(level: hashes, content: InlineContent(markdown: text))
+    }
+
+    private static func parseBulletItem(from line: String) -> InlineContent? {
+        guard line.hasPrefix("- ") || line.hasPrefix("* ") else { return nil }
+        let content = String(line.dropFirst(2))
+        guard content.isEmpty == false else { return nil }
+        return InlineContent(markdown: content)
+    }
+
+    private static func parseTaskItem(from line: String) -> TaskItem? {
+        guard line.hasPrefix("- [") || line.hasPrefix("* [") else { return nil }
+        guard line.count >= 6 else { return nil }
+        let marker = line[line.index(line.startIndex, offsetBy: 3)]
+        guard marker == " " || marker == "x" || marker == "X" else { return nil }
+        guard line[line.index(line.startIndex, offsetBy: 4)] == "]" else { return nil }
+        let contentStart = line.index(line.startIndex, offsetBy: 6)
+        let content = String(line[contentStart...])
+        return TaskItem(isCompleted: marker == "x" || marker == "X", content: InlineContent(markdown: content))
+    }
+
+    private static func parseOrderedItem(from line: String) -> OrderedItem? {
+        let digits = line.prefix(while: { $0.isNumber })
+        guard digits.isEmpty == false else { return nil }
+        let remainder = line.dropFirst(digits.count)
+        guard remainder.hasPrefix(". ") else { return nil }
+        let content = String(remainder.dropFirst(2))
+        guard let index = Int(digits), content.isEmpty == false else { return nil }
+        return OrderedItem(index: index, content: InlineContent(markdown: content))
     }
 }
 
@@ -182,20 +338,116 @@ private struct MarkdownParagraphContent: View {
     let markdown: String
 
     var body: some View {
-        markdownText
-            .font(.body)
-            .multilineTextAlignment(.leading)
-            .lineSpacing(3)
-            .allowsHitTesting(false)
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(DailyMarkdownRenderer.blocks(from: markdown).enumerated()), id: \.offset) { _, block in
+                MarkdownBlockView(block: block)
+            }
+        }
+        .multilineTextAlignment(.leading)
+        .textSelection(.enabled)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct MarkdownBlockView: View {
+    let block: DailyMarkdownRenderer.Block
+
+    var body: some View {
+        switch block {
+        case .heading(let level, let content):
+            inlineText(content)
+                .font(headingFont(for: level))
+                .fontWeight(.semibold)
+                .padding(.top, level == 1 ? 10 : 4)
+        case .paragraph(let content):
+            inlineText(content)
+                .font(.body)
+                .lineSpacing(3)
+        case .bulletList(let items):
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .top, spacing: 10) {
+                        Text("\u{2022}")
+                            .font(.body.weight(.semibold))
+                            .padding(.top, 1)
+                        inlineText(item)
+                            .font(.body)
+                            .lineSpacing(3)
+                    }
+                }
+            }
+        case .orderedList(let items):
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .top, spacing: 10) {
+                        Text("\(item.index).")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        inlineText(item.content)
+                            .font(.body)
+                            .lineSpacing(3)
+                    }
+                }
+            }
+        case .taskList(let items):
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: item.isCompleted ? "checkmark.square.fill" : "square")
+                            .foregroundStyle(item.isCompleted ? Color.accentColor : Color.secondary)
+                            .padding(.top, 2)
+                        inlineText(item.content)
+                            .font(.body)
+                            .lineSpacing(3)
+                    }
+                }
+            }
+        case .quote(let items):
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    inlineText(item)
+                        .font(.body)
+                        .italic()
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.leading, 14)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.35))
+                    .frame(width: 3)
+            }
+        case .codeBlock(let code):
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(verbatim: code)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(12)
+            .background(Color.primary.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
     }
 
     @ViewBuilder
-    private var markdownText: some View {
-        switch DailyMarkdownRenderer.content(from: markdown) {
-        case .attributed(let attributed):
+    private func inlineText(_ content: DailyMarkdownRenderer.InlineContent) -> some View {
+        if let attributed = content.attributed {
             Text(attributed)
-        case .plainText(let rawText):
-            Text(verbatim: rawText)
+        } else {
+            Text(verbatim: content.plainText)
+        }
+    }
+
+    private func headingFont(for level: Int) -> Font {
+        switch level {
+        case 1:
+            return .title2
+        case 2:
+            return .title3
+        case 3:
+            return .headline
+        default:
+            return .body
         }
     }
 }
@@ -216,8 +468,7 @@ struct StorySourceDetailView: View {
                                 .font(.title3.weight(.semibold))
 
                             if let selectedParagraph {
-                                Text(.init(selectedParagraph.text))
-                                    .font(.callout)
+                                MarkdownParagraphContent(markdown: selectedParagraph.text)
                                     .foregroundStyle(.secondary)
                             } else {
                                 Text("Select a story paragraph to inspect the original source items.")

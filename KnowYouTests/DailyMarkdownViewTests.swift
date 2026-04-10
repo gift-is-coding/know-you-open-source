@@ -65,44 +65,88 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.paragraphs, [first, second])
     }
 
-    func testMarkdownRendererUsesAttributedStringWhenParsingSucceeds() {
-        let markdown = "A paragraph with **bold** and `code`."
+    func testMarkdownRendererParsesHeadingBulletAndTaskBlocks() {
+        let markdown = """
+        # 今日总结
 
-        let content = DailyMarkdownRenderer.content(
-            from: markdown,
-            parser: { value in
-                try AttributedString(
-                    markdown: value,
-                    options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
-                )
-            }
-        )
+        - 第一项
+        - 第二项
 
-        switch content {
-        case .attributed(let attributed):
-            XCTAssertEqual(String(attributed.characters), "A paragraph with bold and code.")
-        case .plainText:
-            XCTFail("Expected attributed markdown content")
+        - [ ] 跟进会议
+        - [x] 完成文档
+        """
+
+        let blocks = DailyMarkdownRenderer.blocks(from: markdown)
+
+        XCTAssertEqual(blocks.count, 3)
+
+        guard case .heading(let level, let heading) = blocks[0] else {
+            return XCTFail("Expected heading block")
         }
+        XCTAssertEqual(level, 1)
+        XCTAssertEqual(heading.plainText, "今日总结")
+
+        guard case .bulletList(let bullets) = blocks[1] else {
+            return XCTFail("Expected bullet list block")
+        }
+        XCTAssertEqual(bullets.map(\.plainText), ["第一项", "第二项"])
+
+        guard case .taskList(let tasks) = blocks[2] else {
+            return XCTFail("Expected task list block")
+        }
+        XCTAssertEqual(tasks.map(\.isCompleted), [false, true])
+        XCTAssertEqual(tasks.map(\.content.plainText), ["跟进会议", "完成文档"])
     }
 
-    func testMarkdownRendererFallsBackToPlainTextWhenParserThrows() {
-        let markdown = "A paragraph with **bold** and `code`."
+    func testMarkdownRendererKeepsDetailsParagraphAsSingleMarkdownBlockSequence() {
+        let markdown = """
+        # 详情
 
-        let content = DailyMarkdownRenderer.content(
-            from: markdown,
-            parser: { _ in throw MarkdownRenderTestError.expectedFailure }
+        ## 软件研发智能体沟通
+
+        第一段内容。
+
+        ## Know You 产品与定位
+
+        第二段内容。
+        """
+
+        let paragraph = DailyStoryParagraph(
+            id: "daily-journal-2",
+            text: markdown,
+            sourceEventIDs: [UUID(), UUID()]
+        )
+        let story = DailyStory(
+            dayKey: "2026-04-09",
+            generatedAt: Date(timeIntervalSince1970: 0),
+            sections: [
+                DailyStorySection(id: "daily-journal", title: "", paragraphs: [paragraph])
+            ]
         )
 
-        switch content {
-        case .attributed:
-            XCTFail("Expected plain text fallback")
-        case .plainText(let value):
-            XCTAssertEqual(value, markdown)
-        }
-    }
-}
+        let presentation = DailyMarkdownPresentation(story: story)
+        let blocks = DailyMarkdownRenderer.blocks(from: paragraph.text)
 
-private enum MarkdownRenderTestError: Error {
-    case expectedFailure
+        XCTAssertEqual(presentation.paragraphs.count, 1)
+        XCTAssertEqual(presentation.paragraphs.first?.id, "daily-journal-2")
+        XCTAssertEqual(blocks.count, 5)
+
+        guard case .heading(let firstLevel, let firstHeading) = blocks[0] else {
+            return XCTFail("Expected first heading")
+        }
+        XCTAssertEqual(firstLevel, 1)
+        XCTAssertEqual(firstHeading.plainText, "详情")
+
+        guard case .heading(let secondLevel, let secondHeading) = blocks[1] else {
+            return XCTFail("Expected second heading")
+        }
+        XCTAssertEqual(secondLevel, 2)
+        XCTAssertEqual(secondHeading.plainText, "软件研发智能体沟通")
+
+        guard case .heading(let thirdLevel, let thirdHeading) = blocks[3] else {
+            return XCTFail("Expected third heading")
+        }
+        XCTAssertEqual(thirdLevel, 2)
+        XCTAssertEqual(thirdHeading.plainText, "Know You 产品与定位")
+    }
 }

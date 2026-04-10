@@ -55,7 +55,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 
 ### 4.5 在失败时理解发生了什么
 
-用户应能看到通知导入是否可用、summarizer 是否可用、最近一次刷新是否成功，而不是只看到“没有内容”。
+用户应能看到通知导入是否可用、日记引擎是否可用、最近一次刷新是否成功，而不是只看到“没有内容”。
 
 ## 5. 功能范围
 
@@ -72,11 +72,13 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - story-first 三栏阅读器
 - 段落级 source link
 - 五步 onboarding 与 settings 配置
-- 可选 summarizer：
+- 顶部 diary engine selector
+- 可选 diary engine：
   - OpenAI API
   - Claude Code CLI
   - Codex CLI
   - Gemini CLI
+  - Openclaw CLI
 
 ### 5.2 Out of Scope
 
@@ -176,13 +178,14 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 用户必须能够配置：
 
 - vault 目录
-- summarizer 类型
-- 对应的 API key 或 CLI 路径
+- diary engine 默认项
+- 对应的 API token 或 CLI 路径
 
 配置入口包括：
 
 - 首次 onboarding 中的故事化五步流程
-- Settings 页面
+- 主窗口右上角 diary engine selector
+- Settings 页面中的次级状态入口
 
 onboarding 的配置约束为：
 
@@ -193,7 +196,7 @@ onboarding 的配置约束为：
 - `preview` 步必须先于权限申请出现，让用户先看到接近真实阅读器的 diary 结果
 - `permissions` 步必须解释每项权限与最终 story 质量的关系，而不是只展示系统术语
 - vault 目录选择必须保留在 onboarding 中，但不应作为第一屏主任务
-- summarizer 配置不得阻塞用户完成首次 onboarding；它应作为 Settings 中的可选增强配置保留
+- diary engine 配置不得阻塞用户完成首次 onboarding；它应作为阅读器中的可选增强能力保留
 
 ## 6.8 自动化需求
 
@@ -208,7 +211,8 @@ onboarding 的配置约束为：
 
 - 剪贴板服务状态
 - 通知导入可用性
-- summarizer 是否已配置
+- 当前默认 diary engine
+- 五个 diary engine 的灰/黄/绿状态
 - 最近一次刷新结果
 - 自动化运行概览
 
@@ -257,7 +261,7 @@ Markdown 导出也应服务于这个目标：
 ### 8.2 可解释性
 
 - 当通知缺失时，用户应知道是数据库缺失、权限不足还是 macOS 未持久化
-- 当 summarizer 失效时，用户应知道系统已回退到本地 fallback
+- 当 diary engine 失效时，用户应知道系统已回退到本地 fallback
 - onboarding 中的权限说明必须先讲清用户价值，再引导用户进入系统设置
 - 主阅读器本身不应为了状态解释重新退化回配置面板或顶部状态 banner
 

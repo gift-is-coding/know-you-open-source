@@ -79,6 +79,14 @@ flowchart LR
 
 `AppEnvironment` 本身则负责组装主要依赖，包括数据库、隐私过滤器、采集器、composer 与 summarizer，见 [AppEnvironment.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppEnvironment.swift)。
 
+当前 `AppState` 还负责日记引擎状态编排：
+
+- 持有 `SummarizerConfig`
+- 暴露 `defaultEngine`
+- 为五个引擎维护 `engineStatuses`
+- 触发 `refreshEngineStatuses()`、`retestEngine(_:)`、`retestAllEngines()`
+- 保证只有绿色引擎可以成为默认项，`.none` 是唯一允许的禁用例外
+
 ## 4. 采集层
 
 ### 4.1 剪贴板采集
@@ -268,15 +276,18 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - `Claude Code (CLI)`
 - `Codex (CLI)`
 - `Gemini (CLI)`
+- `Openclaw (CLI)`
 
 其中：
 
-- OpenAI key 存 Keychain
-- CLI 路径存 UserDefaults
-- 若未显式配置 summarizer，启动时也会尝试读取 `OPENAI_API_KEY`
+- API token 存 Keychain
+- `defaultEngine`、CLI 路径、`apiBaseURL`、`apiModel` 存 UserDefaults
+- `CloudSummarizer` 走 OpenAI-compatible Responses API，不再依赖启动时读取 `OPENAI_API_KEY`
 - `CloudSummarizer` 已兼容 OpenAI Responses API 的两类文本返回形式：
   - 顶层 `output_text`
   - `output[].content[].text`
+- `EngineProbe` 会对 CLI/API 引擎做最小 smoke test，并产出灰/黄/绿三色状态
+- 若持久化的默认引擎在重启时无法证明仍可用，`AppState` 会把活动默认引擎归一到 `.none`，避免未验证引擎被直接重新激活
 
 ## 8. 调度与自动化
 
@@ -345,6 +356,10 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 - 可展开 `View All Sources` 查看全日来源
 - 中栏阅读区内支持“重生成当前选中日期”
 - 主界面不再依赖顶部 status banner 承载运行时状态
+- 窗口右上角提供 `DiaryEngineSelectorButton`
+- 一级面板列出 `Claude / Codex / Gemini / Openclaw / API` 五个引擎及状态灯
+- 只有绿色引擎允许直接切为默认项
+- API 行会进入 `APIDetailSheet`，配置 `baseURL`、`model`、`token` 并执行 `Test Connection`
 
 需要注意的是，当前实现虽然在 `AppState` 中已经保存了从 `.md` 提取出来的 `selectedSourceNotesMarkdown`，但主阅读器仍然不在中栏重复显示 `Source Notes`；来源追溯继续主要通过右栏 source detail 完成。
 
@@ -372,10 +387,10 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 - 服务状态检查
 - Full Disk Access 跳转
 - vault 目录设置
-- summarizer 配置
+- diary engine 状态总览
 - 自动化状态查看
 
-其中 summarizer 区域明确标记为 onboarding 之后的可选增强配置，用于接入 Claude、Codex、Gemini 或 OpenAI。
+Settings 不再承担默认引擎选择和 API token 编辑的主流程；这些操作已经迁移到主窗口右上角 selector。Settings 现在只保留次级状态总览与 vault/权限相关操作。
 
 菜单栏入口用于：
 

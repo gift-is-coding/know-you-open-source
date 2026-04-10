@@ -95,7 +95,14 @@ struct SummarizerConfig {
     }
 
     func makeSummarizer(environment: [String: String] = ProcessInfo.processInfo.environment) -> SummaryGenerating? {
-        switch defaultEngine {
+        makeSummarizer(for: defaultEngine, environment: environment)
+    }
+
+    func makeSummarizer(
+        for engine: DiaryEngine,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> SummaryGenerating? {
+        switch engine {
         case .none:
             return nil
         case .openAI:

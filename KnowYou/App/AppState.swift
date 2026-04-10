@@ -44,6 +44,13 @@ struct SummarizerRuntimeStatus {
     var lastError: String?
 }
 
+struct EngineRuntimeStatus: Equatable {
+    var state: EngineIndicatorState = .gray
+    var detail: String = "Not configured."
+    var lastVerifiedAt: Date?
+    var configurationSignature: String = ""
+}
+
 @MainActor
 @Observable
 final class AppState {
@@ -58,7 +65,10 @@ final class AppState {
     var clipboardStatus = ClipboardMonitorStatus()
     var notificationStatus = NotificationImportStatus()
     var dayRefreshStatus = DayRefreshStatus()
-    var summarizerStatus = SummarizerRuntimeStatus()
+    var engineStatuses: [DiaryEngine: EngineRuntimeStatus]
+    var defaultEngine: DiaryEngine
+    var isRetestingEngines = false
+    var retestingEngines: Set<DiaryEngine> = []
     var selectedContentVersion = 0
     var selectedStory: DailyStory?
     var selectedStoryParagraphID: String?
@@ -70,13 +80,107 @@ final class AppState {
     private(set) var environment: AppEnvironment?
     @ObservationIgnored private var automationTimer: Timer?
     @ObservationIgnored private var paragraphSelectionByDay: [String: String] = [:]
+    @ObservationIgnored private let userDefaults: UserDefaults
+    @ObservationIgnored private let keychain: KeychainStoring
+    @ObservationIgnored private let keychainService: String
+    @ObservationIgnored private let processEnvironment: [String: String]
+    @ObservationIgnored private let probeEngine: @Sendable (DiaryEngine, SummarizerConfig, [String: String]) async -> EngineProbeResult
+    @ObservationIgnored private var summarizerConfig: SummarizerConfig
 
-    init(environment: AppEnvironment? = nil, bootstrapServices: Bool = true) {
+    var summarizerStatus: SummarizerRuntimeStatus {
+        get {
+            let status = engineStatuses[defaultEngine] ?? Self.makeBaselineStatus(
+                for: defaultEngine,
+                config: summarizerConfig,
+                environment: processEnvironment
+            )
+            let isActiveEngineConfigured = defaultEngine != .none && status.state != .gray
+            return SummarizerRuntimeStatus(
+                mode: defaultEngine.displayName,
+                isConfigured: isActiveEngineConfigured || environment?.summarizer != nil,
+                lastCompletedAt: status.lastVerifiedAt,
+                lastError: status.state == .green || (defaultEngine == .none && environment?.summarizer == nil)
+                    ? nil
+                    : status.detail
+            )
+        }
+        set {
+            engineStatuses[defaultEngine] = EngineRuntimeStatus(
+                state: Self.state(for: newValue),
+                detail: newValue.lastError
+                    ?? (newValue.isConfigured ? "Ready." : "Not configured."),
+                lastVerifiedAt: newValue.lastCompletedAt,
+                configurationSignature: Self.configurationSignature(
+                    for: defaultEngine,
+                    config: summarizerConfig,
+                    environment: processEnvironment
+                )
+            )
+        }
+    }
+
+    init(
+        environment: AppEnvironment? = nil,
+        bootstrapServices: Bool = true,
+        summarizerConfig: SummarizerConfig? = nil,
+        probeEngine: @escaping @Sendable (DiaryEngine, SummarizerConfig, [String: String]) async -> EngineProbeResult = { engine, config, environment in
+            await EngineProbe().probe(engine: engine, config: config, environment: environment)
+        },
+        processEnvironment: [String: String] = ProcessInfo.processInfo.environment,
+        userDefaults: UserDefaults = .standard,
+        keychain: KeychainStoring = KeychainHelper.shared,
+        keychainService: String = KeychainHelper.service
+    ) {
+        let explicitSummarizerConfig = summarizerConfig
+        self.userDefaults = userDefaults
+        self.keychain = keychain
+        self.keychainService = keychainService
+        self.processEnvironment = processEnvironment
+        self.probeEngine = probeEngine
+        self.summarizerConfig = summarizerConfig ?? SummarizerConfig.load(
+            from: userDefaults,
+            keychain: keychain,
+            keychainService: keychainService
+        )
+        let loadedDefaultEngine = self.summarizerConfig.defaultEngine
+        if explicitSummarizerConfig == nil, let injectedSummarizer = environment?.summarizer {
+            self.summarizerConfig = Self.reconciledConfig(
+                from: self.summarizerConfig,
+                with: injectedSummarizer
+            )
+        }
+        let initialEngineStatuses = Self.makeInitialEngineStatuses(
+            config: self.summarizerConfig,
+            environment: processEnvironment
+        )
+        self.engineStatuses = initialEngineStatuses
+        self.defaultEngine = Self.initialDefaultEngine(
+            explicitConfigProvided: explicitSummarizerConfig != nil,
+            config: &self.summarizerConfig,
+            environment: environment?.summarizer,
+            engineStatuses: initialEngineStatuses
+        )
+        if explicitSummarizerConfig == nil,
+           environment?.summarizer == nil,
+           self.summarizerConfig.defaultEngine != loadedDefaultEngine {
+            self.summarizerConfig.save(
+                to: userDefaults,
+                keychain: keychain,
+                keychainService: keychainService
+            )
+        }
+
         if let environment {
             self.environment = environment
+            if explicitSummarizerConfig != nil {
+                environment.summarizer = self.summarizerConfig.makeSummarizer(
+                    for: defaultEngine,
+                    environment: processEnvironment
+                )
+            }
             clipboardStatus.isActive = true
             updateNotificationAccessStatus(using: environment.notificationReader)
-            summarizerStatus = Self.makeSummarizerStatus(from: environment.summarizer)
+            refreshEngineStatuses()
             refreshNotesIndex()
             return
         }
@@ -91,7 +195,10 @@ final class AppState {
             let environment = try AppEnvironment(
                 databasePath: databaseURL.path,
                 vaultURL: vaultURL,
-                summarizer: AppState.makeSummarizer(),
+                summarizer: self.summarizerConfig.makeSummarizer(
+                    for: defaultEngine,
+                    environment: processEnvironment
+                ),
                 onClipboardCapture: { [weak self] snapshot in
                     Task { @MainActor in
                         self?.recordClipboardCapture(snapshot)
@@ -103,7 +210,7 @@ final class AppState {
             self.environment = environment
             clipboardStatus.isActive = true
             updateNotificationAccessStatus(using: environment.notificationReader)
-            summarizerStatus = Self.makeSummarizerStatus(from: environment.summarizer)
+            refreshEngineStatuses()
             refreshNotesIndex()
             statusMessage = "Capture services ready"
             startAutomation()
@@ -175,12 +282,23 @@ final class AppState {
     }
 
     func applySummarizerConfig(_ config: SummarizerConfig) {
-        config.save()
-        environment?.summarizer = config.makeSummarizer()
-        summarizerStatus = Self.makeSummarizerStatus(from: environment?.summarizer, configuredType: config.type.displayName)
-        statusMessage = config.type == .none
-            ? "Summarizer disabled"
-            : "Summarizer set to \(config.type.displayName)"
+        let requestedEngine = config.defaultEngine
+        applyEngineConfig(config)
+
+        if requestedEngine == .none {
+            selectDefaultEngine(.none)
+            return
+        }
+
+        guard requestedEngine != defaultEngine else {
+            return
+        }
+
+        guard engineStatuses[requestedEngine]?.state == .green else {
+            return
+        }
+
+        selectDefaultEngine(requestedEngine)
     }
 
     func recheckNotificationAccess() {
@@ -202,13 +320,113 @@ final class AppState {
             notificationStatus.isDatabaseAvailable = false
             notificationStatus.availabilityMessage = "Notification import unavailable because the app environment is not ready."
         }
-        summarizerStatus.mode = SummarizerConfig.load().type.displayName
-        summarizerStatus.isConfigured = environment?.summarizer != nil
+        refreshEngineStatuses()
         if !notificationStatus.isDatabaseAvailable {
             notificationStatus.lastError = notificationStatus.availabilityMessage ?? "Notification Center database not accessible"
         } else if notificationStatus.lastError == "Notification Center database not accessible" {
             notificationStatus.lastError = nil
         }
+    }
+
+    func refreshEngineStatuses() {
+        var refreshed: [DiaryEngine: EngineRuntimeStatus] = [:]
+        for engine in DiaryEngine.allCases {
+            let existing = engineStatuses[engine]
+            let baseline = Self.makeBaselineStatus(
+                for: engine,
+                config: summarizerConfig,
+                environment: processEnvironment
+            )
+
+            let existingSignature = existing?.configurationSignature.isEmpty == false
+                ? existing?.configurationSignature
+                : baseline.configurationSignature
+
+            if existingSignature == baseline.configurationSignature,
+               let existing,
+               existing.state != .gray || baseline.state == .gray {
+                refreshed[engine] = EngineRuntimeStatus(
+                    state: existing.state,
+                    detail: existing.detail,
+                    lastVerifiedAt: existing.lastVerifiedAt,
+                    configurationSignature: baseline.configurationSignature
+                )
+            } else {
+                refreshed[engine] = EngineRuntimeStatus(
+                    state: baseline.state,
+                    detail: baseline.detail,
+                    lastVerifiedAt: existing?.lastVerifiedAt,
+                    configurationSignature: baseline.configurationSignature
+                )
+            }
+        }
+        engineStatuses = refreshed
+    }
+
+    func retestAllEngines() async {
+        isRetestingEngines = true
+        for engine in DiaryEngine.allCases where engine != .none {
+            await retestEngine(engine)
+        }
+        isRetestingEngines = false
+    }
+
+    func retestEngine(_ engine: DiaryEngine) async {
+        retestingEngines.insert(engine)
+        isRetestingEngines = true
+        let configSnapshot = summarizerConfig
+        let configurationSignature = Self.configurationSignature(
+            for: engine,
+            config: configSnapshot,
+            environment: processEnvironment
+        )
+        let result = await probeEngine(engine, configSnapshot, processEnvironment)
+        guard Self.configurationSignature(
+            for: engine,
+            config: summarizerConfig,
+            environment: processEnvironment
+        ) == configurationSignature else {
+            retestingEngines.remove(engine)
+            isRetestingEngines = !retestingEngines.isEmpty
+            return
+        }
+        engineStatuses[engine] = EngineRuntimeStatus(
+            state: result.state,
+            detail: result.detail,
+            lastVerifiedAt: result.verifiedAt ?? engineStatuses[engine]?.lastVerifiedAt,
+            configurationSignature: configurationSignature
+        )
+        retestingEngines.remove(engine)
+        isRetestingEngines = !retestingEngines.isEmpty
+    }
+
+    func selectDefaultEngine(_ engine: DiaryEngine) {
+        guard engine == .none || engineStatuses[engine]?.state == .green else {
+            statusMessage = "\(engine.displayName) is not verified yet"
+            return
+        }
+
+        defaultEngine = engine
+        summarizerConfig.defaultEngine = engine
+        persistSummarizerConfig()
+        statusMessage = engine == .none
+            ? "Summarizer disabled"
+            : "Default engine set to \(engine.displayName)"
+    }
+
+    func applyEngineConfig(_ config: SummarizerConfig) {
+        let requestedEngine = config.defaultEngine
+        var persistedConfig = config
+        persistedConfig.defaultEngine = defaultEngine
+        summarizerConfig = persistedConfig
+        persistSummarizerConfig()
+        refreshEngineStatuses()
+
+        statusMessage = defaultEngine == .none
+            ? "Summarizer disabled"
+            : requestedEngine == defaultEngine
+                ? "Summarizer settings updated for \(defaultEngine.displayName)"
+                : "Saved \(requestedEngine.displayName) settings; \(defaultEngine.displayName) remains active until verified"
     }
 
     var automationStatusText: String {
@@ -466,13 +684,20 @@ extension AppState {
             )
             if let parsed = environment.composer.parseStory(dayKey: dayKey, raw: raw),
                parsed.sections.flatMap(\.paragraphs).isEmpty == false {
-                summarizerStatus.lastCompletedAt = Date()
-                summarizerStatus.lastError = nil
+                recordActiveEngineRuntime(state: .green, detail: "Story generation succeeded.", verifiedAt: Date())
                 return parsed
             }
-            summarizerStatus.lastError = "Story output was not valid structured JSON"
+            recordActiveEngineRuntime(
+                state: .yellow,
+                detail: "Story output was not valid structured JSON",
+                verifiedAt: Date()
+            )
         } catch {
-            summarizerStatus.lastError = error.localizedDescription
+            recordActiveEngineRuntime(
+                state: .yellow,
+                detail: error.localizedDescription,
+                verifiedAt: Date()
+            )
         }
 
         return fallbackStory
@@ -605,30 +830,11 @@ extension AppState {
         return "\(base) If the database is missing or unreadable, notifications will not appear until macOS exposes a readable store."
     }
 
-    static func makeSummarizer() -> SummaryGenerating? {
-        let saved = SummarizerConfig.load()
-        if let s = saved.makeSummarizer() {
-            return s
-        }
-        let apiKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let apiKey, !apiKey.isEmpty else { return nil }
-        return CloudSummarizer(apiKey: apiKey)
-    }
-
-    static func makeSummarizerStatus(from summarizer: SummaryGenerating?, configuredType: String? = nil) -> SummarizerRuntimeStatus {
-        SummarizerRuntimeStatus(
-            mode: configuredType ?? {
-                switch summarizer {
-                case is CloudSummarizer: return "OpenAI API"
-                case is CLISummarizer: return "CLI"
-                default: return "None"
-                }
-            }(),
-            isConfigured: summarizer != nil,
-            lastCompletedAt: nil,
-            lastError: nil
-        )
+    static func makeSummarizer(
+        config: SummarizerConfig = SummarizerConfig.load(),
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> SummaryGenerating? {
+        config.makeSummarizer(for: config.defaultEngine, environment: environment)
     }
 
     static func importStartDate(for pendingDays: [String], now: Date) -> Date {
@@ -755,5 +961,202 @@ extension AppState {
 
     private func generatedSourceNotesMarkdown(from events: [EventRecord]) -> String {
         environment?.composer.sourceNotesMarkdown(for: events) ?? DailyMarkdownComposer().sourceNotesMarkdown(for: events)
+    }
+
+    private func persistSummarizerConfig() {
+        summarizerConfig.save(
+            to: userDefaults,
+            keychain: keychain,
+            keychainService: keychainService
+        )
+        environment?.summarizer = summarizerConfig.makeSummarizer(
+            for: defaultEngine,
+            environment: processEnvironment
+        )
+    }
+
+    private func recordActiveEngineRuntime(
+        state: EngineIndicatorState,
+        detail: String,
+        verifiedAt: Date?
+    ) {
+        engineStatuses[defaultEngine] = EngineRuntimeStatus(
+            state: state,
+            detail: detail,
+            lastVerifiedAt: verifiedAt ?? engineStatuses[defaultEngine]?.lastVerifiedAt,
+            configurationSignature: Self.configurationSignature(
+                for: defaultEngine,
+                config: summarizerConfig,
+                environment: processEnvironment
+            )
+        )
+    }
+
+    private static func makeInitialEngineStatuses(
+        config: SummarizerConfig,
+        environment: [String: String]
+    ) -> [DiaryEngine: EngineRuntimeStatus] {
+        Dictionary(
+            uniqueKeysWithValues: DiaryEngine.allCases.map { engine in
+                (engine, makeBaselineStatus(for: engine, config: config, environment: environment))
+            }
+        )
+    }
+
+    private static func makeBaselineStatus(
+        for engine: DiaryEngine,
+        config: SummarizerConfig,
+        environment: [String: String]
+    ) -> EngineRuntimeStatus {
+        let signature = configurationSignature(for: engine, config: config, environment: environment)
+        switch engine {
+        case .none:
+            return EngineRuntimeStatus(
+                state: .gray,
+                detail: "No engine selected.",
+                lastVerifiedAt: nil,
+                configurationSignature: signature
+            )
+        case .openAI:
+            if !config.apiConfigurationIsComplete {
+                return EngineRuntimeStatus(
+                    state: .gray,
+                    detail: "API configuration is incomplete.",
+                    lastVerifiedAt: nil,
+                    configurationSignature: signature
+                )
+            }
+            return EngineRuntimeStatus(
+                state: .yellow,
+                detail: "API configuration changed. Retest required.",
+                lastVerifiedAt: nil,
+                configurationSignature: signature
+            )
+        case .claudeCLI, .codexCLI, .geminiCLI, .openclawCLI:
+            guard config.makeSummarizer(for: engine, environment: environment) != nil else {
+                return EngineRuntimeStatus(
+                    state: .gray,
+                    detail: "Executable not found.",
+                    lastVerifiedAt: nil,
+                    configurationSignature: signature
+                )
+            }
+            return EngineRuntimeStatus(
+                state: .yellow,
+                detail: "Executable found. Retest required.",
+                lastVerifiedAt: nil,
+                configurationSignature: signature
+            )
+        }
+    }
+
+    private static func configurationSignature(
+        for engine: DiaryEngine,
+        config: SummarizerConfig,
+        environment: [String: String]
+    ) -> String {
+        switch engine {
+        case .none:
+            return "none"
+        case .openAI:
+            return [
+                config.apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                config.apiModel.trimmingCharacters(in: .whitespacesAndNewlines),
+                config.apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            ].joined(separator: "|")
+        case .claudeCLI:
+            return "claude|\(SummarizerConfig.resolvedExecutablePath(configuredPath: config.claudeCLIPath, commandName: "claude", environment: environment) ?? "")"
+        case .codexCLI:
+            return "codex|\(SummarizerConfig.resolvedExecutablePath(configuredPath: config.codexCLIPath, commandName: "codex", environment: environment) ?? "")"
+        case .geminiCLI:
+            return "gemini|\(SummarizerConfig.resolvedExecutablePath(configuredPath: config.geminiCLIPath, commandName: "gemini", environment: environment) ?? "")"
+        case .openclawCLI:
+            return "openclaw|\(SummarizerConfig.resolvedExecutablePath(configuredPath: config.openclawCLIPath, commandName: "openclaw", environment: environment) ?? "")"
+        }
+    }
+
+    private static func state(for status: SummarizerRuntimeStatus) -> EngineIndicatorState {
+        if !status.isConfigured {
+            return .gray
+        }
+        return status.lastError == nil ? .green : .yellow
+    }
+
+    private static func inferEngine(from summarizer: SummaryGenerating?) -> DiaryEngine? {
+        switch summarizer {
+        case is CloudSummarizer:
+            return .openAI
+        case let summarizer as CLISummarizer:
+            switch summarizer.tool {
+            case .claude:
+                return .claudeCLI
+            case .codex:
+                return .codexCLI
+            case .gemini:
+                return .geminiCLI
+            case .openclaw:
+                return .openclawCLI
+            }
+        default:
+            return nil
+        }
+    }
+
+    private static func reconciledConfig(
+        from config: SummarizerConfig,
+        with summarizer: SummaryGenerating
+    ) -> SummarizerConfig {
+        var reconciled = config
+
+        switch summarizer {
+        case let summarizer as CloudSummarizer:
+            reconciled.defaultEngine = .openAI
+            reconciled.apiBaseURL = summarizer.apiURL.absoluteString
+            reconciled.apiModel = summarizer.model
+            reconciled.apiToken = summarizer.apiKey
+        case let summarizer as CLISummarizer:
+            switch summarizer.tool {
+            case .claude:
+                reconciled.defaultEngine = .claudeCLI
+                reconciled.claudeCLIPath = summarizer.executablePath
+            case .codex:
+                reconciled.defaultEngine = .codexCLI
+                reconciled.codexCLIPath = summarizer.executablePath
+            case .gemini:
+                reconciled.defaultEngine = .geminiCLI
+                reconciled.geminiCLIPath = summarizer.executablePath
+            case .openclaw:
+                reconciled.defaultEngine = .openclawCLI
+                reconciled.openclawCLIPath = summarizer.executablePath
+            }
+        default:
+            break
+        }
+
+        return reconciled
+    }
+
+    private static func initialDefaultEngine(
+        explicitConfigProvided: Bool,
+        config: inout SummarizerConfig,
+        environment: SummaryGenerating?,
+        engineStatuses: [DiaryEngine: EngineRuntimeStatus]
+    ) -> DiaryEngine {
+        if let inferred = inferEngine(from: environment) {
+            config.defaultEngine = inferred
+            return inferred
+        }
+
+        let persistedEngine = config.defaultEngine
+        guard !explicitConfigProvided, persistedEngine != .none else {
+            return persistedEngine
+        }
+
+        guard engineStatuses[persistedEngine]?.state == .green else {
+            config.defaultEngine = .none
+            return .none
+        }
+
+        return persistedEngine
     }
 }

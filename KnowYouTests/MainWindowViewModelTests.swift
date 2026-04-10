@@ -21,8 +21,97 @@ private final class RecordingNotificationReader: NotificationDatabaseReading, @u
     }
 }
 
+private final class AppStateTestKeychainStore: KeychainStoring, @unchecked Sendable {
+    private var values: [String: String] = [:]
+
+    func save(_ value: String, forKey key: String, service: String) {
+        values["\(service):\(key)"] = value
+    }
+
+    func load(forKey key: String, service: String) -> String? {
+        values["\(service):\(key)"]
+    }
+
+    func delete(forKey key: String, service: String) {
+        values.removeValue(forKey: "\(service):\(key)")
+    }
+}
+
+private actor ProbeGate {
+    private var hasStarted = false
+    private var startedContinuation: CheckedContinuation<Void, Never>?
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+    func markStarted() {
+        hasStarted = true
+        startedContinuation?.resume()
+        startedContinuation = nil
+    }
+
+    func waitUntilStarted() async {
+        guard !hasStarted else { return }
+        await withCheckedContinuation { continuation in
+            startedContinuation = continuation
+        }
+    }
+
+    func waitForRelease() async {
+        await withCheckedContinuation { continuation in
+            releaseContinuation = continuation
+        }
+    }
+
+    func release() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
+    }
+}
+
+private actor ProbeStartTracker {
+    private var started: Set<DiaryEngine> = []
+    private var waiters: [(Set<DiaryEngine>, CheckedContinuation<Void, Never>)] = []
+
+    func markStarted(_ engine: DiaryEngine) {
+        started.insert(engine)
+        var remaining: [(Set<DiaryEngine>, CheckedContinuation<Void, Never>)] = []
+        for (required, continuation) in waiters {
+            if required.isSubset(of: started) {
+                continuation.resume()
+            } else {
+                remaining.append((required, continuation))
+            }
+        }
+        waiters = remaining
+    }
+
+    func waitUntilStarted(_ engines: Set<DiaryEngine>) async {
+        guard !engines.isSubset(of: started) else { return }
+        await withCheckedContinuation { continuation in
+            waiters.append((engines, continuation))
+        }
+    }
+}
+
 @MainActor
 final class MainWindowViewModelTests: XCTestCase {
+    private var engineDefaultsSuiteName: String!
+    private var engineDefaults: UserDefaults!
+    private var engineKeychain: AppStateTestKeychainStore!
+
+    override func setUp() {
+        super.setUp()
+        engineDefaultsSuiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        engineDefaults = UserDefaults(suiteName: engineDefaultsSuiteName)!
+        engineKeychain = AppStateTestKeychainStore()
+    }
+
+    override func tearDown() {
+        if let engineDefaultsSuiteName {
+            engineDefaults.removePersistentDomain(forName: engineDefaultsSuiteName)
+        }
+        super.tearDown()
+    }
+
     func testSelectingDateLoadsMatchingMarkdownPath() {
         let appState = AppState(bootstrapServices: false)
         appState.availableDates = ["2026-04-07", "2026-04-06"]
@@ -672,7 +761,15 @@ final class MainWindowViewModelTests: XCTestCase {
     }
 
     func testRefreshServiceStatusesPreservesSummarizerRuntimeHistory() {
-        let appState = AppState(bootstrapServices: false)
+        var config = SummarizerConfig.default
+        config.defaultEngine = .openAI
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
         let completedAt = Date(timeIntervalSince1970: 1_775_000_000)
         appState.summarizerStatus = SummarizerRuntimeStatus(
             mode: "OpenAI API",
@@ -685,6 +782,551 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertEqual(appState.summarizerStatus.lastCompletedAt, completedAt)
         XCTAssertEqual(appState.summarizerStatus.lastError, "timed out")
+    }
+
+    func testRefreshEngineStatusesPreservesLastVerifiedStateForUnchangedEngine() {
+        let executableURL = try! makeStubExecutable(named: "codex")
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        config.codexCLIPath = executableURL.path
+
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_100_000)
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "Smoke test succeeded.",
+            lastVerifiedAt: verifiedAt
+        )
+
+        appState.refreshEngineStatuses()
+
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.detail, "Smoke test succeeded.")
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.lastVerifiedAt, verifiedAt)
+    }
+
+    func testAppStateExposesDefaultEngineAndStatusesForSelectorUI() {
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "Smoke test succeeded.",
+            lastVerifiedAt: Date(timeIntervalSince1970: 1_775_150_000),
+            configurationSignature: "codex|/tmp/codex"
+        )
+        appState.engineStatuses[.openAI] = EngineRuntimeStatus(
+            state: .yellow,
+            detail: "API configuration changed. Retest required.",
+            lastVerifiedAt: nil,
+            configurationSignature: "https://api.openai.com/v1/responses|gpt-5|"
+        )
+
+        XCTAssertEqual(appState.defaultEngine.displayName, "Codex (CLI)")
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
+        XCTAssertEqual(appState.engineStatuses[.openAI]?.state, .yellow)
+    }
+
+    func testApplyEngineConfigKeepsGreenDefaultActiveWhenNewEngineProbeFails() async throws {
+        let executableURL = try makeStubExecutable(named: "codex")
+        var initialConfig = SummarizerConfig.default
+        initialConfig.defaultEngine = .codexCLI
+        initialConfig.codexCLIPath = executableURL.path
+
+        let environment = try makeEngineEnvironment()
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: initialConfig,
+            probeEngine: { engine, _, _ in
+                EngineProbeResult(
+                    engine: engine,
+                    state: .yellow,
+                    detail: "API request failed.",
+                    verifiedAt: Date(timeIntervalSince1970: 1_775_200_000)
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "Smoke test succeeded.",
+            lastVerifiedAt: Date(timeIntervalSince1970: 1_775_190_000),
+            configurationSignature: "codex|\(executableURL.path)"
+        )
+        appState.selectDefaultEngine(.codexCLI)
+
+        var editedConfig = initialConfig
+        editedConfig.defaultEngine = .openAI
+        editedConfig.apiBaseURL = "https://example.com/v1/responses"
+        editedConfig.apiModel = "gpt-5"
+        editedConfig.apiToken = "token-test-123"
+
+        appState.applyEngineConfig(editedConfig)
+        await appState.retestEngine(.openAI)
+
+        XCTAssertEqual(appState.defaultEngine, .codexCLI)
+        XCTAssertEqual(appState.engineStatuses[.openAI]?.state, .yellow)
+
+        let activeSummarizer = try XCTUnwrap(appState.environment?.summarizer as? CLISummarizer)
+        XCTAssertEqual(activeSummarizer.tool, .codex)
+        XCTAssertEqual(activeSummarizer.executablePath, executableURL.path)
+
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .codexCLI
+        )
+    }
+
+    func testApplySummarizerConfigKeepsLegacyRequestedEnginePendingUntilVerified() throws {
+        let executableURL = try makeStubExecutable(named: "codex")
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        config.codexCLIPath = executableURL.path
+
+        let environment = try makeEngineEnvironment()
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        appState.applySummarizerConfig(config)
+
+        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertEqual(appState.summarizerStatus.mode, DiaryEngine.none.displayName)
+        XCTAssertNil(appState.environment?.summarizer)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .yellow)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.detail, "Executable found. Retest required.")
+
+        let persistedConfig = SummarizerConfig.load(
+            from: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        XCTAssertEqual(persistedConfig.defaultEngine, .none)
+        XCTAssertEqual(persistedConfig.codexCLIPath, executableURL.path)
+    }
+
+    func testApplySummarizerConfigAllowsLegacyDisableException() throws {
+        let executableURL = try makeStubExecutable(named: "codex")
+        var activeConfig = SummarizerConfig.default
+        activeConfig.defaultEngine = .codexCLI
+        activeConfig.codexCLIPath = executableURL.path
+
+        let environment = try makeEngineEnvironment()
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: activeConfig,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "Smoke test succeeded.",
+            lastVerifiedAt: Date(timeIntervalSince1970: 1_775_205_000),
+            configurationSignature: "codex|\(executableURL.path)"
+        )
+        appState.selectDefaultEngine(.codexCLI)
+
+        var disabledConfig = activeConfig
+        disabledConfig.defaultEngine = .none
+        appState.applySummarizerConfig(disabledConfig)
+
+        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertEqual(appState.summarizerStatus.mode, DiaryEngine.none.displayName)
+        XCTAssertNil(appState.environment?.summarizer)
+
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .none
+        )
+    }
+
+    func testOnlyGreenEngineCanBecomeDefault() {
+        var config = SummarizerConfig.default
+        config.defaultEngine = .openAI
+        config.apiBaseURL = "https://example.com/v1/responses"
+        config.apiModel = "gpt-5"
+        config.apiToken = "token-test-123"
+
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.applyEngineConfig(config)
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(state: .yellow, detail: "Smoke test failed.", lastVerifiedAt: nil)
+        appState.engineStatuses[.geminiCLI] = EngineRuntimeStatus(state: .green, detail: "Smoke test succeeded.", lastVerifiedAt: nil)
+
+        appState.selectDefaultEngine(.codexCLI)
+        XCTAssertEqual(appState.defaultEngine, .openAI)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .openAI
+        )
+
+        appState.selectDefaultEngine(.geminiCLI)
+        XCTAssertEqual(appState.defaultEngine, .geminiCLI)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .geminiCLI
+        )
+    }
+
+    func testSelectingNoneDisablesActiveSummarizerAndPersistsNoneAsDefault() throws {
+        let executableURL = try makeStubExecutable(named: "codex")
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        config.codexCLIPath = executableURL.path
+
+        let environment = try makeEngineEnvironment()
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "Smoke test succeeded.",
+            lastVerifiedAt: Date(timeIntervalSince1970: 1_775_400_000),
+            configurationSignature: "codex|\(executableURL.path)"
+        )
+        appState.selectDefaultEngine(.codexCLI)
+
+        XCTAssertNotNil(appState.environment?.summarizer)
+
+        appState.selectDefaultEngine(.none)
+
+        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertNil(appState.environment?.summarizer)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .none
+        )
+    }
+
+    func testEditingAPIConfigReturnsAPIRowToYellowUntilRetested() async throws {
+        let executableURL = try makeStubExecutable(named: "codex")
+        var config = SummarizerConfig.default
+        config.defaultEngine = .openAI
+        config.apiBaseURL = "https://example.com/v1/responses"
+        config.apiModel = "gpt-5"
+        config.apiToken = "token-test-123"
+        config.codexCLIPath = executableURL.path
+
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_300_000)
+        let environment = try makeEngineEnvironment()
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.openAI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "API returned an expected acknowledgement.",
+            lastVerifiedAt: verifiedAt,
+            configurationSignature: "https://example.com/v1/responses|gpt-5|token-test-123"
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "Smoke test succeeded.",
+            lastVerifiedAt: verifiedAt,
+            configurationSignature: "codex|\(executableURL.path)"
+        )
+
+        config.apiModel = "gpt-5-mini"
+        appState.applyEngineConfig(config)
+
+        XCTAssertEqual(appState.engineStatuses[.openAI]?.state, .yellow)
+        XCTAssertEqual(appState.engineStatuses[.openAI]?.lastVerifiedAt, verifiedAt)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.lastVerifiedAt, verifiedAt)
+
+        let summarizer = try XCTUnwrap(appState.environment?.summarizer as? CloudSummarizer)
+        XCTAssertEqual(summarizer.model, "gpt-5-mini")
+    }
+
+    func testRetestEngineDiscardsStaleProbeResultWhenConfigChangesMidFlight() async throws {
+        let originalExecutableURL = try makeStubExecutable(named: "codex")
+        let updatedExecutableURL = try makeStubExecutable(named: "codex")
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_310_000)
+        let probeGate = ProbeGate()
+
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        config.codexCLIPath = originalExecutableURL.path
+
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            probeEngine: { engine, _, _ in
+                await probeGate.markStarted()
+                await probeGate.waitForRelease()
+                return EngineProbeResult(
+                    engine: engine,
+                    state: .green,
+                    detail: "Smoke test succeeded.",
+                    verifiedAt: verifiedAt
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let retestTask = Task {
+            await appState.retestEngine(.codexCLI)
+        }
+
+        await probeGate.waitUntilStarted()
+
+        config.codexCLIPath = updatedExecutableURL.path
+        appState.applyEngineConfig(config)
+
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .yellow)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.detail, "Executable found. Retest required.")
+
+        await probeGate.release()
+        await retestTask.value
+
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .yellow)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.detail, "Executable found. Retest required.")
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.lastVerifiedAt, nil)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.configurationSignature, "codex|\(updatedExecutableURL.path)")
+    }
+
+    func testRetestAllEnginesStartsProbesInParallel() async {
+        let codexGate = ProbeGate()
+        let tracker = ProbeStartTracker()
+
+        let appState = AppState(
+            bootstrapServices: false,
+            probeEngine: { engine, _, _ in
+                await tracker.markStarted(engine)
+                if engine == .codexCLI {
+                    await codexGate.markStarted()
+                    await codexGate.waitForRelease()
+                }
+                return EngineProbeResult(
+                    engine: engine,
+                    state: .green,
+                    detail: "Smoke test succeeded.",
+                    verifiedAt: Date(timeIntervalSince1970: 1_775_310_000)
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let retestTask = Task {
+            await appState.retestAllEngines()
+        }
+
+        await codexGate.waitUntilStarted()
+        await tracker.waitUntilStarted([.codexCLI, .geminiCLI])
+
+        XCTAssertTrue(appState.isRetestingEngines)
+        XCTAssertTrue(appState.retestingEngines.contains(.codexCLI))
+
+        await codexGate.release()
+        await retestTask.value
+
+        XCTAssertFalse(appState.isRetestingEngines)
+        XCTAssertTrue(appState.retestingEngines.isEmpty)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
+        XCTAssertEqual(appState.engineStatuses[.geminiCLI]?.state, .green)
+    }
+
+    func testSummarizerStatusReflectsDegradedActiveEngineAfterConfigInvalidation() throws {
+        let originalExecutableURL = try makeStubExecutable(named: "codex")
+        let updatedExecutableURL = try makeStubExecutable(named: "codex")
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_320_000)
+
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        config.codexCLIPath = originalExecutableURL.path
+
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "Smoke test succeeded.",
+            lastVerifiedAt: verifiedAt,
+            configurationSignature: "codex|\(originalExecutableURL.path)"
+        )
+
+        config.codexCLIPath = updatedExecutableURL.path
+        appState.applyEngineConfig(config)
+
+        XCTAssertEqual(appState.summarizerStatus.mode, DiaryEngine.codexCLI.displayName)
+        XCTAssertTrue(appState.summarizerStatus.isConfigured)
+        XCTAssertEqual(appState.summarizerStatus.lastCompletedAt, verifiedAt)
+        XCTAssertEqual(appState.summarizerStatus.lastError, "Executable found. Retest required.")
+    }
+
+    func testEnvironmentInitInfersRuntimeEngineFromInjectedSummarizerForStatusBookkeeping() async throws {
+        var persistedConfig = SummarizerConfig.default
+        persistedConfig.defaultEngine = .openAI
+        persistedConfig.apiBaseURL = "https://example.com/v1/responses"
+        persistedConfig.apiModel = "gpt-5"
+        persistedConfig.apiToken = "token-test-123"
+        persistedConfig.save(
+            to: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let executableURL = try makeStubExecutable(named: "codex")
+        let environment = try makeEngineEnvironment()
+        environment.summarizer = CLISummarizer(tool: .codex, executablePath: executableURL.path)
+
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertEqual(appState.defaultEngine, .codexCLI)
+        XCTAssertEqual(appState.summarizerStatus.mode, DiaryEngine.codexCLI.displayName)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .yellow)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.detail, "Executable found. Retest required.")
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.configurationSignature, "codex|\(executableURL.path)")
+
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_330_000)
+        appState.summarizerStatus = SummarizerRuntimeStatus(
+            mode: DiaryEngine.codexCLI.displayName,
+            isConfigured: true,
+            lastCompletedAt: verifiedAt,
+            lastError: nil
+        )
+
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.lastVerifiedAt, verifiedAt)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.configurationSignature, "codex|\(executableURL.path)")
+        XCTAssertEqual(appState.engineStatuses[.openAI]?.lastVerifiedAt, nil)
+    }
+
+    func testInitDoesNotReactivatePersistedUnverifiedDefaultEngine() throws {
+        let executableURL = try makeStubExecutable(named: "codex")
+        var persistedConfig = SummarizerConfig.default
+        persistedConfig.defaultEngine = .codexCLI
+        persistedConfig.codexCLIPath = executableURL.path
+        persistedConfig.save(
+            to: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertEqual(appState.summarizerStatus.mode, DiaryEngine.none.displayName)
+        XCTAssertFalse(appState.summarizerStatus.isConfigured)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .yellow)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.detail, "Executable found. Retest required.")
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .none
+        )
+    }
+
+    func testRestartAfterActiveEngineDegradesDoesNotReactivatePersistedYellowEngine() throws {
+        let originalExecutableURL = try makeStubExecutable(named: "codex")
+        let updatedExecutableURL = try makeStubExecutable(named: "codex")
+
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        config.codexCLIPath = originalExecutableURL.path
+
+        let environment = try makeEngineEnvironment()
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "Smoke test succeeded.",
+            lastVerifiedAt: Date(timeIntervalSince1970: 1_775_340_000),
+            configurationSignature: "codex|\(originalExecutableURL.path)"
+        )
+        appState.selectDefaultEngine(.codexCLI)
+
+        config.codexCLIPath = updatedExecutableURL.path
+        appState.applyEngineConfig(config)
+
+        let relaunched = AppState(
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertEqual(relaunched.defaultEngine, .none)
+        XCTAssertNil(relaunched.environment?.summarizer)
+        XCTAssertEqual(relaunched.engineStatuses[.codexCLI]?.state, .yellow)
+        XCTAssertEqual(relaunched.engineStatuses[.codexCLI]?.detail, "Executable found. Retest required.")
     }
 
     func testSelectStoryParagraphUpdatesVisibleSourceEvents() async throws {
@@ -741,5 +1383,29 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.selectedStoryParagraphID, paragraphIDs[1])
         XCTAssertEqual(appState.selectedStorySourceEvents.count, 1)
         XCTAssertEqual(appState.selectedStorySourceEvents.first?.sourceType, .notification)
+    }
+
+    private func makeEngineEnvironment() throws -> AppEnvironment {
+        let writer = try DatabaseWriter.inMemory()
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        return AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+    }
+
+    private func makeStubExecutable(named name: String) throws -> URL {
+        let directoryURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        let executableURL = directoryURL.appending(path: name)
+        try "#!/bin/sh\nexit 0\n".write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+        return executableURL
     }
 }

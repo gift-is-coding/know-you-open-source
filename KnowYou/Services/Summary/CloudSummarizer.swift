@@ -6,19 +6,24 @@ protocol SummaryGenerating: Sendable {
 
 struct CloudSummarizer: SummaryGenerating {
     let apiKey: String
+    let apiURL: URL
     let session: URLSession
     let model: String
 
-    init(apiKey: String, session: URLSession = .shared, model: String = "gpt-5") {
+    init(
+        apiKey: String,
+        apiURL: URL = URL(string: "https://api.openai.com/v1/responses")!,
+        session: URLSession = .shared,
+        model: String = "gpt-5"
+    ) {
         self.apiKey = apiKey
+        self.apiURL = apiURL
         self.session = session
         self.model = model
     }
 
-    private static let apiURL = URL(string: "https://api.openai.com/v1/responses")!
-
     func summarize(dayKey: String, markdown: String) async throws -> String {
-        var request = URLRequest(url: Self.apiURL)
+        var request = URLRequest(url: apiURL)
         request.httpMethod = "POST"
         request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -47,7 +52,7 @@ private struct ResponsesRequest: Encodable {
     let input: String
 }
 
-private struct ResponsesResponse: Decodable {
+struct ResponsesResponse: Decodable {
     let outputText: String?
     let output: [ResponseOutputItem]?
 
@@ -70,12 +75,12 @@ private struct ResponsesResponse: Decodable {
     }
 }
 
-private struct ResponseOutputItem: Decodable {
+struct ResponseOutputItem: Decodable {
     let type: String
     let content: [ResponseOutputContent]
 }
 
-private struct ResponseOutputContent: Decodable {
+struct ResponseOutputContent: Decodable {
     let type: String
     let text: String
 }

@@ -45,6 +45,9 @@
 		A10000010000000000000024 /* CLISummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000026 /* CLISummarizerTests.swift */; };
 		A10000010000000000000025 /* SummarizerConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000027 /* SummarizerConfigTests.swift */; };
 		A10000010000000000000033 /* EngineProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000033 /* EngineProbe.swift */; };
+		A10000010000000000000034 /* DiaryEngineSelectorButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000034 /* DiaryEngineSelectorButton.swift */; };
+		A10000010000000000000035 /* DiaryEnginePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000035 /* DiaryEnginePanel.swift */; };
+		A10000010000000000000036 /* APIDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000036 /* APIDetailSheet.swift */; };
 		A10000010000000000000032 /* EngineProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000032 /* EngineProbeTests.swift */; };
 			A10000010000000000000026 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000028 /* KeychainHelper.swift */; };
 			A10000010000000000000027 /* OnboardingContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000029 /* OnboardingContent.swift */; };
@@ -101,6 +104,9 @@
 		A10001010000000000000024 /* SummarizerConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummarizerConfig.swift; sourceTree = "<group>"; };
 		A10001010000000000000025 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		A10001010000000000000033 /* EngineProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineProbe.swift; sourceTree = "<group>"; };
+		A10001010000000000000034 /* DiaryEngineSelectorButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryEngineSelectorButton.swift; sourceTree = "<group>"; };
+		A10001010000000000000035 /* DiaryEnginePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryEnginePanel.swift; sourceTree = "<group>"; };
+		A10001010000000000000036 /* APIDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIDetailSheet.swift; sourceTree = "<group>"; };
 		A10001010000000000000026 /* CLISummarizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLISummarizerTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000027 /* SummarizerConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummarizerConfigTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000032 /* EngineProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineProbeTests.swift; sourceTree = "<group>"; };
@@ -188,6 +194,9 @@
 		A10000060000000000000006 /* Reader */ = {
 			isa = PBXGroup;
 			children = (
+				A10001010000000000000034 /* DiaryEngineSelectorButton.swift */,
+				A10001010000000000000035 /* DiaryEnginePanel.swift */,
+				A10001010000000000000036 /* APIDetailSheet.swift */,
 				A10001010000000000000006 /* DailyMarkdownView.swift */,
 			);
 			path = Reader;
@@ -476,6 +485,9 @@
 				A1000001000000000000001E /* DailyAutomationPlanner.swift in Sources */,
 				A1000001000000000000001B /* CloudSummarizer.swift in Sources */,
 				A1000001000000000000001C /* DiaryEngine.swift in Sources */,
+				A10000010000000000000036 /* APIDetailSheet.swift in Sources */,
+				A10000010000000000000035 /* DiaryEnginePanel.swift in Sources */,
+				A10000010000000000000034 /* DiaryEngineSelectorButton.swift in Sources */,
 				A1000001000000000000000C /* PrivacyFilter.swift in Sources */,
 				A1000001000000000000000F /* Migrations.swift in Sources */,
 				A10000010000000000000010 /* DatabaseWriter.swift in Sources */,

@@ -3,7 +3,6 @@ import AppKit
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
-    @State private var summarizerConfig = SummarizerConfig.load()
     @State private var vaultPath: String = UserDefaults.standard.string(forKey: AppState.UserDefaultsKeys.vaultPath) ?? ""
 
     var body: some View {
@@ -38,11 +37,11 @@ struct SettingsView: View {
                     ok: appState.notificationStatus.isDatabaseAvailable
                 )
                 StatusRow(
-                    label: "Summarizer",
-                    detail: appState.summarizerStatus.isConfigured
-                        ? "\(appState.summarizerStatus.mode) active"
-                        : "No summarizer configured",
-                    ok: appState.summarizerStatus.isConfigured
+                    label: "Diary engine",
+                    detail: appState.defaultEngine == .none
+                        ? "No verified default engine selected"
+                        : "\(appState.defaultEngine.displayName) active",
+                    ok: appState.defaultEngine != .none
                 )
 
                 HStack {
@@ -69,60 +68,33 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Summarizer") {
-                Text("Optional after onboarding. Your vault, clipboard capture, and notification capture keep working even if you leave summarization off.")
+            Section("Diary Engine") {
+                Text("Manage diary engines from the top-right selector in the main window. This page is now a secondary reference view.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
-                Text("Set up Claude, Codex, Gemini, or OpenAI here whenever you want extra help shaping the daily story.")
+                Text("Clipboard capture, notifications, and local note generation keep working even if you leave the default engine disabled.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Picker("Type", selection: $summarizerConfig.defaultEngine) {
-                    ForEach(DiaryEngine.allCases, id: \.self) { engine in
-                        Text(engine.displayName).tag(engine)
+                ForEach(DiaryEngine.allCases.filter { $0 != .none }, id: \.self) { engine in
+                    let status = appState.engineStatuses[engine] ?? EngineRuntimeStatus()
+                    HStack(alignment: .top, spacing: 10) {
+                        EngineIndicatorLight(state: status.state)
+                            .padding(.top, 4)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(engine.displayName)
+                                .fontWeight(appState.defaultEngine == engine ? .semibold : .regular)
+                            Text(status.detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                }
-                .pickerStyle(.menu)
-
-                switch summarizerConfig.defaultEngine {
-                case .none:
-                    EmptyView()
-                case .openAI:
-                    VStack(alignment: .leading, spacing: 8) {
-                        TextField("API base URL", text: $summarizerConfig.apiBaseURL)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(.body, design: .monospaced))
-                        TextField("Model", text: $summarizerConfig.apiModel)
-                            .textFieldStyle(.roundedBorder)
-                        SecureField("API token", text: $summarizerConfig.apiToken)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                case .claudeCLI:
-                    TextField("claude executable path", text: $summarizerConfig.claudeCLIPath)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced))
-                case .codexCLI:
-                    TextField("codex executable path", text: $summarizerConfig.codexCLIPath)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced))
-                case .geminiCLI:
-                    TextField("gemini executable path", text: $summarizerConfig.geminiCLIPath)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced))
-                case .openclawCLI:
-                    TextField("openclaw executable path", text: $summarizerConfig.openclawCLIPath)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced))
                 }
 
-                Button("Save Summarizer Settings") {
-                    if !vaultPath.isEmpty {
-                        appState.applyVaultURL(URL(fileURLWithPath: vaultPath, isDirectory: true))
-                    }
-                    appState.applySummarizerConfig(summarizerConfig)
+                Button("Refresh Engine States") {
+                    appState.refreshEngineStatuses()
                 }
-                .buttonStyle(.borderedProminent)
             }
 
             Section("Automation") {
@@ -146,7 +118,7 @@ struct SettingsView: View {
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             vaultPath = url.path
-            // Not applied yet — user must press Save
+            appState.applyVaultURL(url)
         }
     }
 

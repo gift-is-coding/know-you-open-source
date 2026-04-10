@@ -786,6 +786,35 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.lastVerifiedAt, verifiedAt)
     }
 
+    func testAppStateExposesDefaultEngineAndStatusesForSelectorUI() {
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "Smoke test succeeded.",
+            lastVerifiedAt: Date(timeIntervalSince1970: 1_775_150_000),
+            configurationSignature: "codex|/tmp/codex"
+        )
+        appState.engineStatuses[.openAI] = EngineRuntimeStatus(
+            state: .yellow,
+            detail: "API configuration changed. Retest required.",
+            lastVerifiedAt: nil,
+            configurationSignature: "https://api.openai.com/v1/responses|gpt-5|"
+        )
+
+        XCTAssertEqual(appState.defaultEngine.displayName, "Codex (CLI)")
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
+        XCTAssertEqual(appState.engineStatuses[.openAI]?.state, .yellow)
+    }
+
     func testApplyEngineConfigKeepsGreenDefaultActiveWhenNewEngineProbeFails() async throws {
         let executableURL = try makeStubExecutable(named: "codex")
         var initialConfig = SummarizerConfig.default

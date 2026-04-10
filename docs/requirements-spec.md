@@ -152,6 +152,8 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 按当前选中日期重生成内容
 - 在中间 story 阅读区按 Markdown 富文本显示段落内容，而不是仅以 plain text 呈现
 - 在中间阅读区显示明确的 story 层级标题，如 `今日小记` / `Story`
+- 在键盘上下切换 story 段落时，当前选中段落必须保持在可视区域内
+- 右侧 source detail card 应在 `sourceApp` 文本前显示渠道 logo；已识别渠道显示本地品牌 asset，未识别渠道回退为通用 icon
 - `Source Notes` 不在中间阅读区重复显示，来源追溯继续通过右侧 source detail 区完成
 
 ## 6.6 键盘与焦点需求

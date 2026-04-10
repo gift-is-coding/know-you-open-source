@@ -2,6 +2,47 @@ import XCTest
 @testable import KnowYou
 
 final class DailyMarkdownViewTests: XCTestCase {
+    func testSourceBrandResolvesKnownSemanticIdentity() {
+        let brand = SourceBrandResolver.resolve(appName: "ChatGPT")
+
+        XCTAssertEqual(brand.identity, .chatGPT)
+        XCTAssertEqual(brand.glyph, .asset(.chatGPT))
+    }
+
+    func testSourceBrandResolvesKnownBrandAsset() {
+        let brand = SourceBrandResolver.resolve(appName: "ChatGPT")
+
+        XCTAssertEqual(brand.assetName, "SourceLogoChatGPT")
+    }
+
+    func testSourceBrandNormalizesOpenAIChatGPTAlias() {
+        let brand = SourceBrandResolver.resolve(appName: "OpenAI ChatGPT")
+
+        XCTAssertEqual(brand.assetName, "SourceLogoChatGPT")
+        XCTAssertEqual(brand.fallbackSymbolName, "app.fill")
+    }
+
+    func testSourceBrandFallsBackForUnknownApp() {
+        let brand = SourceBrandResolver.resolve(appName: "Completely Unknown App")
+
+        XCTAssertNil(brand.assetName)
+        XCTAssertEqual(brand.fallbackSymbolName, "app.fill")
+    }
+
+    func testSourceBrandResolvesAppleAppsToDedicatedAssets() {
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Notes").assetName, "SourceLogoNotes")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Mail").assetName, "SourceLogoMail")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Calendar").assetName, "SourceLogoCalendar")
+    }
+
+    func testSourceBrandResolvesLocalizedAndToolAliasesToDedicatedAssets() {
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "微信").assetName, "SourceLogoWeChat")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "飞书").assetName, "SourceLogoFeishu")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "com.microsoft.teams2").assetName, "SourceLogoTeams")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Taio").assetName, "SourceLogoTaio")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Ghostty").assetName, "SourceLogoGhostty")
+    }
+
     func testPresentationShowsEmptyStateWhenStoryIsMissing() {
         let presentation = DailyMarkdownPresentation(story: nil)
 
@@ -63,6 +104,63 @@ final class DailyMarkdownViewTests: XCTestCase {
 
         XCTAssertEqual(presentation.storyHeading, "Story")
         XCTAssertEqual(presentation.paragraphs, [first, second])
+    }
+
+    func testPresentationUsesSelectedParagraphAsScrollTarget() {
+        let first = DailyStoryParagraph(
+            id: "daily-journal-0",
+            text: "First paragraph",
+            sourceEventIDs: [UUID()]
+        )
+        let second = DailyStoryParagraph(
+            id: "daily-journal-1",
+            text: "Second paragraph",
+            sourceEventIDs: [UUID()]
+        )
+        let story = DailyStory(
+            dayKey: "2026-04-08",
+            generatedAt: Date(timeIntervalSince1970: 0),
+            sections: [
+                DailyStorySection(id: "summary", title: "Summary", paragraphs: [first, second])
+            ]
+        )
+
+        let presentation = DailyMarkdownPresentation(
+            story: story,
+            selectedParagraphID: "daily-journal-1"
+        )
+
+        XCTAssertEqual(presentation.scrollTargetParagraphID, "daily-journal-1")
+        XCTAssertEqual(presentation.initialScrollParagraphID, "daily-journal-1")
+    }
+
+    func testPresentationFallsBackToFirstParagraphWhenSelectionMissing() {
+        let first = DailyStoryParagraph(
+            id: "daily-journal-0",
+            text: "First paragraph",
+            sourceEventIDs: [UUID()]
+        )
+        let second = DailyStoryParagraph(
+            id: "daily-journal-1",
+            text: "Second paragraph",
+            sourceEventIDs: [UUID()]
+        )
+        let story = DailyStory(
+            dayKey: "2026-04-08",
+            generatedAt: Date(timeIntervalSince1970: 0),
+            sections: [
+                DailyStorySection(id: "summary", title: "Summary", paragraphs: [first, second])
+            ]
+        )
+
+        let presentation = DailyMarkdownPresentation(
+            story: story,
+            selectedParagraphID: "missing-id"
+        )
+
+        XCTAssertEqual(presentation.selectedParagraphID, "missing-id")
+        XCTAssertEqual(presentation.scrollTargetParagraphID, "daily-journal-0")
+        XCTAssertEqual(presentation.initialScrollParagraphID, "daily-journal-0")
     }
 
     func testMarkdownRendererParsesHeadingBulletAndTaskBlocks() {

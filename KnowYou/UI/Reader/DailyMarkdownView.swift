@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct DailyMarkdownView: View {
     let story: DailyStory?
@@ -13,59 +14,71 @@ struct DailyMarkdownView: View {
     @State private var hoveredParagraphID: String?
 
     var body: some View {
-        let presentation = DailyMarkdownPresentation(story: story)
+        let presentation = DailyMarkdownPresentation(
+            story: story,
+            selectedParagraphID: selectedParagraphID
+        )
 
         Group {
             if presentation.showsEmptyState == false {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        // Date header row
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(formattedDayKey)
-                                .font(.title2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button {
-                                onRefresh()
-                            } label: {
-                                if isRefreshing {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                } else {
-                                    Image(systemName: "arrow.clockwise")
-                                        .foregroundStyle(.secondary)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            // Date header row
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(formattedDayKey)
+                                    .font(.title2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Button {
+                                    onRefresh()
+                                } label: {
+                                    if isRefreshing {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                    } else {
+                                        Image(systemName: "arrow.clockwise")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isRefreshing)
+                                .help("Regenerate this day's journal")
+                            }
+                            .padding(.horizontal, 28)
+                            .padding(.top, 24)
+                            .padding(.bottom, 16)
+
+                            Divider()
+                                .padding(.horizontal, 28)
+
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(presentation.storyHeading)
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .padding(.horizontal, 14)
+                                    .padding(.top, 4)
+                                    .padding(.bottom, 16)
+
+                                ForEach(presentation.paragraphs) { paragraph in
+                                    paragraphRow(paragraph)
+                                        .id(paragraph.id)
                                 }
                             }
-                            .buttonStyle(.plain)
-                            .disabled(isRefreshing)
-                            .help("Regenerate this day's journal")
-                        }
-                        .padding(.horizontal, 28)
-                        .padding(.top, 24)
-                        .padding(.bottom, 16)
-
-                        Divider()
                             .padding(.horizontal, 28)
-
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(presentation.storyHeading)
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(.primary)
-                                .padding(.horizontal, 14)
-                                .padding(.top, 4)
-                                .padding(.bottom, 16)
-
-                            ForEach(presentation.paragraphs) { paragraph in
-                                paragraphRow(paragraph)
-                            }
+                            .padding(.top, 16)
+                            .padding(.bottom, 24)
                         }
-                        .padding(.horizontal, 28)
-                        .padding(.top, 16)
-                        .padding(.bottom, 24)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .task(id: presentation.scrollRequest) {
+                        scrollToParagraphIfNeeded(
+                            presentation.scrollTargetParagraphID,
+                            using: proxy
+                        )
+                    }
                 }
-                .background(Color(nsColor: .textBackgroundColor))
             } else {
                 ContentUnavailableView("No Story Yet", systemImage: "text.book.closed")
             }
@@ -121,19 +134,55 @@ struct DailyMarkdownView: View {
         weekday.locale = Locale(identifier: "en_US")
         return "\(monthDay.string(from: date)) · \(weekday.string(from: date))"
     }
+
+    private func scrollToParagraphIfNeeded(
+        _ paragraphID: String?,
+        using proxy: ScrollViewProxy
+    ) {
+        guard let paragraphID else { return }
+
+        withAnimation(.easeInOut(duration: 0.2)) {
+            proxy.scrollTo(paragraphID, anchor: .center)
+        }
+    }
 }
 
 struct DailyMarkdownPresentation: Equatable {
+    struct ScrollRequest: Equatable {
+        let targetParagraphID: String?
+        let dayKey: String?
+        let paragraphIDs: [String]
+    }
+
     let paragraphs: [DailyStoryParagraph]
+    let selectedParagraphID: String?
+    let scrollTargetParagraphID: String?
+    let scrollRequest: ScrollRequest
     let storyHeading: String
 
-    init(story: DailyStory?) {
+    init(story: DailyStory?, selectedParagraphID: String? = nil) {
         paragraphs = story?.sections.flatMap(\.paragraphs) ?? []
+        self.selectedParagraphID = selectedParagraphID
+        if let selectedParagraphID,
+           paragraphs.contains(where: { $0.id == selectedParagraphID }) {
+            scrollTargetParagraphID = selectedParagraphID
+        } else {
+            scrollTargetParagraphID = paragraphs.first?.id
+        }
+        scrollRequest = ScrollRequest(
+            targetParagraphID: scrollTargetParagraphID,
+            dayKey: story?.dayKey,
+            paragraphIDs: paragraphs.map(\.id)
+        )
         storyHeading = Self.resolvedStoryHeading(for: story, paragraphs: paragraphs)
     }
 
     var showsEmptyState: Bool {
         paragraphs.isEmpty
+    }
+
+    var initialScrollParagraphID: String? {
+        scrollTargetParagraphID
     }
 
     private static func resolvedStoryHeading(
@@ -150,6 +199,132 @@ struct DailyMarkdownPresentation: Equatable {
         }
 
         return "Story"
+    }
+}
+
+struct SourceBrand: Equatable {
+    enum Identity: Equatable {
+        case chatGPT
+        case notes
+        case mail
+        case calendar
+        case drafts
+        case taio
+        case teams
+        case ghostty
+        case weChat
+        case feishu
+        case claude
+        case perplexity
+        case notion
+        case gitHub
+        case slack
+        case x
+        case google
+        case genericApp
+    }
+
+    enum Glyph: Equatable {
+        enum Asset: String, Equatable {
+            case chatGPT = "SourceLogoChatGPT"
+            case notes = "SourceLogoNotes"
+            case mail = "SourceLogoMail"
+            case calendar = "SourceLogoCalendar"
+            case drafts = "SourceLogoDrafts"
+            case taio = "SourceLogoTaio"
+            case teams = "SourceLogoTeams"
+            case ghostty = "SourceLogoGhostty"
+            case weChat = "SourceLogoWeChat"
+            case feishu = "SourceLogoFeishu"
+            case claude = "SourceLogoClaude"
+            case perplexity = "SourceLogoPerplexity"
+            case notion = "SourceLogoNotion"
+            case gitHub = "SourceLogoGitHub"
+            case slack = "SourceLogoSlack"
+            case x = "SourceLogoX"
+            case google = "SourceLogoGoogle"
+        }
+
+        enum Symbol: String, Equatable {
+            case app = "app.fill"
+        }
+
+        case asset(Asset)
+        case symbol(Symbol)
+    }
+
+    let identity: Identity
+    let glyph: Glyph
+    let fallbackSymbol: Glyph.Symbol
+
+    var assetName: String? {
+        guard case .asset(let asset) = glyph else { return nil }
+        return asset.rawValue
+    }
+
+    var fallbackSymbolName: String {
+        fallbackSymbol.rawValue
+    }
+}
+
+enum SourceBrandResolver {
+    static func resolve(appName: String) -> SourceBrand {
+        let normalizedName = normalize(appName)
+
+        switch normalizedName {
+        case "chatgpt", "openai chatgpt":
+            return SourceBrand(
+                identity: .chatGPT,
+                glyph: .asset(.chatGPT),
+                fallbackSymbol: .app
+            )
+        case "notes":
+            return SourceBrand(identity: .notes, glyph: .asset(.notes), fallbackSymbol: .app)
+        case "mail", "邮件":
+            return SourceBrand(identity: .mail, glyph: .asset(.mail), fallbackSymbol: .app)
+        case "calendar":
+            return SourceBrand(identity: .calendar, glyph: .asset(.calendar), fallbackSymbol: .app)
+        case "drafts":
+            return SourceBrand(identity: .drafts, glyph: .asset(.drafts), fallbackSymbol: .app)
+        case "taio":
+            return SourceBrand(identity: .taio, glyph: .asset(.taio), fallbackSymbol: .app)
+        case "com.microsoft.teams2", "microsoft teams", "teams":
+            return SourceBrand(identity: .teams, glyph: .asset(.teams), fallbackSymbol: .app)
+        case "ghostty":
+            return SourceBrand(identity: .ghostty, glyph: .asset(.ghostty), fallbackSymbol: .app)
+        case "微信", "wechat", "weixin":
+            return SourceBrand(identity: .weChat, glyph: .asset(.weChat), fallbackSymbol: .app)
+        case "飞书", "feishu", "lark":
+            return SourceBrand(identity: .feishu, glyph: .asset(.feishu), fallbackSymbol: .app)
+        case "claude", "anthropic claude":
+            return SourceBrand(identity: .claude, glyph: .asset(.claude), fallbackSymbol: .app)
+        case "perplexity":
+            return SourceBrand(identity: .perplexity, glyph: .asset(.perplexity), fallbackSymbol: .app)
+        case "notion":
+            return SourceBrand(identity: .notion, glyph: .asset(.notion), fallbackSymbol: .app)
+        case "github":
+            return SourceBrand(identity: .gitHub, glyph: .asset(.gitHub), fallbackSymbol: .app)
+        case "slack":
+            return SourceBrand(identity: .slack, glyph: .asset(.slack), fallbackSymbol: .app)
+        case "x", "twitter":
+            return SourceBrand(identity: .x, glyph: .asset(.x), fallbackSymbol: .app)
+        case "google", "gmail", "google calendar", "google docs", "google drive":
+            return SourceBrand(identity: .google, glyph: .asset(.google), fallbackSymbol: .app)
+        default:
+            return SourceBrand(
+                identity: .genericApp,
+                glyph: .symbol(.app),
+                fallbackSymbol: .app
+            )
+        }
+    }
+
+    private static func normalize(_ appName: String) -> String {
+        appName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+            .lowercased()
     }
 }
 
@@ -467,10 +642,7 @@ struct StorySourceDetailView: View {
                             Text("Sources")
                                 .font(.title3.weight(.semibold))
 
-                            if let selectedParagraph {
-                                MarkdownParagraphContent(markdown: selectedParagraph.text)
-                                    .foregroundStyle(.secondary)
-                            } else {
+                            if selectedParagraph == nil {
                                 Text("Select a story paragraph to inspect the original source items.")
                                     .font(.callout)
                                     .foregroundStyle(.secondary)
@@ -523,6 +695,7 @@ private struct SourceEventCard: View {
                 Text(timeText)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+                SourceBrandIcon(brand: SourceBrandResolver.resolve(appName: event.sourceApp))
                 Text(event.sourceApp)
                     .font(.callout.weight(.semibold))
                 Spacer(minLength: 8)
@@ -550,6 +723,34 @@ private struct SourceEventCard: View {
         formatter.dateFormat = "HH:mm"
         return formatter
     }()
+}
+
+private struct SourceBrandIcon: View {
+    let brand: SourceBrand
+
+    var body: some View {
+        Group {
+            switch brand.glyph {
+            case .asset(let asset):
+                if let image = NSImage(named: asset.rawValue) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    Image(systemName: brand.fallbackSymbol.rawValue)
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundStyle(.secondary)
+                }
+            case .symbol(let symbol):
+                Image(systemName: symbol.rawValue)
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 14, height: 14)
+    }
 }
 
 private extension Character {

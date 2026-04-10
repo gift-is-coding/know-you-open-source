@@ -23,10 +23,10 @@ struct MainWindowView: View {
                 isRefreshing: isRefreshing,
                 isActive: appState.readerFocus == .storyParagraphs,
                 onSelectParagraph: { paragraphID in
-                    appState.focusStoryParagraphs()
                     appState.selectStoryParagraph(paragraphID)
                 },
                 onFocusStory: {
+                    guard appState.readerFocus != .storyParagraphs else { return }
                     appState.focusStoryParagraphs()
                 },
                 onRefresh: {
@@ -56,6 +56,8 @@ struct MainWindowView: View {
     }
 
     private func startKeyMonitor() {
+        guard keyMonitor == nil else { return }
+
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak appState] event in
             guard let appState else { return event }
             let handled = handleKeyEvent(event, appState: appState)

@@ -341,8 +341,10 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 - story 段落可点击选中
 - 中栏段落按 Markdown 富文本渲染，而不是原样 plain text 输出
 - 中栏会根据当天语言显示显式标题：`今日小记` 或 `Story`
+- 键盘或点击切换段落时，中栏会自动滚动到当前选中段落，避免选中状态离开可视区域
 - 右栏展示该段落关联的原始事件
 - 可展开 `View All Sources` 查看全日来源
+- 右栏 source card 会在 `sourceApp` 文本前显示渠道 logo；已识别渠道优先显示本地 asset，缺失时回退到通用 symbol
 - 中栏阅读区内支持“重生成当前选中日期”
 - 主界面不再依赖顶部 status banner 承载运行时状态
 

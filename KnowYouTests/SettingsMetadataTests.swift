@@ -18,11 +18,16 @@ final class SettingsMetadataTests: XCTestCase {
             AppSupportMetadata.discordURL?.absoluteString,
             "https://discord.gg/ZrqF5jwQ"
         )
-        XCTAssertEqual(AppSupportMetadata.discordButtonTitle, "加入 Discord 社区")
-        XCTAssertEqual(AppSupportMetadata.discordDescription, "适合讨论产品想法、反馈体验、分享你的日记工作流。")
+        XCTAssertEqual(AppSupportMetadata.twitterButtonTitle, "Follow on X / Twitter")
+        XCTAssertEqual(AppSupportMetadata.emailButtonTitle, "Send Email")
+        XCTAssertEqual(AppSupportMetadata.discordButtonTitle, "Join Discord Community")
+        XCTAssertEqual(
+            AppSupportMetadata.discordDescription,
+            "Discuss product ideas, share feedback, and compare journaling workflows with other users."
+        )
         XCTAssertEqual(
             AppSupportMetadata.supportDescription,
-            "隐私问题或不适合公开讨论的内容，请直接发邮件联系。"
+            "For privacy-sensitive topics or anything that should not be discussed in public, please contact us by email."
         )
         XCTAssertEqual(
             AppSupportMetadata.emailURL.absoluteString,
@@ -32,20 +37,20 @@ final class SettingsMetadataTests: XCTestCase {
 
     func testInAppDocumentsExposeReadableContentWithoutRepositoryLinks() {
         let privacy = AppSupportDocument.privacy
-        XCTAssertEqual(privacy.buttonTitle, "隐私政策")
-        XCTAssertTrue(privacy.body.contains("本地优先"))
-        XCTAssertTrue(privacy.body.contains("过滤"))
+        XCTAssertEqual(privacy.buttonTitle, "Privacy Policy")
+        XCTAssertTrue(privacy.body.contains("local-first"))
+        XCTAssertTrue(privacy.body.contains("Privacy filtering"))
 
         let terms = AppSupportDocument.terms
-        XCTAssertEqual(terms.buttonTitle, "使用条款")
-        XCTAssertTrue(terms.body.contains("按“现状”提供"))
+        XCTAssertEqual(terms.buttonTitle, "Terms of Use")
+        XCTAssertTrue(terms.body.contains("\"as is\""))
 
         let community = AppSupportDocument.community
-        XCTAssertEqual(community.buttonTitle, "社区说明")
+        XCTAssertEqual(community.buttonTitle, "Community Guide")
         XCTAssertTrue(community.body.contains("https://discord.gg/ZrqF5jwQ"))
 
         let checklist = AppSupportDocument.launchChecklist
-        XCTAssertEqual(checklist.buttonTitle, "上线清单")
+        XCTAssertEqual(checklist.buttonTitle, "Launch Checklist")
         XCTAssertTrue(checklist.body.contains("notarization"))
     }
 }

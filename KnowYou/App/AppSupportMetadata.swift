@@ -6,9 +6,11 @@ struct AppSupportMetadata {
     static let emailURL = URL(string: "mailto:\(contactEmail)")!
     static let discordURL = URL(string: "https://discord.gg/ZrqF5jwQ")
     static let productTagline = "A local-first daily story for your workday on Mac."
-    static let discordButtonTitle = "加入 Discord 社区"
-    static let discordDescription = "适合讨论产品想法、反馈体验、分享你的日记工作流。"
-    static let supportDescription = "隐私问题或不适合公开讨论的内容，请直接发邮件联系。"
+    static let twitterButtonTitle = "Follow on X / Twitter"
+    static let emailButtonTitle = "Send Email"
+    static let discordButtonTitle = "Join Discord Community"
+    static let discordDescription = "Discuss product ideas, share feedback, and compare journaling workflows with other users."
+    static let supportDescription = "For privacy-sensitive topics or anything that should not be discussed in public, please contact us by email."
     static let companyEnglishName = "Shanghai Erren Beiwu Software Co., Ltd."
     static let copyrightLine = "Copyright © 2026 Shanghai Erren Beiwu Software Co., Ltd. All rights reserved."
 }
@@ -21,22 +23,22 @@ struct AppSupportDocument: Identifiable {
 
     static let privacy = AppSupportDocument(
         id: "privacy",
-        buttonTitle: "隐私政策",
-        title: "隐私政策",
+        buttonTitle: "Privacy Policy",
+        title: "Privacy Policy",
         body: """
-        Know You 是一个本地优先的 macOS 应用。
+        Know You is a local-first macOS application.
 
-        我们当前处理的数据主要来自这台 Mac 上的系统剪贴板和本机 Notification Center 数据库，以及事件的来源应用、采集时间、日期键等元数据。
+        We currently process data from this Mac's system clipboard, the local Notification Center database, and related metadata such as source apps, capture timestamps, and day keys.
 
-        隐私过滤发生在内容持久化之前。这意味着明显敏感的内容不应以原文形式进入本地 SQLite，本地 Markdown 文件也不是原始上下文的无过滤转储。
+        Privacy filtering happens before content is persisted. That means obviously sensitive content should not be written verbatim into local SQLite storage, and local Markdown output is not intended to be an unfiltered dump of raw context.
 
-        默认情况下，Know You 会把运行数据存放在当前 Mac 的本地目录中，包括：
+        By default, Know You stores runtime data locally on this Mac, including:
         - ~/Library/Application Support/KnowYou/events.sqlite
         - ~/Library/Application Support/KnowYou/Vault
 
-        外部总结器是可选增强，不是首次 onboarding 和首次生成故事的前置依赖。
+        External summarizers are optional enhancements. They are not required for onboarding or for generating your first local story.
 
-        联系方式：
+        Contact:
         - X / Twitter: https://x.com/TianfuW49629
         - Email: cestlouiswu@gmail.com
         """
@@ -44,16 +46,16 @@ struct AppSupportDocument: Identifiable {
 
     static let terms = AppSupportDocument(
         id: "terms",
-        buttonTitle: "使用条款",
-        title: "使用条款",
+        buttonTitle: "Terms of Use",
+        title: "Terms of Use",
         body: """
-        Know You 按“现状”提供，不附带任何明示或暗示担保。
+        Know You is provided on an "as is" basis, without express or implied warranties.
 
-        你需要自行判断是否适合在自己的设备、工作环境和数据场景中使用 Know You，并自行负责审查本地保存的内容、保护自己的设备和账户安全，以及判断是否启用第三方总结器。
+        You are responsible for deciding whether Know You is appropriate for your device, work environment, and data context. You are also responsible for reviewing locally stored content, protecting your devices and accounts, and deciding whether to enable any third-party summarizers.
 
-        如果你主动配置并使用第三方总结器或相关外部工具，你与这些第三方服务之间的关系受它们各自的条款和隐私政策约束。
+        If you configure and use third-party summarizers or related external tools, your relationship with those services is governed by their own terms and privacy policies.
 
-        你不得将 Know You 用于任何违法用途，也不得借助该软件侵犯他人隐私、知识产权或其他合法权益。
+        You may not use Know You for unlawful purposes or to violate the privacy, intellectual property, or other legitimate rights of others.
 
         Copyright © 2026 Shanghai Erren Beiwu Software Co., Ltd. All rights reserved.
         """
@@ -61,15 +63,15 @@ struct AppSupportDocument: Identifiable {
 
     static let community = AppSupportDocument(
         id: "community",
-        buttonTitle: "社区说明",
-        title: "社区说明",
+        buttonTitle: "Community Guide",
+        title: "Community Guide",
         body: """
-        Know You 当前主社区平台是 Discord，适合讨论产品想法、反馈体验、分享你的日记工作流。
+        Discord is the primary community space for Know You. It is the right place to discuss product ideas, share feedback, and compare journaling workflows.
 
-        当前邀请链接：
+        Current invite link:
         https://discord.gg/ZrqF5jwQ
 
-        推荐频道包括：
+        Recommended channels:
         - #welcome
         - #announcements
         - #general
@@ -78,39 +80,39 @@ struct AppSupportDocument: Identifiable {
         - #bug-reports
         - #off-topic
 
-        如果内容涉及隐私、敏感工作上下文或不适合公开披露的信息，请直接发邮件联系：cestlouiswu@gmail.com
+        If the topic involves private information, sensitive work context, or anything that should not be shared publicly, please contact us by email: cestlouiswu@gmail.com
         """
     )
 
     static let launchChecklist = AppSupportDocument(
         id: "launch-checklist",
-        buttonTitle: "上线清单",
-        title: "上线清单",
+        buttonTitle: "Launch Checklist",
+        title: "Launch Checklist",
         body: """
-        法律与文档
-        - 隐私政策
-        - 使用条款
-        - 社区说明
-        - 支持邮箱
+        Legal and documentation
+        - Privacy policy
+        - Terms of use
+        - Community guide
+        - Support email
 
-        社区
-        - Discord 服务器
-        - 稳定邀请链接
-        - #welcome 欢迎文案
-        - 社区规则
+        Community
+        - Discord server
+        - Stable invite link
+        - #welcome copy
+        - Community rules
 
-        产品与分发
-        - App 图标
-        - 应用截图
-        - 版本说明
-        - 下载页或官网落地页
+        Product and distribution
+        - App icon
+        - Product screenshots
+        - Release notes
+        - Download page or official website landing page
 
-        macOS 发布准备
-        - Developer ID 签名
+        macOS release readiness
+        - Developer ID signing
         - notarization
-        - 发布包验证
-        - 首次安装说明
-        - 权限说明截图
+        - Release package verification
+        - First-install instructions
+        - Permission guidance screenshots
         """
     )
 }

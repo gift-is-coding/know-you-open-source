@@ -7,161 +7,187 @@ struct SettingsView: View {
     @State private var presentedDocument: AppSupportDocument?
 
     var body: some View {
-        Form {
-            Section("Status") {
-                Text(appState.statusMessage ?? "Idle")
-                Text(appState.automationStatusText)
-                    .foregroundStyle(.secondary)
-                ForEach(appState.statusDetails, id: \.self) { detail in
-                    Text(detail)
-                        .font(.caption)
+        ScrollView {
+            Form {
+                Section("Status") {
+                    Text(appState.statusMessage ?? "Idle")
+                    Text(appState.automationStatusText)
                         .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Services") {
-                StatusRow(
-                    label: "Clipboard capture",
-                    detail: appState.clipboardServiceDetail,
-                    ok: appState.clipboardStatus.isActive
-                )
-                StatusRow(
-                    label: "Local storage",
-                    detail: appState.environment?.vaultURL.path ?? "Unavailable",
-                    ok: appState.environment != nil
-                )
-                StatusRow(
-                    label: "Notification import",
-                    detail: appState.notificationStatus.availabilityMessage
-                        .map { "\($0) \(appState.notificationServiceDetail)" }
-                        ?? appState.notificationServiceDetail,
-                    ok: appState.notificationStatus.isDatabaseAvailable
-                )
-                StatusRow(
-                    label: "Diary engine",
-                    detail: appState.defaultEngine == .none
-                        ? "No verified default engine selected"
-                        : "\(appState.defaultEngine.displayName) active",
-                    ok: appState.defaultEngine != .none
-                )
-
-                HStack {
-                    Button("Re-check Services") {
-                        appState.refreshServiceStatuses()
-                    }
-                    Button("Open Full Disk Access") {
-                        openFullDiskAccess()
+                    ForEach(appState.statusDetails, id: \.self) { detail in
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
-            }
 
-            Section("Vault Folder") {
-                HStack {
-                    Text(vaultPath.isEmpty ? (try? AppState.defaultVaultURL().path) ?? "Default" : vaultPath)
-                        .foregroundStyle(.secondary)
-                        .font(.system(.body, design: .monospaced))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer()
-                    Button("Choose…") {
-                        chooseVaultFolder()
-                    }
-                }
-            }
+                Section("Services") {
+                    StatusRow(
+                        label: "Clipboard capture",
+                        detail: appState.clipboardServiceDetail,
+                        ok: appState.clipboardStatus.isActive
+                    )
+                    StatusRow(
+                        label: "Local storage",
+                        detail: appState.environment?.vaultURL.path ?? "Unavailable",
+                        ok: appState.environment != nil
+                    )
+                    StatusRow(
+                        label: "Notification import",
+                        detail: appState.notificationStatus.availabilityMessage
+                            .map { "\($0) \(appState.notificationServiceDetail)" }
+                            ?? appState.notificationServiceDetail,
+                        ok: appState.notificationStatus.isDatabaseAvailable
+                    )
+                    StatusRow(
+                        label: "Diary engine",
+                        detail: appState.defaultEngine == .none
+                            ? "No verified default engine selected"
+                            : "\(appState.defaultEngine.displayName) active",
+                        ok: appState.defaultEngine != .none
+                    )
 
-            Section("Diary Engine") {
-                Text("Manage diary engines from the top-right selector in the main window. This page is now a secondary reference view.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                Text("Clipboard capture, notifications, and local note generation keep working even if you leave the default engine disabled.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                ForEach(DiaryEngine.allCases.filter { $0 != .none }, id: \.self) { engine in
-                    let status = appState.engineStatuses[engine] ?? EngineRuntimeStatus()
-                    HStack(alignment: .top, spacing: 10) {
-                        EngineIndicatorLight(state: status.state)
-                            .padding(.top, 4)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(engine.displayName)
-                                .fontWeight(appState.defaultEngine == engine ? .semibold : .regular)
-                            Text(status.detail)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    HStack {
+                        Button("Re-check Services") {
+                            appState.refreshServiceStatuses()
+                        }
+                        Button("Open Full Disk Access") {
+                            openFullDiskAccess()
                         }
                     }
                 }
 
-                Button("Refresh Engine States") {
-                    appState.refreshEngineStatuses()
+                Section("Vault Folder") {
+                    HStack {
+                        Text(vaultPath.isEmpty ? (try? AppState.defaultVaultURL().path) ?? "Default" : vaultPath)
+                            .foregroundStyle(.secondary)
+                            .font(.system(.body, design: .monospaced))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer()
+                        Button("Choose…") {
+                            chooseVaultFolder()
+                        }
+                    }
                 }
-            }
 
-            Section("Automation") {
-                Text("Runs on launch and every 15 minutes")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("About & Community") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Know You")
-                        .font(.headline)
-                    Text(AppSupportMetadata.productTagline)
+                Section("Diary Engine") {
+                    Text("Manage diary engines from the top-right selector in the main window. This page is now a secondary reference view.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
 
-                    HStack {
-                        Button("关注 X / Twitter") {
-                            open(AppSupportMetadata.twitterURL)
-                        }
-                        Button("发送邮件") {
-                            open(AppSupportMetadata.emailURL)
+                    Text("Clipboard capture, notifications, and local note generation keep working even if you leave the default engine disabled.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    ForEach(DiaryEngine.allCases.filter { $0 != .none }, id: \.self) { engine in
+                        let status = appState.engineStatuses[engine] ?? EngineRuntimeStatus()
+                        HStack(alignment: .top, spacing: 10) {
+                            EngineIndicatorLight(state: status.state)
+                                .padding(.top, 4)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(engine.displayName)
+                                    .fontWeight(appState.defaultEngine == engine ? .semibold : .regular)
+                                Text(status.detail)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
 
-                    if let discordURL = AppSupportMetadata.discordURL {
-                        Button(AppSupportMetadata.discordButtonTitle) {
-                            open(discordURL)
-                        }
-                    } else {
-                        Text(AppSupportMetadata.discordButtonTitle)
+                    Button("Refresh Engine States") {
+                        appState.refreshEngineStatuses()
+                    }
+                }
+
+                Section("Automation") {
+                    Text("Runs on launch and every 15 minutes")
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("About & Community") {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Know You")
+                            .font(.headline)
+                        Text(AppSupportMetadata.productTagline)
                             .font(.callout)
                             .foregroundStyle(.secondary)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Contact")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                            HStack(spacing: 10) {
+                                Button {
+                                    open(AppSupportMetadata.twitterURL)
+                                } label: {
+                                    Label(AppSupportMetadata.twitterButtonTitle, systemImage: "bubble.left.and.text.bubble.right")
+                                }
+
+                                Button {
+                                    open(AppSupportMetadata.emailURL)
+                                } label: {
+                                    Label(AppSupportMetadata.emailButtonTitle, systemImage: "envelope")
+                                }
+
+                                if let discordURL = AppSupportMetadata.discordURL {
+                                    Button {
+                                        open(discordURL)
+                                    } label: {
+                                        Label(AppSupportMetadata.discordButtonTitle, systemImage: "person.3")
+                                    }
+                                }
+                            }
+                            .labelStyle(.titleAndIcon)
+                        }
+
+                        Text(AppSupportMetadata.discordDescription)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Policies & Docs")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack(spacing: 10) {
+                                    Button(AppSupportDocument.privacy.buttonTitle) {
+                                        presentedDocument = .privacy
+                                    }
+                                    Button(AppSupportDocument.terms.buttonTitle) {
+                                        presentedDocument = .terms
+                                    }
+                                }
+                                HStack(spacing: 10) {
+                                    Button(AppSupportDocument.community.buttonTitle) {
+                                        presentedDocument = .community
+                                    }
+                                    Button(AppSupportDocument.launchChecklist.buttonTitle) {
+                                        presentedDocument = .launchChecklist
+                                    }
+                                }
+                            }
+                        }
+
+                        Text(AppSupportMetadata.supportDescription)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Divider()
+
+                        Text(AppSupportMetadata.copyrightLine)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
                     }
-
-                    Text(AppSupportMetadata.discordDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    HStack {
-                        Button(AppSupportDocument.privacy.buttonTitle) {
-                            presentedDocument = .privacy
-                        }
-                        Button(AppSupportDocument.terms.buttonTitle) {
-                            presentedDocument = .terms
-                        }
-                        Button(AppSupportDocument.community.buttonTitle) {
-                            presentedDocument = .community
-                        }
-                        Button(AppSupportDocument.launchChecklist.buttonTitle) {
-                            presentedDocument = .launchChecklist
-                        }
-                    }
-
-                    Text(AppSupportMetadata.supportDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Text(AppSupportMetadata.copyrightLine)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
+                    .padding(.vertical, 6)
                 }
             }
         }
         .padding()
-        .frame(width: 460)
+        .scrollIndicators(.visible)
+        .frame(width: 540, height: 760)
         .onAppear {
             appState.refreshServiceStatuses()
         }
@@ -205,7 +231,7 @@ private struct AppSupportDocumentSheet: View {
                     .font(.title3)
                     .fontWeight(.semibold)
                 Spacer()
-                Button("关闭") {
+                Button("Close") {
                     dismiss()
                 }
             }

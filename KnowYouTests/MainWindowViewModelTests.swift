@@ -7,6 +7,14 @@ private struct ThrowingSummarizer: SummaryGenerating {
     }
 }
 
+private struct StaticSummarizer: SummaryGenerating {
+    let response: String
+
+    func summarize(dayKey: String, markdown: String) async throws -> String {
+        response
+    }
+}
+
 private final class RecordingNotificationReader: NotificationDatabaseReading, @unchecked Sendable {
     private(set) var requestedSince: Date?
     var snapshots: [NotificationSnapshot] = []
@@ -1179,6 +1187,174 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertTrue(appState.retestingEngines.isEmpty)
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
         XCTAssertEqual(appState.engineStatuses[.geminiCLI]?.state, .green)
+    }
+
+    func testGenerateStoryFallsBackWithoutEngineAndAnnotatesFallbackProvenance() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let dayKey = "2026-04-11"
+        let eventID = UUID()
+        let capturedAt = Date(timeIntervalSince1970: 1_775_600_000)
+        try writer.insert(
+            EventRecord(
+                id: eventID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: capturedAt,
+                dayKey: dayKey,
+                text: "Closed the loop on the shipping checklist",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "fallback-provenance"
+            )
+        )
+
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        let events = try writer.fetchEvents(dayKey: dayKey)
+
+        let story = await appState.generateStory(dayKey: dayKey, events: events, environment: environment)
+
+        XCTAssertFalse(story.sections.flatMap(\.paragraphs).isEmpty)
+        XCTAssertEqual(story.provenance?.generationMode, .fallback)
+        XCTAssertEqual(story.provenance?.engineKind, DiaryEngine.none.rawValue)
+        XCTAssertEqual(story.provenance?.engineLabel, DiaryEngine.none.displayName)
+        XCTAssertEqual(story.provenance?.curatedEventCount, 1)
+    }
+
+    func testGenerateStoryAnnotatesModelProvenanceWhenSummarizerSucceeds() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let dayKey = "2026-04-11"
+        let eventID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: eventID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: Date(timeIntervalSince1970: 1_775_600_500),
+                dayKey: dayKey,
+                text: "Summarized a clean planning thread",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "model-provenance"
+            )
+        )
+
+        let response = """
+        {"sections":[{"id":"daily-journal","paragraphs":[{"text":"# Summary\\n- Summarized a clean planning thread","sourceEventIDs":["\(eventID.uuidString)"]}]}]}
+        """
+        let executableURL = try makeStubExecutable(named: "codex")
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        config.codexCLIPath = executableURL.path
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        environment.summarizer = StaticSummarizer(response: response)
+        let events = try writer.fetchEvents(dayKey: dayKey)
+
+        let story = await appState.generateStory(dayKey: dayKey, events: events, environment: environment)
+
+        XCTAssertEqual(story.provenance?.generationMode, .model)
+        XCTAssertEqual(story.provenance?.engineKind, DiaryEngine.codexCLI.rawValue)
+        XCTAssertEqual(story.provenance?.engineLabel, DiaryEngine.codexCLI.displayName)
+        XCTAssertEqual(story.provenance?.curatedEventCount, 1)
+    }
+
+    func testCompleteOnboardingPersistsVaultAndSelectedVerifiedEngine() throws {
+        let executableURL = try makeStubExecutable(named: "gemini")
+        var config = SummarizerConfig.default
+        config.geminiCLIPath = executableURL.path
+
+        let environment = try makeEngineEnvironment()
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.geminiCLI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "Smoke test succeeded.",
+            lastVerifiedAt: Date(timeIntervalSince1970: 1_775_610_000),
+            configurationSignature: "gemini|\(executableURL.path)"
+        )
+        let vaultURL = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)", isDirectory: true)
+
+        appState.completeOnboarding(vaultURL: vaultURL, preferredEngine: .geminiCLI)
+
+        XCTAssertEqual(appState.defaultEngine, .geminiCLI)
+        XCTAssertEqual(environment.vaultURL, vaultURL)
+        XCTAssertEqual(engineDefaults.string(forKey: AppState.UserDefaultsKeys.vaultPath), vaultURL.path)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .geminiCLI
+        )
+        XCTAssertEqual(
+            engineDefaults.bool(forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding),
+            true
+        )
+    }
+
+    func testDailyStoryDecodingBackfillsLegacyProvenanceWhenMissingFromPayload() throws {
+        let json = """
+        {
+          "dayKey": "2026-04-11",
+          "generatedAt": 1775600000,
+          "sections": [
+            {
+              "id": "daily-journal",
+              "title": "",
+              "paragraphs": [
+                {
+                  "id": "daily-journal-0",
+                  "text": "Legacy paragraph",
+                  "sourceEventIDs": ["\(UUID().uuidString)"]
+                }
+              ]
+            }
+          ]
+        }
+        """
+
+        let story = try JSONDecoder().decode(DailyStory.self, from: Data(json.utf8))
+
+        XCTAssertEqual(story.provenance?.generationMode, .legacy)
+        XCTAssertEqual(story.provenance?.engineKind, "legacy")
+        XCTAssertEqual(story.provenance?.engineLabel, "Legacy Story")
+        XCTAssertEqual(story.provenance?.pipelineVersion, "legacy")
     }
 
     func testSummarizerStatusReflectsDegradedActiveEngineAfterConfigInvalidation() throws {

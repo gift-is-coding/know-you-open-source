@@ -274,11 +274,21 @@ final class AppState {
     }
 
     func applyVaultURL(_ url: URL) {
-        UserDefaults.standard.set(url.path, forKey: UserDefaultsKeys.vaultPath)
+        userDefaults.set(url.path, forKey: UserDefaultsKeys.vaultPath)
         guard let environment else { return }
         environment.vaultURL = url
         refreshNotesIndex()
         statusMessage = "Vault set to \(url.lastPathComponent)"
+    }
+
+    func completeOnboarding(vaultURL: URL, preferredEngine: DiaryEngine) {
+        applyVaultURL(vaultURL)
+
+        var config = summarizerConfig
+        config.defaultEngine = preferredEngine
+        applySummarizerConfig(config)
+
+        userDefaults.set(true, forKey: UserDefaultsKeys.hasCompletedOnboarding)
     }
 
     func applySummarizerConfig(_ config: SummarizerConfig) {
@@ -712,7 +722,22 @@ extension AppState {
     }
 
     func generateStory(dayKey: String, events: [EventRecord], environment: AppEnvironment) async -> DailyStory {
-        let fallbackStory = environment.composer.fallbackStory(dayKey: dayKey, events: events)
+        let activeEngine = if defaultEngine == .none {
+            summarizerConfig.defaultEngine != .none
+                ? summarizerConfig.defaultEngine
+                : (Self.inferEngine(from: environment.summarizer) ?? .none)
+        } else {
+            defaultEngine
+        }
+        let fallbackStory = environment.composer
+            .fallbackStory(dayKey: dayKey, events: events)
+            .withProvenance(
+                makeStoryProvenance(
+                    mode: .fallback,
+                    engine: activeEngine,
+                    curatedEventCount: events.count
+                )
+            )
         guard let summarizer = environment.summarizer else {
             return fallbackStory
         }
@@ -725,7 +750,13 @@ extension AppState {
             if let parsed = environment.composer.parseStory(dayKey: dayKey, raw: raw),
                parsed.sections.flatMap(\.paragraphs).isEmpty == false {
                 recordActiveEngineRuntime(state: .green, detail: "Story generation succeeded.", verifiedAt: Date())
-                return parsed
+                return parsed.withProvenance(
+                    makeStoryProvenance(
+                        mode: .model,
+                        engine: activeEngine,
+                        curatedEventCount: events.count
+                    )
+                )
             }
             recordActiveEngineRuntime(
                 state: .yellow,
@@ -1012,6 +1043,23 @@ extension AppState {
         environment?.summarizer = summarizerConfig.makeSummarizer(
             for: defaultEngine,
             environment: processEnvironment
+        )
+    }
+
+    private func makeStoryProvenance(
+        mode: StoryGenerationMode,
+        engine: DiaryEngine,
+        curatedEventCount: Int
+    ) -> StoryProvenance {
+        StoryProvenance(
+            generationMode: mode,
+            engineKind: engine.rawValue,
+            engineLabel: engine.displayName,
+            model: engine == .openAI
+                ? summarizerConfig.apiModel.trimmingCharacters(in: .whitespacesAndNewlines)
+                : nil,
+            pipelineVersion: "diary-story-v1",
+            curatedEventCount: curatedEventCount
         )
     }
 

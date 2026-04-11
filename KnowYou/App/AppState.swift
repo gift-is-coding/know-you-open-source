@@ -61,6 +61,7 @@ final class AppState {
     var statusMessage: String?
     var lastAutomationRunAt: Date?
     var lastImportedNotificationCount = 0
+    var lastNotificationImportAt: Date?
     var pendingBackfillDays: [String] = []
     var clipboardStatus = ClipboardMonitorStatus()
     var notificationStatus = NotificationImportStatus()
@@ -79,11 +80,16 @@ final class AppState {
     var readerFocus: ReaderFocusZone = .dateList
     private(set) var environment: AppEnvironment?
     @ObservationIgnored private var automationTimer: Timer?
+    @ObservationIgnored private var notificationCatchUpTimer: Timer?
     @ObservationIgnored private var paragraphSelectionByDay: [String: String] = [:]
+    @ObservationIgnored private let notificationSyncInterval: TimeInterval = 30
+    @ObservationIgnored private let automationInterval: TimeInterval = 900
+    @ObservationIgnored private let notificationOverlapBuffer: TimeInterval = 30
     @ObservationIgnored private let userDefaults: UserDefaults
     @ObservationIgnored private let keychain: KeychainStoring
     @ObservationIgnored private let keychainService: String
     @ObservationIgnored private let processEnvironment: [String: String]
+    @ObservationIgnored private let currentDate: @Sendable () -> Date
     @ObservationIgnored private let probeEngine: @Sendable (DiaryEngine, SummarizerConfig, [String: String]) async -> EngineProbeResult
     @ObservationIgnored private var summarizerConfig: SummarizerConfig
 
@@ -127,6 +133,7 @@ final class AppState {
             await EngineProbe().probe(engine: engine, config: config, environment: environment)
         },
         processEnvironment: [String: String] = ProcessInfo.processInfo.environment,
+        currentDate: @escaping @Sendable () -> Date = Date.init,
         userDefaults: UserDefaults = .standard,
         keychain: KeychainStoring = KeychainHelper.shared,
         keychainService: String = KeychainHelper.service
@@ -136,12 +143,14 @@ final class AppState {
         self.keychain = keychain
         self.keychainService = keychainService
         self.processEnvironment = processEnvironment
+        self.currentDate = currentDate
         self.probeEngine = probeEngine
         self.summarizerConfig = summarizerConfig ?? SummarizerConfig.load(
             from: userDefaults,
             keychain: keychain,
             keychainService: keychainService
         )
+        self.lastNotificationImportAt = userDefaults.object(forKey: UserDefaultsKeys.lastNotificationImportAt) as? Date
         let loadedDefaultEngine = self.summarizerConfig.defaultEngine
         if explicitSummarizerConfig == nil, let injectedSummarizer = environment?.summarizer {
             self.summarizerConfig = Self.reconciledConfig(
@@ -172,6 +181,7 @@ final class AppState {
 
         if let environment {
             self.environment = environment
+            restorePersistedNotificationImportAt(using: environment, now: currentDate())
             if explicitSummarizerConfig != nil {
                 environment.summarizer = self.summarizerConfig.makeSummarizer(
                     for: defaultEngine,
@@ -208,6 +218,7 @@ final class AppState {
             environment.clipboardWatcher.start()
             try? environment.databaseWriter.markOrphanRunsAsFailed()
             self.environment = environment
+            restorePersistedNotificationImportAt(using: environment, now: currentDate())
             clipboardStatus.isActive = true
             updateNotificationAccessStatus(using: environment.notificationReader)
             refreshEngineStatuses()
@@ -522,6 +533,8 @@ final class AppState {
     enum UserDefaultsKeys {
         static let vaultPath = "vaultPath"
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
+        static let lastNotificationImportAt = "lastNotificationImportAt"
+        static let lastNotificationImportDatabasePath = "lastNotificationImportDatabasePath"
     }
 
     static func defaultVaultURL() throws -> URL {
@@ -621,6 +634,9 @@ final class AppState {
         do {
             let importResult = try environment.notificationCollector.importDeliveredNotifications(since: notificationSince)
             lastImportedNotificationCount = importResult.importedCount
+            if shouldPersistNotificationWatermark(for: importResult) {
+                persistLastNotificationImportAt(now, databasePath: environment.databaseURL.path)
+            }
             notificationStatus.lastImportedAt = importResult.importedAt
             notificationStatus.lastImportedCount = importResult.importedCount
             if notificationStatus.isDatabaseAvailable {
@@ -649,6 +665,42 @@ final class AppState {
                     : "Imported \(lastImportedNotificationCount) notifications"
             }
             pendingBackfillDays = []
+        }
+    }
+
+    func runNotificationCatchUp(now: Date = Date()) async {
+        guard let environment else {
+            statusMessage = "Capture unavailable"
+            return
+        }
+
+        let calendar = Calendar(identifier: .gregorian)
+        let todayStart = calendar.startOfDay(for: now)
+        let baseline = lastNotificationImportAt ?? todayStart
+        let importStart = max(todayStart, baseline.addingTimeInterval(-notificationOverlapBuffer))
+        updateNotificationAccessStatus(using: environment.notificationReader)
+
+        do {
+            let result = try environment.notificationCollector.importDeliveredNotifications(
+                from: importStart,
+                through: now
+            )
+            applyNotificationAccessStatus(result.accessStatus)
+            lastImportedNotificationCount = result.importedCount
+            if shouldPersistNotificationWatermark(for: result) {
+                persistLastNotificationImportAt(now, databasePath: environment.databaseURL.path)
+            }
+            notificationStatus.lastImportedAt = result.importedAt
+            notificationStatus.lastImportedCount = result.importedCount
+            if notificationStatus.isDatabaseAvailable {
+                notificationStatus.lastError = nil
+            }
+        } catch {
+            applyNotificationAccessStatus(environment.notificationCollector.accessStatus())
+            lastImportedNotificationCount = 0
+            notificationStatus.lastImportedAt = Date()
+            notificationStatus.lastImportedCount = 0
+            notificationStatus.lastError = error.localizedDescription
         }
     }
 }
@@ -763,6 +815,9 @@ extension AppState {
             }
             applyNotificationAccessStatus(result.accessStatus)
             lastImportedNotificationCount = result.importedCount
+            if isToday, shouldPersistNotificationWatermark(for: result) {
+                persistLastNotificationImportAt(todayWindowEnd ?? now, databasePath: environment.databaseURL.path)
+            }
             notificationStatus.lastImportedAt = result.importedAt
             notificationStatus.lastImportedCount = result.importedCount
             if notificationStatus.isDatabaseAvailable {
@@ -1022,18 +1077,34 @@ extension AppState {
 
     func startAutomation() {
         automationTimer?.invalidate()
-        automationTimer = Timer.scheduledTimer(withTimeInterval: 900, repeats: true) { [weak self] _ in
+        notificationCatchUpTimer?.invalidate()
+
+        automationTimer = Timer.scheduledTimer(withTimeInterval: automationInterval, repeats: true) { [weak self] _ in
             guard let self else {
                 return
             }
 
+            let now = self.currentDate()
             Task { @MainActor in
-                await self.runAutomation()
+                await self.runAutomation(now: now)
+            }
+        }
+
+        notificationCatchUpTimer = Timer.scheduledTimer(withTimeInterval: notificationSyncInterval, repeats: true) { [weak self] _ in
+            guard let self else {
+                return
+            }
+
+            let now = self.currentDate()
+            Task { @MainActor in
+                await self.runNotificationCatchUp(now: now)
             }
         }
 
         Task { @MainActor in
-            await runAutomation()
+            let now = currentDate()
+            await runAutomation(now: now)
+            await runNotificationCatchUp(now: now)
         }
     }
 
@@ -1106,6 +1177,44 @@ extension AppState {
             for: defaultEngine,
             environment: processEnvironment
         )
+    }
+
+    private func persistLastNotificationImportAt(_ date: Date?, databasePath: String?) {
+        lastNotificationImportAt = date
+        if let date {
+            userDefaults.set(date, forKey: UserDefaultsKeys.lastNotificationImportAt)
+            userDefaults.set(databasePath, forKey: UserDefaultsKeys.lastNotificationImportDatabasePath)
+        } else {
+            userDefaults.removeObject(forKey: UserDefaultsKeys.lastNotificationImportAt)
+            userDefaults.removeObject(forKey: UserDefaultsKeys.lastNotificationImportDatabasePath)
+        }
+    }
+
+    private func restorePersistedNotificationImportAt(using environment: AppEnvironment, now: Date = Date()) {
+        guard let persistedDate = userDefaults.object(forKey: UserDefaultsKeys.lastNotificationImportAt) as? Date else {
+            lastNotificationImportAt = nil
+            return
+        }
+
+        let persistedDatabasePath = userDefaults.string(forKey: UserDefaultsKeys.lastNotificationImportDatabasePath)
+        guard persistedDatabasePath == environment.databaseURL.path else {
+            persistLastNotificationImportAt(nil, databasePath: nil)
+            return
+        }
+
+        let todayKey = ISO8601DayKey.format(now)
+        let hasTodayNotificationEvents = ((try? environment.databaseWriter.fetchEvents(dayKey: todayKey)) ?? [])
+            .contains(where: { $0.sourceType == .notification })
+        guard hasTodayNotificationEvents else {
+            persistLastNotificationImportAt(nil, databasePath: nil)
+            return
+        }
+
+        lastNotificationImportAt = persistedDate
+    }
+
+    private func shouldPersistNotificationWatermark(for result: NotificationImportResult) -> Bool {
+        result.accessStatus.isAvailable
     }
 
     private func makeStoryProvenance(

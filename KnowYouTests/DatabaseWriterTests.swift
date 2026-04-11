@@ -80,6 +80,40 @@ final class DatabaseWriterTests: XCTestCase {
         XCTAssertEqual(try writer.fetchEvents(dayKey: "2026-04-07").count, 1)
     }
 
+    func testInsertIgnoresDuplicateNotificationContentHash() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let capturedAt = Date(timeIntervalSince1970: 1_776_000_000)
+        let first = EventRecord(
+            id: UUID(),
+            sourceType: .notification,
+            sourceApp: "com.apple.MobileSMS",
+            capturedAt: capturedAt,
+            dayKey: "2026-04-11",
+            text: "hello",
+            auditText: nil,
+            privacyAction: .keep,
+            contentHash: "same-notification-hash"
+        )
+        let second = EventRecord(
+            id: UUID(),
+            sourceType: .notification,
+            sourceApp: "com.apple.MobileSMS",
+            capturedAt: capturedAt,
+            dayKey: "2026-04-11",
+            text: "hello",
+            auditText: nil,
+            privacyAction: .keep,
+            contentHash: "same-notification-hash"
+        )
+
+        try writer.insert(first)
+        try writer.insert(second)
+
+        let rows = try writer.fetchEvents(dayKey: "2026-04-11")
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.contentHash, "same-notification-hash")
+    }
+
     func testFetchEventsThrowsWhenStoredRowHasInvalidUUID() throws {
         let databaseURL = URL.temporaryDirectory.appending(path: "\(UUID().uuidString).sqlite")
         let writer = try DatabaseWriter(path: databaseURL.path)

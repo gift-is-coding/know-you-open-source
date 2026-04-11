@@ -114,6 +114,9 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("do not include # 今日节奏"), prompt)
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("task list"), prompt)
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("markdown"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("must contain exactly one sentence"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("like a short inspirational quote"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("do not add a quote author"), prompt)
     }
 
     func testStoryPromptUsesEnglishDiaryHeadingsForEnglishDominantDay() {
@@ -139,6 +142,33 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertTrue(prompt.contains("# Details"), prompt)
         XCTAssertTrue(prompt.contains("# To-do"), prompt)
         XCTAssertFalse(prompt.contains("# 你今天做得很棒"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("same dominant language"), prompt)
+    }
+
+    func testStoryPromptMakesEncouragementSectionAQuoteStyleSentence() {
+        let composer = DailyMarkdownComposer()
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Ghostty",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: "2026-04-11",
+                text: "Keep the first section inspiring instead of repeating the day's tasks",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "prompt-quote-style"
+            )
+        ]
+
+        let prompt = composer.storyPrompt(dayKey: "2026-04-11", events: events)
+
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("must contain exactly one sentence"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("short inspirational quote"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("not a recap of tasks"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("do not retell the chronology"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("do not add a quote author"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("do not use quotation marks"), prompt)
     }
 
     func testStoryPromptExplicitlyTiesOutputLanguageToInputLanguage() {

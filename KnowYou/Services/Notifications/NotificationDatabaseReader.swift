@@ -1,8 +1,43 @@
 import Foundation
 import GRDB
 
+enum NotificationFetchUpperBound: Equatable {
+    case exclusive(Date)
+    case inclusive(Date)
+}
+
 protocol NotificationDatabaseReading {
+    func accessStatus() -> NotificationDatabaseAccessStatus
     func fetchDeliveredNotifications(since: Date) throws -> [NotificationSnapshot]
+    func fetchDeliveredNotifications(from startDate: Date, upperBound: NotificationFetchUpperBound?) throws -> [NotificationSnapshot]
+}
+
+extension NotificationDatabaseReading {
+    func accessStatus() -> NotificationDatabaseAccessStatus {
+        NotificationDatabaseAccessStatus(state: .available, databaseURL: nil)
+    }
+
+    var isAvailable: Bool {
+        accessStatus().isAvailable
+    }
+
+    func fetchDeliveredNotifications(since: Date) throws -> [NotificationSnapshot] {
+        try fetchDeliveredNotifications(from: since, upperBound: nil)
+    }
+
+    func fetchDeliveredNotifications(from startDate: Date, upperBound: NotificationFetchUpperBound?) throws -> [NotificationSnapshot] {
+        let snapshots = try fetchDeliveredNotifications(since: startDate)
+        guard let upperBound else {
+            return snapshots
+        }
+
+        switch upperBound {
+        case .exclusive(let endDate):
+            return snapshots.filter { $0.deliveredAt < endDate }
+        case .inclusive(let endDate):
+            return snapshots.filter { $0.deliveredAt <= endDate }
+        }
+    }
 }
 
 struct NotificationDatabaseAccessStatus: Equatable {
@@ -47,6 +82,10 @@ struct NotificationDatabaseReader: NotificationDatabaseReading {
     }
 
     func fetchDeliveredNotifications(since: Date) throws -> [NotificationSnapshot] {
+        try fetchDeliveredNotifications(from: since, upperBound: nil)
+    }
+
+    func fetchDeliveredNotifications(from startDate: Date, upperBound: NotificationFetchUpperBound?) throws -> [NotificationSnapshot] {
         let accessStatus = accessStatus()
         guard let databaseURL = accessStatus.databaseURL else {
             return []
@@ -60,11 +99,11 @@ struct NotificationDatabaseReader: NotificationDatabaseReading {
 
         let dbQueue = try DatabaseQueue(path: snapshotURL.path, configuration: snapshotConfiguration())
         return try dbQueue.read { db in
-            let query = try databaseQuery(in: db)
+            let query = try databaseQuery(in: db, startDate: startDate, upperBound: upperBound)
             let rows = try Row.fetchAll(
                 db,
                 sql: query.sql,
-                arguments: [query.referenceTimestamp(since)]
+                arguments: StatementArguments(query.arguments)
             )
 
             return rows.compactMap(Self.makeSnapshot)
@@ -116,36 +155,84 @@ struct NotificationDatabaseReader: NotificationDatabaseReading {
         return configuration
     }
 
-    private func databaseQuery(in db: Database) throws -> NotificationQuery {
+    private func databaseQuery(
+        in db: Database,
+        startDate: Date,
+        upperBound: NotificationFetchUpperBound?
+    ) throws -> NotificationQuery {
         let tables = try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type = 'table'")
 
         if tables.contains("record"), tables.contains("app") {
             return NotificationQuery(
-                sql: """
-                SELECT app.identifier AS appIdentifier, record.delivered_date AS deliveredDate, record.data AS data
-                FROM record
-                LEFT JOIN app ON app.app_id = record.app_id
-                WHERE record.delivered_date >= ?
-                ORDER BY record.delivered_date ASC
-                """,
-                referenceTimestamp: { $0.timeIntervalSinceReferenceDate }
+                sql: makeQuerySQL(
+                    appIdentifierColumn: "app.identifier",
+                    deliveredDateColumn: "record.delivered_date",
+                    dataColumn: "record.data",
+                    fromClause: "FROM record LEFT JOIN app ON app.app_id = record.app_id",
+                    upperBound: upperBound
+                ),
+                arguments: queryArguments(startDate: startDate, upperBound: upperBound)
             )
         }
 
         if tables.contains("notifications"), tables.contains("app_info") {
             return NotificationQuery(
-                sql: """
-                SELECT app_info.bundleid AS appIdentifier, notifications.delivered_date AS deliveredDate, notifications.data AS data
-                FROM notifications
-                LEFT JOIN app_info ON app_info.app_id = notifications.app_id
-                WHERE notifications.delivered_date >= ?
-                ORDER BY notifications.delivered_date ASC
-                """,
-                referenceTimestamp: { $0.timeIntervalSinceReferenceDate }
+                sql: makeQuerySQL(
+                    appIdentifierColumn: "app_info.bundleid",
+                    deliveredDateColumn: "notifications.delivered_date",
+                    dataColumn: "notifications.data",
+                    fromClause: "FROM notifications LEFT JOIN app_info ON app_info.app_id = notifications.app_id",
+                    upperBound: upperBound
+                ),
+                arguments: queryArguments(startDate: startDate, upperBound: upperBound)
             )
         }
 
         throw NotificationDatabaseReaderError.unsupportedSchema(tables: tables.sorted())
+    }
+
+    private func makeQuerySQL(
+        appIdentifierColumn: String,
+        deliveredDateColumn: String,
+        dataColumn: String,
+        fromClause: String,
+        upperBound: NotificationFetchUpperBound?
+    ) -> String {
+        let upperBoundClause: String
+        switch upperBound {
+        case .exclusive:
+            upperBoundClause = " AND \(deliveredDateColumn) < ?"
+        case .inclusive:
+            upperBoundClause = " AND \(deliveredDateColumn) <= ?"
+        case nil:
+            upperBoundClause = ""
+        }
+
+        return (
+            """
+            SELECT app.identifier AS appIdentifier, record.delivered_date AS deliveredDate, record.data AS data
+            \(fromClause)
+            WHERE \(deliveredDateColumn) >= ?\(upperBoundClause)
+            ORDER BY \(deliveredDateColumn) ASC
+            """
+        )
+            .replacingOccurrences(of: "app.identifier", with: appIdentifierColumn)
+            .replacingOccurrences(of: "record.delivered_date", with: deliveredDateColumn)
+            .replacingOccurrences(of: "record.data", with: dataColumn)
+    }
+
+    private func queryArguments(
+        startDate: Date,
+        upperBound: NotificationFetchUpperBound?
+    ) -> [Double] {
+        var arguments = [startDate.timeIntervalSinceReferenceDate]
+        switch upperBound {
+        case .exclusive(let endDate), .inclusive(let endDate):
+            arguments.append(endDate.timeIntervalSinceReferenceDate)
+        case nil:
+            break
+        }
+        return arguments
     }
 
     private static func makeSnapshot(from row: Row) -> NotificationSnapshot? {
@@ -242,7 +329,7 @@ struct NotificationDatabaseReader: NotificationDatabaseReading {
 
 private struct NotificationQuery {
     let sql: String
-    let referenceTimestamp: (Date) -> Double
+    let arguments: [Double]
 }
 
 private enum NotificationDatabaseReaderError: Error {

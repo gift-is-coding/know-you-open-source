@@ -37,6 +37,66 @@ struct DayRefreshStatus {
     var lastError: String?
 }
 
+enum DayRefreshStage: Equatable, Hashable {
+    case syncingNotifications
+    case loadingEvents
+    case preparingStory
+    case generatingStory
+    case writingFiles
+    case completed
+    case failed
+
+    var detail: String {
+        switch self {
+        case .syncingNotifications:
+            return "Syncing notifications..."
+        case .loadingEvents:
+            return "Loading captured events..."
+        case .preparingStory:
+            return "Preparing journal..."
+        case .generatingStory:
+            return "Generating story..."
+        case .writingFiles:
+            return "Writing files..."
+        case .completed:
+            return "Refresh complete"
+        case .failed:
+            return "Refresh failed"
+        }
+    }
+
+    var isProgressStep: Bool {
+        switch self {
+        case .syncingNotifications, .loadingEvents, .preparingStory, .generatingStory, .writingFiles:
+            return true
+        case .completed, .failed:
+            return false
+        }
+    }
+}
+
+struct DayRefreshJob: Equatable {
+    var dayKey: String
+    var stage: DayRefreshStage
+    var detail: String?
+    var error: String?
+    var completedStages: [DayRefreshStage] = []
+    var summary: String? = nil
+    var inFlight: Bool {
+        switch stage {
+        case .completed, .failed:
+            return false
+        default:
+            return true
+        }
+    }
+}
+
+struct DayRefreshGenerationResult: Equatable {
+    var stage: DayRefreshStage
+    var summary: String
+}
+
 struct SummarizerRuntimeStatus {
     var mode: String = "None"
     var isConfigured = false
@@ -54,6 +114,16 @@ struct EngineRuntimeStatus: Equatable {
 @MainActor
 @Observable
 final class AppState {
+    typealias RefreshStageChangeHandler = @MainActor @Sendable (DayRefreshJob) -> Void
+
+    private static let autoSelectionPriority: [DiaryEngine] = [
+        .claudeCLI,
+        .codexCLI,
+        .geminiCLI,
+        .openclawCLI,
+        .openAI,
+    ]
+
     var availableDates: [String] = []
     var selectedDate: String?
     var selectedMarkdownURL: URL?
@@ -61,6 +131,7 @@ final class AppState {
     var statusMessage: String?
     var lastAutomationRunAt: Date?
     var lastImportedNotificationCount = 0
+    var lastNotificationImportAt: Date?
     var pendingBackfillDays: [String] = []
     var clipboardStatus = ClipboardMonitorStatus()
     var notificationStatus = NotificationImportStatus()
@@ -77,15 +148,25 @@ final class AppState {
     var selectedMarkdownText: String?
     var selectedSourceNotesMarkdown: String?
     var readerFocus: ReaderFocusZone = .dateList
+    private var refreshJobsByDay: [String: DayRefreshJob] = [:]
     private(set) var environment: AppEnvironment?
     @ObservationIgnored private var automationTimer: Timer?
+    @ObservationIgnored private var notificationCatchUpTimer: Timer?
     @ObservationIgnored private var paragraphSelectionByDay: [String: String] = [:]
+    @ObservationIgnored private var refreshTasksByDay: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private let notificationSyncInterval: TimeInterval = 30
+    @ObservationIgnored private let automationInterval: TimeInterval = 900
+    @ObservationIgnored private let notificationOverlapBuffer: TimeInterval = 30
+    @ObservationIgnored private let maxConcurrentRefreshes = 2
     @ObservationIgnored private let userDefaults: UserDefaults
     @ObservationIgnored private let keychain: KeychainStoring
     @ObservationIgnored private let keychainService: String
     @ObservationIgnored private let processEnvironment: [String: String]
+    @ObservationIgnored private let currentDate: @Sendable () -> Date
     @ObservationIgnored private let probeEngine: @Sendable (DiaryEngine, SummarizerConfig, [String: String]) async -> EngineProbeResult
+    @ObservationIgnored private let onRefreshStageChange: RefreshStageChangeHandler?
     @ObservationIgnored private var summarizerConfig: SummarizerConfig
+    @ObservationIgnored private var autoSelectionSuppressedByExplicitNone: Bool
 
     var summarizerStatus: SummarizerRuntimeStatus {
         get {
@@ -126,7 +207,9 @@ final class AppState {
         probeEngine: @escaping @Sendable (DiaryEngine, SummarizerConfig, [String: String]) async -> EngineProbeResult = { engine, config, environment in
             await EngineProbe().probe(engine: engine, config: config, environment: environment)
         },
+        onRefreshStageChange: RefreshStageChangeHandler? = nil,
         processEnvironment: [String: String] = ProcessInfo.processInfo.environment,
+        currentDate: @escaping @Sendable () -> Date = Date.init,
         userDefaults: UserDefaults = .standard,
         keychain: KeychainStoring = KeychainHelper.shared,
         keychainService: String = KeychainHelper.service
@@ -136,12 +219,26 @@ final class AppState {
         self.keychain = keychain
         self.keychainService = keychainService
         self.processEnvironment = processEnvironment
+        self.currentDate = currentDate
         self.probeEngine = probeEngine
+        self.onRefreshStageChange = onRefreshStageChange
         self.summarizerConfig = summarizerConfig ?? SummarizerConfig.load(
             from: userDefaults,
             keychain: keychain,
             keychainService: keychainService
         )
+        let persistedSuppression = userDefaults.object(
+            forKey: UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection
+        ) as? Bool
+        self.autoSelectionSuppressedByExplicitNone = persistedSuppression
+            ?? (explicitSummarizerConfig == nil && self.summarizerConfig.defaultEngine == .none)
+        if persistedSuppression == nil, self.autoSelectionSuppressedByExplicitNone {
+            userDefaults.set(
+                true,
+                forKey: UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection
+            )
+        }
+        self.lastNotificationImportAt = userDefaults.object(forKey: UserDefaultsKeys.lastNotificationImportAt) as? Date
         let loadedDefaultEngine = self.summarizerConfig.defaultEngine
         if explicitSummarizerConfig == nil, let injectedSummarizer = environment?.summarizer {
             self.summarizerConfig = Self.reconciledConfig(
@@ -172,6 +269,7 @@ final class AppState {
 
         if let environment {
             self.environment = environment
+            restorePersistedNotificationImportAt(using: environment, now: currentDate())
             if explicitSummarizerConfig != nil {
                 environment.summarizer = self.summarizerConfig.makeSummarizer(
                     for: defaultEngine,
@@ -208,6 +306,7 @@ final class AppState {
             environment.clipboardWatcher.start()
             try? environment.databaseWriter.markOrphanRunsAsFailed()
             self.environment = environment
+            restorePersistedNotificationImportAt(using: environment, now: currentDate())
             clipboardStatus.isActive = true
             updateNotificationAccessStatus(using: environment.notificationReader)
             refreshEngineStatuses()
@@ -261,16 +360,15 @@ final class AppState {
         if selectedDate == nil {
             selectDate(targetDay)
         }
-
-        if targetDay == ISO8601DayKey.format(now) {
-            await refreshToday(now: now, environment: environment)
-        } else {
-            await refreshHistoricalDay(targetDay)
-        }
+        await refreshDay(targetDay, now: now, environment: environment)
     }
 
     func generateDailyNote(for dayKey: String) async {
-        await generateDailyNote(for: dayKey, recordsRun: true)
+        _ = await generateDailyNote(for: dayKey, recordsRun: true)
+    }
+
+    func refreshJob(for dayKey: String) -> DayRefreshJob? {
+        refreshJobsByDay[dayKey]
     }
 
     func applyVaultURL(_ url: URL) {
@@ -288,6 +386,7 @@ final class AppState {
         config.defaultEngine = preferredEngine
         summarizerConfig = config
         defaultEngine = preferredEngine
+        setAutoSelectionSuppressedByExplicitNone(preferredEngine == .none)
         persistSummarizerConfig()
         refreshEngineStatuses()
         statusMessage = preferredEngine == .none
@@ -377,6 +476,7 @@ final class AppState {
             }
         }
         engineStatuses = refreshed
+        reconcileDefaultEngineAfterStatusChange()
     }
 
     func retestAllEngines() async {
@@ -425,6 +525,8 @@ final class AppState {
                 isRetestingEngines = !retestingEngines.isEmpty
             }
         }
+
+        reconcileDefaultEngineAfterStatusChange()
     }
 
     func retestEngine(_ engine: DiaryEngine) async {
@@ -452,6 +554,7 @@ final class AppState {
             lastVerifiedAt: result.verifiedAt ?? engineStatuses[engine]?.lastVerifiedAt,
             configurationSignature: configurationSignature
         )
+        reconcileDefaultEngineAfterStatusChange()
         retestingEngines.remove(engine)
         isRetestingEngines = !retestingEngines.isEmpty
     }
@@ -464,6 +567,7 @@ final class AppState {
 
         defaultEngine = engine
         summarizerConfig.defaultEngine = engine
+        setAutoSelectionSuppressedByExplicitNone(engine == .none)
         persistSummarizerConfig()
         statusMessage = engine == .none
             ? "Summarizer disabled"
@@ -483,6 +587,15 @@ final class AppState {
             : requestedEngine == defaultEngine
                 ? "Summarizer settings updated for \(defaultEngine.displayName)"
                 : "Saved \(requestedEngine.displayName) settings; \(defaultEngine.displayName) remains active until verified"
+    }
+
+    private func reconcileDefaultEngineAfterStatusChange() {
+        guard defaultEngine == .none, !autoSelectionSuppressedByExplicitNone else { return }
+        guard let preferred = Self.autoSelectionPriority.first(where: { engineStatuses[$0]?.state == .green }) else {
+            return
+        }
+
+        selectDefaultEngine(preferred)
     }
 
     var automationStatusText: String {
@@ -527,6 +640,9 @@ final class AppState {
     enum UserDefaultsKeys {
         static let vaultPath = "vaultPath"
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
+        static let lastNotificationImportAt = "lastNotificationImportAt"
+        static let lastNotificationImportDatabasePath = "lastNotificationImportDatabasePath"
+        static let explicitlyDisabledSummarizerAutoSelection = "explicitlyDisabledSummarizerAutoSelection"
     }
 
     static func defaultVaultURL() throws -> URL {
@@ -554,19 +670,34 @@ final class AppState {
         return formatter
     }()
 
-    private func generateDailyNote(for dayKey: String, recordsRun: Bool) async {
+    @discardableResult
+    private func generateDailyNote(
+        for dayKey: String,
+        recordsRun: Bool,
+        onStageChange: ((DayRefreshStage, String?) -> Void)? = nil
+    ) async -> DayRefreshGenerationResult {
         guard let environment else {
             statusMessage = "Capture unavailable"
-            return
+            return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
         }
 
         let runID = recordsRun ? try? environment.databaseWriter.startRun(runType: "daily-note", dayKey: dayKey) : nil
         do {
+            onStageChange?(.loadingEvents, nil)
             let events = try environment.databaseWriter.fetchEvents(dayKey: dayKey)
-            let story = await generateStory(dayKey: dayKey, events: events, environment: environment)
+            onStageChange?(.preparingStory, "Preparing journal from \(events.count) event(s)...")
+            let story = await generateStory(
+                dayKey: dayKey,
+                events: events,
+                environment: environment,
+                onStageDetail: { detail in
+                    onStageChange?(.generatingStory, detail)
+                }
+            )
+            onStageChange?(.writingFiles, "Writing \(dayKey) artifacts...")
             let finalMarkdown = environment.composer.compose(dayKey: dayKey, events: events, story: story)
             let fileURL = try environment.writeDailyNote(dayKey: dayKey, markdown: finalMarkdown)
-                _ = try environment.writeDailyStory(story)
+            _ = try environment.writeDailyStory(story)
             if let runID {
                 try environment.databaseWriter.finishRun(id: runID, status: "succeeded")
             }
@@ -594,6 +725,10 @@ final class AppState {
             } else {
                 statusMessage = "Refreshed \(dayKey) with story view"
             }
+            return DayRefreshGenerationResult(
+                stage: .completed,
+                summary: refreshSummary(for: story)
+            )
         } catch {
             if let runID {
                 try? environment.databaseWriter.finishRun(id: runID, status: "failed")
@@ -602,6 +737,7 @@ final class AppState {
             dayRefreshStatus.lastRefreshedAt = Date()
             dayRefreshStatus.lastError = error.localizedDescription
             statusMessage = "Daily note failed: \(error.localizedDescription)"
+            return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
         }
     }
 
@@ -626,6 +762,9 @@ final class AppState {
         do {
             let importResult = try environment.notificationCollector.importDeliveredNotifications(since: notificationSince)
             lastImportedNotificationCount = importResult.importedCount
+            if shouldPersistNotificationWatermark(for: importResult) {
+                persistLastNotificationImportAt(now, databasePath: environment.databaseURL.path)
+            }
             notificationStatus.lastImportedAt = importResult.importedAt
             notificationStatus.lastImportedCount = importResult.importedCount
             if notificationStatus.isDatabaseAvailable {
@@ -642,7 +781,7 @@ final class AppState {
         pendingBackfillDays = pendingDays.filter { $0 != today }
 
         for dayKey in pendingDays {
-            await generateDailyNote(for: dayKey, recordsRun: true)
+            _ = await generateDailyNote(for: dayKey, recordsRun: true)
         }
 
         if pendingDays.isEmpty {
@@ -654,6 +793,42 @@ final class AppState {
                     : "Imported \(lastImportedNotificationCount) notifications"
             }
             pendingBackfillDays = []
+        }
+    }
+
+    func runNotificationCatchUp(now: Date = Date()) async {
+        guard let environment else {
+            statusMessage = "Capture unavailable"
+            return
+        }
+
+        let calendar = Calendar(identifier: .gregorian)
+        let todayStart = calendar.startOfDay(for: now)
+        let baseline = lastNotificationImportAt ?? todayStart
+        let importStart = max(todayStart, baseline.addingTimeInterval(-notificationOverlapBuffer))
+        updateNotificationAccessStatus(using: environment.notificationReader)
+
+        do {
+            let result = try environment.notificationCollector.importDeliveredNotifications(
+                from: importStart,
+                through: now
+            )
+            applyNotificationAccessStatus(result.accessStatus)
+            lastImportedNotificationCount = result.importedCount
+            if shouldPersistNotificationWatermark(for: result) {
+                persistLastNotificationImportAt(now, databasePath: environment.databaseURL.path)
+            }
+            notificationStatus.lastImportedAt = result.importedAt
+            notificationStatus.lastImportedCount = result.importedCount
+            if notificationStatus.isDatabaseAvailable {
+                notificationStatus.lastError = nil
+            }
+        } catch {
+            applyNotificationAccessStatus(environment.notificationCollector.accessStatus())
+            lastImportedNotificationCount = 0
+            notificationStatus.lastImportedAt = Date()
+            notificationStatus.lastImportedCount = 0
+            notificationStatus.lastError = error.localizedDescription
         }
     }
 }
@@ -700,34 +875,140 @@ extension AppState {
         focusDateList()
     }
 
-    func refreshToday(now: Date, environment: AppEnvironment) async {
-        await runAutomation(now: now)
-        let today = ISO8601DayKey.format(now)
-        selectedDate = today
-        selectedMarkdownURL = noteIndex[today]
-        loadDayPresentation(for: today)
-        selectedContentVersion += 1
-        if dayRefreshStatus.lastError != nil {
+    func refreshDay(_ dayKey: String, now: Date, environment: AppEnvironment) async {
+        guard refreshTasksByDay[dayKey] == nil else {
             return
         }
-        let imported = notificationStatus.lastImportedCount
-        if let error = notificationStatus.lastError, !notificationStatus.isDatabaseAvailable {
-            statusMessage = "Refreshed today without notifications: \(error)"
-        } else if imported == 0 {
-            statusMessage = "Refreshed today with no new notifications"
+        guard refreshTasksByDay.count < maxConcurrentRefreshes else {
+            statusMessage = "Two refreshes are already running"
+            return
+        }
+
+        transitionRefreshJob(for: dayKey, stage: .syncingNotifications)
+        let task = Task { @MainActor in
+            await performRefreshDay(dayKey, now: now, environment: environment)
+        }
+        refreshTasksByDay[dayKey] = task
+        await task.value
+    }
+
+    private func performRefreshDay(_ dayKey: String, now: Date, environment: AppEnvironment) async {
+        defer {
+            refreshTasksByDay.removeValue(forKey: dayKey)
+        }
+
+        let syncOutcome = syncNotifications(for: dayKey, now: now, environment: environment)
+        let noteResult = await generateDailyNote(
+            for: dayKey,
+            recordsRun: true,
+            onStageChange: { [weak self] stage, detail in
+                self?.transitionRefreshJob(for: dayKey, stage: stage, detail: detail)
+            }
+        )
+        guard noteResult.stage == .completed else {
+            transitionRefreshJob(
+                for: dayKey,
+                stage: .failed,
+                detail: "Failed · \(dayRefreshStatus.lastRequestedDay == dayKey ? (dayRefreshStatus.lastError ?? "Unknown error") : "Unknown error")",
+                error: dayRefreshStatus.lastRequestedDay == dayKey ? dayRefreshStatus.lastError : nil
+            )
+            return
+        }
+
+        let completionDetail: String
+        let storySummary = noteResult.summary
+        if dayKey == ISO8601DayKey.format(now) {
+            if let error = syncOutcome.error {
+                statusMessage = "Refreshed today without notifications: \(error)"
+                completionDetail = "Completed · \(storySummary) · notification sync failed"
+            } else if syncOutcome.importedCount == 0 {
+                statusMessage = "Refreshed today with no new notifications"
+                completionDetail = "Completed · \(storySummary)"
+            } else {
+                statusMessage = "Imported \(syncOutcome.importedCount) notifications and refreshed today"
+                completionDetail = "Completed · \(storySummary)"
+            }
+        } else if let error = syncOutcome.error {
+            statusMessage = "Refreshed \(dayKey) without notifications: \(error)"
+            completionDetail = "Completed · \(storySummary) · notification sync failed"
         } else {
-            statusMessage = "Imported \(imported) notifications and refreshed today"
+            statusMessage = syncOutcome.importedCount > 0
+                ? "Refreshed \(dayKey) after syncing notifications"
+                : "Refreshed \(dayKey)"
+            completionDetail = "Completed · \(storySummary)"
+        }
+        transitionRefreshJob(for: dayKey, stage: .completed, detail: completionDetail)
+    }
+
+    func syncNotifications(
+        for dayKey: String,
+        now: Date,
+        environment: AppEnvironment
+    ) -> NotificationSyncOutcome {
+        guard let dayStart = Self.startOfDay(for: dayKey) else {
+            notificationStatus.lastImportedAt = Date()
+            notificationStatus.lastImportedCount = 0
+            lastImportedNotificationCount = 0
+            return NotificationSyncOutcome(importedCount: 0, error: nil)
+        }
+
+        let calendar = Calendar(identifier: .gregorian)
+        let nextDayStart = calendar.date(byAdding: .day, value: 1, to: dayStart)
+        let isToday = dayKey == ISO8601DayKey.format(now)
+        let todayWindowEnd: Date? = if isToday {
+            if let nextDayStart {
+                min(max(now, dayStart), nextDayStart)
+            } else {
+                max(now, dayStart)
+            }
+        } else {
+            nil
+        }
+
+        do {
+            let result: NotificationImportResult
+            if let todayWindowEnd {
+                result = try environment.notificationCollector.importDeliveredNotifications(
+                    from: dayStart,
+                    through: todayWindowEnd
+                )
+            } else if let nextDayStart {
+                result = try environment.notificationCollector.importDeliveredNotifications(
+                    from: dayStart,
+                    until: nextDayStart
+                )
+            } else {
+                result = try environment.notificationCollector.importDeliveredNotifications(
+                    from: dayStart
+                )
+            }
+            applyNotificationAccessStatus(result.accessStatus)
+            lastImportedNotificationCount = result.importedCount
+            if isToday, shouldPersistNotificationWatermark(for: result) {
+                persistLastNotificationImportAt(todayWindowEnd ?? now, databasePath: environment.databaseURL.path)
+            }
+            notificationStatus.lastImportedAt = result.importedAt
+            notificationStatus.lastImportedCount = result.importedCount
+            if notificationStatus.isDatabaseAvailable {
+                notificationStatus.lastError = nil
+            }
+            return NotificationSyncOutcome(importedCount: result.importedCount, error: nil)
+        } catch {
+            applyNotificationAccessStatus(environment.notificationCollector.accessStatus())
+            lastImportedNotificationCount = 0
+            notificationStatus.lastImportedAt = Date()
+            notificationStatus.lastImportedCount = 0
+            notificationStatus.lastError = error.localizedDescription
+            return NotificationSyncOutcome(importedCount: 0, error: error.localizedDescription)
         }
     }
 
-    func refreshHistoricalDay(_ dayKey: String) async {
-        await generateDailyNote(for: dayKey, recordsRun: true)
-        if dayRefreshStatus.lastError == nil {
-            statusMessage = "Refreshed \(dayKey)"
-        }
-    }
-
-    func generateStory(dayKey: String, events: [EventRecord], environment: AppEnvironment) async -> DailyStory {
+    func generateStory(
+        dayKey: String,
+        events: [EventRecord],
+        environment: AppEnvironment,
+        onStageDetail: ((String) -> Void)? = nil
+    ) async -> DailyStory {
         let activeEngine = if defaultEngine == .none {
             summarizerConfig.defaultEngine != .none
                 ? summarizerConfig.defaultEngine
@@ -745,17 +1026,21 @@ extension AppState {
                 )
             )
         guard let summarizer = environment.summarizer else {
+            onStageDetail?("No verified engine available; using local fallback")
             return fallbackStory
         }
 
         do {
+            onStageDetail?("Calling \(activeEngine.displayName)...")
             let raw = try await summarizer.summarize(
                 dayKey: dayKey,
                 markdown: environment.composer.storyPrompt(dayKey: dayKey, events: events)
             )
+            onStageDetail?("Parsing \(activeEngine.displayName) response...")
             if let parsed = environment.composer.parseStory(dayKey: dayKey, raw: raw),
                parsed.sections.flatMap(\.paragraphs).isEmpty == false {
                 recordActiveEngineRuntime(state: .green, detail: "Story generation succeeded.", verifiedAt: Date())
+                onStageDetail?("\(activeEngine.displayName) returned successfully")
                 return parsed.withProvenance(
                     makeStoryProvenance(
                         mode: .model,
@@ -769,12 +1054,14 @@ extension AppState {
                 detail: "Story output was not valid structured JSON",
                 verifiedAt: Date()
             )
+            onStageDetail?("\(activeEngine.displayName) returned invalid output; using local fallback")
         } catch {
             recordActiveEngineRuntime(
                 state: .yellow,
                 detail: error.localizedDescription,
                 verifiedAt: Date()
             )
+            onStageDetail?("\(activeEngine.displayName) failed; using local fallback")
         }
 
         return fallbackStory
@@ -874,6 +1161,9 @@ extension AppState {
     }
 
     var dayRefreshSummary: String {
+        if let active = selectedDate.flatMap({ refreshJobsByDay[$0] }), active.inFlight {
+            return active.detail ?? ""
+        }
         if let lastError = dayRefreshStatus.lastError, let dayKey = dayRefreshStatus.lastRequestedDay {
             return "Refresh failed for \(dayKey): \(lastError)"
         }
@@ -957,8 +1247,12 @@ extension AppState {
         }
     }
 
-    func updateNotificationAccessStatus(using reader: NotificationDatabaseReader) {
+    func updateNotificationAccessStatus(using reader: any NotificationDatabaseReading) {
         let accessStatus = reader.accessStatus()
+        applyNotificationAccessStatus(accessStatus)
+    }
+
+    func applyNotificationAccessStatus(_ accessStatus: NotificationDatabaseAccessStatus) {
         notificationStatus.isDatabaseAvailable = accessStatus.isAvailable
         notificationStatus.databasePath = accessStatus.databaseURL?.path
         notificationStatus.availabilityMessage = accessStatus.message
@@ -966,18 +1260,34 @@ extension AppState {
 
     func startAutomation() {
         automationTimer?.invalidate()
-        automationTimer = Timer.scheduledTimer(withTimeInterval: 900, repeats: true) { [weak self] _ in
+        notificationCatchUpTimer?.invalidate()
+
+        automationTimer = Timer.scheduledTimer(withTimeInterval: automationInterval, repeats: true) { [weak self] _ in
             guard let self else {
                 return
             }
 
+            let now = self.currentDate()
             Task { @MainActor in
-                await self.runAutomation()
+                await self.runAutomation(now: now)
+            }
+        }
+
+        notificationCatchUpTimer = Timer.scheduledTimer(withTimeInterval: notificationSyncInterval, repeats: true) { [weak self] _ in
+            guard let self else {
+                return
+            }
+
+            let now = self.currentDate()
+            Task { @MainActor in
+                await self.runNotificationCatchUp(now: now)
             }
         }
 
         Task { @MainActor in
-            await runAutomation()
+            let now = currentDate()
+            await runAutomation(now: now)
+            await runNotificationCatchUp(now: now)
         }
     }
 
@@ -1031,6 +1341,54 @@ extension AppState {
         return try? environment.loadDailyNoteMarkdown(from: selectedMarkdownURL)
     }
 
+    private func transitionRefreshJob(
+        for dayKey: String,
+        stage: DayRefreshStage,
+        detail: String? = nil,
+        error: String? = nil
+    ) {
+        let resolvedDetail = detail ?? error ?? stage.detail
+        var completedStages = refreshJobsByDay[dayKey]?.completedStages ?? []
+        if let previousStage = refreshJobsByDay[dayKey]?.stage,
+           previousStage.isProgressStep,
+           previousStage != stage,
+           !completedStages.contains(previousStage) {
+            completedStages.append(previousStage)
+        }
+        if stage == .completed,
+           !completedStages.contains(.writingFiles) {
+            completedStages.append(.writingFiles)
+        }
+        refreshJobsByDay[dayKey] = DayRefreshJob(
+            dayKey: dayKey,
+            stage: stage,
+            detail: resolvedDetail,
+            error: error,
+            completedStages: completedStages,
+            summary: stage.isProgressStep ? nil : resolvedDetail
+        )
+        onRefreshStageChange?(
+            DayRefreshJob(
+                dayKey: dayKey,
+                stage: stage,
+                detail: resolvedDetail,
+                error: error,
+                completedStages: completedStages,
+                summary: stage.isProgressStep ? nil : resolvedDetail
+            )
+        )
+    }
+
+    private func refreshSummary(for story: DailyStory) -> String {
+        if story.provenance?.generationMode == .model {
+            if let engineLabel = story.provenance?.engineLabel {
+                return "\(engineLabel) returned successfully"
+            }
+            return "model returned successfully"
+        }
+        return "local fallback"
+    }
+
     private func extractSourceNotesMarkdown(from markdown: String) -> String? {
         environment?.composer.extractSourceNotesSection(from: markdown)
             ?? DailyMarkdownComposer().extractSourceNotesSection(from: markdown)
@@ -1050,6 +1408,49 @@ extension AppState {
             for: defaultEngine,
             environment: processEnvironment
         )
+    }
+
+    private func setAutoSelectionSuppressedByExplicitNone(_ isSuppressed: Bool) {
+        autoSelectionSuppressedByExplicitNone = isSuppressed
+        userDefaults.set(isSuppressed, forKey: UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection)
+    }
+
+    private func persistLastNotificationImportAt(_ date: Date?, databasePath: String?) {
+        lastNotificationImportAt = date
+        if let date {
+            userDefaults.set(date, forKey: UserDefaultsKeys.lastNotificationImportAt)
+            userDefaults.set(databasePath, forKey: UserDefaultsKeys.lastNotificationImportDatabasePath)
+        } else {
+            userDefaults.removeObject(forKey: UserDefaultsKeys.lastNotificationImportAt)
+            userDefaults.removeObject(forKey: UserDefaultsKeys.lastNotificationImportDatabasePath)
+        }
+    }
+
+    private func restorePersistedNotificationImportAt(using environment: AppEnvironment, now: Date = Date()) {
+        guard let persistedDate = userDefaults.object(forKey: UserDefaultsKeys.lastNotificationImportAt) as? Date else {
+            lastNotificationImportAt = nil
+            return
+        }
+
+        let persistedDatabasePath = userDefaults.string(forKey: UserDefaultsKeys.lastNotificationImportDatabasePath)
+        guard persistedDatabasePath == environment.databaseURL.path else {
+            persistLastNotificationImportAt(nil, databasePath: nil)
+            return
+        }
+
+        let todayKey = ISO8601DayKey.format(now)
+        let hasTodayNotificationEvents = ((try? environment.databaseWriter.fetchEvents(dayKey: todayKey)) ?? [])
+            .contains(where: { $0.sourceType == .notification })
+        guard hasTodayNotificationEvents else {
+            persistLastNotificationImportAt(nil, databasePath: nil)
+            return
+        }
+
+        lastNotificationImportAt = persistedDate
+    }
+
+    private func shouldPersistNotificationWatermark(for result: NotificationImportResult) -> Bool {
+        result.accessStatus.isAvailable
     }
 
     private func makeStoryProvenance(
@@ -1248,4 +1649,9 @@ extension AppState {
 
         return persistedEngine
     }
+}
+
+struct NotificationSyncOutcome {
+    let importedCount: Int
+    let error: String?
 }

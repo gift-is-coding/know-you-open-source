@@ -17,15 +17,46 @@ private struct StaticSummarizer: SummaryGenerating {
 
 private final class RecordingNotificationReader: NotificationDatabaseReading, @unchecked Sendable {
     private(set) var requestedSince: Date?
+    private(set) var requestedUpperBound: NotificationFetchUpperBound?
     var snapshots: [NotificationSnapshot] = []
     var fetchError: Error?
+    var fetchHandler: ((Date, NotificationFetchUpperBound?) throws -> [NotificationSnapshot])?
+    var accessStatusValue = NotificationDatabaseAccessStatus(
+        state: .available,
+        databaseURL: URL(fileURLWithPath: "/tmp/notification-center.sqlite")
+    )
 
-    func fetchDeliveredNotifications(since: Date) throws -> [NotificationSnapshot] {
-        requestedSince = since
+    func accessStatus() -> NotificationDatabaseAccessStatus {
+        accessStatusValue
+    }
+
+    func fetchDeliveredNotifications(from startDate: Date, upperBound: NotificationFetchUpperBound?) throws -> [NotificationSnapshot] {
+        requestedSince = startDate
+        requestedUpperBound = upperBound
         if let fetchError {
             throw fetchError
         }
-        return snapshots
+        let snapshots: [NotificationSnapshot]
+        if let fetchHandler {
+            snapshots = try fetchHandler(startDate, upperBound)
+        } else {
+            snapshots = self.snapshots
+        }
+
+        return snapshots.filter { snapshot in
+            guard snapshot.deliveredAt >= startDate else {
+                return false
+            }
+
+            switch upperBound {
+            case .exclusive(let endDate):
+                return snapshot.deliveredAt < endDate
+            case .inclusive(let endDate):
+                return snapshot.deliveredAt <= endDate
+            case nil:
+                return true
+            }
+        }
     }
 }
 
@@ -98,6 +129,93 @@ private actor ProbeStartTracker {
             waiters.append((engines, continuation))
         }
     }
+}
+
+private actor RefreshBlockGate {
+    private var startedCounts: [String: Int] = [:]
+    private var startedWaiters: [String: CheckedContinuation<Void, Never>] = [:]
+    private var releaseWaiters: [String: CheckedContinuation<Void, Never>] = [:]
+
+    func markStarted(dayKey: String) {
+        startedCounts[dayKey, default: 0] += 1
+        startedWaiters[dayKey]?.resume()
+        startedWaiters[dayKey] = nil
+    }
+
+    func waitUntilStarted(dayKey: String) async {
+        guard startedCounts[dayKey] == nil else { return }
+        await withCheckedContinuation { continuation in
+            startedWaiters[dayKey] = continuation
+        }
+    }
+
+    func waitForRelease(dayKey: String) async {
+        await withCheckedContinuation { continuation in
+            releaseWaiters[dayKey] = continuation
+        }
+    }
+
+    func release(dayKey: String) {
+        releaseWaiters[dayKey]?.resume()
+        releaseWaiters[dayKey] = nil
+    }
+
+    func startCount(for dayKey: String) -> Int {
+        startedCounts[dayKey] ?? 0
+    }
+}
+
+private struct BlockingSummarizer: SummaryGenerating {
+    let gate: RefreshBlockGate
+
+    func summarize(dayKey: String, markdown: String) async throws -> String {
+        await gate.markStarted(dayKey: dayKey)
+        await gate.waitForRelease(dayKey: dayKey)
+        return """
+        {"sections":[{"id":"daily-journal","paragraphs":[{"text":"# Summary\\n- \(dayKey)","sourceEventIDs":[]}]}]}
+        """
+    }
+}
+
+@MainActor
+private func makeBlockingRefreshEnvironment() throws -> (AppEnvironment, RefreshBlockGate) {
+    let gate = RefreshBlockGate()
+    let writer = try DatabaseWriter.inMemory()
+    let environment = AppEnvironment(
+        databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+        vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+        databaseWriter: writer,
+        summarizer: BlockingSummarizer(gate: gate),
+        notificationReader: RecordingNotificationReader(),
+        dailyAutomationPlanner: DailyAutomationPlanner(
+            backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+        )
+    )
+    return (environment, gate)
+}
+
+@MainActor
+private final class RefreshStageRecorder {
+    private(set) var stages: [DayRefreshStage] = []
+
+    func record(_ job: DayRefreshJob) {
+        stages.append(job.stage)
+    }
+}
+
+private func waitUntil(
+    timeoutNanoseconds: UInt64 = 1_000_000_000,
+    pollNanoseconds: UInt64 = 10_000_000,
+    condition: @escaping @MainActor () -> Bool
+) async -> Bool {
+    let start = DispatchTime.now().uptimeNanoseconds
+    while DispatchTime.now().uptimeNanoseconds - start < timeoutNanoseconds {
+        if await condition() {
+            return true
+        }
+        try? await Task.sleep(nanoseconds: pollNanoseconds)
+    }
+    return await condition()
 }
 
 @MainActor
@@ -378,6 +496,504 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(try writer.fetchRuns(runType: "daily-note").last?.dayKey, today)
     }
 
+    func testRunNotificationCatchUpRecoversTodayNotificationsFromStartOfDay() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let reader = RecordingNotificationReader()
+        let calendar = Calendar(identifier: .gregorian)
+        let now = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 13).date!
+        let dayKey = ISO8601DayKey.format(now)
+        reader.snapshots = [
+            NotificationSnapshot(appName: "Calendar", deliveredAt: now, body: "Standup in 5")
+        ]
+
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: reader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        await appState.runNotificationCatchUp(now: now)
+
+        XCTAssertEqual(reader.requestedSince, calendar.startOfDay(for: now))
+        XCTAssertEqual(reader.requestedUpperBound, .inclusive(now))
+        XCTAssertEqual(try writer.fetchEvents(dayKey: dayKey).count, 1)
+        XCTAssertEqual(appState.lastNotificationImportAt, now)
+        XCTAssertEqual(appState.notificationStatus.lastImportedCount, 1)
+    }
+
+    func testRunNotificationCatchUpUsesOverlapBufferWithoutDuplicatingNotifications() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let reader = RecordingNotificationReader()
+        let calendar = Calendar(identifier: .gregorian)
+        let firstNow = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 13, minute: 0, second: 0).date!
+        let secondNow = firstNow.addingTimeInterval(120)
+        let repeatedNotification = NotificationSnapshot(
+            appName: "Mail",
+            deliveredAt: firstNow.addingTimeInterval(-15),
+            body: "Same delivered notification"
+        )
+        reader.fetchHandler = { startDate, upperBound in
+            switch upperBound {
+            case .inclusive(let endDate):
+                if endDate == firstNow {
+                    return [repeatedNotification]
+                }
+                if endDate == secondNow {
+                    XCTAssertEqual(startDate, firstNow.addingTimeInterval(-30))
+                    return [repeatedNotification]
+                }
+                return []
+            case .exclusive, nil:
+                return []
+            }
+        }
+
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: reader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        await appState.runNotificationCatchUp(now: firstNow)
+        await appState.runNotificationCatchUp(now: secondNow)
+
+        let events = try writer.fetchEvents(dayKey: ISO8601DayKey.format(firstNow))
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(reader.requestedUpperBound, .inclusive(secondNow))
+        XCTAssertEqual(appState.lastNotificationImportAt, secondNow)
+        XCTAssertEqual(appState.notificationStatus.lastImportedCount, 1)
+    }
+
+    func testRunNotificationCatchUpDoesNotPersistWatermarkWhenNotificationDatabaseUnavailable() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let reader = RecordingNotificationReader()
+        reader.accessStatusValue = NotificationDatabaseAccessStatus(state: .missing, databaseURL: nil)
+        let calendar = Calendar(identifier: .gregorian)
+        let now = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 13).date!
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: reader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        await appState.runNotificationCatchUp(now: now)
+
+        XCTAssertNil(appState.lastNotificationImportAt)
+        XCTAssertNil(engineDefaults.object(forKey: AppState.UserDefaultsKeys.lastNotificationImportAt))
+        XCTAssertEqual(appState.notificationStatus.lastImportedCount, 0)
+    }
+
+    func testStartAutomationStillRunsAutomationWhileSchedulingCatchUp() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let now = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 13).date!
+        let dayKey = ISO8601DayKey.format(now)
+        let reader = RecordingNotificationReader()
+        reader.snapshots = [
+            NotificationSnapshot(appName: "Calendar", deliveredAt: now, body: "Standup in 5")
+        ]
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: now,
+                dayKey: dayKey,
+                text: "Clipboard event for automation",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "automation-startup-event"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: reader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(
+            environment: environment,
+            currentDate: { now },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        appState.startAutomation()
+
+        let automationStarted = await waitUntil {
+            appState.lastAutomationRunAt == now
+        }
+        XCTAssertTrue(automationStarted)
+        let noteWritten = await waitUntil {
+            FileManager.default.fileExists(atPath: vaultURL.appending(path: "\(dayKey).md").path)
+        }
+        XCTAssertTrue(noteWritten)
+        XCTAssertEqual(appState.lastAutomationRunAt, now)
+        XCTAssertEqual(appState.notificationStatus.lastImportedCount, 1)
+        XCTAssertEqual(try writer.fetchRuns(runType: "daily-note").last?.dayKey, dayKey)
+    }
+
+    func testRelaunchRestoresPersistedLastNotificationImportAtForCatchUpWindow() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let firstReader = RecordingNotificationReader()
+        let initialNow = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 13, minute: 0, second: 0).date!
+        let resumedNow = initialNow.addingTimeInterval(120)
+        let overlapStart = initialNow.addingTimeInterval(-30)
+        let sharedDatabaseURL = URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite")
+        let repeatedNotification = NotificationSnapshot(
+            appName: "Mail",
+            deliveredAt: initialNow.addingTimeInterval(-10),
+            body: "Persist across relaunch"
+        )
+        firstReader.snapshots = [repeatedNotification]
+
+        let environment = AppEnvironment(
+            databaseURL: sharedDatabaseURL,
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: firstReader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let original = AppState(
+            environment: environment,
+            currentDate: { initialNow },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        await original.runNotificationCatchUp(now: initialNow)
+
+        let secondReader = RecordingNotificationReader()
+        secondReader.fetchHandler = { startDate, upperBound in
+            XCTAssertEqual(startDate, overlapStart)
+            XCTAssertEqual(upperBound, .inclusive(resumedNow))
+            return [repeatedNotification]
+        }
+        let relaunchedEnvironment = AppEnvironment(
+            databaseURL: sharedDatabaseURL,
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: secondReader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let relaunched = AppState(
+            environment: relaunchedEnvironment,
+            currentDate: { resumedNow },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertEqual(relaunched.lastNotificationImportAt, initialNow)
+
+        await relaunched.runNotificationCatchUp(now: resumedNow)
+
+        let events = try writer.fetchEvents(dayKey: ISO8601DayKey.format(initialNow))
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(relaunched.lastNotificationImportAt, resumedNow)
+    }
+
+    func testRelaunchWithFreshStoreIgnoresPersistedNotificationWatermark() async throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let initialNow = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 13, minute: 0, second: 0).date!
+        let resumedNow = initialNow.addingTimeInterval(120)
+        let sharedDatabaseURL = URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite")
+        let originalWriter = try DatabaseWriter.inMemory()
+        let originalReader = RecordingNotificationReader()
+        let originalNotification = NotificationSnapshot(
+            appName: "Mail",
+            deliveredAt: initialNow.addingTimeInterval(-10),
+            body: "Persist across relaunch"
+        )
+        originalReader.snapshots = [originalNotification]
+        let originalEnvironment = AppEnvironment(
+            databaseURL: sharedDatabaseURL,
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: originalWriter,
+            summarizer: nil,
+            notificationReader: originalReader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let original = AppState(
+            environment: originalEnvironment,
+            currentDate: { initialNow },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        await original.runNotificationCatchUp(now: initialNow)
+
+        let freshWriter = try DatabaseWriter.inMemory()
+        let freshReader = RecordingNotificationReader()
+        let freshNotification = NotificationSnapshot(
+            appName: "Calendar",
+            deliveredAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 9, minute: 0).date!,
+            body: "Earlier same-day notification in fresh store"
+        )
+        freshReader.fetchHandler = { startDate, upperBound in
+            XCTAssertEqual(startDate, calendar.startOfDay(for: resumedNow))
+            XCTAssertEqual(upperBound, .inclusive(resumedNow))
+            return [freshNotification]
+        }
+        let freshEnvironment = AppEnvironment(
+            databaseURL: sharedDatabaseURL,
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: freshWriter,
+            summarizer: nil,
+            notificationReader: freshReader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let relaunched = AppState(
+            environment: freshEnvironment,
+            currentDate: { resumedNow },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertNil(relaunched.lastNotificationImportAt)
+
+        await relaunched.runNotificationCatchUp(now: resumedNow)
+
+        let events = try freshWriter.fetchEvents(dayKey: ISO8601DayKey.format(initialNow))
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events.first?.text, freshNotification.body)
+        XCTAssertEqual(relaunched.lastNotificationImportAt, resumedNow)
+    }
+
+    func testRefreshSelectedDayForTodayRequestsOnlyTodayWindow() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let reader = RecordingNotificationReader()
+        let calendar = Calendar(identifier: .gregorian)
+        let priorRun = try writer.startRun(runType: "daily-note", dayKey: "2026-04-09")
+        try writer.finishRun(id: priorRun, status: "succeeded")
+        let now = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        reader.snapshots = [
+            NotificationSnapshot(appName: "Calendar", deliveredAt: now, body: "Standup in 5")
+        ]
+
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: reader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(environment: environment)
+
+        await appState.refreshSelectedDay(now: now)
+
+        XCTAssertEqual(reader.requestedSince, calendar.startOfDay(for: now))
+        XCTAssertEqual(reader.requestedUpperBound, .inclusive(now))
+        XCTAssertEqual(appState.selectedDate, "2026-04-11")
+    }
+
+    func testRefreshSelectedDayForTodayIgnoresFutureNotificationsLaterThatDay() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let reader = RecordingNotificationReader()
+        let calendar = Calendar(identifier: .gregorian)
+        let now = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        let dayKey = ISO8601DayKey.format(now)
+        let beforeNowNotification = NotificationSnapshot(
+            appName: "Calendar",
+            deliveredAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 14, minute: 45).date!,
+            body: "Already happened"
+        )
+        let afterNowNotification = NotificationSnapshot(
+            appName: "Mail",
+            deliveredAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 18, minute: 0).date!,
+            body: "Future in day"
+        )
+        reader.fetchHandler = { _, _ in [beforeNowNotification, afterNowNotification] }
+
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: now,
+                dayKey: dayKey,
+                text: "Today event",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "today-event-with-future-filter"
+            )
+        )
+
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: reader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(environment: environment)
+
+        await appState.refreshSelectedDay(now: now)
+
+        let events = try writer.fetchEvents(dayKey: dayKey)
+        XCTAssertEqual(appState.notificationStatus.lastImportedCount, 1)
+        XCTAssertEqual(reader.requestedUpperBound, .inclusive(now))
+        XCTAssertTrue(events.contains(where: { $0.sourceType == .notification && $0.text == beforeNowNotification.body }))
+        XCTAssertFalse(events.contains(where: { $0.sourceType == .notification && $0.text == afterNowNotification.body }))
+    }
+
+    func testRefreshSelectedDayForHistoricalDateRequestsOnlyThatDayWindow() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let reader = RecordingNotificationReader()
+        let calendar = Calendar(identifier: .gregorian)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: reader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(environment: environment)
+        appState.selectDate("2026-04-08")
+
+        await appState.refreshSelectedDay(
+            now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11).date!
+        )
+
+        let expectedStart = DateComponents(calendar: calendar, year: 2026, month: 4, day: 8).date!
+        let expectedEnd = calendar.date(byAdding: .day, value: 1, to: expectedStart)
+        XCTAssertEqual(reader.requestedSince, expectedStart)
+        XCTAssertEqual(reader.requestedUpperBound, expectedEnd.map(NotificationFetchUpperBound.exclusive))
+        XCTAssertEqual(appState.selectedDate, "2026-04-08")
+    }
+
+    func testRefreshSelectedDayDoesNotRunMultiDayAutomationBackfill() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let reader = RecordingNotificationReader()
+        let calendar = Calendar(identifier: .gregorian)
+        let priorRun = try writer.startRun(runType: "daily-note", dayKey: "2026-04-09")
+        try writer.finishRun(id: priorRun, status: "succeeded")
+        let selectedDay = "2026-04-08"
+        let now = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        reader.snapshots = [
+            NotificationSnapshot(
+                appName: "Calendar",
+                deliveredAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 8, hour: 9).date!,
+                body: "Standup in 5"
+            )
+        ]
+
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: reader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(environment: environment)
+        appState.selectDate(selectedDay)
+
+        let runsBeforeRefresh = try writer.fetchRuns(runType: "daily-note").count
+
+        await appState.refreshSelectedDay(now: now)
+
+        let runDaysAfterRefresh = try writer.fetchRuns(runType: "daily-note").map(\.dayKey)
+        XCTAssertEqual(runDaysAfterRefresh.count, runsBeforeRefresh + 1)
+        XCTAssertEqual(runDaysAfterRefresh.last, selectedDay)
+        XCTAssertEqual(appState.selectedDate, selectedDay)
+    }
+
+    func testRefreshSelectedDayDoesNotCallAutomationPath() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let reader = RecordingNotificationReader()
+        let calendar = Calendar(identifier: .gregorian)
+        let now = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        reader.snapshots = [
+            NotificationSnapshot(
+                appName: "Calendar",
+                deliveredAt: now,
+                body: "Standup in 5"
+            )
+        ]
+
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: reader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(environment: environment)
+
+        await appState.refreshSelectedDay(now: now)
+
+        XCTAssertNil(appState.lastAutomationRunAt)
+    }
+
     func testRefreshSelectedDayUsesTodayWhenNoSelectionExists() async throws {
         let writer = try DatabaseWriter.inMemory()
         let reader = RecordingNotificationReader()
@@ -420,11 +1036,13 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.statusMessage, "Imported 1 notifications and refreshed today")
     }
 
-    func testRefreshSelectedDayForHistoricalSelectionSkipsNotificationImport() async throws {
+    func testRefreshSelectedDayForHistoricalSelectionImportsOnlyThatDayNotifications() async throws {
         let writer = try DatabaseWriter.inMemory()
         let reader = RecordingNotificationReader()
+        let calendar = Calendar(identifier: .gregorian)
         let historicalDay = "2026-04-06"
-        let capturedAt = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 6, hour: 9).date!
+        let historicalStart = DateComponents(calendar: calendar, year: 2026, month: 4, day: 6).date!
+        let capturedAt = DateComponents(calendar: calendar, year: 2026, month: 4, day: 6, hour: 9).date!
         try writer.insert(
             EventRecord(
                 id: UUID(),
@@ -438,6 +1056,17 @@ final class MainWindowViewModelTests: XCTestCase {
                 contentHash: "historical-event"
             )
         )
+        let historicalNotification = NotificationSnapshot(
+            appName: "Mail",
+            deliveredAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 6, hour: 14).date!,
+            body: "Historical notification"
+        )
+        let outsideDayNotification = NotificationSnapshot(
+            appName: "Calendar",
+            deliveredAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 7, hour: 8).date!,
+            body: "Should not leak into 2026-04-06"
+        )
+        reader.fetchHandler = { _, _ in [historicalNotification, outsideDayNotification] }
 
         let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         let environment = AppEnvironment(
@@ -453,10 +1082,20 @@ final class MainWindowViewModelTests: XCTestCase {
         let appState = AppState(environment: environment)
         appState.selectDate(historicalDay)
 
-        await appState.refreshSelectedDay(now: DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 7).date!)
+        await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 7).date!)
 
-        XCTAssertNil(reader.requestedSince)
-        XCTAssertEqual(appState.statusMessage, "Refreshed 2026-04-06")
+        let historicalEvents = try writer.fetchEvents(dayKey: historicalDay)
+        XCTAssertEqual(reader.requestedSince, historicalStart)
+        XCTAssertEqual(
+            reader.requestedUpperBound,
+            calendar.date(byAdding: .day, value: 1, to: historicalStart).map(NotificationFetchUpperBound.exclusive)
+        )
+        XCTAssertEqual(appState.notificationStatus.lastImportedCount, 1)
+        XCTAssertEqual(historicalEvents.count, 2)
+        XCTAssertTrue(historicalEvents.contains(where: { $0.sourceType == .notification && $0.text == historicalNotification.body }))
+        XCTAssertEqual(try writer.fetchEvents(dayKey: "2026-04-07").count, 0)
+        XCTAssertFalse(historicalEvents.contains(where: { $0.sourceType == .notification && $0.text == outsideDayNotification.body }))
+        XCTAssertEqual(appState.selectedDate, historicalDay)
     }
 
     func testReaderNavigationRestoresPerDayParagraphMemory() throws {
@@ -766,6 +1405,220 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertTrue(appState.statusMessage?.contains("Daily note failed:") == true)
         XCTAssertNotNil(appState.dayRefreshStatus.lastError)
+    }
+
+    func testRefreshSelectedDayStillGeneratesTodayWhenNotificationImportFails() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let reader = RecordingNotificationReader()
+        reader.fetchError = CocoaError(.fileReadUnknown)
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 7, hour: 10).date!
+        let dayKey = ISO8601DayKey.format(now)
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: now,
+                dayKey: dayKey,
+                text: "Today event",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "today-import-failure"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: reader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let appState = AppState(environment: environment)
+
+        await appState.refreshSelectedDay(now: now)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: vaultURL.appending(path: "\(dayKey).md").path))
+        XCTAssertEqual(appState.dayRefreshStatus.lastError, nil)
+        XCTAssertEqual(reader.requestedUpperBound, .inclusive(now))
+        XCTAssertEqual(appState.notificationStatus.lastError, CocoaError(.fileReadUnknown).localizedDescription)
+        XCTAssertEqual(
+            appState.statusMessage,
+            "Refreshed today without notifications: \(CocoaError(.fileReadUnknown).localizedDescription)"
+        )
+    }
+
+    func testRefreshSelectedDayPublishesVisibleStages() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 10).date!
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: now,
+                dayKey: "2026-04-09",
+                text: "Refresh this day",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "refresh-visible-stages"
+            )
+        )
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let recorder = RefreshStageRecorder()
+        let appState = AppState(
+            environment: environment,
+            onRefreshStageChange: recorder.record
+        )
+        appState.selectDate("2026-04-09")
+
+        await appState.refreshSelectedDay(
+            now: DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11).date!
+        )
+
+        XCTAssertEqual(
+            recorder.stages,
+            [.syncingNotifications, .loadingEvents, .preparingStory, .generatingStory, .writingFiles, .completed]
+        )
+    }
+
+    func testRefreshSelectedDayRejectsDuplicateInFlightRefreshForSameDay() async throws {
+        let (environment, gate) = try makeBlockingRefreshEnvironment()
+        let appState = AppState(environment: environment)
+        appState.selectDate("2026-04-09")
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+
+        let first = Task {
+            await appState.refreshSelectedDay(now: now)
+        }
+
+        await gate.waitUntilStarted(dayKey: "2026-04-09")
+        let second = Task {
+            await appState.refreshSelectedDay(now: now)
+        }
+
+        await Task.yield()
+
+        let startCount = await gate.startCount(for: "2026-04-09")
+        XCTAssertEqual(startCount, 1)
+
+        await gate.release(dayKey: "2026-04-09")
+        _ = await (first.value, second.value)
+    }
+
+    func testRefreshDifferentDaysCanRunConcurrently() async throws {
+        let (environment, gate) = try makeBlockingRefreshEnvironment()
+        let appState = AppState(environment: environment)
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+
+        async let refreshNine: Void = appState.refreshDay("2026-04-09", now: now, environment: environment)
+        async let refreshTen: Void = appState.refreshDay("2026-04-10", now: now, environment: environment)
+
+        await gate.waitUntilStarted(dayKey: "2026-04-09")
+        await gate.waitUntilStarted(dayKey: "2026-04-10")
+
+        let startCountNine = await gate.startCount(for: "2026-04-09")
+        let startCountTen = await gate.startCount(for: "2026-04-10")
+        XCTAssertEqual(startCountNine, 1)
+        XCTAssertEqual(startCountTen, 1)
+        XCTAssertEqual(appState.refreshJob(for: "2026-04-09")?.stage, .generatingStory)
+        XCTAssertEqual(appState.refreshJob(for: "2026-04-10")?.stage, .generatingStory)
+
+        await gate.release(dayKey: "2026-04-09")
+        await gate.release(dayKey: "2026-04-10")
+        _ = await (refreshNine, refreshTen)
+    }
+
+    func testRefreshSelectedDayFor20260409CompletesWithVisibleTerminalState() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let capturedAt = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 9, hour: 9).date!
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: capturedAt,
+                dayKey: "2026-04-09",
+                text: "Regression refresh event",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "refresh-2026-04-09-terminal"
+            )
+        )
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let appState = AppState(environment: environment)
+        appState.selectDate("2026-04-09")
+
+        await appState.refreshSelectedDay(
+            now: DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11).date!
+        )
+
+        XCTAssertEqual(appState.refreshJob(for: "2026-04-09")?.stage, .completed)
+    }
+
+    func testRefreshSelectedDayTracksCompletedStagesAndTerminalSummary() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let capturedAt = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 9, hour: 9).date!
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: capturedAt,
+                dayKey: "2026-04-09",
+                text: "Regression refresh event",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "refresh-2026-04-09-summary"
+            )
+        )
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let appState = AppState(environment: environment)
+        appState.selectDate("2026-04-09")
+
+        await appState.refreshSelectedDay(
+            now: DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11).date!
+        )
+
+        XCTAssertEqual(
+            appState.refreshJob(for: "2026-04-09")?.completedStages,
+            [.syncingNotifications, .loadingEvents, .preparingStory, .generatingStory, .writingFiles]
+        )
+        XCTAssertEqual(
+            appState.refreshJob(for: "2026-04-09")?.summary,
+            "Completed · local fallback"
+        )
     }
 
     func testRefreshServiceStatusesPreservesSummarizerRuntimeHistory() {
@@ -1189,6 +2042,190 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.engineStatuses[.geminiCLI]?.state, .green)
     }
 
+    func testRetestAllEnginesAutoSelectsHighestPriorityGreenEngineWhenDefaultIsNone() async {
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_350_000)
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: .default,
+            probeEngine: { engine, _, _ in
+                switch engine {
+                case .codexCLI, .geminiCLI:
+                    return EngineProbeResult(
+                        engine: engine,
+                        state: .green,
+                        detail: "Smoke test succeeded.",
+                        verifiedAt: verifiedAt
+                    )
+                default:
+                    return EngineProbeResult(
+                        engine: engine,
+                        state: .gray,
+                        detail: "Executable not found.",
+                        verifiedAt: nil
+                    )
+                }
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        await appState.retestAllEngines()
+
+        XCTAssertEqual(appState.defaultEngine, .codexCLI)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .codexCLI
+        )
+    }
+
+    func testRetestAllEnginesDoesNotOverrideExplicitDefaultEngine() async throws {
+        let codexURL = try makeStubExecutable(named: "codex")
+        let geminiURL = try makeStubExecutable(named: "gemini")
+        var config = SummarizerConfig.default
+        config.defaultEngine = .geminiCLI
+        config.codexCLIPath = codexURL.path
+        config.geminiCLIPath = geminiURL.path
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_360_000)
+
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            probeEngine: { engine, _, _ in
+                let state: EngineIndicatorState = switch engine {
+                case .codexCLI, .geminiCLI:
+                    .green
+                default:
+                    .gray
+                }
+                return EngineProbeResult(
+                    engine: engine,
+                    state: state,
+                    detail: state == .green ? "Smoke test succeeded." : "Executable not found.",
+                    verifiedAt: state == .green ? verifiedAt : nil
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        await appState.retestAllEngines()
+
+        XCTAssertEqual(appState.defaultEngine, .geminiCLI)
+        XCTAssertEqual(appState.engineStatuses[.geminiCLI]?.state, .green)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
+    }
+
+    func testExplicitlyDisabledEngineStaysNoneAcrossRefreshAndRetestReconciliation() async throws {
+        let codexURL = try makeStubExecutable(named: "codex")
+        var config = SummarizerConfig.default
+        config.codexCLIPath = codexURL.path
+
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_370_000)
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            probeEngine: { engine, _, _ in
+                let state: EngineIndicatorState = engine == .codexCLI ? .green : .gray
+                return EngineProbeResult(
+                    engine: engine,
+                    state: state,
+                    detail: state == .green ? "Smoke test succeeded." : "Executable not found.",
+                    verifiedAt: state == .green ? verifiedAt : nil
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "Smoke test succeeded.",
+            lastVerifiedAt: verifiedAt,
+            configurationSignature: "codex|\(codexURL.path)"
+        )
+
+        appState.selectDefaultEngine(.codexCLI)
+        appState.selectDefaultEngine(.none)
+        appState.refreshEngineStatuses()
+
+        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .none
+        )
+
+        await appState.retestAllEngines()
+
+        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .none
+        )
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
+    }
+
+    func testUpgradePreservesPersistedNoneWhenSuppressionFlagWasNeverSaved() async throws {
+        let codexURL = try makeStubExecutable(named: "codex")
+        var config = SummarizerConfig.default
+        config.defaultEngine = .none
+        config.codexCLIPath = codexURL.path
+        config.save(
+            to: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        engineDefaults.removeObject(forKey: AppState.UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection)
+
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_380_000)
+        let appState = AppState(
+            bootstrapServices: false,
+            probeEngine: { engine, _, _ in
+                let state: EngineIndicatorState = engine == .codexCLI ? .green : .gray
+                return EngineProbeResult(
+                    engine: engine,
+                    state: state,
+                    detail: state == .green ? "Smoke test succeeded." : "Executable not found.",
+                    verifiedAt: state == .green ? verifiedAt : nil
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertEqual(
+            engineDefaults.object(forKey: AppState.UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection) as? Bool,
+            true
+        )
+
+        await appState.retestAllEngines()
+
+        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .none
+        )
+    }
+
     func testGenerateStoryFallsBackWithoutEngineAndAnnotatesFallbackProvenance() async throws {
         let writer = try DatabaseWriter.inMemory()
         let dayKey = "2026-04-11"
@@ -1354,6 +2391,42 @@ final class MainWindowViewModelTests: XCTestCase {
                 keychainService: "MainWindowViewModelTests"
             ).defaultEngine,
             .claudeCLI
+        )
+    }
+
+    func testCompleteOnboardingWithNonePreservesExplicitDisableAcrossLaterReconciliation() throws {
+        let executableURL = try makeStubExecutable(named: "gemini")
+        var config = SummarizerConfig.default
+        config.geminiCLIPath = executableURL.path
+
+        let environment = try makeEngineEnvironment()
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.geminiCLI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "Smoke test succeeded.",
+            lastVerifiedAt: Date(timeIntervalSince1970: 1_775_620_000),
+            configurationSignature: "gemini|\(executableURL.path)"
+        )
+        let vaultURL = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)", isDirectory: true)
+
+        appState.completeOnboarding(vaultURL: vaultURL, preferredEngine: .none)
+        appState.refreshEngineStatuses()
+
+        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertNil(appState.environment?.summarizer)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .none
         )
     }
 

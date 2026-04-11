@@ -5,7 +5,7 @@ struct DailyMarkdownView: View {
     let story: DailyStory?
     let selectedParagraphID: String?
     let dayKey: String?
-    let isRefreshing: Bool
+    let refreshJob: DayRefreshJob?
     let isActive: Bool
     let onSelectParagraph: (String) -> Void
     let onFocusStory: () -> Void
@@ -18,6 +18,7 @@ struct DailyMarkdownView: View {
             story: story,
             selectedParagraphID: selectedParagraphID
         )
+        let refreshPresentation = DayRefreshProgressPresentation(refreshJob: refreshJob)
 
         Group {
             if presentation.showsEmptyState == false {
@@ -30,20 +31,52 @@ struct DailyMarkdownView: View {
                                     .font(.title2.weight(.semibold))
                                     .foregroundStyle(.secondary)
                                 Spacer()
-                                Button {
-                                    onRefresh()
-                                } label: {
-                                    if isRefreshing {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                    } else {
-                                        Image(systemName: "arrow.clockwise")
-                                            .foregroundStyle(.secondary)
+                                VStack(alignment: .trailing, spacing: 6) {
+                                    Button {
+                                        onRefresh()
+                                    } label: {
+                                        if isRefreshing {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                        } else {
+                                            Image(systemName: "arrow.clockwise")
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(isRefreshing)
+                                    .help("Regenerate this day's journal")
+
+                                    if refreshPresentation.showsSteps {
+                                        VStack(alignment: .trailing, spacing: 4) {
+                                            ForEach(refreshPresentation.steps) { step in
+                                                HStack(spacing: 6) {
+                                                    Image(systemName: step.symbolName)
+                                                        .font(.caption2)
+                                                        .foregroundStyle(step.color)
+                                                    Text(step.title)
+                                                        .font(.caption)
+                                                        .foregroundStyle(step.color)
+                                                }
+                                                .frame(maxWidth: 220, alignment: .trailing)
+                                            }
+
+                                            if let currentDetail = refreshPresentation.currentDetail {
+                                                Text(currentDetail)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                                    .multilineTextAlignment(.trailing)
+                                                    .frame(maxWidth: 220, alignment: .trailing)
+                                            }
+                                        }
+                                    } else if let summaryText = refreshPresentation.summaryText {
+                                        Text(summaryText)
+                                            .font(.caption)
+                                            .foregroundStyle(refreshPresentation.summaryColor)
+                                            .multilineTextAlignment(.trailing)
+                                            .frame(maxWidth: 220, alignment: .trailing)
                                     }
                                 }
-                                .buttonStyle(.plain)
-                                .disabled(isRefreshing)
-                                .help("Regenerate this day's journal")
                             }
                             .padding(.horizontal, 28)
                             .padding(.top, 24)
@@ -143,6 +176,108 @@ struct DailyMarkdownView: View {
 
         withAnimation(.easeInOut(duration: 0.2)) {
             proxy.scrollTo(paragraphID, anchor: .center)
+        }
+    }
+
+    private var isRefreshing: Bool {
+        refreshJob?.inFlight == true
+    }
+}
+
+struct DayRefreshProgressPresentation {
+    enum StepState: Equatable {
+        case completed
+        case current
+        case pending
+    }
+
+    struct Step: Identifiable, Equatable {
+        let id: DayRefreshStage
+        let title: String
+        let state: StepState
+
+        var symbolName: String {
+            switch state {
+            case .completed: "checkmark.circle.fill"
+            case .current: "arrow.triangle.2.circlepath.circle.fill"
+            case .pending: "circle"
+            }
+        }
+
+        var color: Color {
+            switch state {
+            case .completed: .green
+            case .current: .accentColor
+            case .pending: .secondary.opacity(0.5)
+            }
+        }
+    }
+
+    private static let visibleStages: [DayRefreshStage] = [
+        .syncingNotifications,
+        .loadingEvents,
+        .preparingStory,
+        .generatingStory,
+        .writingFiles,
+    ]
+
+    let steps: [Step]
+    let currentDetail: String?
+    let summaryText: String?
+    let summaryColor: Color
+
+    init(refreshJob: DayRefreshJob?) {
+        guard let refreshJob else {
+            steps = []
+            currentDetail = nil
+            summaryText = nil
+            summaryColor = .secondary
+            return
+        }
+
+        if refreshJob.inFlight {
+            steps = Self.visibleStages.map { stage in
+                let state: StepState
+                if refreshJob.completedStages.contains(stage) {
+                    state = .completed
+                } else if refreshJob.stage == stage {
+                    state = .current
+                } else {
+                    state = .pending
+                }
+                return Step(id: stage, title: stage.progressTitle, state: state)
+            }
+            currentDetail = refreshJob.detail
+            summaryText = nil
+            summaryColor = .secondary
+        } else {
+            steps = []
+            currentDetail = nil
+            summaryText = refreshJob.summary
+            summaryColor = refreshJob.error == nil ? .secondary : .red
+        }
+    }
+
+    var showsSteps: Bool {
+        !steps.isEmpty
+    }
+}
+
+private extension DayRefreshStage {
+    var progressTitle: String {
+        switch self {
+        case .syncingNotifications:
+            return "Sync notifications"
+        case .loadingEvents:
+            return "Load events"
+        case .preparingStory:
+            return "Prepare journal"
+        case .generatingStory:
+            return "Generate journal"
+        case .writingFiles:
+            return "Write files"
+        case .completed, .failed:
+            return detail
         }
     }
 }

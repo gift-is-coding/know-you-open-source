@@ -9,6 +9,7 @@ struct NotificationSnapshot {
 struct NotificationImportResult {
     let importedCount: Int
     let importedAt: Date
+    let accessStatus: NotificationDatabaseAccessStatus
 }
 
 final class NotificationCollector {
@@ -42,7 +43,7 @@ final class NotificationCollector {
                 text: filtered.persistedText,
                 auditText: filtered.auditText,
                 privacyAction: filtered.action,
-                contentHash: SHA256Hasher.hash(snapshot.appName + payload + dayKey)
+                contentHash: Self.contentHash(for: snapshot, payload: payload, dayKey: dayKey)
             )
 
             do {
@@ -56,15 +57,59 @@ final class NotificationCollector {
         return ingestedCount
     }
 
-    func importDeliveredNotifications(since: Date) throws -> NotificationImportResult {
+    private static func contentHash(for snapshot: NotificationSnapshot, payload: String, dayKey: String) -> String {
+        SHA256Hasher.hash(
+            [
+                snapshot.appName,
+                payload,
+                dayKey,
+                String(snapshot.deliveredAt.timeIntervalSinceReferenceDate.bitPattern),
+            ].joined(separator: "|")
+        )
+    }
+
+    func accessStatus() -> NotificationDatabaseAccessStatus {
+        databaseReader?.accessStatus() ?? NotificationDatabaseAccessStatus(state: .missing, databaseURL: nil)
+    }
+
+    func importDeliveredNotifications(from startDate: Date, upperBound: NotificationFetchUpperBound? = nil) throws -> NotificationImportResult {
         guard let databaseReader else {
-            return NotificationImportResult(importedCount: 0, importedAt: Date())
+            return NotificationImportResult(
+                importedCount: 0,
+                importedAt: Date(),
+                accessStatus: NotificationDatabaseAccessStatus(state: .missing, databaseURL: nil)
+            )
         }
 
-        let snapshots = try databaseReader.fetchDeliveredNotifications(since: since)
+        let accessStatus = databaseReader.accessStatus()
+        let snapshots = try databaseReader.fetchDeliveredNotifications(from: startDate, upperBound: upperBound)
+
         return NotificationImportResult(
             importedCount: ingest(snapshots),
-            importedAt: Date()
+            importedAt: Date(),
+            accessStatus: accessStatus
         )
+    }
+
+    func importDeliveredNotifications(from startDate: Date, through endDate: Date) throws -> NotificationImportResult {
+        try importDeliveredNotifications(
+            from: startDate,
+            upperBound: .inclusive(max(endDate, startDate))
+        )
+    }
+
+    func importDeliveredNotifications(from startDate: Date, until endDate: Date) throws -> NotificationImportResult {
+        try importDeliveredNotifications(
+            from: startDate,
+            upperBound: .exclusive(max(endDate, startDate))
+        )
+    }
+
+    func importDeliveredNotifications(from startDate: Date) throws -> NotificationImportResult {
+        try importDeliveredNotifications(from: startDate, upperBound: nil)
+    }
+
+    func importDeliveredNotifications(since: Date) throws -> NotificationImportResult {
+        try importDeliveredNotifications(from: since)
     }
 }

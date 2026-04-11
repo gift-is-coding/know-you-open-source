@@ -2,6 +2,44 @@ import XCTest
 @testable import KnowYou
 
 final class DailyMarkdownViewTests: XCTestCase {
+    func testRefreshProgressPresentationMarksCompletedAndCurrentSteps() {
+        let job = DayRefreshJob(
+            dayKey: "2026-04-09",
+            stage: .generatingStory,
+            detail: "Calling Codex (CLI)...",
+            error: nil,
+            completedStages: [.syncingNotifications, .loadingEvents, .preparingStory],
+            summary: nil
+        )
+
+        let presentation = DayRefreshProgressPresentation(refreshJob: job)
+
+        XCTAssertTrue(presentation.showsSteps)
+        XCTAssertEqual(
+            presentation.steps.map(\.state),
+            [.completed, .completed, .completed, .current, .pending]
+        )
+        XCTAssertEqual(presentation.currentDetail, "Calling Codex (CLI)...")
+        XCTAssertNil(presentation.summaryText)
+    }
+
+    func testRefreshProgressPresentationCollapsesToTerminalSummary() {
+        let job = DayRefreshJob(
+            dayKey: "2026-04-09",
+            stage: .completed,
+            detail: nil,
+            error: nil,
+            completedStages: [.syncingNotifications, .loadingEvents, .preparingStory, .generatingStory, .writingFiles],
+            summary: "Completed · Codex (CLI) returned successfully"
+        )
+
+        let presentation = DayRefreshProgressPresentation(refreshJob: job)
+
+        XCTAssertFalse(presentation.showsSteps)
+        XCTAssertEqual(presentation.summaryText, "Completed · Codex (CLI) returned successfully")
+        XCTAssertNil(presentation.currentDetail)
+    }
+
     func testSourceBrandResolvesKnownSemanticIdentity() {
         let brand = SourceBrandResolver.resolve(appName: "ChatGPT")
 

@@ -1328,6 +1328,35 @@ final class MainWindowViewModelTests: XCTestCase {
         )
     }
 
+    func testCompleteOnboardingPersistsGraySelectedEngineWithoutBlocking() throws {
+        var config = SummarizerConfig.default
+        config.defaultEngine = .claudeCLI
+        config.claudeCLIPath = "/definitely/missing/claude"
+
+        let environment = try makeEngineEnvironment()
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        let vaultURL = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)", isDirectory: true)
+
+        appState.completeOnboarding(vaultURL: vaultURL, preferredEngine: .claudeCLI)
+
+        XCTAssertEqual(appState.defaultEngine, .claudeCLI)
+        XCTAssertNil(appState.environment?.summarizer)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .claudeCLI
+        )
+    }
+
     func testDailyStoryDecodingBackfillsLegacyProvenanceWhenMissingFromPayload() throws {
         let json = """
         {
@@ -1432,7 +1461,7 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.engineStatuses[.openAI]?.lastVerifiedAt, nil)
     }
 
-    func testInitDoesNotReactivatePersistedUnverifiedDefaultEngine() throws {
+    func testInitPreservesPersistedUnverifiedDefaultEngineChoice() throws {
         let executableURL = try makeStubExecutable(named: "codex")
         var persistedConfig = SummarizerConfig.default
         persistedConfig.defaultEngine = .codexCLI
@@ -1450,9 +1479,9 @@ final class MainWindowViewModelTests: XCTestCase {
             keychainService: "MainWindowViewModelTests"
         )
 
-        XCTAssertEqual(appState.defaultEngine, .none)
-        XCTAssertEqual(appState.summarizerStatus.mode, DiaryEngine.none.displayName)
-        XCTAssertFalse(appState.summarizerStatus.isConfigured)
+        XCTAssertEqual(appState.defaultEngine, .codexCLI)
+        XCTAssertEqual(appState.summarizerStatus.mode, DiaryEngine.codexCLI.displayName)
+        XCTAssertTrue(appState.summarizerStatus.isConfigured)
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .yellow)
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.detail, "Executable found. Retest required.")
         XCTAssertEqual(
@@ -1461,11 +1490,43 @@ final class MainWindowViewModelTests: XCTestCase {
                 keychain: engineKeychain,
                 keychainService: "MainWindowViewModelTests"
             ).defaultEngine,
-            .none
+            .codexCLI
         )
     }
 
-    func testRestartAfterActiveEngineDegradesDoesNotReactivatePersistedYellowEngine() throws {
+    func testInitPreservesPersistedGrayDefaultEngineChoice() throws {
+        var persistedConfig = SummarizerConfig.default
+        persistedConfig.defaultEngine = .claudeCLI
+        persistedConfig.claudeCLIPath = "/definitely/missing/claude"
+        persistedConfig.save(
+            to: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertEqual(appState.defaultEngine, .claudeCLI)
+        XCTAssertEqual(appState.summarizerStatus.mode, DiaryEngine.claudeCLI.displayName)
+        XCTAssertFalse(appState.summarizerStatus.isConfigured)
+        XCTAssertEqual(appState.engineStatuses[.claudeCLI]?.state, .gray)
+        XCTAssertEqual(appState.engineStatuses[.claudeCLI]?.detail, "Executable not found.")
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .claudeCLI
+        )
+    }
+
+    func testRestartAfterActiveEngineDegradesPreservesPersistedYellowEngineChoice() throws {
         let originalExecutableURL = try makeStubExecutable(named: "codex")
         let updatedExecutableURL = try makeStubExecutable(named: "codex")
 
@@ -1499,7 +1560,7 @@ final class MainWindowViewModelTests: XCTestCase {
             keychainService: "MainWindowViewModelTests"
         )
 
-        XCTAssertEqual(relaunched.defaultEngine, .none)
+        XCTAssertEqual(relaunched.defaultEngine, .codexCLI)
         XCTAssertNil(relaunched.environment?.summarizer)
         XCTAssertEqual(relaunched.engineStatuses[.codexCLI]?.state, .yellow)
         XCTAssertEqual(relaunched.engineStatuses[.codexCLI]?.detail, "Executable found. Retest required.")

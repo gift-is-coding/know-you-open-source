@@ -8,6 +8,7 @@ struct OnboardingView: View {
     @State private var step: OnboardingStep = .intro
     @State private var vaultPath: String = (try? AppState.defaultVaultURL().path) ?? ""
     @State private var selectedEngine: DiaryEngine = SummarizerConfig.load().defaultEngine
+    @State private var hasStartedEngineProbe = false
 
     init(
         onComplete: @escaping () -> Void,
@@ -62,8 +63,10 @@ struct OnboardingView: View {
             )
         )
         .onAppear {
-            if selectedEngine != .none && !selectableEngines.contains(selectedEngine) {
-                selectedEngine = .none
+            guard !hasStartedEngineProbe else { return }
+            hasStartedEngineProbe = true
+            Task { @MainActor in
+                await appState.retestAllEngines()
             }
         }
     }
@@ -299,14 +302,12 @@ struct OnboardingView: View {
                     Text("Default engine")
                         .font(.headline)
 
-                    Text("Choose a ready engine now, or keep `None` and finish setup first. You can change this later from the top-right engine menu.")
+                    Text("Choose any engine now, or keep `None` and finish setup first. Know You will verify engines in the background while onboarding continues.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
 
                     Picker("Engine", selection: $selectedEngine) {
-                        Text(DiaryEngine.none.displayName).tag(DiaryEngine.none)
-
-                        ForEach(selectableEngines, id: \.self) { engine in
+                        ForEach(DiaryEngine.allCases, id: \.self) { engine in
                             Text(engine.displayName).tag(engine)
                         }
                     }
@@ -503,12 +504,6 @@ struct OnboardingView: View {
             return
         }
         NSWorkspace.shared.open(url)
-    }
-
-    private var selectableEngines: [DiaryEngine] {
-        DiaryEngine.allCases.filter { engine in
-            engine != .none && (appState.engineStatuses[engine]?.state == .green)
-        }
     }
 
     private var enginePickerStatusText: String {

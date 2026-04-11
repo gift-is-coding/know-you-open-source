@@ -286,7 +286,13 @@ final class AppState {
 
         var config = summarizerConfig
         config.defaultEngine = preferredEngine
-        applySummarizerConfig(config)
+        summarizerConfig = config
+        defaultEngine = preferredEngine
+        persistSummarizerConfig()
+        refreshEngineStatuses()
+        statusMessage = preferredEngine == .none
+            ? "Summarizer disabled"
+            : "Default engine set to \(preferredEngine.displayName)"
 
         userDefaults.set(true, forKey: UserDefaultsKeys.hasCompletedOnboarding)
     }
@@ -1238,11 +1244,6 @@ extension AppState {
         let persistedEngine = config.defaultEngine
         guard !explicitConfigProvided, persistedEngine != .none else {
             return persistedEngine
-        }
-
-        guard engineStatuses[persistedEngine]?.state == .green else {
-            config.defaultEngine = .none
-            return .none
         }
 
         return persistedEngine

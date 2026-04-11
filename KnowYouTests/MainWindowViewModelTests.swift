@@ -1801,6 +1801,142 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.engineStatuses[.geminiCLI]?.state, .green)
     }
 
+    func testRetestAllEnginesAutoSelectsHighestPriorityGreenEngineWhenDefaultIsNone() async {
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_350_000)
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: .default,
+            probeEngine: { engine, _, _ in
+                switch engine {
+                case .codexCLI, .geminiCLI:
+                    return EngineProbeResult(
+                        engine: engine,
+                        state: .green,
+                        detail: "Smoke test succeeded.",
+                        verifiedAt: verifiedAt
+                    )
+                default:
+                    return EngineProbeResult(
+                        engine: engine,
+                        state: .gray,
+                        detail: "Executable not found.",
+                        verifiedAt: nil
+                    )
+                }
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        await appState.retestAllEngines()
+
+        XCTAssertEqual(appState.defaultEngine, .codexCLI)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .codexCLI
+        )
+    }
+
+    func testRetestAllEnginesDoesNotOverrideExplicitDefaultEngine() async throws {
+        let codexURL = try makeStubExecutable(named: "codex")
+        let geminiURL = try makeStubExecutable(named: "gemini")
+        var config = SummarizerConfig.default
+        config.defaultEngine = .geminiCLI
+        config.codexCLIPath = codexURL.path
+        config.geminiCLIPath = geminiURL.path
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_360_000)
+
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            probeEngine: { engine, _, _ in
+                let state: EngineIndicatorState = switch engine {
+                case .codexCLI, .geminiCLI:
+                    .green
+                default:
+                    .gray
+                }
+                return EngineProbeResult(
+                    engine: engine,
+                    state: state,
+                    detail: state == .green ? "Smoke test succeeded." : "Executable not found.",
+                    verifiedAt: state == .green ? verifiedAt : nil
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        await appState.retestAllEngines()
+
+        XCTAssertEqual(appState.defaultEngine, .geminiCLI)
+        XCTAssertEqual(appState.engineStatuses[.geminiCLI]?.state, .green)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
+    }
+
+    func testExplicitlyDisabledEngineStaysNoneAcrossRefreshAndRetestReconciliation() async throws {
+        let codexURL = try makeStubExecutable(named: "codex")
+        var config = SummarizerConfig.default
+        config.codexCLIPath = codexURL.path
+
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_370_000)
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            probeEngine: { engine, _, _ in
+                let state: EngineIndicatorState = engine == .codexCLI ? .green : .gray
+                return EngineProbeResult(
+                    engine: engine,
+                    state: state,
+                    detail: state == .green ? "Smoke test succeeded." : "Executable not found.",
+                    verifiedAt: state == .green ? verifiedAt : nil
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "Smoke test succeeded.",
+            lastVerifiedAt: verifiedAt,
+            configurationSignature: "codex|\(codexURL.path)"
+        )
+
+        appState.selectDefaultEngine(.codexCLI)
+        appState.selectDefaultEngine(.none)
+        appState.refreshEngineStatuses()
+
+        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .none
+        )
+
+        await appState.retestAllEngines()
+
+        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .none
+        )
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
+    }
+
     func testGenerateStoryFallsBackWithoutEngineAndAnnotatesFallbackProvenance() async throws {
         let writer = try DatabaseWriter.inMemory()
         let dayKey = "2026-04-11"
@@ -1966,6 +2102,42 @@ final class MainWindowViewModelTests: XCTestCase {
                 keychainService: "MainWindowViewModelTests"
             ).defaultEngine,
             .claudeCLI
+        )
+    }
+
+    func testCompleteOnboardingWithNonePreservesExplicitDisableAcrossLaterReconciliation() throws {
+        let executableURL = try makeStubExecutable(named: "gemini")
+        var config = SummarizerConfig.default
+        config.geminiCLIPath = executableURL.path
+
+        let environment = try makeEngineEnvironment()
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.geminiCLI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "Smoke test succeeded.",
+            lastVerifiedAt: Date(timeIntervalSince1970: 1_775_620_000),
+            configurationSignature: "gemini|\(executableURL.path)"
+        )
+        let vaultURL = URL(fileURLWithPath: "/tmp/\(UUID().uuidString)", isDirectory: true)
+
+        appState.completeOnboarding(vaultURL: vaultURL, preferredEngine: .none)
+        appState.refreshEngineStatuses()
+
+        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertNil(appState.environment?.summarizer)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .none
         )
     }
 

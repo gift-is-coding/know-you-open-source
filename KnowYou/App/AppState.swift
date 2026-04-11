@@ -54,6 +54,14 @@ struct EngineRuntimeStatus: Equatable {
 @MainActor
 @Observable
 final class AppState {
+    private static let autoSelectionPriority: [DiaryEngine] = [
+        .claudeCLI,
+        .codexCLI,
+        .geminiCLI,
+        .openclawCLI,
+        .openAI,
+    ]
+
     var availableDates: [String] = []
     var selectedDate: String?
     var selectedMarkdownURL: URL?
@@ -92,6 +100,7 @@ final class AppState {
     @ObservationIgnored private let currentDate: @Sendable () -> Date
     @ObservationIgnored private let probeEngine: @Sendable (DiaryEngine, SummarizerConfig, [String: String]) async -> EngineProbeResult
     @ObservationIgnored private var summarizerConfig: SummarizerConfig
+    @ObservationIgnored private var autoSelectionSuppressedByExplicitNone: Bool
 
     var summarizerStatus: SummarizerRuntimeStatus {
         get {
@@ -149,6 +158,9 @@ final class AppState {
             from: userDefaults,
             keychain: keychain,
             keychainService: keychainService
+        )
+        self.autoSelectionSuppressedByExplicitNone = userDefaults.bool(
+            forKey: UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection
         )
         self.lastNotificationImportAt = userDefaults.object(forKey: UserDefaultsKeys.lastNotificationImportAt) as? Date
         let loadedDefaultEngine = self.summarizerConfig.defaultEngine
@@ -294,6 +306,7 @@ final class AppState {
         config.defaultEngine = preferredEngine
         summarizerConfig = config
         defaultEngine = preferredEngine
+        setAutoSelectionSuppressedByExplicitNone(preferredEngine == .none)
         persistSummarizerConfig()
         refreshEngineStatuses()
         statusMessage = preferredEngine == .none
@@ -383,6 +396,7 @@ final class AppState {
             }
         }
         engineStatuses = refreshed
+        reconcileDefaultEngineAfterStatusChange()
     }
 
     func retestAllEngines() async {
@@ -431,6 +445,8 @@ final class AppState {
                 isRetestingEngines = !retestingEngines.isEmpty
             }
         }
+
+        reconcileDefaultEngineAfterStatusChange()
     }
 
     func retestEngine(_ engine: DiaryEngine) async {
@@ -458,6 +474,7 @@ final class AppState {
             lastVerifiedAt: result.verifiedAt ?? engineStatuses[engine]?.lastVerifiedAt,
             configurationSignature: configurationSignature
         )
+        reconcileDefaultEngineAfterStatusChange()
         retestingEngines.remove(engine)
         isRetestingEngines = !retestingEngines.isEmpty
     }
@@ -470,6 +487,7 @@ final class AppState {
 
         defaultEngine = engine
         summarizerConfig.defaultEngine = engine
+        setAutoSelectionSuppressedByExplicitNone(engine == .none)
         persistSummarizerConfig()
         statusMessage = engine == .none
             ? "Summarizer disabled"
@@ -489,6 +507,15 @@ final class AppState {
             : requestedEngine == defaultEngine
                 ? "Summarizer settings updated for \(defaultEngine.displayName)"
                 : "Saved \(requestedEngine.displayName) settings; \(defaultEngine.displayName) remains active until verified"
+    }
+
+    private func reconcileDefaultEngineAfterStatusChange() {
+        guard defaultEngine == .none, !autoSelectionSuppressedByExplicitNone else { return }
+        guard let preferred = Self.autoSelectionPriority.first(where: { engineStatuses[$0]?.state == .green }) else {
+            return
+        }
+
+        selectDefaultEngine(preferred)
     }
 
     var automationStatusText: String {
@@ -535,6 +562,7 @@ final class AppState {
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
         static let lastNotificationImportAt = "lastNotificationImportAt"
         static let lastNotificationImportDatabasePath = "lastNotificationImportDatabasePath"
+        static let explicitlyDisabledSummarizerAutoSelection = "explicitlyDisabledSummarizerAutoSelection"
     }
 
     static func defaultVaultURL() throws -> URL {
@@ -1177,6 +1205,11 @@ extension AppState {
             for: defaultEngine,
             environment: processEnvironment
         )
+    }
+
+    private func setAutoSelectionSuppressedByExplicitNone(_ isSuppressed: Bool) {
+        autoSelectionSuppressedByExplicitNone = isSuppressed
+        userDefaults.set(isSuppressed, forKey: UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection)
     }
 
     private func persistLastNotificationImportAt(_ date: Date?, databasePath: String?) {

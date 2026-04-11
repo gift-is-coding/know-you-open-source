@@ -230,14 +230,7 @@ final class AppState {
         let persistedSuppression = userDefaults.object(
             forKey: UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection
         ) as? Bool
-        self.autoSelectionSuppressedByExplicitNone = persistedSuppression
-            ?? (explicitSummarizerConfig == nil && self.summarizerConfig.defaultEngine == .none)
-        if persistedSuppression == nil, self.autoSelectionSuppressedByExplicitNone {
-            userDefaults.set(
-                true,
-                forKey: UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection
-            )
-        }
+        self.autoSelectionSuppressedByExplicitNone = persistedSuppression ?? false
         self.lastNotificationImportAt = userDefaults.object(forKey: UserDefaultsKeys.lastNotificationImportAt) as? Date
         let loadedDefaultEngine = self.summarizerConfig.defaultEngine
         if explicitSummarizerConfig == nil, let injectedSummarizer = environment?.summarizer {
@@ -554,6 +547,9 @@ final class AppState {
             lastVerifiedAt: result.verifiedAt ?? engineStatuses[engine]?.lastVerifiedAt,
             configurationSignature: configurationSignature
         )
+        if engine == defaultEngine, result.state == .green {
+            refreshActiveSummarizer()
+        }
         reconcileDefaultEngineAfterStatusChange()
         retestingEngines.remove(engine)
         isRetestingEngines = !retestingEngines.isEmpty
@@ -1214,7 +1210,8 @@ extension AppState {
     static func startOfDay(for dayKey: String) -> Date? {
         let parts = dayKey.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
-        let calendar = Calendar(identifier: .gregorian)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .autoupdatingCurrent
         return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 
@@ -1404,6 +1401,10 @@ extension AppState {
             keychain: keychain,
             keychainService: keychainService
         )
+        refreshActiveSummarizer()
+    }
+
+    private func refreshActiveSummarizer() {
         environment?.summarizer = summarizerConfig.makeSummarizer(
             for: defaultEngine,
             environment: processEnvironment

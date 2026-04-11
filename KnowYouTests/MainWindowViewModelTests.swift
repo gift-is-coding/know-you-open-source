@@ -2178,7 +2178,7 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
     }
 
-    func testUpgradePreservesPersistedNoneWhenSuppressionFlagWasNeverSaved() async throws {
+    func testLoadedDefaultNoneAutoPicksVerifiedEngineWhenSuppressionWasNeverSaved() async throws {
         let codexURL = try makeStubExecutable(named: "codex")
         var config = SummarizerConfig.default
         config.defaultEngine = .none
@@ -2208,22 +2208,119 @@ final class MainWindowViewModelTests: XCTestCase {
         )
 
         XCTAssertEqual(appState.defaultEngine, .none)
-        XCTAssertEqual(
-            engineDefaults.object(forKey: AppState.UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection) as? Bool,
-            true
+        XCTAssertNil(
+            engineDefaults.object(forKey: AppState.UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection)
         )
 
         await appState.retestAllEngines()
 
-        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertEqual(appState.defaultEngine, .codexCLI)
         XCTAssertEqual(
             SummarizerConfig.load(
                 from: engineDefaults,
                 keychain: engineKeychain,
                 keychainService: "MainWindowViewModelTests"
             ).defaultEngine,
-            .none
+            .codexCLI
         )
+        XCTAssertEqual(
+            engineDefaults.object(forKey: AppState.UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection) as? Bool,
+            false
+        )
+    }
+
+    func testLoadedDefaultNoneRemainsEligibleForAutoPickWhenSuppressionWasNeverSaved() async throws {
+        let codexURL = try makeStubExecutable(named: "codex")
+        var config = SummarizerConfig.default
+        config.defaultEngine = .none
+        config.codexCLIPath = codexURL.path
+        config.save(
+            to: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_381_000)
+        let appState = AppState(
+            bootstrapServices: false,
+            probeEngine: { engine, _, _ in
+                let state: EngineIndicatorState = engine == .codexCLI ? .green : .gray
+                return EngineProbeResult(
+                    engine: engine,
+                    state: state,
+                    detail: state == .green ? "Smoke test succeeded." : "Executable not found.",
+                    verifiedAt: state == .green ? verifiedAt : nil
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertNil(
+            engineDefaults.object(forKey: AppState.UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection)
+        )
+
+        await appState.retestEngine(.codexCLI)
+
+        XCTAssertEqual(appState.defaultEngine, .codexCLI)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .codexCLI
+        )
+        XCTAssertEqual(
+            engineDefaults.object(forKey: AppState.UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection) as? Bool,
+            false
+        )
+    }
+
+    func testRetestRebuildsActiveSummarizerWhenCurrentDefaultTurnsGreen() async throws {
+        let executableDirectory = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: executableDirectory, withIntermediateDirectories: true)
+        let codexURL = executableDirectory.appending(path: "codex")
+        var initialConfig = SummarizerConfig.default
+        initialConfig.defaultEngine = .codexCLI
+        initialConfig.codexCLIPath = codexURL.path
+
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_382_000)
+        let environment = try makeEngineEnvironment()
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: initialConfig,
+            probeEngine: { engine, config, _ in
+                let state: EngineIndicatorState = engine == .codexCLI &&
+                    FileManager.default.isExecutableFile(atPath: config.codexCLIPath)
+                    ? .green
+                    : .gray
+                return EngineProbeResult(
+                    engine: engine,
+                    state: state,
+                    detail: state == .green ? "Smoke test succeeded." : "Executable not found.",
+                    verifiedAt: state == .green ? verifiedAt : nil
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertEqual(appState.defaultEngine, .codexCLI)
+        XCTAssertNil(appState.environment?.summarizer)
+
+        try "#!/bin/sh\nexit 0\n".write(to: codexURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: codexURL.path)
+
+        await appState.retestEngine(.codexCLI)
+
+        let activeSummarizer = try XCTUnwrap(appState.environment?.summarizer as? CLISummarizer)
+        XCTAssertEqual(activeSummarizer.tool, .codex)
+        XCTAssertEqual(activeSummarizer.executablePath, codexURL.path)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
     }
 
     func testGenerateStoryFallsBackWithoutEngineAndAnnotatesFallbackProvenance() async throws {

@@ -4,6 +4,7 @@ import AppKit
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var vaultPath: String = UserDefaults.standard.string(forKey: AppState.UserDefaultsKeys.vaultPath) ?? ""
+    @State private var presentedDocument: AppSupportDocument?
 
     var body: some View {
         Form {
@@ -101,11 +102,71 @@ struct SettingsView: View {
                 Text("Runs on launch and every 15 minutes")
                     .foregroundStyle(.secondary)
             }
+
+            Section("About & Community") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Know You")
+                        .font(.headline)
+                    Text(AppSupportMetadata.productTagline)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Button("关注 X / Twitter") {
+                            open(AppSupportMetadata.twitterURL)
+                        }
+                        Button("发送邮件") {
+                            open(AppSupportMetadata.emailURL)
+                        }
+                    }
+
+                    if let discordURL = AppSupportMetadata.discordURL {
+                        Button(AppSupportMetadata.discordButtonTitle) {
+                            open(discordURL)
+                        }
+                    } else {
+                        Text(AppSupportMetadata.discordButtonTitle)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text(AppSupportMetadata.discordDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Button(AppSupportDocument.privacy.buttonTitle) {
+                            presentedDocument = .privacy
+                        }
+                        Button(AppSupportDocument.terms.buttonTitle) {
+                            presentedDocument = .terms
+                        }
+                        Button(AppSupportDocument.community.buttonTitle) {
+                            presentedDocument = .community
+                        }
+                        Button(AppSupportDocument.launchChecklist.buttonTitle) {
+                            presentedDocument = .launchChecklist
+                        }
+                    }
+
+                    Text(AppSupportMetadata.supportDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Text(AppSupportMetadata.copyrightLine)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
         }
         .padding()
         .frame(width: 460)
         .onAppear {
             appState.refreshServiceStatuses()
+        }
+        .sheet(item: $presentedDocument) { document in
+            AppSupportDocumentSheet(document: document)
         }
     }
 
@@ -126,6 +187,37 @@ struct SettingsView: View {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    private func open(_ url: URL) {
+        NSWorkspace.shared.open(url)
+    }
+}
+
+private struct AppSupportDocumentSheet: View {
+    let document: AppSupportDocument
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text(document.title)
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                Spacer()
+                Button("关闭") {
+                    dismiss()
+                }
+            }
+
+            ScrollView {
+                Text(document.body)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 520, minHeight: 420)
     }
 }
 

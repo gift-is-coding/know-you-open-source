@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-11  
 **Branch:** llm-channel-validation-and-connectivity  
-**Status:** Draft
+**Status:** Implemented
 
 ---
 
@@ -208,6 +208,7 @@ Rules:
 - on cold start, import notifications from today's start until now
 - once that import succeeds, persist the last successful notification import timestamp
 - subsequent 30-second background imports should use an incremental window bounded by `max(todayStart, lastSuccessfulImportAt - overlapBuffer)`
+- reuse the persisted timestamp only when the database path still matches and the current store already contains today's notification rows; otherwise clear the persisted watermark and restart from `todayStart`
 - if the selected day is historical and the user explicitly refreshes it, import notifications for that historical day window before generation
 
 This gives the product two recovery modes:
@@ -259,12 +260,12 @@ Examples:
 
 Onboarding and the main-window selector should continue to use the same persisted `defaultEngine`.
 
-The app should preserve explicit user choice, but should not stay on `None` if a verified engine is available.
+The app should preserve explicit user choice. It may auto-select from `None` only when the app still considers that state eligible for auto-pick.
 
 Rules:
 
 - If `defaultEngine != .none`, never auto-replace it just because another green engine exists
-- If `defaultEngine == .none`, automatically choose the highest-priority green engine
+- If `defaultEngine == .none` and the user has not explicitly chosen to stay on `None`, automatically choose the highest-priority green engine
 - Persist that selected engine to the shared summarizer config
 - Use the same persisted value across onboarding, app restart, and main-window selector
 
@@ -285,7 +286,7 @@ The onboarding "Default engine" picker remains valid.
 Behavior rules:
 
 - If onboarding finishes with a concrete non-`None` engine, preserve that choice
-- If onboarding finishes with `None`, the main app may later auto-select a green engine using the rule above
+- If onboarding finishes with `None`, the main app should treat that as an explicit disabled state until the user later chooses a concrete engine directly
 - The product must not maintain separate onboarding-only and main-window-only engine defaults
 
 This keeps the mental model simple:
@@ -337,4 +338,3 @@ Verify on a real macOS environment:
 - Notification background sync frequency should be 30 seconds: resolved
 - Cold start should recover today's earlier notifications: resolved
 - Auto-selection should only happen when the current default is `None`: resolved
-

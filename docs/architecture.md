@@ -71,10 +71,10 @@ flowchart LR
 
 - 创建并持有 `AppEnvironment`
 - 启动剪贴板监听
-- 启动 launch-time automation 与 15 分钟定时刷新
+- 启动 launch-time automation、30 秒通知补同步与 15 分钟定时自动化
 - 维护 UI 状态与服务状态
 - 管理选中日期、选中 story、选中段落及其来源事件
-- 触发“按天刷新”与“历史日补跑”
+- 触发“按天刷新”、今日通知补同步与历史日补跑
 - 在 onboarding 完成时应用 vault 目录，并持久化完成状态
 
 `AppEnvironment` 本身则负责组装主要依赖，包括数据库、隐私过滤器、采集器、composer 与 summarizer，见 [AppEnvironment.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppEnvironment.swift)。
@@ -86,6 +86,7 @@ flowchart LR
 - 为五个引擎维护 `engineStatuses`
 - 触发 `refreshEngineStatuses()`、`retestEngine(_:)`、`retestAllEngines()`
 - 保证只有绿色引擎可以成为默认项，`.none` 是唯一允许的禁用例外
+- 仅当默认项当前为 `.none` 且用户没有显式保持 `None` 时，按 `Claude -> Codex -> Gemini -> Openclaw -> OpenAI` 的固定优先级自动挑选最高优先级绿色引擎
 
 ## 4. 采集层
 
@@ -123,6 +124,7 @@ flowchart LR
 - 将 `NotificationSnapshot` 转换为 `EventRecord`
 - 在写入前执行隐私过滤
 - 通过数据库写入层持久化
+- 依赖 `contentHash` 与存储层去重，让重叠时间窗扫描保持幂等
 
 通知事件的来源类型为 `notification`。
 
@@ -288,6 +290,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
   - `output[].content[].text`
 - `EngineProbe` 会对 CLI/API 引擎做最小 smoke test，并产出灰/黄/绿三色状态
 - 若持久化的默认引擎在重启时无法证明仍可用，`AppState` 会把活动默认引擎归一到 `.none`，避免未验证引擎被直接重新激活
+- 状态刷新后的自动改选只会发生在当前默认值已经是 `.none` 的情况下；明确选中的非 `None` 引擎不会被被动覆盖
 
 ## 8. 调度与自动化
 
@@ -295,10 +298,21 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 自动化行为由 `AppState.startAutomation()` 触发，规则是：
 
-- 应用启动后立即运行一次
-- 之后每 15 分钟运行一次
-- 会根据最近成功 run 与现有 note 文件推断 pending days
-- 会先导入通知，再按待处理日期逐天生成 story 与 Markdown
+- 应用启动后立即串行执行一次 `runAutomation()` 与一次 `runNotificationCatchUp()`
+- `runAutomation()` 之后每 15 分钟运行一次
+- `runNotificationCatchUp()` 之后每 30 秒运行一次
+- `runAutomation()` 会根据最近成功 run 与现有 note 文件推断 pending days，并逐天生成缺失或待补跑内容
+- `runNotificationCatchUp()` 只针对今天做通知增量导入，起点为 `max(todayStart, lastNotificationImportAt - 30 秒 overlap buffer)`
+- 今天的通知水位会按数据库路径持久化；如果换库或今天还没有通知事件，旧水位会被清空
+
+手动刷新与自动化现在是两条明确分离的路径：
+
+- `refreshSelectedDay()` 永远只处理当前选中日期
+- 刷新前会对该日期执行一次 day-scoped 通知同步
+- 今天使用 `dayStart ... now` 时间窗
+- 历史日期使用 `dayStart ... nextDayStart` 时间窗
+- 手动刷新不会复用 `DailyAutomationPlanner`，也不会顺带回补相邻日期
+- 剪贴板仍然完全依赖后台 watcher；手动刷新不会尝试重建历史剪贴板记录
 
 历史日期也可以单独刷新；当前选中日期的刷新由主窗口工具栏按钮触发。
 
@@ -405,7 +419,7 @@ Settings 不再承担默认引擎选择和 API token 编辑的主流程；这些
 
 ## 10. 关键数据流
 
-### 10.1 启动后的自动刷新
+### 10.1 启动后的自动化与通知补同步
 
 ```mermaid
 sequenceDiagram
@@ -418,7 +432,7 @@ sequenceDiagram
 
     App->>State: init + startAutomation()
     State->>Reader: accessStatus()
-    State->>Collector: importDeliveredNotifications(since:)
+    State->>Collector: runAutomation() / runNotificationCatchUp()
     Collector->>Reader: fetchDeliveredNotifications()
     Collector->>DB: insert(notification events)
     State->>DB: fetchEvents(dayKey)
@@ -427,7 +441,32 @@ sequenceDiagram
     State->>AppEnvironment: write .story.json / .md
 ```
 
-### 10.2 用户阅读某一天
+这条后台路径在当前实现里拆成两种节奏不同的任务：
+
+- `runAutomation()`：启动即执行一次，随后每 15 分钟执行；负责待补跑日期推断、必要的通知导入、逐天生成 story 与 Markdown
+- `runNotificationCatchUp()`：启动即执行一次，随后每 30 秒执行；只负责今天的通知增量导入，不直接生成文档
+
+两者共同保证：
+
+- today 的通知接近实时进入本地事件库
+- 历史缺口仍由 15 分钟自动化补跑
+- 重叠时间窗依赖去重，避免重复通知事件无限累积
+
+### 10.2 用户手动刷新某一天
+
+1. 用户在主窗口或菜单栏触发 `refreshSelectedDay()`
+2. `AppState` 解析当前选中日期；若没有选中日期则回落到今天
+3. `syncNotifications(for:)` 只针对该日期时间窗导入通知
+4. `generateDailyNote(for:)` 只生成该同一天的 `.story.json` 与 `.md`
+5. UI 刷新当天内容与状态信息
+
+这条手动路径不会：
+
+- 调用 `DailyAutomationPlanner`
+- 顺带生成其他日期
+- 重新导入历史剪贴板
+
+### 10.3 用户阅读某一天
 
 1. 用户在左侧选择日期
 2. `AppState.loadDayPresentation(for:)` 读取当天事件
@@ -437,7 +476,7 @@ sequenceDiagram
 
 当 `.md` 文件存在时，`AppState` 还会尝试从中提取 `Source Notes` 区块；如果缺失，则退回到根据当天 `EventRecord` 重新生成 source-notes Markdown。这条路径当前主要用于保持导出工件与阅读器状态同步，并由测试覆盖，但 UI 仍然以右栏 source detail 为主。
 
-### 10.3 首次用户完成 onboarding
+### 10.4 首次用户完成 onboarding
 
 1. 用户进入 `intro`，先看到本地 Markdown 承诺
 2. 用户经过 `capture` 与 `safety`，理解自动采集与过滤边界

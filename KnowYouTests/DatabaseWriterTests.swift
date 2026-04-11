@@ -227,6 +227,61 @@ final class DatabaseWriterTests: XCTestCase {
         XCTAssertEqual(events.first?.sourceApp, "Calendar")
     }
 
+    func testNotificationCollectorKeepsDistinctSameDayNotificationsWithMatchingBody() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let collector = NotificationCollector(
+            privacyFilter: PrivacyFilter(),
+            databaseWriter: writer,
+            databaseReader: StubNotificationReader()
+        )
+
+        let firstDeliveredAt = Date(timeIntervalSince1970: 1_776_000_000)
+        let secondDeliveredAt = Date(timeIntervalSince1970: 1_776_000_060)
+        let snapshots = [
+            NotificationSnapshot(
+                appName: "Calendar",
+                deliveredAt: firstDeliveredAt,
+                body: "Standup in 5"
+            ),
+            NotificationSnapshot(
+                appName: "Calendar",
+                deliveredAt: secondDeliveredAt,
+                body: "Standup in 5"
+            ),
+        ]
+
+        XCTAssertEqual(collector.ingest(snapshots), 2)
+
+        let events = try writer.fetchEvents(dayKey: ISO8601DayKey.format(firstDeliveredAt))
+        XCTAssertEqual(events.count, 2)
+        XCTAssertEqual(
+            events.map(\.capturedAt),
+            [firstDeliveredAt, secondDeliveredAt]
+        )
+    }
+
+    func testNotificationCollectorDedupesRescannedNotificationWithSameDeliveredAt() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let collector = NotificationCollector(
+            privacyFilter: PrivacyFilter(),
+            databaseWriter: writer,
+            databaseReader: StubNotificationReader()
+        )
+
+        let deliveredAt = Date(timeIntervalSince1970: 1_776_100_000)
+        let snapshot = NotificationSnapshot(
+            appName: "Calendar",
+            deliveredAt: deliveredAt,
+            body: "Standup in 5"
+        )
+
+        XCTAssertEqual(collector.ingest([snapshot]), 1)
+        XCTAssertEqual(collector.ingest([snapshot]), 1)
+
+        let events = try writer.fetchEvents(dayKey: ISO8601DayKey.format(deliveredAt))
+        XCTAssertEqual(events.count, 1)
+    }
+
     func testClipboardHashesIncludeDayKeySoCrossDayCopiesPersistSeparately() {
         let first = ClipboardWatcher.contentHash(for: "same payload", dayKey: "2026-04-07")
         let second = ClipboardWatcher.contentHash(for: "same payload", dayKey: "2026-04-08")

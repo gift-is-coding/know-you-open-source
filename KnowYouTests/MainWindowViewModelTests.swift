@@ -1937,6 +1937,54 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
     }
 
+    func testUpgradePreservesPersistedNoneWhenSuppressionFlagWasNeverSaved() async throws {
+        let codexURL = try makeStubExecutable(named: "codex")
+        var config = SummarizerConfig.default
+        config.defaultEngine = .none
+        config.codexCLIPath = codexURL.path
+        config.save(
+            to: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        engineDefaults.removeObject(forKey: AppState.UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection)
+
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_380_000)
+        let appState = AppState(
+            bootstrapServices: false,
+            probeEngine: { engine, _, _ in
+                let state: EngineIndicatorState = engine == .codexCLI ? .green : .gray
+                return EngineProbeResult(
+                    engine: engine,
+                    state: state,
+                    detail: state == .green ? "Smoke test succeeded." : "Executable not found.",
+                    verifiedAt: state == .green ? verifiedAt : nil
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertEqual(
+            engineDefaults.object(forKey: AppState.UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection) as? Bool,
+            true
+        )
+
+        await appState.retestAllEngines()
+
+        XCTAssertEqual(appState.defaultEngine, .none)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .none
+        )
+    }
+
     func testGenerateStoryFallsBackWithoutEngineAndAnnotatesFallbackProvenance() async throws {
         let writer = try DatabaseWriter.inMemory()
         let dayKey = "2026-04-11"

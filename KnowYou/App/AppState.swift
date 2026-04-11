@@ -159,9 +159,17 @@ final class AppState {
             keychain: keychain,
             keychainService: keychainService
         )
-        self.autoSelectionSuppressedByExplicitNone = userDefaults.bool(
+        let persistedSuppression = userDefaults.object(
             forKey: UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection
-        )
+        ) as? Bool
+        self.autoSelectionSuppressedByExplicitNone = persistedSuppression
+            ?? (explicitSummarizerConfig == nil && self.summarizerConfig.defaultEngine == .none)
+        if persistedSuppression == nil, self.autoSelectionSuppressedByExplicitNone {
+            userDefaults.set(
+                true,
+                forKey: UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection
+            )
+        }
         self.lastNotificationImportAt = userDefaults.object(forKey: UserDefaultsKeys.lastNotificationImportAt) as? Date
         let loadedDefaultEngine = self.summarizerConfig.defaultEngine
         if explicitSummarizerConfig == nil, let injectedSummarizer = environment?.summarizer {

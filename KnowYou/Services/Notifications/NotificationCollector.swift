@@ -43,7 +43,7 @@ final class NotificationCollector {
                 text: filtered.persistedText,
                 auditText: filtered.auditText,
                 privacyAction: filtered.action,
-                contentHash: SHA256Hasher.hash(snapshot.appName + payload + dayKey)
+                contentHash: Self.contentHash(for: snapshot, payload: payload, dayKey: dayKey)
             )
 
             do {
@@ -55,6 +55,17 @@ final class NotificationCollector {
         }
 
         return ingestedCount
+    }
+
+    private static func contentHash(for snapshot: NotificationSnapshot, payload: String, dayKey: String) -> String {
+        SHA256Hasher.hash(
+            [
+                snapshot.appName,
+                payload,
+                dayKey,
+                String(snapshot.deliveredAt.timeIntervalSinceReferenceDate.bitPattern),
+            ].joined(separator: "|")
+        )
     }
 
     func accessStatus() -> NotificationDatabaseAccessStatus {

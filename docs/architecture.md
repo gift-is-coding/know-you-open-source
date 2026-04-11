@@ -24,7 +24,7 @@ Know You 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 1. 采集层：剪贴板监听、通知数据库读取与导入
 2. 存储与调度层：SQLite、run 记录、补跑计划、定时自动化
 3. 生成层：本地 fallback story 生成、可选云端/CLI 总结器、Markdown 组合
-4. 界面层：五步 story onboarding、三栏主阅读器、设置页、菜单栏状态入口
+4. 界面层：五步 story onboarding、三栏主阅读器、设置页、菜单栏状态入口、About & Community 对外入口
 
 ```mermaid
 flowchart LR
@@ -87,6 +87,13 @@ flowchart LR
 - 触发 `refreshEngineStatuses()`、`retestEngine(_:)`、`retestAllEngines()`
 - 保证只有绿色引擎可以成为默认项，`.none` 是唯一允许的禁用例外
 
+Settings 除了状态与配置外，还承接了一组对外信息入口：
+
+- 作者联系入口
+- 社区入口或社区状态说明
+- 隐私政策、使用条款、社区说明、上线清单的外部文档入口
+- 版权主体摘要
+
 ## 4. 采集层
 
 ### 4.1 剪贴板采集
@@ -146,6 +153,8 @@ flowchart LR
 - `private_key`
 
 这意味着系统遵循“先过滤，后持久化”的边界，原始敏感文本不应进入 SQLite 或最终导出工件。这个边界也被 onboarding 的 `safety` 步显式解释给用户，而不是只留在实现内部。
+
+当前完整的法律正文与社区正文并不内嵌在应用中，而是先由仓库根目录下的 Markdown 文档承载，再由 Settings 页提供外部打开入口。
 
 ## 6. 存储层
 

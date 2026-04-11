@@ -188,6 +188,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 首次 onboarding 中的故事化五步流程
 - 主窗口右上角 diary engine selector
 - Settings 页面中的次级状态入口
+- Settings 页面中的作者联系、社区与法律文档入口
 
 onboarding 的配置约束为：
 
@@ -223,6 +224,15 @@ onboarding 的配置约束为：
 - Settings
 - 菜单栏入口
 - onboarding 权限说明页中的首次解释文案
+
+## 6.10 联系、社区与法律入口需求
+
+- Settings 页面必须提供作者联系入口
+- 当前联系入口至少包括 X/Twitter 与邮箱
+- Settings 页面必须提供社区入口或明确的社区状态说明
+- Discord 是当前主社区形态
+- 产品必须展示版权主体信息
+- 仓库必须提供隐私政策、使用条款、社区说明与上线检查清单
 
 ## 7. 内容体验要求
 

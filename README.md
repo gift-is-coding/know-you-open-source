@@ -59,3 +59,25 @@ For reproducibility, the harness relaunches the app and relies on launch-time cl
 
 - [Architecture](docs/architecture.md)
 - [Requirements Spec](docs/requirements-spec.md)
+
+## Contact
+
+- X / Twitter: https://x.com/TianfuW49629
+- Email: cestlouiswu@gmail.com
+
+## Community
+
+Discord 是 Know You 当前规划的主社区形态，适合讨论产品想法、反馈体验、分享你的日记工作流。
+
+- 社区说明与频道建议见 [COMMUNITY.md](COMMUNITY.md)
+- 当前社区链接：https://discord.gg/ZrqF5jwQ
+
+## Privacy
+
+Know You 是本地优先的 macOS 应用。隐私边界、数据来源、过滤时机与第三方总结器说明见 [PRIVACY.md](PRIVACY.md)。
+
+## Support
+
+- 隐私问题或不适合公开讨论的内容，请直接发邮件联系
+- 产品建议、使用体验和公开反馈，优先进入 Discord 社区
+- 正式上线前的剩余准备项见 [LAUNCH-CHECKLIST.md](LAUNCH-CHECKLIST.md)

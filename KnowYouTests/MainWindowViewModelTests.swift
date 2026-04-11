@@ -19,11 +19,15 @@ private final class RecordingNotificationReader: NotificationDatabaseReading, @u
     private(set) var requestedSince: Date?
     var snapshots: [NotificationSnapshot] = []
     var fetchError: Error?
+    var fetchHandler: ((Date) throws -> [NotificationSnapshot])?
 
     func fetchDeliveredNotifications(since: Date) throws -> [NotificationSnapshot] {
         requestedSince = since
         if let fetchError {
             throw fetchError
+        }
+        if let fetchHandler {
+            return try fetchHandler(since)
         }
         return snapshots
     }
@@ -378,6 +382,100 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(try writer.fetchRuns(runType: "daily-note").last?.dayKey, today)
     }
 
+    func testRefreshSelectedDayForTodayRequestsOnlyTodayWindow() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let reader = RecordingNotificationReader()
+        let calendar = Calendar(identifier: .gregorian)
+        let priorRun = try writer.startRun(runType: "daily-note", dayKey: "2026-04-09")
+        try writer.finishRun(id: priorRun, status: "succeeded")
+        let now = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        reader.snapshots = [
+            NotificationSnapshot(appName: "Calendar", deliveredAt: now, body: "Standup in 5")
+        ]
+
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: reader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(environment: environment)
+
+        await appState.refreshSelectedDay(now: now)
+
+        XCTAssertEqual(reader.requestedSince, calendar.startOfDay(for: now))
+        XCTAssertEqual(appState.selectedDate, "2026-04-11")
+    }
+
+    func testRefreshSelectedDayForHistoricalDateRequestsOnlyThatDayWindow() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let reader = RecordingNotificationReader()
+        let calendar = Calendar(identifier: .gregorian)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: reader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(environment: environment)
+        appState.selectDate("2026-04-08")
+
+        await appState.refreshSelectedDay(
+            now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11).date!
+        )
+
+        let expectedStart = DateComponents(calendar: calendar, year: 2026, month: 4, day: 8).date!
+        XCTAssertEqual(reader.requestedSince, expectedStart)
+        XCTAssertEqual(appState.selectedDate, "2026-04-08")
+    }
+
+    func testRefreshSelectedDayDoesNotRunMultiDayAutomationBackfill() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let reader = RecordingNotificationReader()
+        let calendar = Calendar(identifier: .gregorian)
+        let priorRun = try writer.startRun(runType: "daily-note", dayKey: "2026-04-09")
+        try writer.finishRun(id: priorRun, status: "succeeded")
+        let selectedDay = "2026-04-08"
+        let now = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        reader.snapshots = [
+            NotificationSnapshot(
+                appName: "Calendar",
+                deliveredAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 8, hour: 9).date!,
+                body: "Standup in 5"
+            )
+        ]
+
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: reader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(environment: environment)
+        appState.selectDate(selectedDay)
+
+        let runsBeforeRefresh = try writer.fetchRuns(runType: "daily-note").count
+
+        await appState.refreshSelectedDay(now: now)
+
+        let runDaysAfterRefresh = try writer.fetchRuns(runType: "daily-note").map(\.dayKey)
+        XCTAssertEqual(runDaysAfterRefresh.count, runsBeforeRefresh + 1)
+        XCTAssertEqual(runDaysAfterRefresh.last, selectedDay)
+        XCTAssertEqual(appState.selectedDate, selectedDay)
+    }
+
     func testRefreshSelectedDayUsesTodayWhenNoSelectionExists() async throws {
         let writer = try DatabaseWriter.inMemory()
         let reader = RecordingNotificationReader()
@@ -420,11 +518,13 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.statusMessage, "Imported 1 notifications and refreshed today")
     }
 
-    func testRefreshSelectedDayForHistoricalSelectionSkipsNotificationImport() async throws {
+    func testRefreshSelectedDayForHistoricalSelectionImportsOnlyThatDayNotifications() async throws {
         let writer = try DatabaseWriter.inMemory()
         let reader = RecordingNotificationReader()
+        let calendar = Calendar(identifier: .gregorian)
         let historicalDay = "2026-04-06"
-        let capturedAt = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 6, hour: 9).date!
+        let historicalStart = DateComponents(calendar: calendar, year: 2026, month: 4, day: 6).date!
+        let capturedAt = DateComponents(calendar: calendar, year: 2026, month: 4, day: 6, hour: 9).date!
         try writer.insert(
             EventRecord(
                 id: UUID(),
@@ -438,6 +538,17 @@ final class MainWindowViewModelTests: XCTestCase {
                 contentHash: "historical-event"
             )
         )
+        let historicalNotification = NotificationSnapshot(
+            appName: "Mail",
+            deliveredAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 6, hour: 14).date!,
+            body: "Historical notification"
+        )
+        let outsideDayNotification = NotificationSnapshot(
+            appName: "Calendar",
+            deliveredAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 7, hour: 8).date!,
+            body: "Should not leak into 2026-04-06"
+        )
+        reader.fetchHandler = { _ in [historicalNotification, outsideDayNotification] }
 
         let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         let environment = AppEnvironment(
@@ -453,10 +564,16 @@ final class MainWindowViewModelTests: XCTestCase {
         let appState = AppState(environment: environment)
         appState.selectDate(historicalDay)
 
-        await appState.refreshSelectedDay(now: DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 7).date!)
+        await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 7).date!)
 
-        XCTAssertNil(reader.requestedSince)
-        XCTAssertEqual(appState.statusMessage, "Refreshed 2026-04-06")
+        let historicalEvents = try writer.fetchEvents(dayKey: historicalDay)
+        XCTAssertEqual(reader.requestedSince, historicalStart)
+        XCTAssertEqual(appState.notificationStatus.lastImportedCount, 1)
+        XCTAssertEqual(historicalEvents.count, 2)
+        XCTAssertTrue(historicalEvents.contains(where: { $0.sourceType == .notification && $0.text == historicalNotification.body }))
+        XCTAssertEqual(try writer.fetchEvents(dayKey: "2026-04-07").count, 0)
+        XCTAssertFalse(historicalEvents.contains(where: { $0.sourceType == .notification && $0.text == outsideDayNotification.body }))
+        XCTAssertEqual(appState.selectedDate, historicalDay)
     }
 
     func testReaderNavigationRestoresPerDayParagraphMemory() throws {

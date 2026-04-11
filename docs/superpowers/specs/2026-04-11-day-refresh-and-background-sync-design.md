@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-11  
 **Branch:** llm-channel-validation-and-connectivity  
-**Status:** Implemented
+**Status:** Revised
 
 ---
 
@@ -21,6 +21,13 @@ This creates two product failures:
 
 1. The refresh button feels unreliable because it can spin for a long time without making it clear whether it is refreshing the selected day, importing sources, or backfilling historical dates.
 2. The refresh scope is inconsistent with user intent. When the user refreshes one day, they expect only that day to be refreshed.
+
+There is a third issue in the current reader experience:
+
+- refresh progress is not visible in the main window
+- the only visible control is a spinner in the refresh button
+- long-running refresh work still feels like the entire reader has frozen
+- refresh state is effectively page-global instead of day-scoped
 
 There is a second issue in the engine experience:
 
@@ -45,6 +52,8 @@ The product needs a cleaner model:
 4. Keep clipboard capture as a background-only source and avoid implying that historical clipboard data can be reconstructed on demand.
 5. Make background notification ingestion frequent enough that "today" stays close to current without requiring manual automation runs.
 6. Auto-select the highest-priority verified engine when the current default is `None`, while preserving any explicit non-`None` user choice.
+7. Show refresh progress inline in the main reader UI so the user can see the active stage and any errors without opening settings or losing focus.
+8. Allow different days to refresh concurrently, while preventing duplicate refreshes for the same day.
 
 ## Non-Goals
 
@@ -53,6 +62,7 @@ The product needs a cleaner model:
 - Backfilling multiple historical days from a single refresh click
 - Changing the five-step onboarding flow itself
 - Replacing the existing fallback story generation path
+- Building a separate modal progress window or interruptive alert flow
 
 ---
 
@@ -244,19 +254,54 @@ The refresh UI should reflect one bounded day refresh rather than an unbounded a
 
 Requirements:
 
-- spinner lifetime should cover only the selected-day refresh flow
+- refresh state must be shown in the main reader UI, adjacent to the refresh button for the selected day
+- the UI must not use a modal, sheet, popup, or any other focus-stealing affordance for refresh progress
+- the inline status area must show the current stage for the selected day
 - completion message should mention the selected day
-- failure message should identify whether refresh failed during notification sync or generation
+- failure message should identify the failing stage and include the error text when the refresh as a whole fails
+- if notification sync fails but the selected day still regenerates successfully, the inline terminal state may surface this as a completed refresh with a warning detail instead of a hard failure
 - fallback generation should remain visible in status text when the model path is unavailable or invalid
+
+The stage model should be explicit and user-visible. At minimum, support:
+
+- `syncingNotifications`
+- `loadingEvents`
+- `generatingStory`
+- `writingFiles`
+- `completed`
+- `failed`
 
 Examples:
 
-- `Refreshed 2026-04-11 with story view`
-- `Refreshed 2026-04-11 with local story fallback`
-- `Refreshed 2026-04-08 after syncing notifications`
-- `Refresh failed for 2026-04-08: Notification Center database not readable`
+- `2026-04-09 · Syncing notifications`
+- `2026-04-09 · Loaded 24 events, generating journal`
+- `2026-04-09 · Writing note files`
+- `2026-04-09 · Completed with story view`
+- `2026-04-09 · Completed without notifications: Notification Center database not readable`
+- `2026-04-09 · Failed during journal generation: vault directory is not writable`
 
-### 8. Default Engine Auto-Selection
+### 8. Concurrent Refresh Behavior
+
+Refresh concurrency should be scoped by `dayKey`, not by the whole reader window.
+
+Rules:
+
+- different days may refresh concurrently
+- the same day may not start a second refresh while one is already in progress
+- when a given day is already refreshing, that day’s refresh button should be disabled and visually dimmed
+- the selected day should show detailed inline status beside the refresh button
+- non-selected days may show lightweight in-list activity indicators if the UI supports them, but this is optional for the first implementation
+- navigating to a different day while another day is refreshing must remain responsive
+
+The implementation may cap total concurrent refreshes to a small number to protect model throughput and file I/O stability.
+
+Recommended initial cap:
+
+- maximum 2 simultaneous day refresh tasks
+
+This gives the user practical parallelism without allowing unbounded fan-out across many model generations.
+
+### 9. Default Engine Auto-Selection
 
 Onboarding and the main-window selector should continue to use the same persisted `defaultEngine`.
 
@@ -279,7 +324,7 @@ Recommended priority order:
 
 This order can be implemented as a static product preference and should not depend on scan completion order.
 
-### 9. Onboarding Relationship
+### 10. Onboarding Relationship
 
 The onboarding "Default engine" picker remains valid.
 
@@ -309,6 +354,9 @@ Add or update tests for:
 - 30-second notification incremental scans remaining idempotent
 - `defaultEngine == .none` auto-selecting the highest-priority green engine
 - explicit non-`None` engine choice never being auto-overridden
+- selected-day refresh status advancing through visible stages
+- same-day refresh requests being rejected while that day is already in progress
+- different days being allowed to refresh concurrently up to the configured cap
 
 ### Integration Tests
 
@@ -325,6 +373,8 @@ Verify on a real macOS environment:
 - startup after a closed morning session pulls today's earlier notifications
 - refreshing a historical day imports only that day's notifications
 - refreshing one day does not regenerate neighboring days
+- refreshing 2026-04-09 shows visible stage changes in the reader UI and reaches a terminal state
+- starting refresh for one day does not freeze browsing on another day
 - clipboard captures continue arriving without using the refresh button
 - when default engine is `None` and multiple engines are green, the highest-priority green engine is chosen automatically
 

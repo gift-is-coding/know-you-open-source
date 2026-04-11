@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make manual refresh regenerate only the selected day, add day-scoped notification sync with background incremental recovery, and auto-select a verified default engine only when the current default is `None`.
+**Goal:** Make manual refresh regenerate only the selected day, add day-scoped notification sync with background incremental recovery, show inline refresh progress beside the refresh button, allow different days to refresh concurrently while blocking duplicate same-day clicks, and auto-select a verified default engine only when the current default is `None`.
 
-**Architecture:** Split the current refresh path into two flows: a bounded selected-day refresh path for UI actions and a separate notification background sync path for startup and periodic ingestion. Keep clipboard capture unchanged, add explicit notification sync bookkeeping in `AppState`, and make default-engine auto-selection a deterministic post-probe reconciliation step instead of an initialization side effect.
+**Architecture:** Split the current refresh path into two flows: a bounded selected-day refresh path for UI actions and a separate notification background sync path for startup and periodic ingestion. Replace the page-global refresh spinner with day-scoped refresh jobs keyed by `dayKey`, surface stage-aware inline progress in the reader UI beside the refresh button, keep clipboard capture unchanged, add explicit notification sync bookkeeping in `AppState`, and make default-engine auto-selection a deterministic post-probe reconciliation step instead of an initialization side effect.
 
 **Tech Stack:** Swift, SwiftUI, XCTest, GRDB, macOS Timer-based background polling
 
@@ -15,7 +15,11 @@
 **Modify**
 
 - `KnowYou/App/AppState.swift`
-  Owns selected-day refresh flow, background notification sync scheduling, persisted sync bookkeeping, and default-engine auto-selection logic.
+  Owns selected-day refresh flow, per-day refresh job state, background notification sync scheduling, persisted sync bookkeeping, and default-engine auto-selection logic.
+- `KnowYou/UI/MainWindowView.swift`
+  Must stop using a single page-global refresh flag and instead bind refresh controls to the selected day’s refresh job.
+- `KnowYou/UI/Reader/DailyMarkdownView.swift`
+  Must render the inline progress and error region adjacent to the refresh button for the selected day.
 - `KnowYou/KnowYouApp.swift`
   Keeps wiring unchanged, but this file is part of validation because app startup still constructs `AppState()`.
 - `KnowYou/Services/Notifications/NotificationCollector.swift`
@@ -23,7 +27,7 @@
 - `KnowYou/Services/Notifications/NotificationDatabaseReader.swift`
   May need a helper-oriented API for day-bounded reads if implementation is cleaner here than in `AppState`.
 - `KnowYouTests/MainWindowViewModelTests.swift`
-  Primary behavior tests for refresh, background sync bookkeeping, and engine auto-selection.
+  Primary behavior tests for refresh staging, day-scoped concurrency, background sync bookkeeping, and engine auto-selection.
 - `KnowYouTests/DatabaseWriterTests.swift`
   Add idempotency coverage if notification overlap behavior needs explicit persistence-level regression tests.
 - `docs/architecture.md`
@@ -178,10 +182,12 @@ git commit -m "test: cover day scoped refresh behavior"
 
 ---
 
-### Task 2: Implement Day-Scoped Refresh And Notification Window Sync
+### Task 2: Implement Day-Scoped Refresh Jobs, Notification Window Sync, And Inline Progress UI
 
 **Files:**
 - Modify: `KnowYou/App/AppState.swift`
+- Modify: `KnowYou/UI/MainWindowView.swift`
+- Modify: `KnowYou/UI/Reader/DailyMarkdownView.swift`
 - Modify: `KnowYou/Services/Notifications/NotificationCollector.swift`
 - Test: `KnowYouTests/MainWindowViewModelTests.swift`
 
@@ -211,7 +217,7 @@ func importDeliveredNotifications(since: Date) throws -> NotificationImportResul
 }
 ```
 
-- [ ] **Step 2: Refactor `AppState.refreshSelectedDay` so it never calls `runAutomation()`**
+- [ ] **Step 2: Refactor `AppState.refreshSelectedDay` so it never calls `runAutomation()` and instead starts a day-scoped refresh job**
 
 Replace the current branch that calls `refreshToday(now:environment:)` with an explicit selected-day flow:
 
@@ -252,6 +258,8 @@ func refreshDay(_ dayKey: String, now: Date, environment: AppEnvironment) async 
 }
 ```
 
+Track refresh state by `dayKey` instead of a single page-global flag. The same day must reject duplicate starts while already running.
+
 - [ ] **Step 3: Implement a bounded selected-day notification sync helper**
 
 In `AppState.swift`, add a helper like:
@@ -281,7 +289,24 @@ func syncNotifications(
 
 Do not call `dailyAutomationPlanner.pendingDays(...)` anywhere in this path.
 
-- [ ] **Step 4: Run the targeted refresh tests and verify they now pass**
+- [ ] **Step 4: Bind the selected day UI to its own refresh job state**
+
+In `MainWindowView.swift`, remove the local page-global `isRefreshing` source of truth and derive the selected-day state from `AppState`.
+
+In `DailyMarkdownView.swift`, render a compact inline status label beside or directly under the refresh button:
+
+```swift
+if let refreshDetail = refreshDetail {
+    Text(refreshDetail)
+        .font(.caption)
+        .foregroundStyle(refreshIsError ? .red : .secondary)
+        .lineLimit(2)
+}
+```
+
+The button must be disabled only when that same day already has an in-flight refresh job.
+
+- [ ] **Step 5: Run the targeted refresh tests and verify they now pass**
 
 Run:
 
@@ -294,16 +319,98 @@ Expected:
 - The new refresh tests pass
 - Existing refresh-related tests continue to pass
 
-- [ ] **Step 5: Commit the bounded refresh implementation**
+- [ ] **Step 6: Commit the bounded refresh implementation**
 
 ```bash
-git add KnowYou/App/AppState.swift KnowYou/Services/Notifications/NotificationCollector.swift KnowYouTests/MainWindowViewModelTests.swift
-git commit -m "feat: make manual refresh day scoped"
+git add KnowYou/App/AppState.swift KnowYou/UI/MainWindowView.swift KnowYou/UI/Reader/DailyMarkdownView.swift KnowYou/Services/Notifications/NotificationCollector.swift KnowYouTests/MainWindowViewModelTests.swift
+git commit -m "feat: add day scoped refresh progress"
 ```
 
 ---
 
-### Task 3: Add Background Notification Recovery And Idempotency Coverage
+### Task 3: Lock Down Refresh Progress And Day-Scoped Concurrency With Failing Tests
+
+**Files:**
+- Modify: `KnowYouTests/MainWindowViewModelTests.swift`
+- Test: `KnowYouTests/MainWindowViewModelTests.swift`
+
+- [ ] **Step 1: Write failing tests for explicit refresh stages**
+
+Add tests that expect the selected day to publish visible stage progress:
+
+```swift
+func testRefreshSelectedDayPublishesVisibleStages() async throws {
+    let writer = try DatabaseWriter.inMemory()
+    let recorder = RefreshStageRecorder()
+    let appState = AppState(
+        environment: makeEnvironment(writer: writer),
+        onRefreshStageChange: recorder.record
+    )
+    appState.selectDate("2026-04-09")
+
+    await appState.refreshSelectedDay(
+        now: DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11).date!
+    )
+
+    XCTAssertEqual(
+        recorder.stages,
+        [.syncingNotifications, .loadingEvents, .generatingStory, .writingFiles, .completed]
+    )
+}
+```
+
+- [ ] **Step 2: Write failing tests for same-day dedupe and different-day concurrency**
+
+Add coverage like:
+
+```swift
+func testRefreshSelectedDayRejectsDuplicateInFlightRefreshForSameDay() async throws {
+    let environment = makeBlockingRefreshEnvironment()
+    let appState = AppState(environment: environment)
+    appState.selectDate("2026-04-09")
+
+    async let first: Void = appState.refreshSelectedDay(now: fixedNow)
+    async let second: Void = appState.refreshSelectedDay(now: fixedNow)
+    _ = await (first, second)
+
+    XCTAssertEqual(environment.startedDays, ["2026-04-09"])
+}
+
+func testRefreshDifferentDaysCanRunConcurrently() async throws {
+    let environment = makeBlockingRefreshEnvironment()
+    let appState = AppState(environment: environment)
+
+    async let dayNine: Void = appState.refreshDay("2026-04-09", now: fixedNow, environment: environment)
+    async let dayTen: Void = appState.refreshDay("2026-04-10", now: fixedNow, environment: environment)
+    _ = await (dayNine, dayTen)
+
+    XCTAssertEqual(Set(environment.startedDays), ["2026-04-09", "2026-04-10"])
+}
+```
+
+- [ ] **Step 3: Run the focused refresh test slice and confirm the new expectations fail**
+
+Run:
+
+```bash
+xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/MainWindowViewModelTests
+```
+
+Expected:
+
+- staged progress tests fail because refresh still exposes only page-global UI state
+- concurrency tests fail because refresh is not yet tracked by `dayKey`
+
+- [ ] **Step 4: Commit the red tests for staged progress and concurrency**
+
+```bash
+git add KnowYouTests/MainWindowViewModelTests.swift
+git commit -m "test: cover refresh progress and concurrency"
+```
+
+---
+
+### Task 4: Add Background Notification Recovery And Idempotency Coverage
 
 **Files:**
 - Modify: `KnowYou/App/AppState.swift`
@@ -438,7 +545,7 @@ git commit -m "feat: add incremental background notification sync"
 
 ---
 
-### Task 4: Auto-Select A Verified Engine Only When Default Is `None`
+### Task 5: Auto-Select A Verified Engine Only When Default Is `None`
 
 **Files:**
 - Modify: `KnowYou/App/AppState.swift`
@@ -557,14 +664,35 @@ git commit -m "feat: auto select verified engine from none"
 
 ---
 
-### Task 5: Update Product Docs And Run Full Verification
+### Task 6: Update Product Docs And Run Full Verification
 
 **Files:**
+- Modify: `KnowYouTests/MainWindowViewModelTests.swift`
 - Modify: `docs/architecture.md`
 - Modify: `docs/requirements-spec.md`
 - Modify: `docs/superpowers/specs/2026-04-11-day-refresh-and-background-sync-design.md`
+- Modify: `docs/superpowers/plans/2026-04-11-day-refresh-and-background-sync.md`
 
-- [ ] **Step 1: Update architecture and requirements docs to match implemented behavior**
+- [ ] **Step 1: Add a focused regression test for the 2026-04-09 refresh path**
+
+Add a test that exercises a concrete historical-day refresh to completion:
+
+```swift
+func testRefreshSelectedDayFor20260409CompletesWithVisibleTerminalState() async throws {
+    let writer = try DatabaseWriter.inMemory()
+    try seedEvents(for: "2026-04-09", into: writer, count: 3)
+    let appState = AppState(environment: makeEnvironment(writer: writer))
+    appState.selectDate("2026-04-09")
+
+    await appState.refreshSelectedDay(
+        now: DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11).date!
+    )
+
+    XCTAssertEqual(appState.refreshJob(for: "2026-04-09")?.stage, .completed)
+}
+```
+
+- [ ] **Step 2: Update architecture and requirements docs to match implemented behavior**
 
 Add concise updates covering:
 
@@ -573,10 +701,25 @@ Add concise updates covering:
 - selected-day refresh may sync notifications for that same day only
 - clipboard remains background-capture-only
 - background notification sync runs every 30 seconds with overlap-safe deduplication
+- refresh progress is shown inline beside the selected day refresh button
+- different days may refresh concurrently while the same day remains non-reentrant
 - default engine auto-selection runs only when the persisted default is `None`
 ```
 
-- [ ] **Step 2: Run targeted test slices before the full suite**
+- [ ] **Step 3: Run the targeted 2026-04-09 regression before the full suite**
+
+Run:
+
+```bash
+xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/MainWindowViewModelTests/testRefreshSelectedDayFor20260409CompletesWithVisibleTerminalState
+```
+
+Expected:
+
+- PASS
+- the selected day reaches a terminal refresh state without touching unrelated days
+
+- [ ] **Step 4: Run targeted test slices before the full suite**
 
 Run:
 
@@ -588,7 +731,7 @@ Expected:
 
 - PASS
 
-- [ ] **Step 3: Run full required verification**
+- [ ] **Step 5: Run full required verification**
 
 Run:
 
@@ -602,11 +745,11 @@ Expected:
 - Both commands succeed
 - No regressions in onboarding, refresh, or engine-selection tests
 
-- [ ] **Step 4: Commit docs and final verification-backed implementation state**
+- [ ] **Step 6: Commit docs and final verification-backed implementation state**
 
 ```bash
-git add docs/architecture.md docs/requirements-spec.md docs/superpowers/specs/2026-04-11-day-refresh-and-background-sync-design.md
-git commit -m "docs: align refresh and sync architecture"
+git add KnowYouTests/MainWindowViewModelTests.swift docs/architecture.md docs/requirements-spec.md docs/superpowers/specs/2026-04-11-day-refresh-and-background-sync-design.md docs/superpowers/plans/2026-04-11-day-refresh-and-background-sync.md
+git commit -m "docs: align refresh progress architecture"
 ```
 
 ---
@@ -634,4 +777,3 @@ git commit -m "docs: align refresh and sync architecture"
 
 - Plan consistently uses `refreshSelectedDay`, `refreshDay`, `syncNotifications`, `runNotificationCatchUp`, and `reconcileDefaultEngineAfterStatusChange`
 - Notification sync bookkeeping is described only through `lastNotificationImportAt`, not mixed with the existing automation planner
-

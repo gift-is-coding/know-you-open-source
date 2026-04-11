@@ -131,6 +131,78 @@ private actor ProbeStartTracker {
     }
 }
 
+private actor RefreshBlockGate {
+    private var startedCounts: [String: Int] = [:]
+    private var startedWaiters: [String: CheckedContinuation<Void, Never>] = [:]
+    private var releaseWaiters: [String: CheckedContinuation<Void, Never>] = [:]
+
+    func markStarted(dayKey: String) {
+        startedCounts[dayKey, default: 0] += 1
+        startedWaiters[dayKey]?.resume()
+        startedWaiters[dayKey] = nil
+    }
+
+    func waitUntilStarted(dayKey: String) async {
+        guard startedCounts[dayKey] == nil else { return }
+        await withCheckedContinuation { continuation in
+            startedWaiters[dayKey] = continuation
+        }
+    }
+
+    func waitForRelease(dayKey: String) async {
+        await withCheckedContinuation { continuation in
+            releaseWaiters[dayKey] = continuation
+        }
+    }
+
+    func release(dayKey: String) {
+        releaseWaiters[dayKey]?.resume()
+        releaseWaiters[dayKey] = nil
+    }
+
+    func startCount(for dayKey: String) -> Int {
+        startedCounts[dayKey] ?? 0
+    }
+}
+
+private struct BlockingSummarizer: SummaryGenerating {
+    let gate: RefreshBlockGate
+
+    func summarize(dayKey: String, markdown: String) async throws -> String {
+        await gate.markStarted(dayKey: dayKey)
+        await gate.waitForRelease(dayKey: dayKey)
+        return """
+        {"sections":[{"id":"daily-journal","paragraphs":[{"text":"# Summary\\n- \(dayKey)","sourceEventIDs":[]}]}]}
+        """
+    }
+}
+
+@MainActor
+private func makeBlockingRefreshEnvironment() throws -> (AppEnvironment, RefreshBlockGate) {
+    let gate = RefreshBlockGate()
+    let writer = try DatabaseWriter.inMemory()
+    let environment = AppEnvironment(
+        databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+        vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+        databaseWriter: writer,
+        summarizer: BlockingSummarizer(gate: gate),
+        notificationReader: RecordingNotificationReader(),
+        dailyAutomationPlanner: DailyAutomationPlanner(
+            backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+        )
+    )
+    return (environment, gate)
+}
+
+@MainActor
+private final class RefreshStageRecorder {
+    private(set) var stages: [DayRefreshStage] = []
+
+    func record(_ job: DayRefreshJob) {
+        stages.append(job.stage)
+    }
+}
+
 private func waitUntil(
     timeoutNanoseconds: UInt64 = 1_000_000_000,
     pollNanoseconds: UInt64 = 10_000_000,
@@ -1377,6 +1449,175 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(
             appState.statusMessage,
             "Refreshed today without notifications: \(CocoaError(.fileReadUnknown).localizedDescription)"
+        )
+    }
+
+    func testRefreshSelectedDayPublishesVisibleStages() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 10).date!
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: now,
+                dayKey: "2026-04-09",
+                text: "Refresh this day",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "refresh-visible-stages"
+            )
+        )
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let recorder = RefreshStageRecorder()
+        let appState = AppState(
+            environment: environment,
+            onRefreshStageChange: recorder.record
+        )
+        appState.selectDate("2026-04-09")
+
+        await appState.refreshSelectedDay(
+            now: DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11).date!
+        )
+
+        XCTAssertEqual(
+            recorder.stages,
+            [.syncingNotifications, .loadingEvents, .preparingStory, .generatingStory, .writingFiles, .completed]
+        )
+    }
+
+    func testRefreshSelectedDayRejectsDuplicateInFlightRefreshForSameDay() async throws {
+        let (environment, gate) = try makeBlockingRefreshEnvironment()
+        let appState = AppState(environment: environment)
+        appState.selectDate("2026-04-09")
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+
+        let first = Task {
+            await appState.refreshSelectedDay(now: now)
+        }
+
+        await gate.waitUntilStarted(dayKey: "2026-04-09")
+        let second = Task {
+            await appState.refreshSelectedDay(now: now)
+        }
+
+        await Task.yield()
+
+        let startCount = await gate.startCount(for: "2026-04-09")
+        XCTAssertEqual(startCount, 1)
+
+        await gate.release(dayKey: "2026-04-09")
+        _ = await (first.value, second.value)
+    }
+
+    func testRefreshDifferentDaysCanRunConcurrently() async throws {
+        let (environment, gate) = try makeBlockingRefreshEnvironment()
+        let appState = AppState(environment: environment)
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+
+        async let refreshNine: Void = appState.refreshDay("2026-04-09", now: now, environment: environment)
+        async let refreshTen: Void = appState.refreshDay("2026-04-10", now: now, environment: environment)
+
+        await gate.waitUntilStarted(dayKey: "2026-04-09")
+        await gate.waitUntilStarted(dayKey: "2026-04-10")
+
+        let startCountNine = await gate.startCount(for: "2026-04-09")
+        let startCountTen = await gate.startCount(for: "2026-04-10")
+        XCTAssertEqual(startCountNine, 1)
+        XCTAssertEqual(startCountTen, 1)
+        XCTAssertEqual(appState.refreshJob(for: "2026-04-09")?.stage, .generatingStory)
+        XCTAssertEqual(appState.refreshJob(for: "2026-04-10")?.stage, .generatingStory)
+
+        await gate.release(dayKey: "2026-04-09")
+        await gate.release(dayKey: "2026-04-10")
+        _ = await (refreshNine, refreshTen)
+    }
+
+    func testRefreshSelectedDayFor20260409CompletesWithVisibleTerminalState() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let capturedAt = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 9, hour: 9).date!
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: capturedAt,
+                dayKey: "2026-04-09",
+                text: "Regression refresh event",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "refresh-2026-04-09-terminal"
+            )
+        )
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let appState = AppState(environment: environment)
+        appState.selectDate("2026-04-09")
+
+        await appState.refreshSelectedDay(
+            now: DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11).date!
+        )
+
+        XCTAssertEqual(appState.refreshJob(for: "2026-04-09")?.stage, .completed)
+    }
+
+    func testRefreshSelectedDayTracksCompletedStagesAndTerminalSummary() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let capturedAt = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 9, hour: 9).date!
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: capturedAt,
+                dayKey: "2026-04-09",
+                text: "Regression refresh event",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "refresh-2026-04-09-summary"
+            )
+        )
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let appState = AppState(environment: environment)
+        appState.selectDate("2026-04-09")
+
+        await appState.refreshSelectedDay(
+            now: DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11).date!
+        )
+
+        XCTAssertEqual(
+            appState.refreshJob(for: "2026-04-09")?.completedStages,
+            [.syncingNotifications, .loadingEvents, .preparingStory, .generatingStory, .writingFiles]
+        )
+        XCTAssertEqual(
+            appState.refreshJob(for: "2026-04-09")?.summary,
+            "Completed · local fallback"
         )
     }
 

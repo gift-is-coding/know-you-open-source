@@ -37,6 +37,66 @@ struct DayRefreshStatus {
     var lastError: String?
 }
 
+enum DayRefreshStage: Equatable, Hashable {
+    case syncingNotifications
+    case loadingEvents
+    case preparingStory
+    case generatingStory
+    case writingFiles
+    case completed
+    case failed
+
+    var detail: String {
+        switch self {
+        case .syncingNotifications:
+            return "Syncing notifications..."
+        case .loadingEvents:
+            return "Loading captured events..."
+        case .preparingStory:
+            return "Preparing journal..."
+        case .generatingStory:
+            return "Generating story..."
+        case .writingFiles:
+            return "Writing files..."
+        case .completed:
+            return "Refresh complete"
+        case .failed:
+            return "Refresh failed"
+        }
+    }
+
+    var isProgressStep: Bool {
+        switch self {
+        case .syncingNotifications, .loadingEvents, .preparingStory, .generatingStory, .writingFiles:
+            return true
+        case .completed, .failed:
+            return false
+        }
+    }
+}
+
+struct DayRefreshJob: Equatable {
+    var dayKey: String
+    var stage: DayRefreshStage
+    var detail: String?
+    var error: String?
+    var completedStages: [DayRefreshStage] = []
+    var summary: String? = nil
+    var inFlight: Bool {
+        switch stage {
+        case .completed, .failed:
+            return false
+        default:
+            return true
+        }
+    }
+}
+
+struct DayRefreshGenerationResult: Equatable {
+    var stage: DayRefreshStage
+    var summary: String
+}
+
 struct SummarizerRuntimeStatus {
     var mode: String = "None"
     var isConfigured = false
@@ -54,6 +114,8 @@ struct EngineRuntimeStatus: Equatable {
 @MainActor
 @Observable
 final class AppState {
+    typealias RefreshStageChangeHandler = @MainActor @Sendable (DayRefreshJob) -> Void
+
     private static let autoSelectionPriority: [DiaryEngine] = [
         .claudeCLI,
         .codexCLI,
@@ -86,19 +148,23 @@ final class AppState {
     var selectedMarkdownText: String?
     var selectedSourceNotesMarkdown: String?
     var readerFocus: ReaderFocusZone = .dateList
+    private var refreshJobsByDay: [String: DayRefreshJob] = [:]
     private(set) var environment: AppEnvironment?
     @ObservationIgnored private var automationTimer: Timer?
     @ObservationIgnored private var notificationCatchUpTimer: Timer?
     @ObservationIgnored private var paragraphSelectionByDay: [String: String] = [:]
+    @ObservationIgnored private var refreshTasksByDay: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private let notificationSyncInterval: TimeInterval = 30
     @ObservationIgnored private let automationInterval: TimeInterval = 900
     @ObservationIgnored private let notificationOverlapBuffer: TimeInterval = 30
+    @ObservationIgnored private let maxConcurrentRefreshes = 2
     @ObservationIgnored private let userDefaults: UserDefaults
     @ObservationIgnored private let keychain: KeychainStoring
     @ObservationIgnored private let keychainService: String
     @ObservationIgnored private let processEnvironment: [String: String]
     @ObservationIgnored private let currentDate: @Sendable () -> Date
     @ObservationIgnored private let probeEngine: @Sendable (DiaryEngine, SummarizerConfig, [String: String]) async -> EngineProbeResult
+    @ObservationIgnored private let onRefreshStageChange: RefreshStageChangeHandler?
     @ObservationIgnored private var summarizerConfig: SummarizerConfig
     @ObservationIgnored private var autoSelectionSuppressedByExplicitNone: Bool
 
@@ -141,6 +207,7 @@ final class AppState {
         probeEngine: @escaping @Sendable (DiaryEngine, SummarizerConfig, [String: String]) async -> EngineProbeResult = { engine, config, environment in
             await EngineProbe().probe(engine: engine, config: config, environment: environment)
         },
+        onRefreshStageChange: RefreshStageChangeHandler? = nil,
         processEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         currentDate: @escaping @Sendable () -> Date = Date.init,
         userDefaults: UserDefaults = .standard,
@@ -154,6 +221,7 @@ final class AppState {
         self.processEnvironment = processEnvironment
         self.currentDate = currentDate
         self.probeEngine = probeEngine
+        self.onRefreshStageChange = onRefreshStageChange
         self.summarizerConfig = summarizerConfig ?? SummarizerConfig.load(
             from: userDefaults,
             keychain: keychain,
@@ -296,7 +364,11 @@ final class AppState {
     }
 
     func generateDailyNote(for dayKey: String) async {
-        await generateDailyNote(for: dayKey, recordsRun: true)
+        _ = await generateDailyNote(for: dayKey, recordsRun: true)
+    }
+
+    func refreshJob(for dayKey: String) -> DayRefreshJob? {
+        refreshJobsByDay[dayKey]
     }
 
     func applyVaultURL(_ url: URL) {
@@ -598,19 +670,34 @@ final class AppState {
         return formatter
     }()
 
-    private func generateDailyNote(for dayKey: String, recordsRun: Bool) async {
+    @discardableResult
+    private func generateDailyNote(
+        for dayKey: String,
+        recordsRun: Bool,
+        onStageChange: ((DayRefreshStage, String?) -> Void)? = nil
+    ) async -> DayRefreshGenerationResult {
         guard let environment else {
             statusMessage = "Capture unavailable"
-            return
+            return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
         }
 
         let runID = recordsRun ? try? environment.databaseWriter.startRun(runType: "daily-note", dayKey: dayKey) : nil
         do {
+            onStageChange?(.loadingEvents, nil)
             let events = try environment.databaseWriter.fetchEvents(dayKey: dayKey)
-            let story = await generateStory(dayKey: dayKey, events: events, environment: environment)
+            onStageChange?(.preparingStory, "Preparing journal from \(events.count) event(s)...")
+            let story = await generateStory(
+                dayKey: dayKey,
+                events: events,
+                environment: environment,
+                onStageDetail: { detail in
+                    onStageChange?(.generatingStory, detail)
+                }
+            )
+            onStageChange?(.writingFiles, "Writing \(dayKey) artifacts...")
             let finalMarkdown = environment.composer.compose(dayKey: dayKey, events: events, story: story)
             let fileURL = try environment.writeDailyNote(dayKey: dayKey, markdown: finalMarkdown)
-                _ = try environment.writeDailyStory(story)
+            _ = try environment.writeDailyStory(story)
             if let runID {
                 try environment.databaseWriter.finishRun(id: runID, status: "succeeded")
             }
@@ -638,6 +725,10 @@ final class AppState {
             } else {
                 statusMessage = "Refreshed \(dayKey) with story view"
             }
+            return DayRefreshGenerationResult(
+                stage: .completed,
+                summary: refreshSummary(for: story)
+            )
         } catch {
             if let runID {
                 try? environment.databaseWriter.finishRun(id: runID, status: "failed")
@@ -646,6 +737,7 @@ final class AppState {
             dayRefreshStatus.lastRefreshedAt = Date()
             dayRefreshStatus.lastError = error.localizedDescription
             statusMessage = "Daily note failed: \(error.localizedDescription)"
+            return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
         }
     }
 
@@ -689,7 +781,7 @@ final class AppState {
         pendingBackfillDays = pendingDays.filter { $0 != today }
 
         for dayKey in pendingDays {
-            await generateDailyNote(for: dayKey, recordsRun: true)
+            _ = await generateDailyNote(for: dayKey, recordsRun: true)
         }
 
         if pendingDays.isEmpty {
@@ -784,27 +876,68 @@ extension AppState {
     }
 
     func refreshDay(_ dayKey: String, now: Date, environment: AppEnvironment) async {
-        let syncOutcome = syncNotifications(for: dayKey, now: now, environment: environment)
-        await generateDailyNote(for: dayKey, recordsRun: true)
-        guard dayRefreshStatus.lastError == nil else {
+        guard refreshTasksByDay[dayKey] == nil else {
+            return
+        }
+        guard refreshTasksByDay.count < maxConcurrentRefreshes else {
+            statusMessage = "Two refreshes are already running"
             return
         }
 
+        transitionRefreshJob(for: dayKey, stage: .syncingNotifications)
+        let task = Task { @MainActor in
+            await performRefreshDay(dayKey, now: now, environment: environment)
+        }
+        refreshTasksByDay[dayKey] = task
+        await task.value
+    }
+
+    private func performRefreshDay(_ dayKey: String, now: Date, environment: AppEnvironment) async {
+        defer {
+            refreshTasksByDay.removeValue(forKey: dayKey)
+        }
+
+        let syncOutcome = syncNotifications(for: dayKey, now: now, environment: environment)
+        let noteResult = await generateDailyNote(
+            for: dayKey,
+            recordsRun: true,
+            onStageChange: { [weak self] stage, detail in
+                self?.transitionRefreshJob(for: dayKey, stage: stage, detail: detail)
+            }
+        )
+        guard noteResult.stage == .completed else {
+            transitionRefreshJob(
+                for: dayKey,
+                stage: .failed,
+                detail: "Failed · \(dayRefreshStatus.lastRequestedDay == dayKey ? (dayRefreshStatus.lastError ?? "Unknown error") : "Unknown error")",
+                error: dayRefreshStatus.lastRequestedDay == dayKey ? dayRefreshStatus.lastError : nil
+            )
+            return
+        }
+
+        let completionDetail: String
+        let storySummary = noteResult.summary
         if dayKey == ISO8601DayKey.format(now) {
             if let error = syncOutcome.error {
                 statusMessage = "Refreshed today without notifications: \(error)"
+                completionDetail = "Completed · \(storySummary) · notification sync failed"
             } else if syncOutcome.importedCount == 0 {
                 statusMessage = "Refreshed today with no new notifications"
+                completionDetail = "Completed · \(storySummary)"
             } else {
                 statusMessage = "Imported \(syncOutcome.importedCount) notifications and refreshed today"
+                completionDetail = "Completed · \(storySummary)"
             }
         } else if let error = syncOutcome.error {
             statusMessage = "Refreshed \(dayKey) without notifications: \(error)"
+            completionDetail = "Completed · \(storySummary) · notification sync failed"
         } else {
             statusMessage = syncOutcome.importedCount > 0
                 ? "Refreshed \(dayKey) after syncing notifications"
                 : "Refreshed \(dayKey)"
+            completionDetail = "Completed · \(storySummary)"
         }
+        transitionRefreshJob(for: dayKey, stage: .completed, detail: completionDetail)
     }
 
     func syncNotifications(
@@ -870,7 +1003,12 @@ extension AppState {
         }
     }
 
-    func generateStory(dayKey: String, events: [EventRecord], environment: AppEnvironment) async -> DailyStory {
+    func generateStory(
+        dayKey: String,
+        events: [EventRecord],
+        environment: AppEnvironment,
+        onStageDetail: ((String) -> Void)? = nil
+    ) async -> DailyStory {
         let activeEngine = if defaultEngine == .none {
             summarizerConfig.defaultEngine != .none
                 ? summarizerConfig.defaultEngine
@@ -888,17 +1026,21 @@ extension AppState {
                 )
             )
         guard let summarizer = environment.summarizer else {
+            onStageDetail?("No verified engine available; using local fallback")
             return fallbackStory
         }
 
         do {
+            onStageDetail?("Calling \(activeEngine.displayName)...")
             let raw = try await summarizer.summarize(
                 dayKey: dayKey,
                 markdown: environment.composer.storyPrompt(dayKey: dayKey, events: events)
             )
+            onStageDetail?("Parsing \(activeEngine.displayName) response...")
             if let parsed = environment.composer.parseStory(dayKey: dayKey, raw: raw),
                parsed.sections.flatMap(\.paragraphs).isEmpty == false {
                 recordActiveEngineRuntime(state: .green, detail: "Story generation succeeded.", verifiedAt: Date())
+                onStageDetail?("\(activeEngine.displayName) returned successfully")
                 return parsed.withProvenance(
                     makeStoryProvenance(
                         mode: .model,
@@ -912,12 +1054,14 @@ extension AppState {
                 detail: "Story output was not valid structured JSON",
                 verifiedAt: Date()
             )
+            onStageDetail?("\(activeEngine.displayName) returned invalid output; using local fallback")
         } catch {
             recordActiveEngineRuntime(
                 state: .yellow,
                 detail: error.localizedDescription,
                 verifiedAt: Date()
             )
+            onStageDetail?("\(activeEngine.displayName) failed; using local fallback")
         }
 
         return fallbackStory
@@ -1017,6 +1161,9 @@ extension AppState {
     }
 
     var dayRefreshSummary: String {
+        if let active = selectedDate.flatMap({ refreshJobsByDay[$0] }), active.inFlight {
+            return active.detail ?? ""
+        }
         if let lastError = dayRefreshStatus.lastError, let dayKey = dayRefreshStatus.lastRequestedDay {
             return "Refresh failed for \(dayKey): \(lastError)"
         }
@@ -1192,6 +1339,54 @@ extension AppState {
             return nil
         }
         return try? environment.loadDailyNoteMarkdown(from: selectedMarkdownURL)
+    }
+
+    private func transitionRefreshJob(
+        for dayKey: String,
+        stage: DayRefreshStage,
+        detail: String? = nil,
+        error: String? = nil
+    ) {
+        let resolvedDetail = detail ?? error ?? stage.detail
+        var completedStages = refreshJobsByDay[dayKey]?.completedStages ?? []
+        if let previousStage = refreshJobsByDay[dayKey]?.stage,
+           previousStage.isProgressStep,
+           previousStage != stage,
+           !completedStages.contains(previousStage) {
+            completedStages.append(previousStage)
+        }
+        if stage == .completed,
+           !completedStages.contains(.writingFiles) {
+            completedStages.append(.writingFiles)
+        }
+        refreshJobsByDay[dayKey] = DayRefreshJob(
+            dayKey: dayKey,
+            stage: stage,
+            detail: resolvedDetail,
+            error: error,
+            completedStages: completedStages,
+            summary: stage.isProgressStep ? nil : resolvedDetail
+        )
+        onRefreshStageChange?(
+            DayRefreshJob(
+                dayKey: dayKey,
+                stage: stage,
+                detail: resolvedDetail,
+                error: error,
+                completedStages: completedStages,
+                summary: stage.isProgressStep ? nil : resolvedDetail
+            )
+        )
+    }
+
+    private func refreshSummary(for story: DailyStory) -> String {
+        if story.provenance?.generationMode == .model {
+            if let engineLabel = story.provenance?.engineLabel {
+                return "\(engineLabel) returned successfully"
+            }
+            return "model returned successfully"
+        }
+        return "local fallback"
     }
 
     private func extractSourceNotesMarkdown(from markdown: String) -> String? {

@@ -3,7 +3,6 @@ import AppKit
 
 struct MainWindowView: View {
     @Environment(AppState.self) private var appState
-    @State private var isRefreshing = false
     @State private var keyMonitor: Any?
     @State private var isShowingEnginePanel = false
     @State private var isShowingAPIDetail = false
@@ -24,7 +23,7 @@ struct MainWindowView: View {
                 story: appState.selectedStory,
                 selectedParagraphID: appState.selectedStoryParagraphID,
                 dayKey: appState.selectedDate,
-                isRefreshing: isRefreshing,
+                refreshJob: selectedRefreshJob,
                 isActive: appState.readerFocus == .storyParagraphs,
                 onSelectParagraph: { paragraphID in
                     appState.selectStoryParagraph(paragraphID)
@@ -34,11 +33,8 @@ struct MainWindowView: View {
                     appState.focusStoryParagraphs()
                 },
                 onRefresh: {
-                    guard !isRefreshing else { return }
-                    isRefreshing = true
                     Task { @MainActor in
                         await appState.refreshSelectedDay()
-                        isRefreshing = false
                     }
                 }
             )
@@ -108,6 +104,11 @@ struct MainWindowView: View {
 
     private var currentEngineTitle: String {
         appState.defaultEngine == .none ? "Select Engine" : appState.defaultEngine.displayName
+    }
+
+    private var selectedRefreshJob: DayRefreshJob? {
+        guard let selectedDate = appState.selectedDate else { return nil }
+        return appState.refreshJob(for: selectedDate)
     }
 
     private var currentEngineState: EngineIndicatorState {

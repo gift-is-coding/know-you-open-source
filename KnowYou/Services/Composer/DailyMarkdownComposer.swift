@@ -189,7 +189,13 @@ struct DailyMarkdownComposer {
           3. \(journalHeadings.details)
           4. \(journalHeadings.todo)
         - Do not emit any other first-level heading. In particular, do not include \(forbiddenHeading).
-        - The "\(journalHeadings.encouragement)" section must be positive, encouraging, and grounded in concrete things the person actually did well that day. It should feel supportive, not generic or fake.
+        - The "\(journalHeadings.encouragement)" section must contain exactly one sentence.
+        - That sentence should read like a short inspirational quote for the person who lived the day, not a recap of tasks.
+        - It should feel warm, distilled, and encouraging, but still loosely grounded in the overall pattern of the source events.
+        - Do not retell the chronology or summarize what the person did step by step in this section.
+        - Avoid app names, file names, branch names, URLs, tool instructions, and other concrete technical debris in this section unless absolutely necessary.
+        - Do not add a quote author, do not use quotation marks, and do not format it as a citation.
+        - Keep the wording in the same dominant language as the rest of the diary.
         - The "\(journalHeadings.summary)" section should use markdown bullet points.
         - The "\(journalHeadings.details)" section should use markdown second-level headings (##) for the main workstreams or threads of the day.
         - The "\(journalHeadings.todo)" section should use markdown task list items like - [ ].

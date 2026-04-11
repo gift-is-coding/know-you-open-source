@@ -8,7 +8,7 @@ final class AppEnvironment {
     let privacyFilter: PrivacyFilter
     let clipboardWatcher: ClipboardWatcher
     let notificationCollector: NotificationCollector
-    let notificationReader: NotificationDatabaseReader
+    let notificationReader: any NotificationDatabaseReading
     let composer: DailyMarkdownComposer
     var summarizer: SummaryGenerating?
     let dailyAutomationPlanner: DailyAutomationPlanner
@@ -45,13 +45,11 @@ final class AppEnvironment {
         onClipboardCapture: ((ClipboardCaptureSnapshot) -> Void)? = nil
     ) {
         let privacyFilter = PrivacyFilter()
-        let concreteNotificationReader = notificationReader as? NotificationDatabaseReader ?? NotificationDatabaseReader()
-
         self.databaseURL = databaseURL
         self.vaultURL = vaultURL
         self.databaseWriter = databaseWriter
         self.privacyFilter = privacyFilter
-        self.notificationReader = concreteNotificationReader
+        self.notificationReader = notificationReader
         self.composer = DailyMarkdownComposer()
         self.summarizer = summarizer
         self.dailyAutomationPlanner = dailyAutomationPlanner

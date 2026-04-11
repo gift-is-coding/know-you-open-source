@@ -261,12 +261,7 @@ final class AppState {
         if selectedDate == nil {
             selectDate(targetDay)
         }
-
-        if targetDay == ISO8601DayKey.format(now) {
-            await refreshToday(now: now, environment: environment)
-        } else {
-            await refreshHistoricalDay(targetDay)
-        }
+        await refreshDay(targetDay, now: now, environment: environment)
     }
 
     func generateDailyNote(for dayKey: String) async {
@@ -700,30 +695,87 @@ extension AppState {
         focusDateList()
     }
 
-    func refreshToday(now: Date, environment: AppEnvironment) async {
-        await runAutomation(now: now)
-        let today = ISO8601DayKey.format(now)
-        selectedDate = today
-        selectedMarkdownURL = noteIndex[today]
-        loadDayPresentation(for: today)
-        selectedContentVersion += 1
-        if dayRefreshStatus.lastError != nil {
+    func refreshDay(_ dayKey: String, now: Date, environment: AppEnvironment) async {
+        let syncOutcome = syncNotifications(for: dayKey, now: now, environment: environment)
+        await generateDailyNote(for: dayKey, recordsRun: true)
+        guard dayRefreshStatus.lastError == nil else {
             return
         }
-        let imported = notificationStatus.lastImportedCount
-        if let error = notificationStatus.lastError, !notificationStatus.isDatabaseAvailable {
-            statusMessage = "Refreshed today without notifications: \(error)"
-        } else if imported == 0 {
-            statusMessage = "Refreshed today with no new notifications"
+
+        if dayKey == ISO8601DayKey.format(now) {
+            if let error = syncOutcome.error {
+                statusMessage = "Refreshed today without notifications: \(error)"
+            } else if syncOutcome.importedCount == 0 {
+                statusMessage = "Refreshed today with no new notifications"
+            } else {
+                statusMessage = "Imported \(syncOutcome.importedCount) notifications and refreshed today"
+            }
+        } else if let error = syncOutcome.error {
+            statusMessage = "Refreshed \(dayKey) without notifications: \(error)"
         } else {
-            statusMessage = "Imported \(imported) notifications and refreshed today"
+            statusMessage = syncOutcome.importedCount > 0
+                ? "Refreshed \(dayKey) after syncing notifications"
+                : "Refreshed \(dayKey)"
         }
     }
 
-    func refreshHistoricalDay(_ dayKey: String) async {
-        await generateDailyNote(for: dayKey, recordsRun: true)
-        if dayRefreshStatus.lastError == nil {
-            statusMessage = "Refreshed \(dayKey)"
+    func syncNotifications(
+        for dayKey: String,
+        now: Date,
+        environment: AppEnvironment
+    ) -> NotificationSyncOutcome {
+        guard let dayStart = Self.startOfDay(for: dayKey) else {
+            notificationStatus.lastImportedAt = Date()
+            notificationStatus.lastImportedCount = 0
+            lastImportedNotificationCount = 0
+            return NotificationSyncOutcome(importedCount: 0, error: nil)
+        }
+
+        let calendar = Calendar(identifier: .gregorian)
+        let nextDayStart = calendar.date(byAdding: .day, value: 1, to: dayStart)
+        let isToday = dayKey == ISO8601DayKey.format(now)
+        let todayWindowEnd: Date? = if isToday {
+            if let nextDayStart {
+                min(max(now, dayStart), nextDayStart)
+            } else {
+                max(now, dayStart)
+            }
+        } else {
+            nil
+        }
+
+        do {
+            let result: NotificationImportResult
+            if let todayWindowEnd {
+                result = try environment.notificationCollector.importDeliveredNotifications(
+                    from: dayStart,
+                    through: todayWindowEnd
+                )
+            } else if let nextDayStart {
+                result = try environment.notificationCollector.importDeliveredNotifications(
+                    from: dayStart,
+                    until: nextDayStart
+                )
+            } else {
+                result = try environment.notificationCollector.importDeliveredNotifications(
+                    from: dayStart
+                )
+            }
+            applyNotificationAccessStatus(result.accessStatus)
+            lastImportedNotificationCount = result.importedCount
+            notificationStatus.lastImportedAt = result.importedAt
+            notificationStatus.lastImportedCount = result.importedCount
+            if notificationStatus.isDatabaseAvailable {
+                notificationStatus.lastError = nil
+            }
+            return NotificationSyncOutcome(importedCount: result.importedCount, error: nil)
+        } catch {
+            applyNotificationAccessStatus(environment.notificationCollector.accessStatus())
+            lastImportedNotificationCount = 0
+            notificationStatus.lastImportedAt = Date()
+            notificationStatus.lastImportedCount = 0
+            notificationStatus.lastError = error.localizedDescription
+            return NotificationSyncOutcome(importedCount: 0, error: error.localizedDescription)
         }
     }
 
@@ -957,8 +1009,12 @@ extension AppState {
         }
     }
 
-    func updateNotificationAccessStatus(using reader: NotificationDatabaseReader) {
+    func updateNotificationAccessStatus(using reader: any NotificationDatabaseReading) {
         let accessStatus = reader.accessStatus()
+        applyNotificationAccessStatus(accessStatus)
+    }
+
+    func applyNotificationAccessStatus(_ accessStatus: NotificationDatabaseAccessStatus) {
         notificationStatus.isDatabaseAvailable = accessStatus.isAvailable
         notificationStatus.databasePath = accessStatus.databaseURL?.path
         notificationStatus.availabilityMessage = accessStatus.message
@@ -1248,4 +1304,9 @@ extension AppState {
 
         return persistedEngine
     }
+}
+
+struct NotificationSyncOutcome {
+    let importedCount: Int
+    let error: String?
 }

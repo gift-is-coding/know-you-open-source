@@ -150,7 +150,7 @@ struct SettingsView: View {
                             Text("Policies & Docs")
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
-                            VStack(alignment: .leading, spacing: 10) {
+                            ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 10) {
                                     Button(AppSupportDocument.privacy.buttonTitle) {
                                         presentedDocument = .privacy
@@ -158,8 +158,6 @@ struct SettingsView: View {
                                     Button(AppSupportDocument.terms.buttonTitle) {
                                         presentedDocument = .terms
                                     }
-                                }
-                                HStack(spacing: 10) {
                                     Button(AppSupportDocument.community.buttonTitle) {
                                         presentedDocument = .community
                                     }

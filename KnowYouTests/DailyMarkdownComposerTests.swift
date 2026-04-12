@@ -89,6 +89,118 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertFalse(prompt.contains("\"main-thread\""), prompt)
     }
 
+    func testDefaultStoryPromptMatchesLegacyStoryPromptOutput() {
+        let composer = DailyMarkdownComposer()
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Ghostty",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: "2026-04-08",
+                text: "Implemented the daily story reader",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "prompt-default-check"
+            )
+        ]
+
+        XCTAssertEqual(
+            composer.storyPrompt(dayKey: "2026-04-08", events: events),
+            composer.defaultStoryPrompt(dayKey: "2026-04-08", events: events)
+        )
+    }
+
+    func testDefaultStoryPromptPreviewUsesCanonicalEnglishSeedData() {
+        let composer = DailyMarkdownComposer()
+        let preview = composer.defaultStoryPromptPreview(language: .english)
+
+        XCTAssertTrue(preview.contains("# You did a good job today"), preview)
+        XCTAssertTrue(preview.contains("AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA"), preview)
+        XCTAssertTrue(preview.contains("BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB"), preview)
+        XCTAssertTrue(preview.contains("Drafted a stable preview for the daily story prompt"), preview)
+    }
+
+    func testDefaultStoryPromptPreviewUsesCanonicalChineseSeedData() {
+        let composer = DailyMarkdownComposer()
+        let preview = composer.defaultStoryPromptPreview(language: .chinese)
+
+        XCTAssertTrue(preview.contains("# 你今天做得很棒"), preview)
+        XCTAssertTrue(preview.contains("11111111-1111-1111-1111-111111111111"), preview)
+        XCTAssertTrue(preview.contains("22222222-2222-2222-2222-222222222222"), preview)
+        XCTAssertTrue(preview.contains("整理今天的日记预览内容"), preview)
+    }
+
+    func testStoryPromptReturnsGlobalOverrideWhenProvided() {
+        let composer = DailyMarkdownComposer()
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: "2026-04-08",
+                text: "Existing prompt semantics should remain intact",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "prompt-override-check"
+            )
+        ]
+
+        XCTAssertEqual(
+            composer.storyPrompt(
+                dayKey: "2026-04-08",
+                events: events,
+                globalOverride: "Custom global diary prompt override"
+            ),
+            "Custom global diary prompt override"
+        )
+    }
+
+    func testStoryPromptFallsBackToCanonicalDefaultWhenGlobalOverrideIsNil() {
+        let composer = DailyMarkdownComposer()
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: "2026-04-08",
+                text: "Explicit nil should use the canonical default prompt",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "prompt-override-nil"
+            )
+        ]
+
+        XCTAssertEqual(
+            composer.storyPrompt(dayKey: "2026-04-08", events: events, globalOverride: nil),
+            composer.defaultStoryPrompt(dayKey: "2026-04-08", events: events)
+        )
+    }
+
+    func testStoryPromptFallsBackToCanonicalDefaultWhenGlobalOverrideIsWhitespaceOnly() {
+        let composer = DailyMarkdownComposer()
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: "2026-04-08",
+                text: "Whitespace-only override should not replace the canonical prompt",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "prompt-override-whitespace"
+            )
+        ]
+
+        XCTAssertEqual(
+            composer.storyPrompt(dayKey: "2026-04-08", events: events, globalOverride: "   \n\t "),
+            composer.defaultStoryPrompt(dayKey: "2026-04-08", events: events)
+        )
+    }
+
     func testStoryPromptRequestsStructuredMarkdownDiarySections() {
         let composer = DailyMarkdownComposer()
         let events = [
@@ -225,6 +337,61 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertTrue(markdown.contains("## Story"), markdown)
         XCTAssertTrue(markdown.contains("---\n\n## Source Notes"), markdown)
         XCTAssertFalse(markdown.contains("A softer story pass"), markdown)
+    }
+
+    func testComposeFlattensMultilineAndMarkdownShapedSourceNotes() {
+        let composer = DailyMarkdownComposer()
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: "2026-04-08",
+                text: """
+                Drafted a diary source note
+                ## Injected heading
+                - [ ] Injected task
+                """,
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "source-note-compose"
+            )
+        ]
+        let story = composer.fallbackStory(dayKey: "2026-04-08", events: events)
+
+        let markdown = composer.compose(dayKey: "2026-04-08", events: events, story: story)
+
+        XCTAssertTrue(markdown.contains("Drafted a diary source note ## Injected heading - [ ] Injected task"), markdown)
+        XCTAssertFalse(markdown.contains("\n## Injected heading"), markdown)
+        XCTAssertFalse(markdown.contains("\n- [ ] Injected task"), markdown)
+    }
+
+    func testSourceNotesMarkdownFlattensMultilineAndMarkdownShapedSourceNotes() {
+        let composer = DailyMarkdownComposer()
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: "2026-04-08",
+                text: """
+                Drafted a diary source note
+                ## Injected heading
+                - [ ] Injected task
+                """,
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "source-note-notes"
+            )
+        ]
+
+        let markdown = composer.sourceNotesMarkdown(for: events)
+
+        XCTAssertTrue(markdown.contains("Drafted a diary source note ## Injected heading - [ ] Injected task"), markdown)
+        XCTAssertFalse(markdown.contains("\n## Injected heading"), markdown)
+        XCTAssertFalse(markdown.contains("\n- [ ] Injected task"), markdown)
     }
 
     func testFallbackStoryUsesChineseNarrationForChineseDominantDay() {

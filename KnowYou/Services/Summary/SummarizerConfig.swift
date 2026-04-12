@@ -9,6 +9,7 @@ struct SummarizerConfig {
     var apiBaseURL: String
     var apiModel: String
     var apiToken: String
+    var globalDiaryPromptOverride: String?
 
     var type: DiaryEngine {
         get { defaultEngine }
@@ -18,6 +19,12 @@ struct SummarizerConfig {
     var openAIKey: String {
         get { apiToken }
         set { apiToken = newValue }
+    }
+
+    var hasCustomGlobalDiaryPrompt: Bool {
+        globalDiaryPromptOverride?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty == false
     }
 
     var apiConfigurationIsComplete: Bool {
@@ -34,7 +41,8 @@ struct SummarizerConfig {
         openclawCLIPath: "/usr/local/bin/openclaw",
         apiBaseURL: "https://api.openai.com/v1/responses",
         apiModel: "gpt-5",
-        apiToken: ""
+        apiToken: "",
+        globalDiaryPromptOverride: nil
     )
 
     private enum Keys {
@@ -47,6 +55,7 @@ struct SummarizerConfig {
         static let apiBaseURL = "summarizerAPIBaseURL"
         static let apiModel = "summarizerAPIModel"
         static let apiToken = "summarizerAPIToken"
+        static let globalDiaryPromptOverride = "summarizerGlobalDiaryPromptOverride"
         static let legacyOpenAIKey = "summarizerOpenAIKey"
     }
 
@@ -63,6 +72,12 @@ struct SummarizerConfig {
         defaults.set(openclawCLIPath, forKey: Keys.openclawCLIPath)
         defaults.set(apiBaseURL, forKey: Keys.apiBaseURL)
         defaults.set(apiModel, forKey: Keys.apiModel)
+        if let globalDiaryPromptOverride,
+           !globalDiaryPromptOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            defaults.set(globalDiaryPromptOverride, forKey: Keys.globalDiaryPromptOverride)
+        } else {
+            defaults.removeObject(forKey: Keys.globalDiaryPromptOverride)
+        }
         if apiToken.isEmpty {
             keychain.delete(forKey: Keys.apiToken, service: keychainService)
             keychain.delete(forKey: Keys.legacyOpenAIKey, service: keychainService)
@@ -90,7 +105,14 @@ struct SummarizerConfig {
             apiModel: defaults.string(forKey: Keys.apiModel) ?? SummarizerConfig.default.apiModel,
             apiToken: keychain.load(forKey: Keys.apiToken, service: keychainService)
                 ?? keychain.load(forKey: Keys.legacyOpenAIKey, service: keychainService)
-                ?? ""
+                ?? "",
+            globalDiaryPromptOverride: {
+                guard let value = defaults.string(forKey: Keys.globalDiaryPromptOverride) else {
+                    return nil
+                }
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : value
+            }()
         )
     }
 

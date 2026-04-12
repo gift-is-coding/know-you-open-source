@@ -29,7 +29,7 @@ struct DailyMarkdownComposer {
             .joined(separator: "\n\n")
         let sourceLines = bulletList(
             for: events.map { event in
-                "[\(Self.timeFormatter.string(from: event.capturedAt))] \(event.sourceApp) (\(event.sourceType.rawValue)): \(event.displayText)"
+                "[\(Self.timeFormatter.string(from: event.capturedAt))] \(event.sourceApp) (\(event.sourceType.rawValue)): \(event.sanitizedSourceNoteText)"
             },
             emptyState: sourceNotesEmptyState(for: events)
         )
@@ -62,10 +62,83 @@ struct DailyMarkdownComposer {
 
     func sourceNotesMarkdown(for events: [EventRecord]) -> String {
         let lines = events.map { event in
-            "- [\(Self.timeFormatter.string(from: event.capturedAt))] \(event.sourceApp) (\(event.sourceType.rawValue)): \(event.displayText)"
+            "- [\(Self.timeFormatter.string(from: event.capturedAt))] \(event.sourceApp) (\(event.sourceType.rawValue)): \(event.sanitizedSourceNoteText)"
         }
         let body = lines.isEmpty ? sourceNotesEmptyState(for: events) : lines.joined(separator: "\n")
         return "\(sourceNotesHeading(for: events))\n\n\(body)"
+    }
+
+    func defaultStoryPrompt(dayKey: String, events: [EventRecord]) -> String {
+        let language = dominantNarrativeLanguage(for: events)
+        let journalHeadings = journalHeadings(for: language)
+        let forbiddenHeading = language == .chinese ? "# 今日节奏" : "# Today's Rhythm"
+        let eventLines = events.enumerated().map { _, event in
+            let eventID = event.id.uuidString
+            return """
+            - id: \(eventID)
+              time: \(Self.timeFormatter.string(from: event.capturedAt))
+              app: \(event.sourceApp)
+              source: \(event.sourceType.rawValue)
+              text: \(event.displayText)
+            """
+        }.joined(separator: "\n")
+
+        return """
+        You are turning one day of raw computer context into a first-person diary entry written by the person who lived that day.
+
+        Return strict JSON only. Do not use markdown fences.
+
+        Required JSON shape:
+        {
+          "sections": [
+            { "id": "daily-journal", "paragraphs": [{ "text": "...", "sourceEventIDs": ["uuid"] }] }
+          ]
+        }
+
+        Rules:
+        - Keep the single section id exactly as given.
+        - Write in first person (I / 我). Never describe the user in third person. Write as if the user is writing their own diary.
+        - Base the content strictly on the source events. Do not invent, infer, or embellish anything not directly supported by the events.
+        - Follow the actual chronology at the thread level, but you may merge related events into the same workstream when it reads more naturally.
+        - Determine whether the day is mainly English or mainly Chinese from the source events.
+        - Write all diary prose and all diary headings in that same dominant language.
+        - If the day is mainly English, use English for all diary prose and headings.
+        - If the day is mainly Chinese, use Chinese for all diary prose and headings.
+        - Do not mix Chinese and English in the diary except for app names or product names that already appear in the source material.
+        - The final combined markdown across paragraph texts must render exactly these first-level headings, in this order:
+          1. \(journalHeadings.encouragement)
+          2. \(journalHeadings.summary)
+          3. \(journalHeadings.details)
+          4. \(journalHeadings.todo)
+        - Do not emit any other first-level heading. In particular, do not include \(forbiddenHeading).
+        - The "\(journalHeadings.encouragement)" section must contain exactly one sentence.
+        - That sentence should read like a short inspirational quote for the person who lived the day, not a recap of tasks.
+        - It should feel warm, distilled, and encouraging, but still loosely grounded in the overall pattern of the source events.
+        - Do not retell the chronology or summarize what the person did step by step in this section.
+        - Avoid app names, file names, branch names, URLs, tool instructions, and other concrete technical debris in this section unless absolutely necessary.
+        - Do not add a quote author, do not use quotation marks, and do not format it as a citation.
+        - Keep the wording in the same dominant language as the rest of the diary.
+        - The "\(journalHeadings.summary)" section should use markdown bullet points.
+        - The "\(journalHeadings.details)" section should use markdown second-level headings (##) for the main workstreams or threads of the day.
+        - The "\(journalHeadings.todo)" section should use markdown task list items like - [ ].
+        - Markdown headings, bullet lists, and task lists are allowed inside paragraph text and should be used deliberately.
+        - Only reference sourceEventIDs that appear below.
+        - Put all narrative paragraphs inside the single daily-journal section.
+        - Organize the day by major threads or workstreams, not by raw fragment order.
+        - Notifications, meetings, task reminders, and incoming messages are important when they changed the day's priorities or pushed work forward. Integrate them into the relevant thread instead of dumping them as noise.
+        - Do not copy file paths, branch names, commit hashes, URLs, file names, or tool instructions into the diary unless they are absolutely central. Abstract technical debris into normal diary language.
+        - Prefer summarizing the main work, coordination, decisions, and next steps instead of listing every fragment.
+        - Use natural transitions between blocks, but never introduce facts, emotions, or context that are not present in the source events.
+
+        Day: \(dayKey)
+        Source events:
+        \(eventLines)
+        """
+    }
+
+    func defaultStoryPromptPreview(language: NarrativeLanguage) -> String {
+        let seed = Self.previewSeedData(for: language)
+        return defaultStoryPrompt(dayKey: seed.dayKey, events: seed.events)
     }
 
     func extractSourceNotesSection(from markdown: String) -> String? {
@@ -147,71 +220,15 @@ struct DailyMarkdownComposer {
     }
 
     func storyPrompt(dayKey: String, events: [EventRecord]) -> String {
-        let language = dominantNarrativeLanguage(for: events)
-        let journalHeadings = journalHeadings(for: language)
-        let forbiddenHeading = language == .chinese ? "# 今日节奏" : "# Today's Rhythm"
-        let eventLines = events.enumerated().map { index, event in
-            let eventID = event.id.uuidString
-            return """
-            - id: \(eventID)
-              time: \(Self.timeFormatter.string(from: event.capturedAt))
-              app: \(event.sourceApp)
-              source: \(event.sourceType.rawValue)
-              text: \(event.displayText)
-            """
-        }.joined(separator: "\n")
+        defaultStoryPrompt(dayKey: dayKey, events: events)
+    }
 
-        return """
-        You are turning one day of raw computer context into a first-person diary entry written by the person who lived that day.
-
-        Return strict JSON only. Do not use markdown fences.
-
-        Required JSON shape:
-        {
-          "sections": [
-            { "id": "daily-journal", "paragraphs": [{ "text": "...", "sourceEventIDs": ["uuid"] }] }
-          ]
+    func storyPrompt(dayKey: String, events: [EventRecord], globalOverride: String?) -> String {
+        guard let globalOverride, !globalOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return defaultStoryPrompt(dayKey: dayKey, events: events)
         }
 
-        Rules:
-        - Keep the single section id exactly as given.
-        - Write in first person (I / 我). Never describe the user in third person. Write as if the user is writing their own diary.
-        - Base the content strictly on the source events. Do not invent, infer, or embellish anything not directly supported by the events.
-        - Follow the actual chronology at the thread level, but you may merge related events into the same workstream when it reads more naturally.
-        - Determine whether the day is mainly English or mainly Chinese from the source events.
-        - Write all diary prose and all diary headings in that same dominant language.
-        - If the day is mainly English, use English for all diary prose and headings.
-        - If the day is mainly Chinese, use Chinese for all diary prose and headings.
-        - Do not mix Chinese and English in the diary except for app names or product names that already appear in the source material.
-        - The final combined markdown across paragraph texts must render exactly these first-level headings, in this order:
-          1. \(journalHeadings.encouragement)
-          2. \(journalHeadings.summary)
-          3. \(journalHeadings.details)
-          4. \(journalHeadings.todo)
-        - Do not emit any other first-level heading. In particular, do not include \(forbiddenHeading).
-        - The "\(journalHeadings.encouragement)" section must contain exactly one sentence.
-        - That sentence should read like a short inspirational quote for the person who lived the day, not a recap of tasks.
-        - It should feel warm, distilled, and encouraging, but still loosely grounded in the overall pattern of the source events.
-        - Do not retell the chronology or summarize what the person did step by step in this section.
-        - Avoid app names, file names, branch names, URLs, tool instructions, and other concrete technical debris in this section unless absolutely necessary.
-        - Do not add a quote author, do not use quotation marks, and do not format it as a citation.
-        - Keep the wording in the same dominant language as the rest of the diary.
-        - The "\(journalHeadings.summary)" section should use markdown bullet points.
-        - The "\(journalHeadings.details)" section should use markdown second-level headings (##) for the main workstreams or threads of the day.
-        - The "\(journalHeadings.todo)" section should use markdown task list items like - [ ].
-        - Markdown headings, bullet lists, and task lists are allowed inside paragraph text and should be used deliberately.
-        - Only reference sourceEventIDs that appear below.
-        - Put all narrative paragraphs inside the single daily-journal section.
-        - Organize the day by major threads or workstreams, not by raw fragment order.
-        - Notifications, meetings, task reminders, and incoming messages are important when they changed the day's priorities or pushed work forward. Integrate them into the relevant thread instead of dumping them as noise.
-        - Do not copy file paths, branch names, commit hashes, URLs, file names, or tool instructions into the diary unless they are absolutely central. Abstract technical debris into normal diary language.
-        - Prefer summarizing the main work, coordination, decisions, and next steps instead of listing every fragment.
-        - Use natural transitions between blocks, but never introduce facts, emotions, or context that are not present in the source events.
-
-        Day: \(dayKey)
-        Source events:
-        \(eventLines)
-        """
+        return globalOverride
     }
 
     private func journalHeadings(for language: NarrativeLanguage) -> (
@@ -236,6 +253,81 @@ struct DailyMarkdownComposer {
                 todo: "# 待办事项"
             )
         }
+    }
+
+    private static func previewSeedData(for language: NarrativeLanguage) -> (dayKey: String, events: [EventRecord]) {
+        let isChinese: Bool
+        switch language {
+        case .english:
+            isChinese = false
+        case .chinese:
+            isChinese = true
+        }
+
+        if isChinese {
+            return (
+                dayKey: "preview-zh",
+                events: [
+                    EventRecord(
+                        id: Self.previewUUID("11111111-1111-1111-1111-111111111111"),
+                        sourceType: .clipboard,
+                        sourceApp: "备忘录",
+                        capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                        dayKey: "preview-zh",
+                        text: "整理今天的日记预览内容",
+                        auditText: nil,
+                        privacyAction: .keep,
+                        contentHash: "preview-zh-1"
+                    ),
+                    EventRecord(
+                        id: Self.previewUUID("22222222-2222-2222-2222-222222222222"),
+                        sourceType: .notification,
+                        sourceApp: "日历",
+                        capturedAt: Date(timeIntervalSince1970: 1_775_000_120),
+                        dayKey: "preview-zh",
+                        text: "下午确认日记生成预览",
+                        auditText: nil,
+                        privacyAction: .keep,
+                        contentHash: "preview-zh-2"
+                    )
+                ]
+            )
+        }
+
+        return (
+            dayKey: "preview-en",
+            events: [
+                EventRecord(
+                    id: Self.previewUUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                    sourceType: .clipboard,
+                    sourceApp: "Notes",
+                    capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                    dayKey: "preview-en",
+                    text: "Drafted a stable preview for the daily story prompt",
+                    auditText: nil,
+                    privacyAction: .keep,
+                    contentHash: "preview-en-1"
+                ),
+                EventRecord(
+                    id: Self.previewUUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+                    sourceType: .notification,
+                    sourceApp: "Calendar",
+                    capturedAt: Date(timeIntervalSince1970: 1_775_000_120),
+                    dayKey: "preview-en",
+                    text: "Preview check stayed on the canonical prompt path",
+                    auditText: nil,
+                    privacyAction: .keep,
+                    contentHash: "preview-en-2"
+                )
+            ]
+        )
+    }
+
+    private static func previewUUID(_ value: String) -> UUID {
+        guard let uuid = UUID(uuidString: value) else {
+            preconditionFailure("Invalid preview UUID: \(value)")
+        }
+        return uuid
     }
 
     func parseStory(dayKey: String, raw: String) -> DailyStory? {
@@ -426,7 +518,7 @@ struct DailyMarkdownComposer {
     }()
 }
 
-private enum NarrativeLanguage {
+enum NarrativeLanguage {
     case english
     case chinese
 }
@@ -457,6 +549,16 @@ private extension EventRecord {
     var displayText: String {
         let value = text ?? auditText ?? ""
         return value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var sanitizedSourceNoteText: String {
+        let flattened = displayText
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+
+        return flattened.isEmpty ? "empty item" : flattened
     }
 
     var displayTextSentence: String {

@@ -15,6 +15,22 @@ private struct StaticSummarizer: SummaryGenerating {
     }
 }
 
+private final class RecordingPromptSummarizer: SummaryGenerating, @unchecked Sendable {
+    let response: String
+    private(set) var capturedDayKey: String?
+    private(set) var capturedMarkdown: String?
+
+    init(response: String) {
+        self.response = response
+    }
+
+    func summarize(dayKey: String, markdown: String) async throws -> String {
+        capturedDayKey = dayKey
+        capturedMarkdown = markdown
+        return response
+    }
+}
+
 private final class RecordingNotificationReader: NotificationDatabaseReading, @unchecked Sendable {
     private(set) var requestedSince: Date?
     private(set) var requestedUpperBound: NotificationFetchUpperBound?
@@ -1950,6 +1966,105 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(summarizer.model, "gpt-5-mini")
     }
 
+    func testLoadsPersistedGlobalDiaryPromptOverrideState() {
+        var config = SummarizerConfig.default
+        config.globalDiaryPromptOverride = "Persisted custom diary prompt"
+        config.save(
+            to: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertTrue(appState.hasActiveGlobalDiaryPromptOverride)
+        XCTAssertEqual(appState.activeGlobalDiaryPromptOverride, "Persisted custom diary prompt")
+    }
+
+    func testApplyingGlobalDiaryPromptOverridePersistsWithoutMutatingSelectedDayState() {
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.selectedDate = "2026-04-12"
+        appState.selectedMarkdownURL = URL(fileURLWithPath: "/tmp/2026-04-12.md")
+        appState.selectedContentVersion = 7
+        appState.selectedStoryParagraphID = "daily-journal-0"
+        appState.selectedStory = DailyStory(
+            dayKey: "2026-04-12",
+            generatedAt: Date(timeIntervalSince1970: 1_776_000_000),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: "Existing paragraph",
+                            sourceEventIDs: []
+                        )
+                    ]
+                )
+            ]
+        )
+
+        appState.applyGlobalDiaryPromptOverride("Custom global diary prompt")
+
+        XCTAssertTrue(appState.hasActiveGlobalDiaryPromptOverride)
+        XCTAssertEqual(appState.activeGlobalDiaryPromptOverride, "Custom global diary prompt")
+        XCTAssertEqual(appState.selectedDate, "2026-04-12")
+        XCTAssertEqual(appState.selectedMarkdownURL?.path, "/tmp/2026-04-12.md")
+        XCTAssertEqual(appState.selectedContentVersion, 7)
+        XCTAssertEqual(appState.selectedStoryParagraphID, "daily-journal-0")
+        XCTAssertEqual(appState.selectedStory?.sections.first?.paragraphs.first?.text, "Existing paragraph")
+
+        let persistedConfig = SummarizerConfig.load(
+            from: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        XCTAssertEqual(persistedConfig.globalDiaryPromptOverride, "Custom global diary prompt")
+    }
+
+    func testRestoringDefaultGlobalDiaryPromptClearsPersistedOverrideWithoutMutatingSelectedDayState() {
+        var config = SummarizerConfig.default
+        config.globalDiaryPromptOverride = "Old custom prompt"
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.selectedDate = "2026-04-12"
+        appState.selectedMarkdownURL = URL(fileURLWithPath: "/tmp/2026-04-12.md")
+        appState.selectedContentVersion = 11
+        appState.selectedStoryParagraphID = "daily-journal-0"
+
+        appState.restoreDefaultGlobalDiaryPrompt()
+
+        XCTAssertFalse(appState.hasActiveGlobalDiaryPromptOverride)
+        XCTAssertEqual(appState.activeGlobalDiaryPromptOverride, "")
+        XCTAssertEqual(appState.selectedDate, "2026-04-12")
+        XCTAssertEqual(appState.selectedMarkdownURL?.path, "/tmp/2026-04-12.md")
+        XCTAssertEqual(appState.selectedContentVersion, 11)
+        XCTAssertEqual(appState.selectedStoryParagraphID, "daily-journal-0")
+
+        let persistedConfig = SummarizerConfig.load(
+            from: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        XCTAssertNil(persistedConfig.globalDiaryPromptOverride)
+    }
+
     func testRetestEngineDiscardsStaleProbeResultWhenConfigChangesMidFlight() async throws {
         let originalExecutableURL = try makeStubExecutable(named: "codex")
         let updatedExecutableURL = try makeStubExecutable(named: "codex")
@@ -2420,6 +2535,61 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(story.provenance?.engineKind, DiaryEngine.codexCLI.rawValue)
         XCTAssertEqual(story.provenance?.engineLabel, DiaryEngine.codexCLI.displayName)
         XCTAssertEqual(story.provenance?.curatedEventCount, 1)
+    }
+
+    func testGenerateStoryUsesSavedGlobalDiaryPromptOverrideInLiveSummarizerPath() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let dayKey = "2026-04-12"
+        let eventID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: eventID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: Date(timeIntervalSince1970: 1_775_700_000),
+                dayKey: dayKey,
+                text: "Captured a real prompt integration test",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "prompt-integration"
+            )
+        )
+
+        let response = """
+        {"sections":[{"id":"daily-journal","paragraphs":[{"text":"# Summary\\n- Captured a real prompt integration test","sourceEventIDs":["\(eventID.uuidString)"]}]}]}
+        """
+        let summarizer = RecordingPromptSummarizer(response: response)
+        let executableURL = try makeStubExecutable(named: "codex")
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        config.codexCLIPath = executableURL.path
+        config.globalDiaryPromptOverride = "Custom live global diary prompt override"
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        environment.summarizer = summarizer
+        let events = try writer.fetchEvents(dayKey: dayKey)
+
+        let story = await appState.generateStory(dayKey: dayKey, events: events, environment: environment)
+
+        XCTAssertEqual(summarizer.capturedDayKey, dayKey)
+        XCTAssertEqual(summarizer.capturedMarkdown, "Custom live global diary prompt override")
+        XCTAssertEqual(story.provenance?.generationMode, .model)
+        XCTAssertEqual(story.provenance?.engineKind, DiaryEngine.codexCLI.rawValue)
     }
 
     func testCompleteOnboardingPersistsVaultAndSelectedVerifiedEngine() throws {

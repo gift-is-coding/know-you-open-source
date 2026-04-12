@@ -585,6 +585,20 @@ final class AppState {
                 : "Saved \(requestedEngine.displayName) settings; \(defaultEngine.displayName) remains active until verified"
     }
 
+    func applyGlobalDiaryPromptOverride(_ prompt: String) {
+        summarizerConfig.globalDiaryPromptOverride = Self.normalizedGlobalDiaryPromptOverride(prompt)
+        persistSummarizerConfig()
+        statusMessage = hasActiveGlobalDiaryPromptOverride
+            ? "Custom diary prompt saved for future generations"
+            : "Using system default diary prompt for future generations"
+    }
+
+    func restoreDefaultGlobalDiaryPrompt() {
+        summarizerConfig.globalDiaryPromptOverride = nil
+        persistSummarizerConfig()
+        statusMessage = "Using system default diary prompt for future generations"
+    }
+
     private func reconcileDefaultEngineAfterStatusChange() {
         guard defaultEngine == .none, !autoSelectionSuppressedByExplicitNone else { return }
         guard let preferred = Self.autoSelectionPriority.first(where: { engineStatuses[$0]?.state == .green }) else {
@@ -631,6 +645,14 @@ final class AppState {
     var selectedStoryParagraph: DailyStoryParagraph? {
         guard let selectedStoryParagraphID else { return nil }
         return selectedStoryParagraphs.first(where: { $0.id == selectedStoryParagraphID })
+    }
+
+    var hasActiveGlobalDiaryPromptOverride: Bool {
+        summarizerConfig.hasCustomGlobalDiaryPrompt
+    }
+
+    var activeGlobalDiaryPromptOverride: String {
+        summarizerConfig.globalDiaryPromptOverride ?? ""
     }
 
     enum UserDefaultsKeys {
@@ -1030,7 +1052,11 @@ extension AppState {
             onStageDetail?("Calling \(activeEngine.displayName)...")
             let raw = try await summarizer.summarize(
                 dayKey: dayKey,
-                markdown: environment.composer.storyPrompt(dayKey: dayKey, events: events)
+                markdown: environment.composer.storyPrompt(
+                    dayKey: dayKey,
+                    events: events,
+                    globalOverride: summarizerConfig.globalDiaryPromptOverride
+                )
             )
             onStageDetail?("Parsing \(activeEngine.displayName) response...")
             if let parsed = environment.composer.parseStory(dayKey: dayKey, raw: raw),
@@ -1393,6 +1419,11 @@ extension AppState {
 
     private func generatedSourceNotesMarkdown(from events: [EventRecord]) -> String {
         environment?.composer.sourceNotesMarkdown(for: events) ?? DailyMarkdownComposer().sourceNotesMarkdown(for: events)
+    }
+
+    private static func normalizedGlobalDiaryPromptOverride(_ prompt: String) -> String? {
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : prompt
     }
 
     private func persistSummarizerConfig() {

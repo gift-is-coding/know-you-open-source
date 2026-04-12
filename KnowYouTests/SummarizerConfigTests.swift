@@ -40,6 +40,8 @@ final class SummarizerConfigTests: XCTestCase {
     func testDefaultConfigTypeIsNone() {
         let config = SummarizerConfig.load(from: defaults)
         XCTAssertEqual(config.type, .none)
+        XCTAssertNil(config.globalDiaryPromptOverride)
+        XCTAssertFalse(config.hasCustomGlobalDiaryPrompt)
     }
 
     func testSaveAndLoadRoundTripsOpenAIConfig() {
@@ -88,6 +90,30 @@ final class SummarizerConfigTests: XCTestCase {
         XCTAssertEqual(loaded.apiBaseURL, "https://example.com/v1/responses")
         XCTAssertEqual(loaded.apiModel, "gpt-4.1-mini")
         XCTAssertEqual(loaded.apiToken, "token-test-123")
+    }
+
+    func testSaveAndLoadRoundTripsGlobalDiaryPromptOverride() {
+        var config = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+        config.globalDiaryPromptOverride = "Use a reflective, concise diary voice."
+        config.save(to: defaults, keychain: keychain, keychainService: "tests")
+
+        let loaded = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+        XCTAssertEqual(loaded.globalDiaryPromptOverride, "Use a reflective, concise diary voice.")
+        XCTAssertTrue(loaded.hasCustomGlobalDiaryPrompt)
+    }
+
+    func testSaveAndLoadClearsGlobalDiaryPromptOverrideWhenResetToDefault() {
+        var config = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+        config.globalDiaryPromptOverride = "Use a reflective, concise diary voice."
+        config.save(to: defaults, keychain: keychain, keychainService: "tests")
+        XCTAssertTrue(config.hasCustomGlobalDiaryPrompt)
+
+        config.globalDiaryPromptOverride = nil
+        config.save(to: defaults, keychain: keychain, keychainService: "tests")
+
+        let loaded = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+        XCTAssertNil(loaded.globalDiaryPromptOverride)
+        XCTAssertFalse(loaded.hasCustomGlobalDiaryPrompt)
     }
 
     func testMakeSummarizerRejectsMalformedAPIBaseURL() {

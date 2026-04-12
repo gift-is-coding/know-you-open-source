@@ -380,6 +380,7 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 - 右栏展示该段落关联的原始事件
 - 可展开 `View All Sources` 查看全日来源
 - 右栏 source card 会在 `sourceApp` 文本前显示渠道 logo；已识别渠道优先显示本地 asset，缺失时回退到通用 symbol
+- 渠道 logo 解析当前采用表驱动 alias catalog，而不是硬编码 `switch`，并已内置 100+ 个常见 global app / macOS app 品牌资产
 - 中栏阅读区内支持“重生成当前选中日期”
 - 主界面不再依赖顶部 status banner 承载运行时状态
 - 窗口右上角提供 `DiaryEngineSelectorButton`

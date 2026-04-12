@@ -142,7 +142,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
   - `# 待办事项`
 - 当前 diary prompt 不得生成 `# 今日节奏`
 - `今日总结` 必须使用 bullet list，`详情` 必须按事务线程使用 `##` 子标题，`待办事项` 必须使用 Markdown task list
-- 用户必须能够在主窗口右上角打开全局 diary prompt 编辑器，查看系统默认 prompt 预览并保存自定义 override
+- 用户必须能够在主窗口右上角打开全局 diary prompt 编辑器，编辑并保存自定义 override，并可恢复为系统默认 prompt
 - 全局 diary prompt override 只影响之后的手动刷新与未来自动生成，不会自动回写、重排或改写已经生成过的历史日期内容
 
 ## 6.5 阅读器需求

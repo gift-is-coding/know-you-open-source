@@ -91,7 +91,6 @@ flowchart LR
 当前 `AppState` 也负责全局 diary prompt 状态：
 
 - 持有并持久化 `SummarizerConfig.globalDiaryPromptOverride`
-- 暴露一个稳定的系统默认 prompt 预览字符串，当前同时展示英文与中文两种 canonical 变体
 - 为主窗口右上角的 `Edit Prompt` sheet 提供 apply / restore default 动作
 - 在真实生成路径里把已保存的全局 override 传给 `DailyMarkdownComposer.storyPrompt(...)`
 - 保证该配置只影响未来的生成请求，不会因为保存 prompt 而自动刷新当前选中日期，也不会直接改写历史 `.story.json` 或 `.md`

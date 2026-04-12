@@ -84,7 +84,6 @@ struct MainWindowView: View {
         }
         .sheet(isPresented: $isShowingDiaryPromptEditor) {
             DiaryPromptEditorSheet(
-                defaultPromptPreview: appState.defaultGlobalDiaryPromptPreview,
                 initialPrompt: appState.activeGlobalDiaryPromptOverride,
                 hasActiveOverride: appState.hasActiveGlobalDiaryPromptOverride,
                 onApply: { prompt in

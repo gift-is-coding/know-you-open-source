@@ -1984,10 +1984,6 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertTrue(appState.hasActiveGlobalDiaryPromptOverride)
         XCTAssertEqual(appState.activeGlobalDiaryPromptOverride, "Persisted custom diary prompt")
-        XCTAssertTrue(appState.defaultGlobalDiaryPromptPreview.contains("English default prompt"))
-        XCTAssertTrue(appState.defaultGlobalDiaryPromptPreview.contains("# You did a good job today"))
-        XCTAssertTrue(appState.defaultGlobalDiaryPromptPreview.contains("中文默认 prompt"))
-        XCTAssertTrue(appState.defaultGlobalDiaryPromptPreview.contains("# 你今天做得很棒"))
     }
 
     func testApplyingGlobalDiaryPromptOverridePersistsWithoutMutatingSelectedDayState() {

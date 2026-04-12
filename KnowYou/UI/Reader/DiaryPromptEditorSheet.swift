@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct DiaryPromptEditorSheet: View {
-    let defaultPromptPreview: String
     let initialPrompt: String
     let hasActiveOverride: Bool
     let onApply: (String) -> Void
@@ -11,14 +10,12 @@ struct DiaryPromptEditorSheet: View {
     @State private var draftPrompt: String
 
     init(
-        defaultPromptPreview: String,
         initialPrompt: String,
         hasActiveOverride: Bool,
         onApply: @escaping (String) -> Void,
         onRestoreDefault: @escaping () -> Void,
         onClose: @escaping () -> Void
     ) {
-        self.defaultPromptPreview = defaultPromptPreview
         self.initialPrompt = initialPrompt
         self.hasActiveOverride = hasActiveOverride
         self.onApply = onApply
@@ -35,23 +32,9 @@ struct DiaryPromptEditorSheet: View {
                 Text("Changes here affect future diary generation only. They do not automatically rewrite previously generated diary content.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("System Default Prompt Preview")
-                    .font(.caption.weight(.semibold))
+                Text("Leave this blank to keep using the built-in system prompt.")
+                    .font(.callout)
                     .foregroundStyle(.secondary)
-
-                ScrollView {
-                    Text(defaultPromptPreview)
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                }
-                .frame(minHeight: 190, maxHeight: 230)
-                .padding(12)
-                .background(Color(nsColor: .textBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -83,6 +66,6 @@ struct DiaryPromptEditorSheet: View {
             }
         }
         .padding(20)
-        .frame(minWidth: 760, minHeight: 620)
+        .frame(minWidth: 700, minHeight: 420)
     }
 }

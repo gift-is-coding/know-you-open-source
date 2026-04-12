@@ -655,21 +655,6 @@ final class AppState {
         summarizerConfig.globalDiaryPromptOverride ?? ""
     }
 
-    var defaultGlobalDiaryPromptPreview: String {
-        let composer = environment?.composer ?? DailyMarkdownComposer()
-        let english = composer.defaultStoryPromptPreview(language: .english)
-        let chinese = composer.defaultStoryPromptPreview(language: .chinese)
-        return """
-        English default prompt
-
-        \(english)
-
-        中文默认 prompt
-
-        \(chinese)
-        """
-    }
-
     enum UserDefaultsKeys {
         static let vaultPath = "vaultPath"
         static let hasCompletedOnboarding = "hasCompletedOnboarding"

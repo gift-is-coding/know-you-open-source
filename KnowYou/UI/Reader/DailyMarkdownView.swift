@@ -360,31 +360,11 @@ struct SourceBrand: Equatable {
     }
 
     enum Glyph: Equatable {
-        enum Asset: String, Equatable {
-            case chatGPT = "SourceLogoChatGPT"
-            case notes = "SourceLogoNotes"
-            case mail = "SourceLogoMail"
-            case calendar = "SourceLogoCalendar"
-            case drafts = "SourceLogoDrafts"
-            case taio = "SourceLogoTaio"
-            case teams = "SourceLogoTeams"
-            case ghostty = "SourceLogoGhostty"
-            case weChat = "SourceLogoWeChat"
-            case feishu = "SourceLogoFeishu"
-            case claude = "SourceLogoClaude"
-            case perplexity = "SourceLogoPerplexity"
-            case notion = "SourceLogoNotion"
-            case gitHub = "SourceLogoGitHub"
-            case slack = "SourceLogoSlack"
-            case x = "SourceLogoX"
-            case google = "SourceLogoGoogle"
-        }
-
         enum Symbol: String, Equatable {
             case app = "app.fill"
         }
 
-        case asset(Asset)
+        case asset(String)
         case symbol(Symbol)
     }
 
@@ -393,8 +373,8 @@ struct SourceBrand: Equatable {
     let fallbackSymbol: Glyph.Symbol
 
     var assetName: String? {
-        guard case .asset(let asset) = glyph else { return nil }
-        return asset.rawValue
+        guard case .asset(let assetName) = glyph else { return nil }
+        return assetName
     }
 
     var fallbackSymbolName: String {
@@ -403,55 +383,30 @@ struct SourceBrand: Equatable {
 }
 
 enum SourceBrandResolver {
+    private struct BrandEntry {
+        let aliases: [String]
+        let brand: SourceBrand
+    }
+
+    private static let fallbackBrand = SourceBrand(
+        identity: .genericApp,
+        glyph: .symbol(.app),
+        fallbackSymbol: .app
+    )
+
+    private static let brandLookup: [String: SourceBrand] = {
+        var lookup: [String: SourceBrand] = [:]
+        for entry in entries {
+            for alias in entry.aliases {
+                lookup[normalize(alias)] = entry.brand
+            }
+        }
+        return lookup
+    }()
+
     static func resolve(appName: String) -> SourceBrand {
         let normalizedName = normalize(appName)
-
-        switch normalizedName {
-        case "chatgpt", "openai chatgpt":
-            return SourceBrand(
-                identity: .chatGPT,
-                glyph: .asset(.chatGPT),
-                fallbackSymbol: .app
-            )
-        case "notes":
-            return SourceBrand(identity: .notes, glyph: .asset(.notes), fallbackSymbol: .app)
-        case "mail", "邮件":
-            return SourceBrand(identity: .mail, glyph: .asset(.mail), fallbackSymbol: .app)
-        case "calendar":
-            return SourceBrand(identity: .calendar, glyph: .asset(.calendar), fallbackSymbol: .app)
-        case "drafts":
-            return SourceBrand(identity: .drafts, glyph: .asset(.drafts), fallbackSymbol: .app)
-        case "taio":
-            return SourceBrand(identity: .taio, glyph: .asset(.taio), fallbackSymbol: .app)
-        case "com.microsoft.teams2", "microsoft teams", "teams":
-            return SourceBrand(identity: .teams, glyph: .asset(.teams), fallbackSymbol: .app)
-        case "ghostty":
-            return SourceBrand(identity: .ghostty, glyph: .asset(.ghostty), fallbackSymbol: .app)
-        case "微信", "wechat", "weixin":
-            return SourceBrand(identity: .weChat, glyph: .asset(.weChat), fallbackSymbol: .app)
-        case "飞书", "feishu", "lark":
-            return SourceBrand(identity: .feishu, glyph: .asset(.feishu), fallbackSymbol: .app)
-        case "claude", "anthropic claude":
-            return SourceBrand(identity: .claude, glyph: .asset(.claude), fallbackSymbol: .app)
-        case "perplexity":
-            return SourceBrand(identity: .perplexity, glyph: .asset(.perplexity), fallbackSymbol: .app)
-        case "notion":
-            return SourceBrand(identity: .notion, glyph: .asset(.notion), fallbackSymbol: .app)
-        case "github":
-            return SourceBrand(identity: .gitHub, glyph: .asset(.gitHub), fallbackSymbol: .app)
-        case "slack":
-            return SourceBrand(identity: .slack, glyph: .asset(.slack), fallbackSymbol: .app)
-        case "x", "twitter":
-            return SourceBrand(identity: .x, glyph: .asset(.x), fallbackSymbol: .app)
-        case "google", "gmail", "google calendar", "google docs", "google drive":
-            return SourceBrand(identity: .google, glyph: .asset(.google), fallbackSymbol: .app)
-        default:
-            return SourceBrand(
-                identity: .genericApp,
-                glyph: .symbol(.app),
-                fallbackSymbol: .app
-            )
-        }
+        return brandLookup[normalizedName] ?? fallbackBrand
     }
 
     private static func normalize(_ appName: String) -> String {
@@ -461,6 +416,485 @@ enum SourceBrandResolver {
             .joined(separator: " ")
             .lowercased()
     }
+
+    private static func brand(
+        assetName: String,
+        aliases: [String],
+        identity: SourceBrand.Identity = .genericApp
+    ) -> BrandEntry {
+        BrandEntry(
+            aliases: aliases,
+            brand: SourceBrand(
+                identity: identity,
+                glyph: .asset(assetName),
+                fallbackSymbol: .app
+            )
+        )
+    }
+
+    private static let entries: [BrandEntry] = [
+        brand(
+            assetName: "SourceLogoChatGPT",
+            aliases: ["ChatGPT", "OpenAI ChatGPT"],
+            identity: .chatGPT
+        ),
+        brand(
+            assetName: "SourceLogoClaude",
+            aliases: ["Claude", "Anthropic Claude"],
+            identity: .claude
+        ),
+        brand(
+            assetName: "SourceLogoPerplexity",
+            aliases: ["Perplexity"],
+            identity: .perplexity
+        ),
+        brand(
+            assetName: "SourceLogoNotion",
+            aliases: ["Notion"],
+            identity: .notion
+        ),
+        brand(
+            assetName: "SourceLogoGitHub",
+            aliases: ["GitHub"],
+            identity: .gitHub
+        ),
+        brand(
+            assetName: "SourceLogoGitHubDesktop",
+            aliases: ["GitHub Desktop"]
+        ),
+        brand(
+            assetName: "SourceLogoSlack",
+            aliases: ["Slack"],
+            identity: .slack
+        ),
+        brand(
+            assetName: "SourceLogoX",
+            aliases: ["X", "Twitter"],
+            identity: .x
+        ),
+        brand(
+            assetName: "SourceLogoGoogle",
+            aliases: ["Google", "Gmail", "Google Calendar", "Google Docs"],
+            identity: .google
+        ),
+        brand(
+            assetName: "SourceLogoChrome",
+            aliases: ["Google Chrome", "Chrome", "Chrome Browser", "谷歌浏览器"]
+        ),
+        brand(
+            assetName: "SourceLogoSafari",
+            aliases: ["Safari"]
+        ),
+        brand(
+            assetName: "SourceLogoFinder",
+            aliases: ["Finder"]
+        ),
+        brand(
+            assetName: "SourceLogoMail",
+            aliases: ["Mail", "Apple Mail", "邮件"],
+            identity: .mail
+        ),
+        brand(
+            assetName: "SourceLogoNotes",
+            aliases: ["Notes", "Apple Notes", "备忘录"],
+            identity: .notes
+        ),
+        brand(
+            assetName: "SourceLogoCalendar",
+            aliases: ["Calendar", "Apple Calendar", "日历"],
+            identity: .calendar
+        ),
+        brand(
+            assetName: "SourceLogoMessages",
+            aliases: ["Messages", "iMessage", "信息"]
+        ),
+        brand(
+            assetName: "SourceLogoPreview",
+            aliases: ["Preview", "预览"]
+        ),
+        brand(
+            assetName: "SourceLogoTextEdit",
+            aliases: ["TextEdit"]
+        ),
+        brand(
+            assetName: "SourceLogoReminders",
+            aliases: ["Reminders", "提醒事项"]
+        ),
+        brand(
+            assetName: "SourceLogoContacts",
+            aliases: ["Contacts", "通讯录"]
+        ),
+        brand(
+            assetName: "SourceLogoPhotos",
+            aliases: ["Photos", "照片"]
+        ),
+        brand(
+            assetName: "SourceLogoMusic",
+            aliases: ["Music", "Apple Music", "音乐"]
+        ),
+        brand(
+            assetName: "SourceLogoMaps",
+            aliases: ["Maps", "地图"]
+        ),
+        brand(
+            assetName: "SourceLogoAppStore",
+            aliases: ["App Store"]
+        ),
+        brand(
+            assetName: "SourceLogoSystemSettings",
+            aliases: ["System Settings", "Settings", "系统设置"]
+        ),
+        brand(
+            assetName: "SourceLogoActivityMonitor",
+            aliases: ["Activity Monitor"]
+        ),
+        brand(
+            assetName: "SourceLogoDiskUtility",
+            aliases: ["Disk Utility"]
+        ),
+        brand(
+            assetName: "SourceLogoCalculator",
+            aliases: ["Calculator"]
+        ),
+        brand(
+            assetName: "SourceLogoClock",
+            aliases: ["Clock"]
+        ),
+        brand(
+            assetName: "SourceLogoBooks",
+            aliases: ["Books", "Apple Books"]
+        ),
+        brand(
+            assetName: "SourceLogoFaceTime",
+            aliases: ["FaceTime"]
+        ),
+        brand(
+            assetName: "SourceLogoFreeform",
+            aliases: ["Freeform"]
+        ),
+        brand(
+            assetName: "SourceLogoShortcuts",
+            aliases: ["Shortcuts", "快捷指令"]
+        ),
+        brand(
+            assetName: "SourceLogoConsole",
+            aliases: ["Console"]
+        ),
+        brand(
+            assetName: "SourceLogoFontBook",
+            aliases: ["Font Book"]
+        ),
+        brand(
+            assetName: "SourceLogoImageCapture",
+            aliases: ["Image Capture"]
+        ),
+        brand(
+            assetName: "SourceLogoWeather",
+            aliases: ["Weather"]
+        ),
+        brand(
+            assetName: "SourceLogoNews",
+            aliases: ["News"]
+        ),
+        brand(
+            assetName: "SourceLogoHome",
+            aliases: ["Home"]
+        ),
+        brand(
+            assetName: "SourceLogoStocks",
+            aliases: ["Stocks"]
+        ),
+        brand(
+            assetName: "SourceLogoTV",
+            aliases: ["TV", "Apple TV"]
+        ),
+        brand(
+            assetName: "SourceLogoQuickTime",
+            aliases: ["QuickTime", "QuickTime Player"]
+        ),
+        brand(
+            assetName: "SourceLogoPhotoBooth",
+            aliases: ["Photo Booth"]
+        ),
+        brand(
+            assetName: "SourceLogoJournal",
+            aliases: ["Journal"]
+        ),
+        brand(
+            assetName: "SourceLogoVoiceMemos",
+            aliases: ["Voice Memos", "VoiceMemos"]
+        ),
+        brand(
+            assetName: "SourceLogoFindMy",
+            aliases: ["Find My", "FindMy"]
+        ),
+        brand(
+            assetName: "SourceLogoPhone",
+            aliases: ["Phone"]
+        ),
+        brand(
+            assetName: "SourceLogoDrafts",
+            aliases: ["Drafts"],
+            identity: .drafts
+        ),
+        brand(
+            assetName: "SourceLogoTaio",
+            aliases: ["Taio"],
+            identity: .taio
+        ),
+        brand(
+            assetName: "SourceLogoTeams",
+            aliases: ["Microsoft Teams", "Teams", "com.microsoft.teams2"],
+            identity: .teams
+        ),
+        brand(
+            assetName: "SourceLogoWord",
+            aliases: ["Microsoft Word", "Word"]
+        ),
+        brand(
+            assetName: "SourceLogoExcel",
+            aliases: ["Microsoft Excel", "Excel"]
+        ),
+        brand(
+            assetName: "SourceLogoPowerPoint",
+            aliases: ["Microsoft PowerPoint", "PowerPoint", "PPT"]
+        ),
+        brand(
+            assetName: "SourceLogoOutlook",
+            aliases: ["Microsoft Outlook", "Outlook"]
+        ),
+        brand(
+            assetName: "SourceLogoPages",
+            aliases: ["Pages"]
+        ),
+        brand(
+            assetName: "SourceLogoNumbers",
+            aliases: ["Numbers"]
+        ),
+        brand(
+            assetName: "SourceLogoGhostty",
+            aliases: ["Ghostty"],
+            identity: .ghostty
+        ),
+        brand(
+            assetName: "SourceLogoTerminal",
+            aliases: ["Terminal"]
+        ),
+        brand(
+            assetName: "SourceLogoITerm",
+            aliases: ["iTerm", "iTerm2"]
+        ),
+        brand(
+            assetName: "SourceLogoXcode",
+            aliases: ["Xcode"]
+        ),
+        brand(
+            assetName: "SourceLogoVSCode",
+            aliases: ["Visual Studio Code", "VS Code", "VSCode", "Code"]
+        ),
+        brand(
+            assetName: "SourceLogoCursor",
+            aliases: ["Cursor"]
+        ),
+        brand(
+            assetName: "SourceLogoFigma",
+            aliases: ["Figma"]
+        ),
+        brand(
+            assetName: "SourceLogoDocker",
+            aliases: ["Docker", "Docker Desktop"]
+        ),
+        brand(
+            assetName: "SourceLogoOBS",
+            aliases: ["OBS", "OBS Studio"]
+        ),
+        brand(
+            assetName: "SourceLogoDBBrowser",
+            aliases: ["DB Browser for SQLite", "DB Browser"]
+        ),
+        brand(
+            assetName: "SourceLogoObsidian",
+            aliases: ["Obsidian"]
+        ),
+        brand(
+            assetName: "SourceLogoOneDrive",
+            aliases: ["OneDrive", "Microsoft OneDrive"]
+        ),
+        brand(
+            assetName: "SourceLogoTelegram",
+            aliases: ["Telegram"]
+        ),
+        brand(
+            assetName: "SourceLogoWhatsApp",
+            aliases: ["WhatsApp"]
+        ),
+        brand(
+            assetName: "SourceLogoZoom",
+            aliases: ["Zoom", "zoom.us", "Zoom Workplace"]
+        ),
+        brand(
+            assetName: "SourceLogoCisco",
+            aliases: ["Cisco Secure Client", "Cisco"]
+        ),
+        brand(
+            assetName: "SourceLogoSpotify",
+            aliases: ["Spotify"]
+        ),
+        brand(
+            assetName: "SourceLogoWeChat",
+            aliases: ["微信", "WeChat", "Weixin"],
+            identity: .weChat
+        ),
+        brand(
+            assetName: "SourceLogoFeishu",
+            aliases: ["飞书", "Feishu", "Lark", "LarkSuite"],
+            identity: .feishu
+        ),
+        brand(
+            assetName: "SourceLogoDingTalk",
+            aliases: ["DingTalk", "钉钉"]
+        ),
+        brand(
+            assetName: "SourceLogoTencentMeeting",
+            aliases: ["TencentMeeting", "Tencent Meeting", "腾讯会议"]
+        ),
+        brand(
+            assetName: "SourceLogoArc",
+            aliases: ["Arc"]
+        ),
+        brand(
+            assetName: "SourceLogoFirefox",
+            aliases: ["Firefox", "Mozilla Firefox"]
+        ),
+        brand(
+            assetName: "SourceLogoBrave",
+            aliases: ["Brave", "Brave Browser"]
+        ),
+        brand(
+            assetName: "SourceLogoOpera",
+            aliases: ["Opera"]
+        ),
+        brand(
+            assetName: "SourceLogoVivaldi",
+            aliases: ["Vivaldi"]
+        ),
+        brand(
+            assetName: "SourceLogoDiscord",
+            aliases: ["Discord"]
+        ),
+        brand(
+            assetName: "SourceLogoLinear",
+            aliases: ["Linear"]
+        ),
+        brand(
+            assetName: "SourceLogoJira",
+            aliases: ["Jira"]
+        ),
+        brand(
+            assetName: "SourceLogoConfluence",
+            aliases: ["Confluence"]
+        ),
+        brand(
+            assetName: "SourceLogoAsana",
+            aliases: ["Asana"]
+        ),
+        brand(
+            assetName: "SourceLogoTrello",
+            aliases: ["Trello"]
+        ),
+        brand(
+            assetName: "SourceLogoClickUp",
+            aliases: ["ClickUp"]
+        ),
+        brand(
+            assetName: "SourceLogoMiro",
+            aliases: ["Miro"]
+        ),
+        brand(
+            assetName: "SourceLogoLoom",
+            aliases: ["Loom"]
+        ),
+        brand(
+            assetName: "SourceLogoGoogleMeet",
+            aliases: ["Google Meet", "GoogleMeet"]
+        ),
+        brand(
+            assetName: "SourceLogoSignal",
+            aliases: ["Signal"]
+        ),
+        brand(
+            assetName: "SourceLogoSketch",
+            aliases: ["Sketch"]
+        ),
+        brand(
+            assetName: "SourceLogoFramer",
+            aliases: ["Framer"]
+        ),
+        brand(
+            assetName: "SourceLogoReddit",
+            aliases: ["Reddit"]
+        ),
+        brand(
+            assetName: "SourceLogoYouTube",
+            aliases: ["YouTube", "Youtube"]
+        ),
+        brand(
+            assetName: "SourceLogoThreads",
+            aliases: ["Threads"]
+        ),
+        brand(
+            assetName: "SourceLogoBluesky",
+            aliases: ["Bluesky", "BlueSky"]
+        ),
+        brand(
+            assetName: "SourceLogoInstagram",
+            aliases: ["Instagram"]
+        ),
+        brand(
+            assetName: "SourceLogoFacebook",
+            aliases: ["Facebook"]
+        ),
+        brand(
+            assetName: "SourceLogoTikTok",
+            aliases: ["TikTok", "Tiktok"]
+        ),
+        brand(
+            assetName: "SourceLogoGemini",
+            aliases: ["Gemini", "Google Gemini"]
+        ),
+        brand(
+            assetName: "SourceLogoCopilot",
+            aliases: ["Copilot", "GitHub Copilot", "Github Copilot"]
+        ),
+        brand(
+            assetName: "SourceLogoPoe",
+            aliases: ["Poe"]
+        ),
+        brand(
+            assetName: "SourceLogoPostman",
+            aliases: ["Postman"]
+        ),
+        brand(
+            assetName: "SourceLogoWarp",
+            aliases: ["Warp"]
+        ),
+        brand(
+            assetName: "SourceLogoInsomnia",
+            aliases: ["Insomnia"]
+        ),
+        brand(
+            assetName: "SourceLogoRaycast",
+            aliases: ["Raycast"]
+        ),
+        brand(
+            assetName: "SourceLogoDropbox",
+            aliases: ["Dropbox"]
+        ),
+        brand(
+            assetName: "SourceLogoGoogleDrive",
+            aliases: ["Google Drive", "GoogleDrive"]
+        )
+    ]
 }
 
 enum DailyMarkdownRenderer {
@@ -866,8 +1300,8 @@ private struct SourceBrandIcon: View {
     var body: some View {
         Group {
             switch brand.glyph {
-            case .asset(let asset):
-                if let image = NSImage(named: asset.rawValue) {
+            case .asset(let assetName):
+                if let image = NSImage(named: assetName) {
                     Image(nsImage: image)
                         .resizable()
                         .scaledToFit()

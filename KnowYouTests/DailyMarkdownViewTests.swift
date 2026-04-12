@@ -44,7 +44,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         let brand = SourceBrandResolver.resolve(appName: "ChatGPT")
 
         XCTAssertEqual(brand.identity, .chatGPT)
-        XCTAssertEqual(brand.glyph, .asset(.chatGPT))
+        XCTAssertEqual(brand.glyph, .asset("SourceLogoChatGPT"))
     }
 
     func testSourceBrandResolvesKnownBrandAsset() {
@@ -79,6 +79,70 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "com.microsoft.teams2").assetName, "SourceLogoTeams")
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "Taio").assetName, "SourceLogoTaio")
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "Ghostty").assetName, "SourceLogoGhostty")
+    }
+
+    func testSourceBrandResolvesChromeAndFinderAssets() {
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Google Chrome").assetName, "SourceLogoChrome")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Chrome").assetName, "SourceLogoChrome")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Safari").assetName, "SourceLogoSafari")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Finder").assetName, "SourceLogoFinder")
+    }
+
+    func testSourceBrandResolvesOfficeAndProgrammingAssets() {
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Microsoft Word").assetName, "SourceLogoWord")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Excel").assetName, "SourceLogoExcel")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "PowerPoint").assetName, "SourceLogoPowerPoint")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Outlook").assetName, "SourceLogoOutlook")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Visual Studio Code").assetName, "SourceLogoVSCode")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "iTerm2").assetName, "SourceLogoITerm")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Xcode").assetName, "SourceLogoXcode")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Docker Desktop").assetName, "SourceLogoDocker")
+    }
+
+    func testSourceBrandResolvesGlobalNotificationAppAssets() {
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "OneDrive").assetName, "SourceLogoOneDrive")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "zoom.us").assetName, "SourceLogoZoom")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "OBS Studio").assetName, "SourceLogoOBS")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "DB Browser for SQLite").assetName, "SourceLogoDBBrowser")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Cisco Secure Client").assetName, "SourceLogoCisco")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Figma").assetName, "SourceLogoFigma")
+    }
+
+    func testSourceBrandResolvesExpandedTopGlobalAppAssets() {
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Arc").assetName, "SourceLogoArc")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Mozilla Firefox").assetName, "SourceLogoFirefox")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Brave Browser").assetName, "SourceLogoBrave")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Discord").assetName, "SourceLogoDiscord")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Linear").assetName, "SourceLogoLinear")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Jira").assetName, "SourceLogoJira")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Confluence").assetName, "SourceLogoConfluence")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Google Meet").assetName, "SourceLogoGoogleMeet")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Signal").assetName, "SourceLogoSignal")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Sketch").assetName, "SourceLogoSketch")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Framer").assetName, "SourceLogoFramer")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Reddit").assetName, "SourceLogoReddit")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "YouTube").assetName, "SourceLogoYouTube")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Instagram").assetName, "SourceLogoInstagram")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "TikTok").assetName, "SourceLogoTikTok")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Gemini").assetName, "SourceLogoGemini")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "GitHub Copilot").assetName, "SourceLogoCopilot")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Poe").assetName, "SourceLogoPoe")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Postman").assetName, "SourceLogoPostman")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Warp").assetName, "SourceLogoWarp")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Raycast").assetName, "SourceLogoRaycast")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Dropbox").assetName, "SourceLogoDropbox")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Google Drive").assetName, "SourceLogoGoogleDrive")
+    }
+
+    func testSourceBrandResolvesMacOSSystemAppAssets() {
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Messages").assetName, "SourceLogoMessages")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Preview").assetName, "SourceLogoPreview")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "System Settings").assetName, "SourceLogoSystemSettings")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Activity Monitor").assetName, "SourceLogoActivityMonitor")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Reminders").assetName, "SourceLogoReminders")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Contacts").assetName, "SourceLogoContacts")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "QuickTime Player").assetName, "SourceLogoQuickTime")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "App Store").assetName, "SourceLogoAppStore")
     }
 
     func testPresentationShowsEmptyStateWhenStoryIsMissing() {

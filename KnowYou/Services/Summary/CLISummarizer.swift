@@ -69,48 +69,70 @@ struct SystemProcessRunner: ProcessRunning {
     }
 
     func run(executable: String, arguments: [String], timeoutSeconds: Int) async throws -> ProcessExecutionResult {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global().async {
-                let gate = ContinuationGate<ProcessExecutionResult>()
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: executable)
-                process.arguments = arguments
-                process.environment = processEnvironment(for: executable)
+        let controller = ProcessCancellationController()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global().async {
+                    let gate = ContinuationGate<ProcessExecutionResult>()
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: executable)
+                    process.arguments = arguments
+                    process.environment = processEnvironment(for: executable)
+                    controller.attach(process)
 
-                let outputPipe = Pipe()
-                let errorPipe = Pipe()
-                process.standardOutput = outputPipe
-                process.standardError = errorPipe
+                    if controller.isCancelled {
+                        let error = CancellationError()
+                        guard gate.resume(throwing: error) else { return }
+                        continuation.resume(throwing: error)
+                        return
+                    }
 
-                let start = Date()
-                let timeoutItem = DispatchWorkItem {
-                    process.terminate()
-                    let error = ProcessRunError.timedOut(seconds: timeoutSeconds)
-                    guard gate.resume(throwing: error) else { return }
-                    continuation.resume(throwing: error)
-                }
-                DispatchQueue.global().asyncAfter(deadline: .now() + Double(timeoutSeconds), execute: timeoutItem)
+                    let outputPipe = Pipe()
+                    let errorPipe = Pipe()
+                    process.standardOutput = outputPipe
+                    process.standardError = errorPipe
 
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-                    timeoutItem.cancel()
-                    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-                    let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                    let result = ProcessExecutionResult(
-                        stdout: String(decoding: outputData, as: UTF8.self),
-                        stderr: String(decoding: errorData, as: UTF8.self),
-                        terminationStatus: process.terminationStatus,
-                        duration: Date().timeIntervalSince(start)
-                    )
-                    guard gate.resume(returning: result) else { return }
-                    continuation.resume(returning: result)
-                } catch {
-                    timeoutItem.cancel()
-                    guard gate.resume(throwing: error) else { return }
-                    continuation.resume(throwing: error)
+                    let start = Date()
+                    let timeoutItem = DispatchWorkItem {
+                        controller.terminate()
+                        let error = ProcessRunError.timedOut(seconds: timeoutSeconds)
+                        guard gate.resume(throwing: error) else { return }
+                        continuation.resume(throwing: error)
+                    }
+                    DispatchQueue.global().asyncAfter(deadline: .now() + Double(timeoutSeconds), execute: timeoutItem)
+
+                    do {
+                        try process.run()
+                        if controller.isCancelled {
+                            process.terminate()
+                        }
+                        process.waitUntilExit()
+                        timeoutItem.cancel()
+                        if controller.isCancelled {
+                            let error = CancellationError()
+                            guard gate.resume(throwing: error) else { return }
+                            continuation.resume(throwing: error)
+                            return
+                        }
+                        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                        let result = ProcessExecutionResult(
+                            stdout: String(decoding: outputData, as: UTF8.self),
+                            stderr: String(decoding: errorData, as: UTF8.self),
+                            terminationStatus: process.terminationStatus,
+                            duration: Date().timeIntervalSince(start)
+                        )
+                        guard gate.resume(returning: result) else { return }
+                        continuation.resume(returning: result)
+                    } catch {
+                        timeoutItem.cancel()
+                        guard gate.resume(throwing: error) else { return }
+                        continuation.resume(throwing: error)
+                    }
                 }
             }
+        } onCancel: {
+            controller.cancel()
         }
     }
 
@@ -124,6 +146,40 @@ struct SystemProcessRunner: ProcessRunning {
         let newPathEntries = [executableDirectory] + pathEntries.filter { $0 != executableDirectory }
         mergedEnvironment["PATH"] = newPathEntries.joined(separator: ":")
         return mergedEnvironment
+    }
+}
+
+private final class ProcessCancellationController: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private var cancelled = false
+
+    var isCancelled: Bool {
+        lock.withLock { cancelled }
+    }
+
+    func attach(_ process: Process) {
+        let shouldTerminate = lock.withLock {
+            self.process = process
+            return cancelled
+        }
+        if shouldTerminate {
+            process.terminate()
+        }
+    }
+
+    func cancel() {
+        let process = lock.withLock {
+            cancelled = true
+            return self.process
+        }
+        process?.terminate()
+    }
+
+    func terminate() {
+        lock.withLock {
+            process?.terminate()
+        }
     }
 }
 

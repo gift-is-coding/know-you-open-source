@@ -234,7 +234,7 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 1. 先为该天执行 day-scoped 通知同步
 2. 读取 SQLite 中该天事件
 3. 判断是 `fullRecovery` 还是 `incrementalUpdate`
-4. 调用结构化 summarizer；手动刷新会按绿色引擎顺序最多重试 5 次
+4. 调用结构化 summarizer；手动刷新会先尝试默认引擎，失败后再并行尝试其它绿色引擎
 5. 只有合法结构化结果才写 `.story.json` 与 `.md`
 6. 写入刷新日志，并更新 UI 状态、run 状态与状态栏信息
 
@@ -246,14 +246,15 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 - `Encouragement` 在增量路径中保持冻结
 - 任何失败都不会覆盖现有 `.story.json` 或 `.md`
 - 新生成 story 的 `Details` 约定为“每个 workstream 一个 paragraph”，避免把多个 `##` 小节塞进同一个 `DailyStoryParagraph`
-- 旧 `.story.json` 如果仍是单段 `# Details` / `# 详情` 内含多个 `##` 小节，读取时会先规范化拆分，再以 best-effort 方式回写为新格式
-- 旧格式拆分时会优先按 source app 名称或关键词重收窄 `sourceEventIDs`；匹配不到时保留原始 source 列表，避免丢失证据
+- `fullRecovery` 在成功解析结构化结果后，会先对 story 执行一次 `normalizeStory(...)`，再落盘
+- 旧 `.story.json` 如果仍是单段 `# Details` / `# 详情` 内含多个 `##` 小节，应用会继续按旧格式读取显示；读取路径不再自动改写 `.story.json` 或 `.md`
+- 旧格式拆分规则只用于新生成结果的规范化，不再作为“打开应用时的一次性迁移”执行
 
 `generateStory(...)` 仍保留为底层 fallback/story 生成辅助能力，但不再承担主手动刷新入口语义。
 
 不过当前实现增加了一条保护规则：如果某天已经存在 `generationMode == model` 的成功 story，而本次刷新只得到了 fallback，那么刷新会以失败结束并保留原来的 `.story.json` / `.md`，不会用 fallback 降级覆写成功内容。
 
-如果用户在主窗口右上角的 `Edit Prompt` sheet 中保存了全局 override，步骤 3 发给 summarizer 的 prompt 会改用这个 override；如果用户恢复默认值，则回到 `DailyMarkdownComposer` 的 canonical 默认 prompt。这个设置是“面向未来生成”的配置，不会触发对旧日期内容的被动迁移。
+如果用户在主窗口右上角的 `Edit Prompt` sheet 中保存了全局 override，`fullRecovery` 发给 summarizer 的 prompt 会改用这个 override；如果用户恢复默认值，则回到 `DailyMarkdownComposer` 的 canonical 默认 prompt。这个设置是“面向未来生成”的配置，不会触发对旧日期内容的被动迁移。
 
 如果 summarizer 成功返回结构化 JSON，`DailyStoryParagraph.text` 当前允许承载 Markdown 富文本，而不是只存纯 prose。现在的 prompt 会要求模型把当天内容组织成单个 `daily-journal` section 下的 Markdown 日记骨架，包含：
 

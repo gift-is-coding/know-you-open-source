@@ -22,7 +22,7 @@ Know You 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 当前系统由 4 层组成：
 
 1. 采集层：剪贴板监听、通知数据库读取与导入
-2. 存储与调度层：SQLite、run 记录、补跑计划、定时自动化
+2. 存储与调度层：SQLite、run 记录、刷新日志、today-only 定时自动化
 3. 生成层：本地 fallback story 生成、可选云端/CLI 总结器、Markdown 组合
 4. 界面层：五步 story onboarding、三栏主阅读器、设置页、菜单栏状态入口、About & Community 对外入口
 
@@ -71,10 +71,10 @@ flowchart LR
 
 - 创建并持有 `AppEnvironment`
 - 启动剪贴板监听
-- 启动 launch-time automation、30 秒通知补同步与 15 分钟定时自动化
+- 启动 launch-time automation、30 秒通知补同步与 3 小时定时自动化
 - 维护 UI 状态与服务状态
 - 管理选中日期、选中 story、选中段落及其来源事件
-- 触发“按天刷新”、今日通知补同步与历史日补跑
+- 触发“按天刷新”、今日通知补同步与 today-only 自动刷新
 - 在 onboarding 完成时应用 vault 目录，并持久化完成状态
 
 `AppEnvironment` 本身则负责组装主要依赖，包括数据库、隐私过滤器、采集器、composer 与 summarizer，见 [AppEnvironment.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppEnvironment.swift)。
@@ -197,6 +197,7 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 - 数据库：`~/Library/Application Support/KnowYou/events.sqlite`
 - Vault：`~/Library/Application Support/KnowYou/Vault`
+- 刷新日志：`~/Library/Application Support/KnowYou/RefreshLogs`
 
 每一天会写出两份文件：
 
@@ -221,17 +222,24 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 ### 7.2 生成流程
 
-`AppState.generateDailyNote(for:)` 是按天生成的核心入口，主要步骤如下：
+手动刷新当前主要通过 `AppState.generateDailyNote(for:) -> refreshDayWithRetry(...)` 进入统一刷新管线，主要步骤如下：
 
-1. 从 SQLite 读取某天全部事件
-2. 先构建本地 fallback story
-3. 如果配置了 summarizer，则尝试生成结构化 story
-4. 如果 structured output 解析失败，则回退到本地 fallback
-5. 将 story 写成 `.story.json`
-6. 将 story + source events 组合成 Markdown，并写成 `.md`
-7. 更新 UI 状态、run 状态与状态栏信息
+1. 先为该天执行 day-scoped 通知同步
+2. 读取 SQLite 中该天事件
+3. 判断是 `fullRecovery` 还是 `incrementalUpdate`
+4. 调用结构化 summarizer；手动刷新会按绿色引擎顺序最多重试 5 次
+5. 只有合法结构化结果才写 `.story.json` 与 `.md`
+6. 写入刷新日志，并更新 UI 状态、run 状态与状态栏信息
 
-因此 summarizer 是增强路径，不是首次生成内容的阻塞条件。
+其中：
+
+- `fullRecovery` 只在该天还没有 `provenance.generationMode == .model` 的成功 story 时发生
+- `incrementalUpdate` 只消费尚未写入当前 story 的新增事件
+- 增量合并只允许追加 `Summary`、`Details`、`To-do`
+- `Encouragement` 在增量路径中保持冻结
+- 任何失败都不会覆盖现有 `.story.json` 或 `.md`
+
+`generateStory(...)` 仍保留为底层 fallback/story 生成辅助能力，但不再承担主手动刷新入口语义。
 
 如果 summarizer 成功返回结构化 JSON，`DailyStoryParagraph.text` 当前允许承载 Markdown 富文本，而不是只存纯 prose。现在的 prompt 会要求模型把当天内容组织成单个 `daily-journal` section 下的 Markdown 日记骨架，包含：
 
@@ -303,16 +311,20 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 ## 8. 调度与自动化
 
-[DailyAutomationPlanner.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Scheduling/DailyAutomationPlanner.swift) 负责决定待补跑日期。
+[DailyAutomationPlanner.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Scheduling/DailyAutomationPlanner.swift) 现在只负责判断“今天是否允许自动增量”，不再驱动历史补跑。
 
 自动化行为由 `AppState.startAutomation()` 触发，规则是：
 
 - 应用启动后立即串行执行一次 `runAutomation()` 与一次 `runNotificationCatchUp()`
-- `runAutomation()` 之后每 15 分钟运行一次
+- `runAutomation()` 之后每 3 小时运行一次
 - `runNotificationCatchUp()` 之后每 30 秒运行一次
-- `runAutomation()` 会根据最近成功 run 与现有 note 文件推断 pending days，并逐天生成缺失或待补跑内容
+- `runAutomation()` 先导入今天通知，再决定是否对今天执行自动增量
 - `runNotificationCatchUp()` 只针对今天做通知增量导入，起点为 `max(todayStart, lastNotificationImportAt - 30 秒 overlap buffer)`
 - 今天的通知水位会按数据库路径持久化；如果换库或今天还没有通知事件，旧水位会被清空
+- 当今天已经存在 `provenance.generationMode == .model` 的 `.story.json` 时，自动化不再整天重建今天，而是只检查并追加尚未写入 story 的新事件
+- 自动增量只处理今天；历史日期完全改为手动刷新
+- 自动刷新只有单次引擎尝试，不会像手动刷新一样轮询最多 5 个绿色引擎
+- 自动刷新和手动刷新都会把阶段、attempt、输出路径与结果写入 `RefreshLogs`
 
 手动刷新与自动化现在是两条明确分离的路径：
 
@@ -320,6 +332,10 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - 刷新前会对该日期执行一次 day-scoped 通知同步
 - 今天使用 `dayStart ... now` 时间窗
 - 历史日期使用 `dayStart ... nextDayStart` 时间窗
+- 如果该日已有 `model` 成功 story，则手动刷新进入增量更新；否则进入全量恢复
+- 增量更新只允许追加 `Summary`、`Details`、`To-do`，不会改写 `Encouragement`
+- 手动刷新失败时不会覆盖现有 `.story.json` 或 `.md`
+- 手动刷新会优先尝试当前选中引擎，并在需要时按绿色引擎优先级最多重试 5 次
 - 手动刷新不会复用 `DailyAutomationPlanner`，也不会顺带回补相邻日期
 - 剪贴板仍然完全依赖后台 watcher；手动刷新不会尝试重建历史剪贴板记录
 - 不同日期的手动刷新可以并发运行，初始并发上限为 2；同一天在已有任务进行中时不可重复触发
@@ -453,29 +469,35 @@ sequenceDiagram
 
 这条后台路径在当前实现里拆成两种节奏不同的任务：
 
-- `runAutomation()`：启动即执行一次，随后每 15 分钟执行；负责待补跑日期推断、必要的通知导入、逐天生成 story 与 Markdown
+- `runAutomation()`：启动即执行一次，随后每 3 小时执行；只负责今天的通知导入与必要的 today incremental
 - `runNotificationCatchUp()`：启动即执行一次，随后每 30 秒执行；只负责今天的通知增量导入，不直接生成文档
 
 两者共同保证：
 
 - today 的通知接近实时进入本地事件库
-- 历史缺口仍由 15 分钟自动化补跑
 - 重叠时间窗依赖去重，避免重复通知事件无限累积
+- 历史日期不会被后台自动改写
 
 ### 10.2 用户手动刷新某一天
 
 1. 用户在主窗口或菜单栏触发 `refreshSelectedDay()`
 2. `AppState` 解析当前选中日期；若没有选中日期则回落到今天
 3. `syncNotifications(for:)` 只针对该日期时间窗导入通知
-4. `generateDailyNote(for:)` 只生成该同一天的 `.story.json` 与 `.md`
-5. 主阅读器在刷新按钮旁以内联状态文案显示当前阶段、完成结果或错误信息
-6. UI 刷新当天内容与状态信息
+4. `AppState` 先判断该日是否已有 `model` 成功 story
+5. 若已有成功 story，则只把新增事件送入增量 prompt，并携带压缩后的旧内容锚点
+6. 若没有成功 story，则走完整恢复式生成
+7. 手动路径会先试当前引擎，再按绿色引擎优先级最多重试 5 次
+8. 每次刷新都会把通知同步、事件加载、生成、写盘与 attempt 结果写入 `RefreshLogs`
+9. 只有当模型返回合法结构化结果时才会原子写入 `.story.json` 与 `.md`
+10. 主阅读器在刷新按钮旁以内联状态文案显示当前阶段、完成结果或错误信息
+11. UI 刷新当天内容与状态信息
 
 这条手动路径不会：
 
 - 调用 `DailyAutomationPlanner`
 - 顺带生成其他日期
 - 重新导入历史剪贴板
+- 在增量失败时破坏已有内容
 
 ### 10.3 用户阅读某一天
 

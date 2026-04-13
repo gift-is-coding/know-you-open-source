@@ -97,11 +97,86 @@ struct DayRefreshGenerationResult: Equatable {
     var summary: String
 }
 
+enum DayRefreshMode: Equatable {
+    case fullRecovery
+    case incrementalUpdate
+}
+
+enum RefreshTrigger: String, Codable, Sendable {
+    case manual
+    case automation
+}
+
+struct RefreshLogStageRecord: Codable, Equatable {
+    var name: String
+    var durationSeconds: Double
+    var detail: String?
+}
+
+struct RefreshLogAttemptRecord: Codable, Equatable {
+    var engine: String
+    var timeoutSeconds: Int
+    var startedAt: Date
+    var finishedAt: Date
+    var durationSeconds: Double
+    var outcome: String
+    var failureKind: String?
+    var error: String?
+}
+
+struct RefreshLogRecord: Codable, Equatable {
+    var dayKey: String
+    var trigger: RefreshTrigger
+    var mode: String
+    var startedAt: Date
+    var finishedAt: Date?
+    var totalDurationSeconds: Double?
+    var notificationImportedCount: Int = 0
+    var notificationError: String?
+    var totalEventCount: Int = 0
+    var newEventCount: Int?
+    var stages: [RefreshLogStageRecord] = []
+    var attempts: [RefreshLogAttemptRecord] = []
+    var wroteMarkdown = false
+    var wroteStoryJSON = false
+    var markdownPath: String?
+    var storyJSONPath: String?
+    var finalStatus: String = "running"
+    var finalSummary: String?
+    var logPath: String?
+}
+
+final class RefreshLogBuffer {
+    var record: RefreshLogRecord
+
+    init(record: RefreshLogRecord) {
+        self.record = record
+    }
+}
+
+private struct RefreshSummarizerAttempt {
+    let engine: DiaryEngine?
+    let summarizer: SummaryGenerating
+
+    var label: String {
+        engine?.displayName ?? "configured summarizer"
+    }
+}
+
 struct SummarizerRuntimeStatus {
+    enum FailureKind: String, Equatable {
+        case timedOut
+        case nonZeroExit
+        case emptyOutput
+        case invalidStructuredOutput
+        case repairFailed
+    }
+
     var mode: String = "None"
     var isConfigured = false
     var lastCompletedAt: Date?
     var lastError: String?
+    var failureKind: FailureKind?
 }
 
 struct EngineRuntimeStatus: Equatable {
@@ -115,6 +190,7 @@ struct EngineRuntimeStatus: Equatable {
 @Observable
 final class AppState {
     typealias RefreshStageChangeHandler = @MainActor @Sendable (DayRefreshJob) -> Void
+    typealias SummarizerFactory = @Sendable (DiaryEngine, SummarizerConfig, [String: String]) -> SummaryGenerating?
 
     private static let autoSelectionPriority: [DiaryEngine] = [
         .claudeCLI,
@@ -155,7 +231,7 @@ final class AppState {
     @ObservationIgnored private var paragraphSelectionByDay: [String: String] = [:]
     @ObservationIgnored private var refreshTasksByDay: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private let notificationSyncInterval: TimeInterval = 30
-    @ObservationIgnored private let automationInterval: TimeInterval = 900
+    @ObservationIgnored private let automationInterval: TimeInterval = 10_800
     @ObservationIgnored private let notificationOverlapBuffer: TimeInterval = 30
     @ObservationIgnored private let maxConcurrentRefreshes = 2
     @ObservationIgnored private let userDefaults: UserDefaults
@@ -164,6 +240,7 @@ final class AppState {
     @ObservationIgnored private let processEnvironment: [String: String]
     @ObservationIgnored private let currentDate: @Sendable () -> Date
     @ObservationIgnored private let probeEngine: @Sendable (DiaryEngine, SummarizerConfig, [String: String]) async -> EngineProbeResult
+    @ObservationIgnored private let makeSummarizer: SummarizerFactory
     @ObservationIgnored private let onRefreshStageChange: RefreshStageChangeHandler?
     @ObservationIgnored private var summarizerConfig: SummarizerConfig
     @ObservationIgnored private var autoSelectionSuppressedByExplicitNone: Bool
@@ -182,7 +259,8 @@ final class AppState {
                 lastCompletedAt: status.lastVerifiedAt,
                 lastError: status.state == .green || (defaultEngine == .none && environment?.summarizer == nil)
                     ? nil
-                    : status.detail
+                    : status.detail,
+                failureKind: Self.failureKind(for: status.detail)
             )
         }
         set {
@@ -207,6 +285,9 @@ final class AppState {
         probeEngine: @escaping @Sendable (DiaryEngine, SummarizerConfig, [String: String]) async -> EngineProbeResult = { engine, config, environment in
             await EngineProbe().probe(engine: engine, config: config, environment: environment)
         },
+        makeSummarizer: @escaping SummarizerFactory = { engine, config, environment in
+            config.makeSummarizer(for: engine, environment: environment)
+        },
         onRefreshStageChange: RefreshStageChangeHandler? = nil,
         processEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         currentDate: @escaping @Sendable () -> Date = Date.init,
@@ -221,6 +302,7 @@ final class AppState {
         self.processEnvironment = processEnvironment
         self.currentDate = currentDate
         self.probeEngine = probeEngine
+        self.makeSummarizer = makeSummarizer
         self.onRefreshStageChange = onRefreshStageChange
         self.summarizerConfig = summarizerConfig ?? SummarizerConfig.load(
             from: userDefaults,
@@ -264,10 +346,7 @@ final class AppState {
             self.environment = environment
             restorePersistedNotificationImportAt(using: environment, now: currentDate())
             if explicitSummarizerConfig != nil {
-                environment.summarizer = self.summarizerConfig.makeSummarizer(
-                    for: defaultEngine,
-                    environment: processEnvironment
-                )
+                environment.summarizer = self.makeSummarizer(defaultEngine, self.summarizerConfig, processEnvironment)
             }
             clipboardStatus.isActive = true
             updateNotificationAccessStatus(using: environment.notificationReader)
@@ -286,10 +365,7 @@ final class AppState {
             let environment = try AppEnvironment(
                 databasePath: databaseURL.path,
                 vaultURL: vaultURL,
-                summarizer: self.summarizerConfig.makeSummarizer(
-                    for: defaultEngine,
-                    environment: processEnvironment
-                ),
+                summarizer: self.makeSummarizer(defaultEngine, self.summarizerConfig, processEnvironment),
                 onClipboardCapture: { [weak self] snapshot in
                     Task { @MainActor in
                         self?.recordClipboardCapture(snapshot)
@@ -357,7 +433,17 @@ final class AppState {
     }
 
     func generateDailyNote(for dayKey: String) async {
-        _ = await generateDailyNote(for: dayKey, recordsRun: true)
+        guard let environment else {
+            statusMessage = "Capture unavailable"
+            return
+        }
+        _ = await refreshDayWithRetry(
+            dayKey: dayKey,
+            recordsRun: true,
+            now: currentDate(),
+            environment: environment,
+            trigger: .manual
+        )
     }
 
     func refreshJob(for dayKey: String) -> DayRefreshJob? {
@@ -606,11 +692,7 @@ final class AppState {
             lastRunText = "Never"
         }
 
-        let backfillText = pendingBackfillDays.isEmpty
-            ? "No pending backfill"
-            : "Pending: \(pendingBackfillDays.joined(separator: ", "))"
-
-        return "Last run: \(lastRunText) · Notifications: \(lastImportedNotificationCount) · \(backfillText)"
+        return "Last run: \(lastRunText) · Notifications: \(lastImportedNotificationCount) · History refresh is manual-only"
     }
 
     var statusDetails: [String] {
@@ -666,77 +748,6 @@ final class AppState {
         return formatter
     }()
 
-    @discardableResult
-    private func generateDailyNote(
-        for dayKey: String,
-        recordsRun: Bool,
-        onStageChange: ((DayRefreshStage, String?) -> Void)? = nil
-    ) async -> DayRefreshGenerationResult {
-        guard let environment else {
-            statusMessage = "Capture unavailable"
-            return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
-        }
-
-        let runID = recordsRun ? try? environment.databaseWriter.startRun(runType: "daily-note", dayKey: dayKey) : nil
-        do {
-            onStageChange?(.loadingEvents, nil)
-            let events = try environment.databaseWriter.fetchEvents(dayKey: dayKey)
-            onStageChange?(.preparingStory, "Preparing journal from \(events.count) event(s)...")
-            let story = await generateStory(
-                dayKey: dayKey,
-                events: events,
-                environment: environment,
-                onStageDetail: { detail in
-                    onStageChange?(.generatingStory, detail)
-                }
-            )
-            onStageChange?(.writingFiles, "Writing \(dayKey) artifacts...")
-            let finalMarkdown = environment.composer.compose(dayKey: dayKey, events: events, story: story)
-            let fileURL = try environment.writeDailyNote(dayKey: dayKey, markdown: finalMarkdown)
-            _ = try environment.writeDailyStory(story)
-            if let runID {
-                try environment.databaseWriter.finishRun(id: runID, status: "succeeded")
-            }
-
-            noteIndex[dayKey] = fileURL
-            availableDates = noteIndex.keys.sorted(by: >)
-            if selectedDate == dayKey || selectedDate == nil {
-                selectedDate = dayKey
-                selectedMarkdownURL = fileURL
-                selectedContentVersion += 1
-            }
-
-            updateSelectedPresentation(dayKey: dayKey, story: story, events: events)
-            dayRefreshStatus.lastRequestedDay = dayKey
-            dayRefreshStatus.lastRefreshedAt = Date()
-            dayRefreshStatus.lastError = nil
-            dayRefreshStatus.detail = events.isEmpty
-                ? "Refreshed \(dayKey) with no captured events"
-                : "Refreshed \(dayKey) into \(story.sections.flatMap(\.paragraphs).count) story segment(s)"
-
-            if environment.summarizer == nil {
-                statusMessage = "Refreshed \(dayKey) with local story fallback"
-            } else if summarizerStatus.lastError != nil {
-                statusMessage = "Refreshed \(dayKey); story fell back to local summary"
-            } else {
-                statusMessage = "Refreshed \(dayKey) with story view"
-            }
-            return DayRefreshGenerationResult(
-                stage: .completed,
-                summary: refreshSummary(for: story)
-            )
-        } catch {
-            if let runID {
-                try? environment.databaseWriter.finishRun(id: runID, status: "failed")
-            }
-            dayRefreshStatus.lastRequestedDay = dayKey
-            dayRefreshStatus.lastRefreshedAt = Date()
-            dayRefreshStatus.lastError = error.localizedDescription
-            statusMessage = "Daily note failed: \(error.localizedDescription)"
-            return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
-        }
-    }
-
     func runAutomation(now: Date = Date()) async {
         guard let environment else {
             statusMessage = "Capture unavailable"
@@ -746,13 +757,12 @@ final class AppState {
         lastAutomationRunAt = now
         refreshNotesIndex()
         let today = ISO8601DayKey.format(now)
-        let latestCompletedDay = try? environment.databaseWriter.fetchLatestSuccessfulRunDay(runType: "daily-note")
-        let pendingDays = environment.dailyAutomationPlanner.pendingDays(
-            latestCompletedDay: latestCompletedDay,
-            existingNoteDays: Set(noteIndex.keys),
-            today: today
+        let todayStory = (try? environment.loadDailyStory(dayKey: today)) ?? nil
+        let shouldAttemptTodayIncremental = environment.dailyAutomationPlanner.shouldAttemptTodayIncremental(
+            todayStory: todayStory,
+            hasVerifiedSummarizer: environment.summarizer != nil
         )
-        let notificationSince = Self.importStartDate(for: pendingDays, now: now)
+        let notificationSince = Self.startOfDay(for: today) ?? now
         updateNotificationAccessStatus(using: environment.notificationReader)
 
         do {
@@ -774,21 +784,43 @@ final class AppState {
         }
 
         refreshNotesIndex()
-        pendingBackfillDays = pendingDays.filter { $0 != today }
+        pendingBackfillDays = []
 
-        for dayKey in pendingDays {
-            _ = await generateDailyNote(for: dayKey, recordsRun: true)
+        if shouldAttemptTodayIncremental {
+            let refreshStartedAt = Date()
+            let refreshLog = RefreshLogBuffer(
+                record: RefreshLogRecord(
+                    dayKey: today,
+                    trigger: .automation,
+                    mode: "incrementalUpdate",
+                    startedAt: refreshStartedAt,
+                    notificationImportedCount: lastImportedNotificationCount,
+                    notificationError: notificationStatus.lastError
+                )
+            )
+            _ = await incrementallyRefreshDay(
+                dayKey: today,
+                recordsRun: true,
+                now: now,
+                environment: environment,
+                trigger: .automation,
+                refreshLog: refreshLog
+            )
+            refreshLog.record.finishedAt = Date()
+            refreshLog.record.totalDurationSeconds = refreshLog.record.finishedAt?.timeIntervalSince(refreshStartedAt)
+            refreshLog.record.finalStatus = dayRefreshStatus.lastError == nil ? "completed" : "failed"
+            refreshLog.record.finalSummary = dayRefreshStatus.detail ?? dayRefreshStatus.lastError
+            persistRefreshLog(refreshLog.record, environment: environment)
         }
 
-        if pendingDays.isEmpty {
-            if let lastError = notificationStatus.lastError {
-                statusMessage = "Refresh completed with notification issue: \(lastError)"
-            } else {
-                statusMessage = lastImportedNotificationCount == 0
-                    ? "Capture services ready"
-                    : "Imported \(lastImportedNotificationCount) notifications"
-            }
-            pendingBackfillDays = []
+        if let lastError = notificationStatus.lastError {
+            statusMessage = "Refresh completed with notification issue: \(lastError)"
+        } else if shouldAttemptTodayIncremental, let detail = dayRefreshStatus.detail, detail.contains(today) {
+            statusMessage = detail
+        } else {
+            statusMessage = lastImportedNotificationCount == 0
+                ? "Capture services ready"
+                : "Imported \(lastImportedNotificationCount) notifications"
         }
     }
 
@@ -871,7 +903,12 @@ extension AppState {
         focusDateList()
     }
 
-    func refreshDay(_ dayKey: String, now: Date, environment: AppEnvironment) async {
+    func refreshDay(
+        _ dayKey: String,
+        now: Date,
+        environment: AppEnvironment,
+        trigger: RefreshTrigger = .manual
+    ) async {
         guard refreshTasksByDay[dayKey] == nil else {
             return
         }
@@ -882,26 +919,78 @@ extension AppState {
 
         transitionRefreshJob(for: dayKey, stage: .syncingNotifications)
         let task = Task { @MainActor in
-            await performRefreshDay(dayKey, now: now, environment: environment)
+            await performRefreshDay(dayKey, now: now, environment: environment, trigger: trigger)
         }
         refreshTasksByDay[dayKey] = task
         await task.value
     }
 
-    private func performRefreshDay(_ dayKey: String, now: Date, environment: AppEnvironment) async {
+    private func performRefreshDay(
+        _ dayKey: String,
+        now: Date,
+        environment: AppEnvironment,
+        trigger: RefreshTrigger
+    ) async {
         defer {
             refreshTasksByDay.removeValue(forKey: dayKey)
         }
 
-        let syncOutcome = syncNotifications(for: dayKey, now: now, environment: environment)
-        let noteResult = await generateDailyNote(
-            for: dayKey,
-            recordsRun: true,
-            onStageChange: { [weak self] stage, detail in
-                self?.transitionRefreshJob(for: dayKey, stage: stage, detail: detail)
-            }
+        let refreshStartedAt = Date()
+        let refreshLog = RefreshLogBuffer(
+            record: RefreshLogRecord(
+                dayKey: dayKey,
+                trigger: trigger,
+                mode: "unknown",
+                startedAt: refreshStartedAt
+            )
         )
+
+        let notificationStartedAt = Date()
+        let syncOutcome = syncNotifications(for: dayKey, now: now, environment: environment)
+        refreshLog.record.notificationImportedCount = syncOutcome.importedCount
+        refreshLog.record.notificationError = syncOutcome.error
+        refreshLog.record.stages.append(
+            RefreshLogStageRecord(
+                name: "syncingNotifications",
+                durationSeconds: Date().timeIntervalSince(notificationStartedAt),
+                detail: syncOutcome.error ?? "Imported \(syncOutcome.importedCount) notification(s)"
+            )
+        )
+        let mode = refreshMode(for: dayKey, environment: environment)
+        refreshLog.record.mode = mode == .fullRecovery ? "fullRecovery" : "incrementalUpdate"
+        let noteResult: DayRefreshGenerationResult
+        switch mode {
+        case .fullRecovery:
+            noteResult = await refreshDayWithRetry(
+                dayKey: dayKey,
+                recordsRun: true,
+                now: now,
+                environment: environment,
+                trigger: trigger,
+                refreshLog: refreshLog,
+                onStageChange: { [weak self] stage, detail in
+                    self?.transitionRefreshJob(for: dayKey, stage: stage, detail: detail)
+                }
+            )
+        case .incrementalUpdate:
+            noteResult = await incrementallyRefreshDay(
+                dayKey: dayKey,
+                recordsRun: true,
+                now: now,
+                environment: environment,
+                trigger: trigger,
+                refreshLog: refreshLog,
+                onStageChange: { [weak self] stage, detail in
+                    self?.transitionRefreshJob(for: dayKey, stage: stage, detail: detail)
+                }
+            )
+        }
         guard noteResult.stage == .completed else {
+            refreshLog.record.finishedAt = Date()
+            refreshLog.record.totalDurationSeconds = refreshLog.record.finishedAt?.timeIntervalSince(refreshStartedAt)
+            refreshLog.record.finalStatus = "failed"
+            refreshLog.record.finalSummary = dayRefreshStatus.lastRequestedDay == dayKey ? dayRefreshStatus.lastError : "Unknown error"
+            persistRefreshLog(refreshLog.record, environment: environment)
             transitionRefreshJob(
                 for: dayKey,
                 stage: .failed,
@@ -933,6 +1022,11 @@ extension AppState {
                 : "Refreshed \(dayKey)"
             completionDetail = "Completed · \(storySummary)"
         }
+        refreshLog.record.finishedAt = Date()
+        refreshLog.record.totalDurationSeconds = refreshLog.record.finishedAt?.timeIntervalSince(refreshStartedAt)
+        refreshLog.record.finalStatus = "completed"
+        refreshLog.record.finalSummary = completionDetail
+        persistRefreshLog(refreshLog.record, environment: environment)
         transitionRefreshJob(for: dayKey, stage: .completed, detail: completionDetail)
     }
 
@@ -997,6 +1091,550 @@ extension AppState {
             notificationStatus.lastError = error.localizedDescription
             return NotificationSyncOutcome(importedCount: 0, error: error.localizedDescription)
         }
+    }
+
+    private func refreshMode(for dayKey: String, environment: AppEnvironment) -> DayRefreshMode {
+        guard
+            let existingStory = try? environment.loadDailyStory(dayKey: dayKey),
+            existingStory.provenance?.generationMode == .model
+        else {
+            return .fullRecovery
+        }
+        return .incrementalUpdate
+    }
+
+    private func incrementallyRefreshDay(
+        dayKey: String,
+        recordsRun: Bool,
+        now: Date,
+        environment: AppEnvironment,
+        trigger: RefreshTrigger,
+        refreshLog: RefreshLogBuffer? = nil,
+        onStageChange: ((DayRefreshStage, String?) -> Void)? = nil
+    ) async -> DayRefreshGenerationResult {
+        let runID = recordsRun ? try? environment.databaseWriter.startRun(runType: "daily-note", dayKey: dayKey) : nil
+
+        do {
+            guard let existingStory = try environment.loadDailyStory(dayKey: dayKey), existingStory.provenance?.generationMode == .model else {
+                if let runID {
+                    try environment.databaseWriter.finishRun(id: runID, status: "failed")
+                }
+                dayRefreshStatus.lastRequestedDay = dayKey
+                dayRefreshStatus.lastRefreshedAt = Date()
+                dayRefreshStatus.lastError = "No model story available for incremental update"
+                statusMessage = "Daily note failed: No model story available for incremental update"
+                return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
+            }
+
+            onStageChange?(.loadingEvents, nil)
+            let loadStartedAt = Date()
+            let events = try environment.databaseWriter.fetchEvents(dayKey: dayKey)
+            refreshLog?.record.totalEventCount = events.count
+            refreshLog?.record.stages.append(
+                RefreshLogStageRecord(
+                    name: "loadingEvents",
+                    durationSeconds: Date().timeIntervalSince(loadStartedAt),
+                    detail: "Loaded \(events.count) event(s)"
+                )
+            )
+            let newEvents = unwrittenEvents(events: events, existingStory: existingStory, environment: environment)
+            refreshLog?.record.newEventCount = newEvents.count
+            onStageChange?(.preparingStory, "Checking \(newEvents.count) new event(s) to append...")
+
+            guard !newEvents.isEmpty else {
+                if let runID {
+                    try environment.databaseWriter.finishRun(id: runID, status: "succeeded")
+                }
+                dayRefreshStatus.lastRequestedDay = dayKey
+                dayRefreshStatus.lastRefreshedAt = Date()
+                dayRefreshStatus.lastError = nil
+                dayRefreshStatus.detail = "No new events to append for \(dayKey)"
+                statusMessage = "No new events to append for \(dayKey)"
+                updateSelectedPresentation(dayKey: dayKey, story: existingStory, events: events)
+                return DayRefreshGenerationResult(stage: .completed, summary: "No new events")
+            }
+
+            let attempts = refreshAttempts(trigger: trigger, using: environment)
+            guard !attempts.isEmpty else {
+                if let runID {
+                    try environment.databaseWriter.finishRun(id: runID, status: "failed")
+                }
+                dayRefreshStatus.lastRequestedDay = dayKey
+                dayRefreshStatus.lastRefreshedAt = Date()
+                dayRefreshStatus.lastError = "No verified engine available for incremental update"
+                statusMessage = "Daily note failed: No verified engine available for incremental update"
+                return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
+            }
+
+            for (attemptIndex, attempt) in attempts.enumerated() {
+                onStageChange?(.generatingStory, "Appending with \(attempt.label) (\(attemptIndex + 1)/\(attempts.count))...")
+                let attemptStartedAt = Date()
+                do {
+                    let raw = try await attempt.summarizer.summarize(
+                        dayKey: dayKey,
+                        markdown: environment.composer.incrementalPrompt(
+                            dayKey: dayKey,
+                            existingStory: existingStory,
+                            newEvents: newEvents,
+                            allEvents: events
+                        ),
+                        context: summaryInvocationContext(for: trigger)
+                    )
+                    guard let update = environment.composer.parseIncrementalUpdate(raw: raw) else {
+                        if let engine = attempt.engine {
+                            recordEngineRuntime(
+                                for: engine,
+                                state: .yellow,
+                                detail: "Incremental output was not valid structured JSON",
+                                verifiedAt: Date()
+                            )
+                        }
+                        appendAttemptLog(
+                            engine: attempt.engine,
+                            trigger: trigger,
+                            startedAt: attemptStartedAt,
+                            finishedAt: Date(),
+                            outcome: "failed",
+                            error: "Incremental output was not valid structured JSON",
+                            refreshLog: refreshLog
+                        )
+                        continue
+                    }
+
+                    let mergedStory = environment.composer.mergeIncrementalUpdate(
+                        dayKey: dayKey,
+                        existingStory: existingStory,
+                        update: update,
+                        allEvents: events,
+                        provenance: makeStoryProvenance(
+                            mode: .model,
+                            engine: attempt.engine ?? activeRefreshEngine(using: environment),
+                            curatedEventCount: events.count
+                        )
+                    )
+                    let writeStartedAt = Date()
+                    onStageChange?(.writingFiles, "Writing \(dayKey) artifacts...")
+                    let fileURL = try persistArtifacts(dayKey: dayKey, story: mergedStory, events: events, environment: environment)
+                    refreshLog?.record.stages.append(
+                        RefreshLogStageRecord(
+                            name: "writingFiles",
+                            durationSeconds: Date().timeIntervalSince(writeStartedAt),
+                            detail: "Persisted incremental update"
+                        )
+                    )
+                    if let runID {
+                        try environment.databaseWriter.finishRun(id: runID, status: "succeeded")
+                    }
+                    if let engine = attempt.engine {
+                        recordEngineRuntime(for: engine, state: .green, detail: "Incremental story generation succeeded.", verifiedAt: Date())
+                    }
+                    appendAttemptLog(
+                        engine: attempt.engine,
+                        trigger: trigger,
+                        startedAt: attemptStartedAt,
+                        finishedAt: Date(),
+                        outcome: "succeeded",
+                        error: nil,
+                        refreshLog: refreshLog
+                    )
+                    finalizeSuccessfulRefresh(
+                        dayKey: dayKey,
+                        story: mergedStory,
+                        events: events,
+                        fileURL: fileURL,
+                        detail: "Appended \(newEvents.count) new event(s) into \(dayKey)"
+                    )
+                    if let storyPath = storyURL(for: dayKey, environment: environment) {
+                        refreshLog?.record.storyJSONPath = storyPath.path
+                    }
+                    refreshLog?.record.markdownPath = fileURL.path
+                    refreshLog?.record.wroteMarkdown = true
+                    refreshLog?.record.wroteStoryJSON = true
+                    statusMessage = dayKey == ISO8601DayKey.format(now)
+                        ? "Imported \(newEvents.count) new events and updated today"
+                        : "Updated \(dayKey) with incremental events"
+                    return DayRefreshGenerationResult(stage: .completed, summary: "incremental append")
+                } catch {
+                    if let engine = attempt.engine {
+                        recordEngineRuntime(
+                            for: engine,
+                            state: .yellow,
+                            detail: error.localizedDescription,
+                            verifiedAt: Date()
+                        )
+                    }
+                    appendAttemptLog(
+                        engine: attempt.engine,
+                        trigger: trigger,
+                        startedAt: attemptStartedAt,
+                        finishedAt: Date(),
+                        outcome: "failed",
+                        error: error.localizedDescription,
+                        refreshLog: refreshLog
+                    )
+                    continue
+                }
+            }
+
+            if let runID {
+                try environment.databaseWriter.finishRun(id: runID, status: "failed")
+            }
+            dayRefreshStatus.lastRequestedDay = dayKey
+            dayRefreshStatus.lastRefreshedAt = Date()
+            dayRefreshStatus.lastError = "Incremental update failed after \(attempts.count) attempt(s)"
+            statusMessage = "Daily note failed: Incremental update failed after \(attempts.count) attempt(s)"
+            return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
+        } catch {
+            if let runID {
+                try? environment.databaseWriter.finishRun(id: runID, status: "failed")
+            }
+            dayRefreshStatus.lastRequestedDay = dayKey
+            dayRefreshStatus.lastRefreshedAt = Date()
+            dayRefreshStatus.lastError = error.localizedDescription
+            statusMessage = "Daily note failed: \(error.localizedDescription)"
+            return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
+        }
+    }
+
+    private func refreshDayWithRetry(
+        dayKey: String,
+        recordsRun: Bool,
+        now: Date,
+        environment: AppEnvironment,
+        trigger: RefreshTrigger,
+        refreshLog: RefreshLogBuffer? = nil,
+        onStageChange: ((DayRefreshStage, String?) -> Void)? = nil
+    ) async -> DayRefreshGenerationResult {
+        guard environment.summarizer != nil else {
+            return failFullRecoveryWithoutVerifiedEngine(dayKey: dayKey)
+        }
+        let attempts = refreshAttempts(trigger: trigger, using: environment)
+        guard !attempts.isEmpty else {
+            return failFullRecoveryWithoutVerifiedEngine(dayKey: dayKey)
+        }
+
+        let runID = recordsRun ? try? environment.databaseWriter.startRun(runType: "daily-note", dayKey: dayKey) : nil
+        do {
+            onStageChange?(.loadingEvents, nil)
+            let loadStartedAt = Date()
+            let events = try environment.databaseWriter.fetchEvents(dayKey: dayKey)
+            refreshLog?.record.totalEventCount = events.count
+            refreshLog?.record.stages.append(
+                RefreshLogStageRecord(
+                    name: "loadingEvents",
+                    durationSeconds: Date().timeIntervalSince(loadStartedAt),
+                    detail: "Loaded \(events.count) event(s)"
+                )
+            )
+            onStageChange?(.preparingStory, "Preparing journal from \(events.count) event(s)...")
+
+            for (attemptIndex, attempt) in attempts.enumerated() {
+                onStageChange?(.generatingStory, "Calling \(attempt.label) (\(attemptIndex + 1)/\(attempts.count))...")
+                let attemptStartedAt = Date()
+                do {
+                    let raw = try await attempt.summarizer.summarize(
+                        dayKey: dayKey,
+                        markdown: environment.composer.storyPrompt(dayKey: dayKey, events: events),
+                        context: summaryInvocationContext(for: trigger)
+                    )
+                    guard let parsed = environment.composer.parseStory(dayKey: dayKey, raw: raw),
+                          !parsed.sections.flatMap(\.paragraphs).isEmpty else {
+                        if let engine = attempt.engine {
+                            recordEngineRuntime(
+                                for: engine,
+                                state: .yellow,
+                                detail: "Story output was not valid structured JSON",
+                                verifiedAt: Date()
+                            )
+                        }
+                        appendAttemptLog(
+                            engine: attempt.engine,
+                            trigger: trigger,
+                            startedAt: attemptStartedAt,
+                            finishedAt: Date(),
+                            outcome: "failed",
+                            error: "Story output was not valid structured JSON",
+                            refreshLog: refreshLog
+                        )
+                        continue
+                    }
+
+                    let story = parsed.withProvenance(
+                        makeStoryProvenance(
+                            mode: .model,
+                            engine: attempt.engine ?? activeRefreshEngine(using: environment),
+                            curatedEventCount: events.count
+                        )
+                    )
+                    let writeStartedAt = Date()
+                    onStageChange?(.writingFiles, "Writing \(dayKey) artifacts...")
+                    let fileURL = try persistArtifacts(dayKey: dayKey, story: story, events: events, environment: environment)
+                    refreshLog?.record.stages.append(
+                        RefreshLogStageRecord(
+                            name: "writingFiles",
+                            durationSeconds: Date().timeIntervalSince(writeStartedAt),
+                            detail: "Persisted full recovery"
+                        )
+                    )
+                    if let runID {
+                        try environment.databaseWriter.finishRun(id: runID, status: "succeeded")
+                    }
+                    if let engine = attempt.engine {
+                        recordEngineRuntime(for: engine, state: .green, detail: "Story generation succeeded.", verifiedAt: Date())
+                    }
+                    appendAttemptLog(
+                        engine: attempt.engine,
+                        trigger: trigger,
+                        startedAt: attemptStartedAt,
+                        finishedAt: Date(),
+                        outcome: "succeeded",
+                        error: nil,
+                        refreshLog: refreshLog
+                    )
+                    finalizeSuccessfulRefresh(
+                        dayKey: dayKey,
+                        story: story,
+                        events: events,
+                        fileURL: fileURL,
+                        detail: events.isEmpty
+                            ? "Refreshed \(dayKey) with no captured events"
+                            : "Refreshed \(dayKey) into \(story.sections.flatMap(\.paragraphs).count) story segment(s)"
+                    )
+                    if let storyPath = storyURL(for: dayKey, environment: environment) {
+                        refreshLog?.record.storyJSONPath = storyPath.path
+                    }
+                    refreshLog?.record.markdownPath = fileURL.path
+                    refreshLog?.record.wroteMarkdown = true
+                    refreshLog?.record.wroteStoryJSON = true
+                    statusMessage = dayKey == ISO8601DayKey.format(now)
+                        ? "Refreshed today with story view"
+                        : "Refreshed \(dayKey) with story view"
+                    return DayRefreshGenerationResult(stage: .completed, summary: refreshSummary(for: story))
+                } catch {
+                    if let engine = attempt.engine {
+                        recordEngineRuntime(
+                            for: engine,
+                            state: .yellow,
+                            detail: error.localizedDescription,
+                            verifiedAt: Date()
+                        )
+                    }
+                    appendAttemptLog(
+                        engine: attempt.engine,
+                        trigger: trigger,
+                        startedAt: attemptStartedAt,
+                        finishedAt: Date(),
+                        outcome: "failed",
+                        error: error.localizedDescription,
+                        refreshLog: refreshLog
+                    )
+                    continue
+                }
+            }
+
+            if let runID {
+                try environment.databaseWriter.finishRun(id: runID, status: "failed")
+            }
+            dayRefreshStatus.lastRequestedDay = dayKey
+            dayRefreshStatus.lastRefreshedAt = Date()
+            dayRefreshStatus.lastError = "Model refresh failed after \(attempts.count) attempt(s)"
+            statusMessage = "Daily note failed: Model refresh failed after \(attempts.count) attempt(s)"
+            return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
+        } catch {
+            if let runID {
+                try? environment.databaseWriter.finishRun(id: runID, status: "failed")
+            }
+            dayRefreshStatus.lastRequestedDay = dayKey
+            dayRefreshStatus.lastRefreshedAt = Date()
+            dayRefreshStatus.lastError = error.localizedDescription
+            statusMessage = "Daily note failed: \(error.localizedDescription)"
+            return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
+        }
+    }
+
+    private func failFullRecoveryWithoutVerifiedEngine(dayKey: String) -> DayRefreshGenerationResult {
+        dayRefreshStatus.lastRequestedDay = dayKey
+        dayRefreshStatus.lastRefreshedAt = Date()
+        dayRefreshStatus.lastError = "No verified engine available for full recovery"
+        statusMessage = "Daily note failed: No verified engine available for full recovery"
+        return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
+    }
+
+    private func unwrittenEvents(
+        events: [EventRecord],
+        existingStory: DailyStory,
+        environment: AppEnvironment
+    ) -> [EventRecord] {
+        let usedIDs = environment.composer.usedSourceEventIDs(in: existingStory)
+        return events.filter { !usedIDs.contains($0.id) }.sorted { $0.capturedAt < $1.capturedAt }
+    }
+
+    private func manualRefreshAttemptEngines() -> [DiaryEngine] {
+        let selectedEngine = activeRefreshEngine(using: environment)
+
+        var engines: [DiaryEngine] = []
+        if selectedEngine != .none {
+            engines.append(selectedEngine)
+        }
+
+        let greenFallbacks = Self.autoSelectionPriority.filter { engine in
+            engine != .none &&
+            engine != selectedEngine &&
+            engineStatuses[engine]?.state == .green
+        }
+        engines.append(contentsOf: greenFallbacks)
+        return Array(engines.prefix(5))
+    }
+
+    private func refreshAttempts(trigger: RefreshTrigger, using environment: AppEnvironment) -> [RefreshSummarizerAttempt] {
+        let selectedEngine = activeRefreshEngine(using: environment)
+        var attempts: [RefreshSummarizerAttempt] = []
+        var appendedEngines: Set<DiaryEngine> = []
+
+        if let summarizer = environment.summarizer {
+            let injectedEngine = selectedEngine == .none ? nil : selectedEngine
+            attempts.append(
+                RefreshSummarizerAttempt(
+                    engine: injectedEngine,
+                    summarizer: summarizer
+                )
+            )
+            if let injectedEngine {
+                appendedEngines.insert(injectedEngine)
+            }
+        }
+
+        if trigger == .automation {
+            if attempts.isEmpty,
+               selectedEngine != .none,
+               let summarizer = makeSummarizer(selectedEngine, summarizerConfig, processEnvironment) {
+                attempts.append(
+                    RefreshSummarizerAttempt(
+                        engine: selectedEngine,
+                        summarizer: summarizer
+                    )
+                )
+            }
+            return Array(attempts.prefix(1))
+        }
+
+        for engine in manualRefreshAttemptEngines() where !appendedEngines.contains(engine) {
+            guard let summarizer = makeSummarizer(engine, summarizerConfig, processEnvironment) else {
+                continue
+            }
+            attempts.append(
+                RefreshSummarizerAttempt(
+                    engine: engine,
+                    summarizer: summarizer
+                )
+            )
+            appendedEngines.insert(engine)
+        }
+
+        return Array(attempts.prefix(5))
+    }
+
+    private func activeRefreshEngine(using environment: AppEnvironment?) -> DiaryEngine {
+        if defaultEngine != .none {
+            return defaultEngine
+        }
+        return Self.inferEngine(from: environment?.summarizer) ?? .none
+    }
+
+    private func summaryInvocationContext(for trigger: RefreshTrigger) -> SummaryInvocationContext {
+        switch trigger {
+        case .manual:
+            return .manualRefresh
+        case .automation:
+            return .automationRefresh
+        }
+    }
+
+    private func timeoutSeconds(for trigger: RefreshTrigger) -> Int {
+        switch trigger {
+        case .manual:
+            return 600
+        case .automation:
+            return 300
+        }
+    }
+
+    private func appendAttemptLog(
+        engine: DiaryEngine?,
+        trigger: RefreshTrigger,
+        startedAt: Date,
+        finishedAt: Date,
+        outcome: String,
+        error: String?,
+        refreshLog: RefreshLogBuffer?
+    ) {
+        guard let refreshLog else { return }
+        refreshLog.record.attempts.append(
+            RefreshLogAttemptRecord(
+                engine: (engine ?? activeRefreshEngine(using: environment)).displayName,
+                timeoutSeconds: timeoutSeconds(for: trigger),
+                startedAt: startedAt,
+                finishedAt: finishedAt,
+                durationSeconds: finishedAt.timeIntervalSince(startedAt),
+                outcome: outcome,
+                failureKind: Self.failureKind(for: error)?.rawValue,
+                error: error
+            )
+        )
+    }
+
+    private func storyURL(for dayKey: String, environment: AppEnvironment) -> URL? {
+        environment.vaultURL.appending(path: "\(dayKey).story.json")
+    }
+
+    private func persistArtifacts(
+        dayKey: String,
+        story: DailyStory,
+        events: [EventRecord],
+        environment: AppEnvironment
+    ) throws -> URL {
+        let finalMarkdown = environment.composer.compose(dayKey: dayKey, events: events, story: story)
+        let fileURL = try environment.writeDailyNote(dayKey: dayKey, markdown: finalMarkdown)
+        _ = try environment.writeDailyStory(story)
+        return fileURL
+    }
+
+    private func finalizeSuccessfulRefresh(
+        dayKey: String,
+        story: DailyStory,
+        events: [EventRecord],
+        fileURL: URL,
+        detail: String
+    ) {
+        noteIndex[dayKey] = fileURL
+        availableDates = noteIndex.keys.sorted(by: >)
+        if selectedDate == dayKey || selectedDate == nil {
+            selectedDate = dayKey
+            selectedMarkdownURL = fileURL
+            selectedContentVersion += 1
+        }
+        updateSelectedPresentation(dayKey: dayKey, story: story, events: events)
+        dayRefreshStatus.lastRequestedDay = dayKey
+        dayRefreshStatus.lastRefreshedAt = Date()
+        dayRefreshStatus.lastError = nil
+        dayRefreshStatus.detail = detail
+    }
+
+    private func persistRefreshLog(_ refreshLog: RefreshLogRecord, environment: AppEnvironment) {
+        var persistedLog = refreshLog
+        let startedText = ISO8601DateFormatter().string(from: refreshLog.startedAt)
+            .replacingOccurrences(of: ":", with: "-")
+        let filename = "\(startedText)__\(refreshLog.dayKey)__\(refreshLog.trigger.rawValue)__\(refreshLog.mode).json"
+
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let provisionalData = try encoder.encode(persistedLog)
+            let fileURL = try environment.writeRefreshLog(filename: filename, data: provisionalData)
+            persistedLog.logPath = fileURL.path
+            let finalData = try encoder.encode(persistedLog)
+            _ = try environment.writeRefreshLog(filename: filename, data: finalData)
+        } catch {}
     }
 
     func generateStory(
@@ -1405,10 +2043,7 @@ extension AppState {
     }
 
     private func refreshActiveSummarizer() {
-        environment?.summarizer = summarizerConfig.makeSummarizer(
-            for: defaultEngine,
-            environment: processEnvironment
-        )
+        environment?.summarizer = makeSummarizer(defaultEngine, summarizerConfig, processEnvironment)
     }
 
     private func setAutoSelectionSuppressedByExplicitNone(_ isSuppressed: Bool) {
@@ -1476,12 +2111,26 @@ extension AppState {
         detail: String,
         verifiedAt: Date?
     ) {
-        engineStatuses[defaultEngine] = EngineRuntimeStatus(
+        recordEngineRuntime(
+            for: defaultEngine,
             state: state,
             detail: detail,
-            lastVerifiedAt: verifiedAt ?? engineStatuses[defaultEngine]?.lastVerifiedAt,
+            verifiedAt: verifiedAt
+        )
+    }
+
+    private func recordEngineRuntime(
+        for engine: DiaryEngine,
+        state: EngineIndicatorState,
+        detail: String,
+        verifiedAt: Date?
+    ) {
+        engineStatuses[engine] = EngineRuntimeStatus(
+            state: state,
+            detail: detail,
+            lastVerifiedAt: verifiedAt ?? engineStatuses[engine]?.lastVerifiedAt,
             configurationSignature: Self.configurationSignature(
-                for: defaultEngine,
+                for: engine,
                 config: summarizerConfig,
                 environment: processEnvironment
             )
@@ -1576,6 +2225,32 @@ extension AppState {
             return .gray
         }
         return status.lastError == nil ? .green : .yellow
+    }
+
+    private static func failureKind(for detail: String?) -> SummarizerRuntimeStatus.FailureKind? {
+        guard let detail = detail?.trimmingCharacters(in: .whitespacesAndNewlines), !detail.isEmpty else {
+            return nil
+        }
+
+        if detail.hasPrefix("Summarizer CLI timed out after") {
+            return .timedOut
+        }
+        if detail.contains("exited with status") {
+            return .nonZeroExit
+        }
+        if detail.contains("returned empty output") {
+            return .emptyOutput
+        }
+        if detail.hasPrefix("Structured repair failed:") {
+            return .repairFailed
+        }
+        if detail == "Story output was not valid structured JSON"
+            || detail.contains("not valid structured JSON")
+            || detail.contains("invalid structured JSON") {
+            return .invalidStructuredOutput
+        }
+
+        return nil
     }
 
     private static func inferEngine(from summarizer: SummaryGenerating?) -> DiaryEngine? {

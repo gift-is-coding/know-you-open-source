@@ -4,22 +4,22 @@ import XCTest
 
 private final class StubProcessRunner: ProcessRunning, @unchecked Sendable {
     enum Behavior {
-        case success(String)
+        case success(ProcessExecutionResult)
         case failure(Error)
     }
 
     private let behavior: Behavior
-    private(set) var invocations: [(executable: String, arguments: [String])] = []
+    private(set) var invocations: [(executable: String, arguments: [String], timeoutSeconds: Int)] = []
 
     init(behavior: Behavior) {
         self.behavior = behavior
     }
 
-    func run(executable: String, arguments: [String]) async throws -> String {
-        invocations.append((executable, arguments))
+    func run(executable: String, arguments: [String], timeoutSeconds: Int) async throws -> ProcessExecutionResult {
+        invocations.append((executable, arguments, timeoutSeconds))
         switch behavior {
-        case .success(let output):
-            return output
+        case .success(let result):
+            return result
         case .failure(let error):
             throw error
         }
@@ -91,13 +91,24 @@ final class EngineProbeTests: XCTestCase {
     }
 
     func testCLIProbeReturnsGrayWhenExecutableIsMissing() async {
-        let runner = StubProcessRunner(behavior: .success("unused"))
+        let runner = StubProcessRunner(behavior: .success(ProcessExecutionResult(stdout: "unused", stderr: "", terminationStatus: 0, duration: 0)))
         let probe = EngineProbe(session: StubURLProtocol.makeSession(), processRunner: runner)
         var config = SummarizerConfig.default
         config.defaultEngine = .claudeCLI
         config.claudeCLIPath = "/definitely/missing/claude"
+        let isolatedHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: isolatedHome, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: isolatedHome) }
 
-        let result = await probe.probe(engine: .claudeCLI, config: config, environment: [:])
+        let result = await probe.probe(
+            engine: .claudeCLI,
+            config: config,
+            environment: [
+                "PATH": "",
+                "HOME": isolatedHome.path,
+            ]
+        )
 
         XCTAssertEqual(result.state, .gray)
         XCTAssertEqual(runner.invocations.count, 0)
@@ -112,7 +123,7 @@ final class EngineProbeTests: XCTestCase {
         try "#!/bin/sh\nprintf '%s' '{\"sections\":[{\"id\":\"daily-journal\",\"paragraphs\":[{\"text\":\"A productive day.\",\"sourceEventIDs\":[\"A3F2C1D4-E5B6-7890-ABCD-EF1234567890\"]}]}]}'\n".write(to: executableURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
 
-        let runner = StubProcessRunner(behavior: .success(#"{"sections":[{"id":"daily-journal","paragraphs":[{"text":"A productive day.","sourceEventIDs":["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]}]}]}"#))
+        let runner = StubProcessRunner(behavior: .success(ProcessExecutionResult(stdout: #"{"ok":"OK"}"#, stderr: "", terminationStatus: 0, duration: 0)))
         let probe = EngineProbe(session: StubURLProtocol.makeSession(), processRunner: runner)
         var config = SummarizerConfig.default
         config.defaultEngine = .codexCLI
@@ -123,10 +134,11 @@ final class EngineProbeTests: XCTestCase {
         XCTAssertEqual(result.state, .green)
         XCTAssertEqual(runner.invocations.count, 1)
         XCTAssertEqual(runner.invocations.first?.executable, executableURL.path)
-        XCTAssertEqual(
-            runner.invocations.first?.arguments,
-            ["exec", "--skip-git-repo-check", "Reply with OK."]
-        )
+        let arguments = try XCTUnwrap(runner.invocations.first?.arguments)
+        XCTAssertEqual(arguments.prefix(3).map { $0 }, ["exec", "--skip-git-repo-check", "--ephemeral"])
+        XCTAssertTrue(arguments.contains("--output-schema"))
+        XCTAssertTrue(arguments.contains("-o"))
+        XCTAssertEqual(arguments.last, "Reply with OK.")
     }
 
     func testCLIProbeReturnsYellowWhenClaudeSmokeTestOutputIsMalformedEnvelope() async throws {
@@ -138,7 +150,7 @@ final class EngineProbeTests: XCTestCase {
         try "#!/bin/sh\nprintf '%s' '{\"structured_output\":{\"foo\":\"bar\"}}'\n".write(to: executableURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
 
-        let runner = StubProcessRunner(behavior: .success(#"{"structured_output":{"foo":"bar"}}"#))
+        let runner = StubProcessRunner(behavior: .success(ProcessExecutionResult(stdout: #"{"structured_output":{"foo":"bar"}}"#, stderr: "", terminationStatus: 0, duration: 0)))
         let probe = EngineProbe(session: StubURLProtocol.makeSession(), processRunner: runner)
         var config = SummarizerConfig.default
         config.defaultEngine = .claudeCLI
@@ -166,7 +178,7 @@ final class EngineProbeTests: XCTestCase {
         try "#!/bin/sh\nprintf '%s' '{\"sections\":[{\"id\":\"daily-journal\",\"paragraphs\":[{\"text\":\"A productive day.\",\"sourceEventIDs\":[\"A3F2C1D4-E5B6-7890-ABCD-EF1234567890\"]}]}]}'\n".write(to: executableURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
 
-        let runner = StubProcessRunner(behavior: .success(#"{"sections":[{"id":"daily-journal","paragraphs":[{"text":"A productive day.","sourceEventIDs":["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]}]}]}"#))
+        let runner = StubProcessRunner(behavior: .success(ProcessExecutionResult(stdout: #"{"sections":[{"id":"daily-journal","paragraphs":[{"text":"A productive day.","sourceEventIDs":["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]}]}]}"#, stderr: "", terminationStatus: 0, duration: 0)))
         let probe = EngineProbe(session: StubURLProtocol.makeSession(), processRunner: runner)
         var config = SummarizerConfig.default
         config.defaultEngine = .claudeCLI
@@ -182,16 +194,16 @@ final class EngineProbeTests: XCTestCase {
         )
     }
 
-    func testCLIProbeReturnsGreenWhenTextSmokeTestOutputIsRawStoryJSON() async throws {
+    func testCLIProbeReturnsGreenWhenTextSmokeTestOutputIsAcknowledged() async throws {
         let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
 
         let executableURL = temporaryDirectory.appendingPathComponent("openclaw")
-        try "#!/bin/sh\nprintf '%s' '{\"sections\":[{\"id\":\"daily-journal\",\"paragraphs\":[{\"text\":\"A productive day.\",\"sourceEventIDs\":[\"A3F2C1D4-E5B6-7890-ABCD-EF1234567890\"]}]}]}'\n".write(to: executableURL, atomically: true, encoding: .utf8)
+        try "#!/bin/sh\nprintf '%s' '{\"payloads\":[{\"text\":\"OK\",\"mediaUrl\":null}]}'\n".write(to: executableURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
 
-        let runner = StubProcessRunner(behavior: .success(#"{"sections":[{"id":"daily-journal","paragraphs":[{"text":"A productive day.","sourceEventIDs":["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]}]}]}"#))
+        let runner = StubProcessRunner(behavior: .success(ProcessExecutionResult(stdout: #"{"payloads":[{"text":"OK","mediaUrl":null}]}"#, stderr: "", terminationStatus: 0, duration: 0)))
         let probe = EngineProbe(session: StubURLProtocol.makeSession(), processRunner: runner)
         var config = SummarizerConfig.default
         config.defaultEngine = .openclawCLI
@@ -216,7 +228,7 @@ final class EngineProbeTests: XCTestCase {
         try "#!/bin/sh\nprintf 'Welcome to Codex.'\n".write(to: executableURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
 
-        let runner = StubProcessRunner(behavior: .success("Welcome to Codex."))
+        let runner = StubProcessRunner(behavior: .success(ProcessExecutionResult(stdout: "Welcome to Codex.", stderr: "", terminationStatus: 0, duration: 0)))
         let probe = EngineProbe(session: StubURLProtocol.makeSession(), processRunner: runner)
         var config = SummarizerConfig.default
         config.defaultEngine = .codexCLI
@@ -226,14 +238,15 @@ final class EngineProbeTests: XCTestCase {
 
         XCTAssertEqual(result.state, .yellow)
         XCTAssertEqual(runner.invocations.count, 1)
-        XCTAssertEqual(
-            runner.invocations.first?.arguments,
-            ["exec", "--skip-git-repo-check", "Reply with OK."]
-        )
+        let arguments = try XCTUnwrap(runner.invocations.first?.arguments)
+        XCTAssertEqual(arguments.prefix(3).map { $0 }, ["exec", "--skip-git-repo-check", "--ephemeral"])
+        XCTAssertTrue(arguments.contains("--output-schema"))
+        XCTAssertTrue(arguments.contains("-o"))
+        XCTAssertEqual(arguments.last, "Reply with OK.")
     }
 
     func testAPIProbeReturnsGrayWhenConfigurationIsIncomplete() async {
-        let runner = StubProcessRunner(behavior: .success("unused"))
+        let runner = StubProcessRunner(behavior: .success(ProcessExecutionResult(stdout: "unused", stderr: "", terminationStatus: 0, duration: 0)))
         let probe = EngineProbe(session: StubURLProtocol.makeSession(), processRunner: runner)
         var config = SummarizerConfig.default
         config.defaultEngine = .openAI
@@ -249,7 +262,12 @@ final class EngineProbeTests: XCTestCase {
 
     func testAPIProbeReturnsYellowWhenHTTPRequestFails() async {
         StubURLProtocol.behavior = .failure(URLError(.timedOut))
-        let probe = EngineProbe(session: StubURLProtocol.makeSession(), processRunner: StubProcessRunner(behavior: .success("unused")))
+        let probe = EngineProbe(
+            session: StubURLProtocol.makeSession(),
+            processRunner: StubProcessRunner(
+                behavior: .success(ProcessExecutionResult(stdout: "unused", stderr: "", terminationStatus: 0, duration: 0))
+            )
+        )
         var config = SummarizerConfig.default
         config.defaultEngine = .openAI
         config.apiBaseURL = "https://example.com/v1/responses"
@@ -264,7 +282,12 @@ final class EngineProbeTests: XCTestCase {
 
     func testAPIProbeReturnsGreenWhenResponseContainsAcknowledgementText() async {
         StubURLProtocol.behavior = .success(statusCode: 200, body: Data(#"{"output_text":"Okay"}"#.utf8))
-        let probe = EngineProbe(session: StubURLProtocol.makeSession(), processRunner: StubProcessRunner(behavior: .success("unused")))
+        let probe = EngineProbe(
+            session: StubURLProtocol.makeSession(),
+            processRunner: StubProcessRunner(
+                behavior: .success(ProcessExecutionResult(stdout: "unused", stderr: "", terminationStatus: 0, duration: 0))
+            )
+        )
         var config = SummarizerConfig.default
         config.defaultEngine = .openAI
         config.apiBaseURL = "https://example.com/v1/responses"
@@ -279,7 +302,12 @@ final class EngineProbeTests: XCTestCase {
 
     func testAPIProbeReturnsYellowWhenResponseContainsUnrelatedText() async {
         StubURLProtocol.behavior = .success(statusCode: 200, body: Data(#"{"output_text":"I cannot help with that."}"#.utf8))
-        let probe = EngineProbe(session: StubURLProtocol.makeSession(), processRunner: StubProcessRunner(behavior: .success("unused")))
+        let probe = EngineProbe(
+            session: StubURLProtocol.makeSession(),
+            processRunner: StubProcessRunner(
+                behavior: .success(ProcessExecutionResult(stdout: "unused", stderr: "", terminationStatus: 0, duration: 0))
+            )
+        )
         var config = SummarizerConfig.default
         config.defaultEngine = .openAI
         config.apiBaseURL = "https://example.com/v1/responses"

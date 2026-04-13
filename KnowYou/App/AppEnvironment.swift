@@ -12,6 +12,9 @@ final class AppEnvironment {
     let composer: DailyMarkdownComposer
     var summarizer: SummaryGenerating?
     let dailyAutomationPlanner: DailyAutomationPlanner
+    var refreshLogsDirectoryURL: URL {
+        databaseURL.deletingLastPathComponent().appending(path: "RefreshLogs", directoryHint: .isDirectory)
+    }
 
     convenience init(
         databasePath: String,
@@ -110,6 +113,13 @@ final class AppEnvironment {
                 .map { ($0.deletingPathExtension().lastPathComponent, $0) },
             uniquingKeysWith: { _, new in new }
         )
+    }
+
+    func writeRefreshLog(filename: String, data: Data) throws -> URL {
+        try FileManager.default.createDirectory(at: refreshLogsDirectoryURL, withIntermediateDirectories: true)
+        let fileURL = refreshLogsDirectoryURL.appending(path: filename)
+        try data.write(to: fileURL, options: .atomic)
+        return fileURL
     }
 }
 

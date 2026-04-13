@@ -182,7 +182,17 @@ final class SummarizerConfigTests: XCTestCase {
         var config = SummarizerConfig.load(from: defaults)
         config.type = .claudeCLI
         config.claudeCLIPath = "/nonexistent/path/claude"
-        XCTAssertNil(config.makeSummarizer())
+        let isolatedHomeURL = temporaryDirectoryURL.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: isolatedHomeURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: isolatedHomeURL) }
+        XCTAssertNil(
+            config.makeSummarizer(
+                environment: [
+                    "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+                    "HOME": isolatedHomeURL.path,
+                ]
+            )
+        )
     }
 
     func testMakeSummarizerFallsBackToExecutableDiscoveredOnPATH() throws {
@@ -198,5 +208,39 @@ final class SummarizerConfigTests: XCTestCase {
         let summarizer = try XCTUnwrap(config.makeSummarizer(environment: ["PATH": temporaryDirectoryURL.path]) as? CLISummarizer)
 
         XCTAssertEqual(summarizer.executablePath, executableURL.path)
+    }
+
+    func testMakeSummarizerFallsBackToNVMExecutableWhenPATHIsRestricted() throws {
+        let homeURL = temporaryDirectoryURL.appendingPathComponent("home", isDirectory: true)
+        let nvmBinURL = homeURL
+            .appendingPathComponent(".nvm", isDirectory: true)
+            .appendingPathComponent("versions", isDirectory: true)
+            .appendingPathComponent("node", isDirectory: true)
+            .appendingPathComponent("v99.0.0", isDirectory: true)
+            .appendingPathComponent("bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: nvmBinURL, withIntermediateDirectories: true)
+
+        let executableURL = nvmBinURL.appendingPathComponent("codex")
+        let script = "#!/bin/sh\nprintf '{}'\n"
+        try script.write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+
+        var config = SummarizerConfig.load(from: defaults)
+        config.type = .codexCLI
+        config.codexCLIPath = "/usr/local/bin/codex"
+
+        let summarizer = try XCTUnwrap(
+            config.makeSummarizer(
+                environment: [
+                    "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+                    "HOME": homeURL.path
+                ]
+            ) as? CLISummarizer
+        )
+
+        XCTAssertEqual(
+            URL(fileURLWithPath: summarizer.executablePath).standardizedFileURL.path,
+            executableURL.standardizedFileURL.path
+        )
     }
 }

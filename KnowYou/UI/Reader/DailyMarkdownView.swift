@@ -479,7 +479,7 @@ enum SourceBrandResolver {
         ),
         brand(
             assetName: "SourceLogoChrome",
-            aliases: ["Google Chrome", "Chrome", "Chrome Browser", "谷歌浏览器"]
+            aliases: ["Google Chrome", "Chrome", "Chrome Browser", "谷歌浏览器", "com.google.Chrome"]
         ),
         brand(
             assetName: "SourceLogoSafari",
@@ -653,7 +653,7 @@ enum SourceBrandResolver {
         ),
         brand(
             assetName: "SourceLogoExcel",
-            aliases: ["Microsoft Excel", "Excel"]
+            aliases: ["Microsoft Excel", "Excel", "com.microsoft.Excel"]
         ),
         brand(
             assetName: "SourceLogoPowerPoint",
@@ -675,6 +675,10 @@ enum SourceBrandResolver {
             assetName: "SourceLogoGhostty",
             aliases: ["Ghostty"],
             identity: .ghostty
+        ),
+        brand(
+            assetName: "SourceLogoAntigravity",
+            aliases: ["Antigravity", "com.google.antigravity"]
         ),
         brand(
             assetName: "SourceLogoTerminal",

@@ -84,6 +84,7 @@ final class DailyMarkdownViewTests: XCTestCase {
     func testSourceBrandResolvesChromeAndFinderAssets() {
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "Google Chrome").assetName, "SourceLogoChrome")
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "Chrome").assetName, "SourceLogoChrome")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "com.google.Chrome").assetName, "SourceLogoChrome")
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "Safari").assetName, "SourceLogoSafari")
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "Finder").assetName, "SourceLogoFinder")
     }
@@ -91,12 +92,18 @@ final class DailyMarkdownViewTests: XCTestCase {
     func testSourceBrandResolvesOfficeAndProgrammingAssets() {
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "Microsoft Word").assetName, "SourceLogoWord")
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "Excel").assetName, "SourceLogoExcel")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "com.microsoft.Excel").assetName, "SourceLogoExcel")
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "PowerPoint").assetName, "SourceLogoPowerPoint")
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "Outlook").assetName, "SourceLogoOutlook")
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "Visual Studio Code").assetName, "SourceLogoVSCode")
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "iTerm2").assetName, "SourceLogoITerm")
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "Xcode").assetName, "SourceLogoXcode")
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "Docker Desktop").assetName, "SourceLogoDocker")
+    }
+
+    func testSourceBrandResolvesAntigravityAssets() {
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "Antigravity").assetName, "SourceLogoAntigravity")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "com.google.antigravity").assetName, "SourceLogoAntigravity")
     }
 
     func testSourceBrandResolvesGlobalNotificationAppAssets() {

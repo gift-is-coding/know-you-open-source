@@ -130,6 +130,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 
 - 每天都必须能生成 `DailyStory`
 - 即使没有可用 summarizer，系统也必须通过 fallback 逻辑生成可阅读故事
+- 如果某天已经存在 `generationMode == model` 的成功 `DailyStory`，后续刷新若只得到 fallback 结果，则不得用 fallback 覆写现有 `.story.json` 或 `.md`
 - story 中每个段落都必须保留来源事件 ID 列表
 - 系统必须为同一天生成 Markdown 文件
 - Markdown 必须包含 story 内容和 source notes

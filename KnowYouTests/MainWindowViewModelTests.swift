@@ -391,7 +391,7 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertTrue(appState.automationStatusText.contains("2026-04-07"))
     }
 
-    func testGenerateDailyNotePersistsMarkdownWhenSummarizerFails() async throws {
+    func testGenerateDailyNotePersistsFallbackWhenNoExistingModelStory() async throws {
         let writer = try DatabaseWriter.inMemory()
         let capturedAt = Date(timeIntervalSince1970: 1_775_000_000)
         try writer.insert(
@@ -433,6 +433,54 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.selectedStoryParagraphID, appState.selectedStory?.sections.first?.paragraphs.first?.id)
         XCTAssertFalse(appState.selectedStorySourceEvents.isEmpty)
         XCTAssertEqual(try writer.fetchRuns(runType: "daily-note").last?.status, "succeeded")
+    }
+
+    func testGenerateDailyNoteDoesNotOverwriteExistingModelStoryWhenSummarizerFails() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let dayKey = "2026-04-07"
+        let capturedAt = Date(timeIntervalSince1970: 1_775_000_000)
+        let eventID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: eventID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: capturedAt,
+                dayKey: dayKey,
+                text: "Ship feature",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "note-hash"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: ThrowingSummarizer(),
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let appState = AppState(environment: environment)
+        let existingStory = makeModelStory(dayKey: dayKey, eventID: eventID)
+        let existingMarkdown = "# Existing model story\nStill good."
+        _ = try environment.writeDailyNote(dayKey: dayKey, markdown: existingMarkdown)
+        _ = try environment.writeDailyStory(existingStory)
+
+        await appState.generateDailyNote(for: dayKey)
+
+        let savedURL = vaultURL.appending(path: "\(dayKey).md")
+        let storyURL = vaultURL.appending(path: "\(dayKey).story.json")
+        XCTAssertEqual(try String(contentsOf: savedURL, encoding: .utf8), existingMarkdown)
+        XCTAssertEqual(try environment.loadDailyStory(dayKey: dayKey), existingStory)
+        XCTAssertEqual(appState.selectedStory?.provenance?.generationMode, .model)
+        XCTAssertEqual(appState.statusMessage, "Daily note failed: Preserved existing model story after fallback")
+        XCTAssertEqual(try writer.fetchRuns(runType: "daily-note").last?.status, "failed")
+        XCTAssertEqual(try JSONDecoder().decode(DailyStory.self, from: Data(contentsOf: storyURL)), existingStory)
     }
 
     func testRunAutomationImportsNotificationsFromOldestPendingDay() async throws {
@@ -2960,6 +3008,34 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.selectedStoryParagraphID, paragraphIDs[1])
         XCTAssertEqual(appState.selectedStorySourceEvents.count, 1)
         XCTAssertEqual(appState.selectedStorySourceEvents.first?.sourceType, .notification)
+    }
+
+    private func makeModelStory(dayKey: String, eventID: UUID) -> DailyStory {
+        DailyStory(
+            dayKey: dayKey,
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_100),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: "# 你今天做得很棒\n旧的成功内容",
+                            sourceEventIDs: [eventID]
+                        )
+                    ]
+                )
+            ],
+            provenance: StoryProvenance(
+                generationMode: .model,
+                engineKind: DiaryEngine.codexCLI.rawValue,
+                engineLabel: DiaryEngine.codexCLI.displayName,
+                model: nil,
+                pipelineVersion: "diary-story-v1",
+                curatedEventCount: 1
+            )
+        )
     }
 
     private func makeEngineEnvironment() throws -> AppEnvironment {

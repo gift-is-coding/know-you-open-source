@@ -703,6 +703,7 @@ final class AppState {
         do {
             onStageChange?(.loadingEvents, nil)
             let events = try environment.databaseWriter.fetchEvents(dayKey: dayKey)
+            let existingStory = try environment.loadDailyStory(dayKey: dayKey)
             onStageChange?(.preparingStory, "Preparing journal from \(events.count) event(s)...")
             let story = await generateStory(
                 dayKey: dayKey,
@@ -712,6 +713,24 @@ final class AppState {
                     onStageChange?(.generatingStory, detail)
                 }
             )
+
+            if shouldPreserveExistingModelStory(existingStory: existingStory, newStory: story) {
+                if let runID {
+                    try environment.databaseWriter.finishRun(id: runID, status: "failed")
+                }
+                noteIndex = try environment.loadDailyNotes()
+                availableDates = noteIndex.keys.sorted(by: >)
+                if let existingStory {
+                    updateSelectedPresentation(dayKey: dayKey, story: existingStory, events: events)
+                }
+                dayRefreshStatus.lastRequestedDay = dayKey
+                dayRefreshStatus.lastRefreshedAt = Date()
+                dayRefreshStatus.lastError = "Preserved existing model story after fallback"
+                dayRefreshStatus.detail = nil
+                statusMessage = "Daily note failed: Preserved existing model story after fallback"
+                return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
+            }
+
             onStageChange?(.writingFiles, "Writing \(dayKey) artifacts...")
             let finalMarkdown = environment.composer.compose(dayKey: dayKey, events: events, story: story)
             let fileURL = try environment.writeDailyNote(dayKey: dayKey, markdown: finalMarkdown)
@@ -757,6 +776,13 @@ final class AppState {
             statusMessage = "Daily note failed: \(error.localizedDescription)"
             return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
         }
+    }
+
+    private func shouldPreserveExistingModelStory(existingStory: DailyStory?, newStory: DailyStory) -> Bool {
+        guard let existingStory, existingStory.provenance?.generationMode == .model else {
+            return false
+        }
+        return newStory.provenance?.generationMode != .model
     }
 
     func runAutomation(now: Date = Date()) async {

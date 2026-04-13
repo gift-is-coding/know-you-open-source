@@ -240,6 +240,8 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 因此 summarizer 是增强路径，不是首次生成内容的阻塞条件。
 
+不过当前实现增加了一条保护规则：如果某天已经存在 `generationMode == model` 的成功 story，而本次刷新只得到了 fallback，那么刷新会以失败结束并保留原来的 `.story.json` / `.md`，不会用 fallback 降级覆写成功内容。
+
 如果用户在主窗口右上角的 `Edit Prompt` sheet 中保存了全局 override，步骤 3 发给 summarizer 的 prompt 会改用这个 override；如果用户恢复默认值，则回到 `DailyMarkdownComposer` 的 canonical 默认 prompt。这个设置是“面向未来生成”的配置，不会触发对旧日期内容的被动迁移。
 
 如果 summarizer 成功返回结构化 JSON，`DailyStoryParagraph.text` 当前允许承载 Markdown 富文本，而不是只存纯 prose。现在的 prompt 会要求模型把当天内容组织成单个 `daily-journal` section 下的 Markdown 日记骨架，包含：

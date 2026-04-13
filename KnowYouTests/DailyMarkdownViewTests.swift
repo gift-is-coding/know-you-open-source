@@ -305,7 +305,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(tasks.map(\.content.plainText), ["跟进会议", "完成文档"])
     }
 
-    func testMarkdownRendererKeepsDetailsParagraphAsSingleMarkdownBlockSequence() {
+    func testMarkdownRendererPreservesLegacyDetailsMarkdownInsideOneParagraph() {
         let markdown = """
         # 详情
 

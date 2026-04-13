@@ -245,6 +245,9 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 - 增量合并只允许追加 `Summary`、`Details`、`To-do`
 - `Encouragement` 在增量路径中保持冻结
 - 任何失败都不会覆盖现有 `.story.json` 或 `.md`
+- 新生成 story 的 `Details` 约定为“每个 workstream 一个 paragraph”，避免把多个 `##` 小节塞进同一个 `DailyStoryParagraph`
+- 旧 `.story.json` 如果仍是单段 `# Details` / `# 详情` 内含多个 `##` 小节，读取时会先规范化拆分，再以 best-effort 方式回写为新格式
+- 旧格式拆分时会优先按 source app 名称或关键词重收窄 `sourceEventIDs`；匹配不到时保留原始 source 列表，避免丢失证据
 
 `generateStory(...)` 仍保留为底层 fallback/story 生成辅助能力，但不再承担主手动刷新入口语义。
 

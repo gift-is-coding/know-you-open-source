@@ -3687,6 +3687,321 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.selectedStorySourceEvents.first?.sourceType, .notification)
     }
 
+    func testLoadDayPresentationSplitsLegacyDetailsIntoSelectableParagraphs() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let dayKey = "2026-04-10"
+        let figmaID = UUID()
+        let notionID = UUID()
+        let terminalID = UUID()
+        let baseDate = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 10, hour: 9).date!
+
+        try writer.insert(
+            EventRecord(
+                id: figmaID,
+                sourceType: .clipboard,
+                sourceApp: "Figma",
+                capturedAt: baseDate,
+                dayKey: dayKey,
+                text: "Adjusted onboarding preview spacing.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "load-details-figma"
+            )
+        )
+        try writer.insert(
+            EventRecord(
+                id: notionID,
+                sourceType: .clipboard,
+                sourceApp: "Notion",
+                capturedAt: baseDate.addingTimeInterval(300),
+                dayKey: dayKey,
+                text: "Compressed the demo into a cleaner narrative.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "load-details-notion"
+            )
+        )
+        try writer.insert(
+            EventRecord(
+                id: terminalID,
+                sourceType: .clipboard,
+                sourceApp: "Terminal",
+                capturedAt: baseDate.addingTimeInterval(600),
+                dayKey: dayKey,
+                text: "Ran the final verification build.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "load-details-terminal"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        try writeStoryDay(
+            dayKey: dayKey,
+            markdown: """
+            # 2026-04-10
+
+            # Details
+
+            ## Demo polish
+            In Figma I refined the onboarding preview.
+
+            ## Live narrative
+            Notion helped keep the walkthrough honest.
+
+            ## Recording readiness
+            Terminal gave me the final verification pass.
+            """,
+            story: DailyStory(
+                dayKey: dayKey,
+                generatedAt: Date(timeIntervalSince1970: 1_775_000_500),
+                sections: [
+                    DailyStorySection(
+                        id: "daily-journal",
+                        title: "",
+                        paragraphs: [
+                            DailyStoryParagraph(
+                                id: "daily-journal-2",
+                                text: """
+                                # Details
+
+                                ## Demo polish
+                                In Figma I refined the onboarding preview.
+
+                                ## Live narrative
+                                Notion helped keep the walkthrough honest.
+
+                                ## Recording readiness
+                                Terminal gave me the final verification pass.
+                                """,
+                                sourceEventIDs: [figmaID, notionID, terminalID]
+                            )
+                        ]
+                    )
+                ]
+            ),
+            environment: environment
+        )
+
+        let appState = AppState(environment: environment)
+        appState.loadDayPresentation(for: dayKey)
+
+        let paragraphs = try XCTUnwrap(appState.selectedStory?.sections.first?.paragraphs)
+        XCTAssertEqual(paragraphs.map(\.id), [
+            "daily-journal-2-detail-0",
+            "daily-journal-2-detail-1",
+            "daily-journal-2-detail-2",
+        ])
+        XCTAssertEqual(appState.selectedStoryParagraphID, "daily-journal-2-detail-0")
+        XCTAssertEqual(appState.selectedStorySourceEvents.map(\.id), [figmaID])
+
+        appState.selectStoryParagraph("daily-journal-2-detail-1")
+
+        XCTAssertEqual(appState.selectedStorySourceEvents.map(\.id), [notionID])
+
+        let migratedStory = try XCTUnwrap(environment.loadDailyStory(dayKey: dayKey))
+        let migratedParagraphs = try XCTUnwrap(migratedStory.sections.first?.paragraphs)
+        XCTAssertEqual(migratedParagraphs.map(\.id), [
+            "daily-journal-2-detail-0",
+            "daily-journal-2-detail-1",
+            "daily-journal-2-detail-2",
+        ])
+
+        let migratedMarkdown = try String(contentsOf: vaultURL.appending(path: "\(dayKey).md"), encoding: .utf8)
+        XCTAssertEqual(migratedMarkdown.components(separatedBy: "# Details").count - 1, 1)
+        XCTAssertTrue(migratedMarkdown.contains("## Demo polish"))
+        XCTAssertTrue(migratedMarkdown.contains("## Live narrative"))
+        XCTAssertTrue(migratedMarkdown.contains("## Recording readiness"))
+    }
+
+    func testAppStateInitializationMigratesLegacyStoriesAcrossVault() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let newerDayKey = "2026-04-10"
+        let olderDayKey = "2026-04-09"
+        let newerFigmaID = UUID()
+        let newerTerminalID = UUID()
+        let olderNotionID = UUID()
+        let olderXcodeID = UUID()
+        let baseDate = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 10, hour: 9).date!
+
+        try writer.insert(
+            EventRecord(
+                id: newerFigmaID,
+                sourceType: .clipboard,
+                sourceApp: "Figma",
+                capturedAt: baseDate,
+                dayKey: newerDayKey,
+                text: "Adjusted the preview spacing.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "bulk-migrate-newer-figma"
+            )
+        )
+        try writer.insert(
+            EventRecord(
+                id: newerTerminalID,
+                sourceType: .clipboard,
+                sourceApp: "Terminal",
+                capturedAt: baseDate.addingTimeInterval(300),
+                dayKey: newerDayKey,
+                text: "Ran the verification build.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "bulk-migrate-newer-terminal"
+            )
+        )
+        try writer.insert(
+            EventRecord(
+                id: olderNotionID,
+                sourceType: .clipboard,
+                sourceApp: "Notion",
+                capturedAt: baseDate.addingTimeInterval(-86_400),
+                dayKey: olderDayKey,
+                text: "Condensed the walkthrough script.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "bulk-migrate-older-notion"
+            )
+        )
+        try writer.insert(
+            EventRecord(
+                id: olderXcodeID,
+                sourceType: .clipboard,
+                sourceApp: "Xcode",
+                capturedAt: baseDate.addingTimeInterval(-86_100),
+                dayKey: olderDayKey,
+                text: "Checked the macOS build warnings.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "bulk-migrate-older-xcode"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+
+        try writeStoryDay(
+            dayKey: newerDayKey,
+            markdown: """
+            # 2026-04-10
+
+            # Details
+
+            ## Demo polish
+            Figma tightened the preview.
+
+            ## Verification
+            Terminal confirmed the build.
+            """,
+            story: DailyStory(
+                dayKey: newerDayKey,
+                generatedAt: Date(timeIntervalSince1970: 1_775_000_500),
+                sections: [
+                    DailyStorySection(
+                        id: "daily-journal",
+                        title: "",
+                        paragraphs: [
+                            DailyStoryParagraph(
+                                id: "daily-journal-2",
+                                text: """
+                                # Details
+
+                                ## Demo polish
+                                Figma tightened the preview.
+
+                                ## Verification
+                                Terminal confirmed the build.
+                                """,
+                                sourceEventIDs: [newerFigmaID, newerTerminalID]
+                            )
+                        ]
+                    )
+                ]
+            ),
+            environment: environment
+        )
+        try writeStoryDay(
+            dayKey: olderDayKey,
+            markdown: """
+            # 2026-04-09
+
+            # Details
+
+            ## Narrative
+            Notion reshaped the walkthrough.
+
+            ## Build review
+            Xcode exposed the warnings.
+            """,
+            story: DailyStory(
+                dayKey: olderDayKey,
+                generatedAt: Date(timeIntervalSince1970: 1_775_000_400),
+                sections: [
+                    DailyStorySection(
+                        id: "daily-journal",
+                        title: "",
+                        paragraphs: [
+                            DailyStoryParagraph(
+                                id: "daily-journal-2",
+                                text: """
+                                # Details
+
+                                ## Narrative
+                                Notion reshaped the walkthrough.
+
+                                ## Build review
+                                Xcode exposed the warnings.
+                                """,
+                                sourceEventIDs: [olderNotionID, olderXcodeID]
+                            )
+                        ]
+                    )
+                ]
+            ),
+            environment: environment
+        )
+
+        let appState = AppState(environment: environment)
+
+        let newerStory = try XCTUnwrap(environment.loadDailyStory(dayKey: newerDayKey))
+        let olderStory = try XCTUnwrap(environment.loadDailyStory(dayKey: olderDayKey))
+        XCTAssertEqual(newerStory.sections.first?.paragraphs.map(\.id), [
+            "daily-journal-2-detail-0",
+            "daily-journal-2-detail-1",
+        ])
+        XCTAssertEqual(olderStory.sections.first?.paragraphs.map(\.id), [
+            "daily-journal-2-detail-0",
+            "daily-journal-2-detail-1",
+        ])
+
+        let olderMarkdown = try String(contentsOf: vaultURL.appending(path: "\(olderDayKey).md"), encoding: .utf8)
+        XCTAssertEqual(olderMarkdown.components(separatedBy: "# Details").count - 1, 1)
+        XCTAssertTrue(olderMarkdown.contains("## Narrative"))
+        XCTAssertTrue(olderMarkdown.contains("## Build review"))
+
+        XCTAssertEqual(appState.availableDates, [newerDayKey, olderDayKey])
+        XCTAssertEqual(appState.selectedDate, newerDayKey)
+    }
+
     private func makeModelStory(dayKey: String, eventID: UUID) -> DailyStory {
         DailyStory(
             dayKey: dayKey,

@@ -155,7 +155,7 @@ struct CLISummarizer: SummaryGenerating {
     private static let manualRepairTimeoutSeconds = 120
     private static let automationRepairTimeoutSeconds = 60
     private static let dailyStorySchema = """
-    {"type":"object","additionalProperties":false,"required":["sections"],"properties":{"sections":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","paragraphs"],"properties":{"id":{"type":"string","const":"daily-journal"},"paragraphs":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","additionalProperties":false,"required":["text","sourceEventIDs"],"properties":{"text":{"type":"string"},"sourceEventIDs":{"type":"array","minItems":1,"items":{"type":"string","pattern":"^[0-9A-Fa-f-]{36}$"}}}}}}}}}}
+    {"type":"object","additionalProperties":false,"required":["sections"],"properties":{"sections":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","paragraphs"],"properties":{"id":{"type":"string","const":"daily-journal"},"paragraphs":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"required":["text","sourceEventIDs"],"properties":{"text":{"type":"string"},"sourceEventIDs":{"type":"array","minItems":1,"items":{"type":"string","pattern":"^[0-9A-Fa-f-]{36}$"}}}}}}}}}}
     """
     private static let acknowledgementSchema = """
     {"type":"object","additionalProperties":false,"required":["ok"],"properties":{"ok":{"type":"string","const":"OK"}}}
@@ -598,8 +598,7 @@ struct CLISummarizer: SummaryGenerating {
                   let id = section["id"] as? String,
                   id == "daily-journal",
                   let paragraphs = section["paragraphs"] as? [Any],
-                  !paragraphs.isEmpty,
-                  paragraphs.count <= 4
+                  !paragraphs.isEmpty
             else {
                 return false
             }

@@ -585,6 +585,28 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertFalse(prompt.contains("Do not rewrite or re-summarize the whole day.") == false)
     }
 
+    func testStoryPromptRequestsReasonableDetailsParagraphSplits() {
+        let composer = DailyMarkdownComposer()
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: "2026-04-10",
+                text: "Refined the prompt to split details into reasonable workstreams",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "prompt-details-split"
+            )
+        ]
+
+        let prompt = composer.storyPrompt(dayKey: "2026-04-10", events: events)
+
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("each details workstream should be its own paragraph"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("do not fragment the day into tiny paragraphs"), prompt)
+    }
+
     func testMergeIncrementalUpdatePreservesEncouragementAndAppendsSections() {
         let composer = DailyMarkdownComposer()
         let oldID = UUID()
@@ -681,6 +703,215 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertEqual(Set(paragraphs[2].sourceEventIDs), [oldID, newDetailID])
         XCTAssertEqual(Set(paragraphs[3].sourceEventIDs), [oldID, newTodoID])
         XCTAssertEqual(merged.provenance?.engineLabel, "Claude CLI")
+    }
+
+    func testNormalizeStorySplitsLegacyDetailsParagraphAndNarrowsSourcesByAppMatch() {
+        let composer = DailyMarkdownComposer()
+        let figmaID = UUID()
+        let notionID = UUID()
+        let terminalID = UUID()
+        let dayKey = "2026-04-10"
+        let events = [
+            EventRecord(
+                id: figmaID,
+                sourceType: .clipboard,
+                sourceApp: "Figma",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: dayKey,
+                text: "Adjusted onboarding preview spacing.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "legacy-details-figma"
+            ),
+            EventRecord(
+                id: notionID,
+                sourceType: .clipboard,
+                sourceApp: "Notion",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_100),
+                dayKey: dayKey,
+                text: "Compressed the demo into a cleaner narrative.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "legacy-details-notion"
+            ),
+            EventRecord(
+                id: terminalID,
+                sourceType: .clipboard,
+                sourceApp: "Terminal",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_200),
+                dayKey: dayKey,
+                text: "Ran the final verification build.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "legacy-details-terminal"
+            ),
+        ]
+        let story = DailyStory(
+            dayKey: dayKey,
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_500),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-2",
+                            text: """
+                            # Details
+
+                            ## Demo polish
+                            In Figma I refined the onboarding preview.
+
+                            ## Live narrative
+                            Notion helped keep the walkthrough honest.
+
+                            ## Recording readiness
+                            Terminal gave me the final verification pass.
+                            """,
+                            sourceEventIDs: [figmaID, notionID, terminalID]
+                        )
+                    ]
+                )
+            ]
+        )
+
+        let normalized = composer.normalizeStory(story, events: events)
+        let paragraphs = normalized.sections.flatMap(\.paragraphs)
+
+        XCTAssertEqual(paragraphs.count, 3)
+        XCTAssertEqual(paragraphs[0].id, "daily-journal-2-detail-0")
+        XCTAssertTrue(paragraphs[0].text.contains("# Details"))
+        XCTAssertEqual(paragraphs[0].sourceEventIDs, [figmaID])
+        XCTAssertFalse(paragraphs[1].text.contains("# Details"))
+        XCTAssertTrue(paragraphs[1].text.contains("## Live narrative"))
+        XCTAssertEqual(paragraphs[1].sourceEventIDs, [notionID])
+        XCTAssertEqual(paragraphs[2].sourceEventIDs, [terminalID])
+    }
+
+    func testNormalizeStoryKeepsOriginalSourcesWhenLegacyDetailsSubsectionHasNoMatch() {
+        let composer = DailyMarkdownComposer()
+        let firstID = UUID()
+        let secondID = UUID()
+        let dayKey = "2026-04-10"
+        let events = [
+            EventRecord(
+                id: firstID,
+                sourceType: .clipboard,
+                sourceApp: "Figma",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: dayKey,
+                text: "Adjusted the layout rhythm.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "legacy-details-fallback-1"
+            ),
+            EventRecord(
+                id: secondID,
+                sourceType: .clipboard,
+                sourceApp: "Terminal",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_100),
+                dayKey: dayKey,
+                text: "Ran a final build.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "legacy-details-fallback-2"
+            ),
+        ]
+        let story = DailyStory(
+            dayKey: dayKey,
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_500),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-2",
+                            text: """
+                            # Details
+
+                            ## Unmatched thread
+                            This subsection never names a source app directly.
+
+                            ## Recording readiness
+                            Terminal gave me the final verification pass.
+                            """,
+                            sourceEventIDs: [firstID, secondID]
+                        )
+                    ]
+                )
+            ]
+        )
+
+        let normalized = composer.normalizeStory(story, events: events)
+        let paragraphs = normalized.sections.flatMap(\.paragraphs)
+
+        XCTAssertEqual(paragraphs.count, 2)
+        XCTAssertEqual(paragraphs[0].sourceEventIDs, [firstID, secondID])
+        XCTAssertEqual(paragraphs[1].sourceEventIDs, [secondID])
+    }
+
+    func testComposeKeepsSingleDetailsHeadingAfterNormalization() {
+        let composer = DailyMarkdownComposer()
+        let figmaID = UUID()
+        let terminalID = UUID()
+        let dayKey = "2026-04-10"
+        let events = [
+            EventRecord(
+                id: figmaID,
+                sourceType: .clipboard,
+                sourceApp: "Figma",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: dayKey,
+                text: "Refined the onboarding preview cues.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "compose-details-1"
+            ),
+            EventRecord(
+                id: terminalID,
+                sourceType: .clipboard,
+                sourceApp: "Terminal",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_100),
+                dayKey: dayKey,
+                text: "Ran the final build verification.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "compose-details-2"
+            ),
+        ]
+        let story = DailyStory(
+            dayKey: dayKey,
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_500),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-2",
+                            text: """
+                            # Details
+
+                            ## Demo polish
+                            Figma helped refine the onboarding preview.
+
+                            ## Recording readiness
+                            Terminal handled the last verification pass.
+                            """,
+                            sourceEventIDs: [figmaID, terminalID]
+                        )
+                    ]
+                )
+            ]
+        )
+
+        let normalized = composer.normalizeStory(story, events: events)
+        let markdown = composer.compose(dayKey: dayKey, events: events, story: normalized)
+
+        XCTAssertEqual(markdown.components(separatedBy: "# Details").count - 1, 1, markdown)
+        XCTAssertTrue(markdown.contains("## Demo polish"), markdown)
+        XCTAssertTrue(markdown.contains("## Recording readiness"), markdown)
     }
 
     private func makeEvent(app: String, offset: Int, text: String) -> EventRecord {

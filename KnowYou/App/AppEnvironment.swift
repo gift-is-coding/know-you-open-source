@@ -121,6 +121,23 @@ final class AppEnvironment {
         try data.write(to: fileURL, options: .atomic)
         return fileURL
     }
+
+    func loadDailyStoryDayKeys() throws -> [String] {
+        guard FileManager.default.fileExists(atPath: vaultURL.path) else {
+            return []
+        }
+
+        let fileURLs = try FileManager.default.contentsOfDirectory(
+            at: vaultURL,
+            includingPropertiesForKeys: nil
+        )
+
+        return fileURLs
+            .map(\.lastPathComponent)
+            .filter { $0.hasSuffix(".story.json") }
+            .map { $0.replacingOccurrences(of: ".story.json", with: "") }
+            .sorted(by: >)
+    }
 }
 
 private extension JSONEncoder {

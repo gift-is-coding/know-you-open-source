@@ -120,6 +120,8 @@ struct DailyMarkdownComposer {
         - Keep the wording in the same dominant language as the rest of the diary.
         - The "\(journalHeadings.summary)" section should use markdown bullet points.
         - The "\(journalHeadings.details)" section should use markdown second-level headings (##) for the main workstreams or threads of the day.
+        - Each Details workstream should be its own paragraph in the JSON output instead of combining all Details subsections into one large paragraph.
+        - Do not fragment the day into tiny paragraphs. Split only when a workstream or thread is genuinely distinct.
         - The "\(journalHeadings.todo)" section should use markdown task list items like - [ ].
         - Markdown headings, bullet lists, and task lists are allowed inside paragraph text and should be used deliberately.
         - Only reference sourceEventIDs that appear below.
@@ -464,6 +466,24 @@ struct DailyMarkdownComposer {
         )
     }
 
+    func normalizeStory(_ story: DailyStory, events: [EventRecord]) -> DailyStory {
+        let eventsByID = Dictionary(uniqueKeysWithValues: events.map { ($0.id, $0) })
+        let sections = story.sections.map { section in
+            DailyStorySection(
+                id: section.id,
+                title: section.title,
+                paragraphs: section.paragraphs.flatMap { normalizeParagraph($0, eventsByID: eventsByID) }
+            )
+        }
+
+        return DailyStory(
+            dayKey: story.dayKey,
+            generatedAt: story.generatedAt,
+            sections: sections,
+            provenance: story.provenance
+        )
+    }
+
     func mergeIncrementalUpdate(
         dayKey: String,
         existingStory: DailyStory,
@@ -507,6 +527,133 @@ struct DailyMarkdownComposer {
             .map { "- \($0)" }
 
         return lines.isEmpty ? emptyState : lines.joined(separator: "\n")
+    }
+
+    private func normalizeParagraph(
+        _ paragraph: DailyStoryParagraph,
+        eventsByID: [UUID: EventRecord]
+    ) -> [DailyStoryParagraph] {
+        guard let subsections = legacyDetailsSubsections(from: paragraph.text), subsections.count > 1 else {
+            return [paragraph]
+        }
+
+        let candidateEvents = paragraph.sourceEventIDs.compactMap { eventsByID[$0] }
+        return subsections.enumerated().map { index, subsection in
+            DailyStoryParagraph(
+                id: "\(paragraph.id)-detail-\(index)",
+                text: subsection.markdown,
+                sourceEventIDs: narrowedSourceIDs(
+                    for: subsection.searchText,
+                    candidates: candidateEvents,
+                    fallback: paragraph.sourceEventIDs
+                )
+            )
+        }
+    }
+
+    private func legacyDetailsSubsections(from markdown: String) -> [LegacyDetailsSubsection]? {
+        let lines = markdown.components(separatedBy: .newlines)
+        guard let headingIndex = lines.firstIndex(where: { Self.isLegacyDetailsHeading($0) }) else {
+            return nil
+        }
+
+        let bodyLines = Array(lines[(headingIndex + 1)...])
+        let subsectionStarts = bodyLines.indices.filter { Self.isSecondLevelHeading(bodyLines[$0]) }
+        guard subsectionStarts.count > 1 else {
+            return nil
+        }
+
+        let topHeading = lines[headingIndex].trimmingCharacters(in: .whitespaces)
+        let preambleLines = Array(bodyLines[..<subsectionStarts[0]])
+
+        return subsectionStarts.enumerated().map { index, start in
+            let end = index + 1 < subsectionStarts.count ? subsectionStarts[index + 1] : bodyLines.endIndex
+            let subsectionLines = Array(bodyLines[start..<end])
+            let body = Self.trimmedMarkdown(subsectionLines)
+
+            if index == 0 {
+                let preamble = Self.trimmedMarkdown(preambleLines)
+                let markdown = [topHeading, preamble, body]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: "\n\n")
+                return LegacyDetailsSubsection(markdown: markdown, searchText: body)
+            }
+
+            return LegacyDetailsSubsection(markdown: body, searchText: body)
+        }
+    }
+
+    private func narrowedSourceIDs(
+        for subsectionText: String,
+        candidates: [EventRecord],
+        fallback: [UUID]
+    ) -> [UUID] {
+        guard !candidates.isEmpty else { return fallback }
+
+        let normalizedSubsection = Self.normalizedSearchText(subsectionText)
+        let appMatched = candidates.filter { event in
+            let normalizedApp = Self.normalizedSearchText(event.sourceApp)
+            return !normalizedApp.isEmpty && normalizedSubsection.contains(normalizedApp)
+        }
+        if !appMatched.isEmpty {
+            return appMatched.map(\.id)
+        }
+
+        let subsectionTokens = Self.searchTokens(from: subsectionText)
+        let keywordMatched = candidates.filter { event in
+            let eventTokens = Self.searchTokens(from: "\(event.sourceApp) \(event.displayText)")
+            return subsectionTokens.intersection(eventTokens).isEmpty == false
+        }
+        if !keywordMatched.isEmpty {
+            return keywordMatched.map(\.id)
+        }
+
+        return fallback
+    }
+
+    private static func isLegacyDetailsHeading(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed == "# Details" || trimmed == "# 详情"
+    }
+
+    private static func isSecondLevelHeading(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.hasPrefix("## ") && trimmed.hasPrefix("### ") == false
+    }
+
+    private static func trimmedMarkdown(_ lines: [String]) -> String {
+        let leadingTrimmed = lines.drop(while: { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+        let trailingTrimmed = leadingTrimmed
+            .reversed()
+            .drop(while: { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+            .reversed()
+        return trailingTrimmed.joined(separator: "\n")
+    }
+
+    private static func normalizedSearchText(_ text: String) -> String {
+        text
+            .lowercased()
+            .unicodeScalars
+            .map { scalar in
+                if CharacterSet.alphanumerics.contains(scalar) || (0x4E00...0x9FFF).contains(scalar.value) {
+                    return String(scalar)
+                }
+                return " "
+            }
+            .joined()
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
+
+    private static func searchTokens(from text: String) -> Set<String> {
+        Set(
+            normalizedSearchText(text)
+                .split(separator: " ")
+                .map(String.init)
+                .filter { token in
+                    token.count >= 4 || token.contains(where: \.isChineseIdeograph)
+                }
+        )
     }
 
     private func makeParagraphs(for sectionID: String, events: [EventRecord]) -> [DailyStoryParagraph] {
@@ -874,6 +1021,11 @@ private struct JournalMarkdownBlock {
     let heading: String
     let body: String
     let sourceEventIDs: [UUID]
+}
+
+private struct LegacyDetailsSubsection {
+    let markdown: String
+    let searchText: String
 }
 
 private enum FallbackTheme {

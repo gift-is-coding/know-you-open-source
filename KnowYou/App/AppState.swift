@@ -351,6 +351,7 @@ final class AppState {
             clipboardStatus.isActive = true
             updateNotificationAccessStatus(using: environment.notificationReader)
             refreshEngineStatuses()
+            migrateLegacyStoriesInVaultIfNeeded()
             refreshNotesIndex()
             return
         }
@@ -379,6 +380,7 @@ final class AppState {
             clipboardStatus.isActive = true
             updateNotificationAccessStatus(using: environment.notificationReader)
             refreshEngineStatuses()
+            migrateLegacyStoriesInVaultIfNeeded()
             refreshNotesIndex()
             statusMessage = "Capture services ready"
             startAutomation()
@@ -454,6 +456,7 @@ final class AppState {
         userDefaults.set(url.path, forKey: UserDefaultsKeys.vaultPath)
         guard let environment else { return }
         environment.vaultURL = url
+        migrateLegacyStoriesInVaultIfNeeded()
         refreshNotesIndex()
         statusMessage = "Vault set to \(url.lastPathComponent)"
     }
@@ -1697,11 +1700,20 @@ extension AppState {
                 )
             )
             onStageDetail?("Parsing \(activeEngine.displayName) response...")
-            if let parsed = environment.composer.parseStory(dayKey: dayKey, raw: raw),
-               parsed.sections.flatMap(\.paragraphs).isEmpty == false {
+            if let parsed = environment.composer.parseStory(dayKey: dayKey, raw: raw) {
+                let normalizedStory = environment.composer.normalizeStory(parsed, events: events)
+                guard normalizedStory.sections.flatMap(\.paragraphs).isEmpty == false else {
+                    recordActiveEngineRuntime(
+                        state: .yellow,
+                        detail: "Story output was not valid structured JSON",
+                        verifiedAt: Date()
+                    )
+                    onStageDetail?("\(activeEngine.displayName) returned invalid output; using local fallback")
+                    return fallbackStory
+                }
                 recordActiveEngineRuntime(state: .green, detail: "Story generation succeeded.", verifiedAt: Date())
                 onStageDetail?("\(activeEngine.displayName) returned successfully")
-                return parsed.withProvenance(
+                return normalizedStory.withProvenance(
                     makeStoryProvenance(
                         mode: .model,
                         engine: activeEngine,
@@ -1740,7 +1752,14 @@ extension AppState {
 
         let events = (try? environment.databaseWriter.fetchEvents(dayKey: dayKey)) ?? []
         let story = (try? environment.loadDailyStory(dayKey: dayKey)) ?? environment.composer.fallbackStory(dayKey: dayKey, events: events)
-        updateSelectedPresentation(dayKey: dayKey, story: story, events: events)
+        let normalizedStory = environment.composer.normalizeStory(story, events: events)
+        migrateNormalizedStoryIfNeeded(
+            originalStory: story,
+            normalizedStory: normalizedStory,
+            dayKey: dayKey,
+            events: events
+        )
+        updateSelectedPresentation(dayKey: dayKey, story: normalizedStory, events: events)
     }
 
     func updateSelectedPresentation(dayKey: String, story: DailyStory, events: [EventRecord]) {
@@ -1776,6 +1795,45 @@ extension AppState {
         }
         let sourceSet = Set(paragraph.sourceEventIDs)
         selectedStorySourceEvents = selectedDayEvents.filter { sourceSet.contains($0.id) }
+    }
+
+    private func migrateNormalizedStoryIfNeeded(
+        originalStory: DailyStory,
+        normalizedStory: DailyStory,
+        dayKey: String,
+        events: [EventRecord]
+    ) {
+        guard let environment, originalStory != normalizedStory else { return }
+
+        do {
+            _ = try environment.writeDailyStory(normalizedStory)
+            let markdown = environment.composer.compose(dayKey: dayKey, events: events, story: normalizedStory)
+            _ = try environment.writeDailyNote(dayKey: dayKey, markdown: markdown)
+        } catch {
+            // Legacy story migration is best-effort and should never block reading.
+        }
+    }
+
+    private func migrateLegacyStoriesInVaultIfNeeded() {
+        guard let environment else { return }
+
+        let dayKeys = (try? environment.loadDailyStoryDayKeys()) ?? []
+        guard !dayKeys.isEmpty else { return }
+
+        for dayKey in dayKeys {
+            guard let story = try? environment.loadDailyStory(dayKey: dayKey) else {
+                continue
+            }
+
+            let events = (try? environment.databaseWriter.fetchEvents(dayKey: dayKey)) ?? []
+            let normalizedStory = environment.composer.normalizeStory(story, events: events)
+            migrateNormalizedStoryIfNeeded(
+                originalStory: story,
+                normalizedStory: normalizedStory,
+                dayKey: dayKey,
+                events: events
+            )
+        }
     }
 
     func recordClipboardCapture(_ snapshot: ClipboardCaptureSnapshot) {

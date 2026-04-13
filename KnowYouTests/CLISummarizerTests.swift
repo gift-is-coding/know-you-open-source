@@ -358,6 +358,44 @@ final class CLISummarizerTests: XCTestCase {
         XCTAssertEqual(arguments.last, "Reply with OK.")
     }
 
+    func testCodexSummarizeAcceptsStoryJSONWithFiveParagraphs() async throws {
+        let raw = """
+        {"sections":[{"id":"daily-journal","paragraphs":[
+        {"text":"# You did a good job today\\n\\nStayed focused.","sourceEventIDs":["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]},
+        {"text":"# Summary\\n\\n- Kept the reader coherent.","sourceEventIDs":["B3F2C1D4-E5B6-7890-ABCD-EF1234567890"]},
+        {"text":"# Details\\n\\n## Demo polish\\nRefined the selection cues.","sourceEventIDs":["C3F2C1D4-E5B6-7890-ABCD-EF1234567890"]},
+        {"text":"## Recording readiness\\nKept the evidence pane stable.","sourceEventIDs":["D3F2C1D4-E5B6-7890-ABCD-EF1234567890"]},
+        {"text":"# To-do\\n\\n- [ ] Follow up tomorrow.","sourceEventIDs":["E3F2C1D4-E5B6-7890-ABCD-EF1234567890"]}
+        ]}]}
+        """
+        let stub = StubProcessRunner(
+            behaviors: [
+                .success(ProcessExecutionResult(stdout: "Welcome to Codex", stderr: "", terminationStatus: 0, duration: 0))
+            ],
+            onInvocation: { _, arguments, _, _ in
+                guard let outputIndex = arguments.firstIndex(of: "-o"), arguments.indices.contains(outputIndex + 1) else {
+                    return
+                }
+                try? raw.write(toFile: arguments[outputIndex + 1], atomically: true, encoding: .utf8)
+            }
+        )
+        let summarizer = CLISummarizer(tool: .codex, executablePath: "/usr/local/bin/codex", runner: stub)
+
+        let result = try await summarizer.summarize(
+            dayKey: "2026-04-07",
+            markdown: "Return strict JSON for the day journal.",
+            context: .defaultBehavior
+        )
+
+        let payload = try XCTUnwrap(result.data(using: .utf8))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: payload) as? [String: Any])
+        let sections = try XCTUnwrap(object["sections"] as? [[String: Any]])
+        let firstSection = try XCTUnwrap(sections.first)
+        let paragraphs = try XCTUnwrap(firstSection["paragraphs"] as? [[String: Any]])
+        XCTAssertEqual(firstSection["id"] as? String, "daily-journal")
+        XCTAssertEqual(paragraphs.count, 5)
+    }
+
     func testOpenclawPassesPromptViaAgentCommand() async throws {
         let raw = #"{"payloads":[{"text":"OK","mediaUrl":null}]}"#
         let stub = StubProcessRunner(output: raw)

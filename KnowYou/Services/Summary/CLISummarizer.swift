@@ -1,7 +1,43 @@
 import Foundation
 
+struct ProcessExecutionResult: Sendable {
+    let stdout: String
+    let stderr: String
+    let terminationStatus: Int32
+    let duration: TimeInterval
+}
+
 protocol ProcessRunning: Sendable {
-    func run(executable: String, arguments: [String]) async throws -> String
+    func run(executable: String, arguments: [String], timeoutSeconds: Int) async throws -> ProcessExecutionResult
+}
+
+enum ProcessRunError: Error {
+    case timedOut(seconds: Int)
+}
+
+enum CLISummarizerError: Error, LocalizedError, Equatable {
+    case timedOut(seconds: Int)
+    case nonZeroExit(status: Int32, detail: String)
+    case emptyOutput
+    case invalidStructuredOutput
+    case repairFailed(detail: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .timedOut(let seconds):
+            return "Summarizer CLI timed out after \(seconds)s"
+        case .nonZeroExit(let status, let detail):
+            return detail.isEmpty
+                ? "Summarizer CLI exited with status \(status)"
+                : "Summarizer CLI exited with status \(status): \(detail)"
+        case .emptyOutput:
+            return "Summarizer CLI returned empty output"
+        case .invalidStructuredOutput:
+            return "Story output was not valid structured JSON"
+        case .repairFailed(let detail):
+            return "Structured repair failed: \(detail)"
+        }
+    }
 }
 
 final class ContinuationGate<T>: @unchecked Sendable {
@@ -26,17 +62,16 @@ final class ContinuationGate<T>: @unchecked Sendable {
 }
 
 struct SystemProcessRunner: ProcessRunning {
-    static let timeoutSeconds: Double = 120
     private let environment: [String: String]
 
     init(environment: [String: String] = ProcessInfo.processInfo.environment) {
         self.environment = environment
     }
 
-    func run(executable: String, arguments: [String]) async throws -> String {
+    func run(executable: String, arguments: [String], timeoutSeconds: Int) async throws -> ProcessExecutionResult {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global().async {
-                let gate = ContinuationGate<String>()
+                let gate = ContinuationGate<ProcessExecutionResult>()
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: executable)
                 process.arguments = arguments
@@ -47,16 +82,14 @@ struct SystemProcessRunner: ProcessRunning {
                 process.standardOutput = outputPipe
                 process.standardError = errorPipe
 
+                let start = Date()
                 let timeoutItem = DispatchWorkItem {
                     process.terminate()
-                    let error = CocoaError(
-                        .executableLoad,
-                        userInfo: [NSLocalizedDescriptionKey: "Summarizer CLI timed out after \(Int(Self.timeoutSeconds))s"]
-                    )
+                    let error = ProcessRunError.timedOut(seconds: timeoutSeconds)
                     guard gate.resume(throwing: error) else { return }
                     continuation.resume(throwing: error)
                 }
-                DispatchQueue.global().asyncAfter(deadline: .now() + Self.timeoutSeconds, execute: timeoutItem)
+                DispatchQueue.global().asyncAfter(deadline: .now() + Double(timeoutSeconds), execute: timeoutItem)
 
                 do {
                     try process.run()
@@ -64,19 +97,14 @@ struct SystemProcessRunner: ProcessRunning {
                     timeoutItem.cancel()
                     let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
                     let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                    let output = String(decoding: outputData, as: UTF8.self)
-                    let errorOutput = String(decoding: errorData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-                    if process.terminationStatus != 0 {
-                        let description = errorOutput.isEmpty
-                            ? "Summarizer CLI exited with status \(process.terminationStatus)"
-                            : errorOutput
-                        let error = CocoaError(.executableLoad, userInfo: [NSLocalizedDescriptionKey: description])
-                        guard gate.resume(throwing: error) else { return }
-                        continuation.resume(throwing: error)
-                        return
-                    }
-                    guard gate.resume(returning: output) else { return }
-                    continuation.resume(returning: output)
+                    let result = ProcessExecutionResult(
+                        stdout: String(decoding: outputData, as: UTF8.self),
+                        stderr: String(decoding: errorData, as: UTF8.self),
+                        terminationStatus: process.terminationStatus,
+                        duration: Date().timeIntervalSince(start)
+                    )
+                    guard gate.resume(returning: result) else { return }
+                    continuation.resume(returning: result)
                 } catch {
                     timeoutItem.cancel()
                     guard gate.resume(throwing: error) else { return }
@@ -107,11 +135,30 @@ struct CLISummarizer: SummaryGenerating {
         case openclaw
     }
 
+    private enum Expectation {
+        case story
+        case acknowledgement
+    }
+
+    private struct InvocationPlan {
+        let arguments: [String]
+        let schemaURL: URL?
+        let outputURL: URL?
+    }
+
     let tool: Tool
     let executablePath: String
     let runner: ProcessRunning
+
+    private static let manualPrimaryTimeoutSeconds = 600
+    private static let automationPrimaryTimeoutSeconds = 300
+    private static let manualRepairTimeoutSeconds = 120
+    private static let automationRepairTimeoutSeconds = 60
     private static let dailyStorySchema = """
     {"type":"object","additionalProperties":false,"required":["sections"],"properties":{"sections":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","paragraphs"],"properties":{"id":{"type":"string","const":"daily-journal"},"paragraphs":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","additionalProperties":false,"required":["text","sourceEventIDs"],"properties":{"text":{"type":"string"},"sourceEventIDs":{"type":"array","minItems":1,"items":{"type":"string","pattern":"^[0-9A-Fa-f-]{36}$"}}}}}}}}}}
+    """
+    private static let acknowledgementSchema = """
+    {"type":"object","additionalProperties":false,"required":["ok"],"properties":{"ok":{"type":"string","const":"OK"}}}
     """
 
     init(tool: Tool, executablePath: String, runner: ProcessRunning = SystemProcessRunner()) {
@@ -120,100 +167,257 @@ struct CLISummarizer: SummaryGenerating {
         self.runner = runner
     }
 
-    func summarize(dayKey: String, markdown: String) async throws -> String {
-        let raw = try await runner.run(executable: executablePath, arguments: arguments(for: markdown))
-        let trimmed: String
-        if tool == .claude, let structuredOutput = validatedClaudeStoryJSON(from: raw) {
-            trimmed = structuredOutput
-        } else if let extractedText = extractedTextOutput(from: raw) {
-            trimmed = extractedText
-        } else {
-            trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
+        let prompt = markdown
+        let primaryRaw = try await run(
+            prompt: prompt,
+            expectation: .story,
+            timeoutSeconds: primaryTimeoutSeconds(for: context)
+        )
+        if let validated = validatedStoryOutput(from: primaryRaw) {
+            return validated
         }
-        return trimmed.isEmpty ? "Summary unavailable." : trimmed
+
+        guard !primaryRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw CLISummarizerError.emptyOutput
+        }
+
+        do {
+            let repaired = try await run(
+                prompt: repairPrompt(for: primaryRaw),
+                expectation: .story,
+                timeoutSeconds: repairTimeoutSeconds(for: context)
+            )
+            if let validated = validatedStoryOutput(from: repaired) {
+                return validated
+            }
+            throw CLISummarizerError.repairFailed(detail: "repair output was not valid structured JSON")
+        } catch let error as CLISummarizerError {
+            switch error {
+            case .repairFailed:
+                throw error
+            default:
+                throw CLISummarizerError.repairFailed(detail: error.localizedDescription)
+            }
+        } catch {
+            throw CLISummarizerError.repairFailed(detail: error.localizedDescription)
+        }
     }
 
     func smokeTest(prompt: String? = nil) async throws -> String {
-        let probePrompt = prompt ?? smokeTestPrompt()
-        let output = try await runner.run(executable: executablePath, arguments: arguments(for: probePrompt))
-        let trimmed = extractedTextOutput(from: output) ?? output.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            throw CocoaError(
-                .executableLoad,
-                userInfo: [NSLocalizedDescriptionKey: "Smoke test returned empty output"]
-            )
-        }
-        if tool == .claude {
-            if let validatedStructuredOutput = validatedClaudeStoryJSON(from: trimmed) {
-                return validatedStructuredOutput
-            }
-
-            guard let validatedRawOutput = validatedDailyStoryJSON(from: trimmed) else {
-                throw CocoaError(
-                    .executableLoad,
-                    userInfo: [NSLocalizedDescriptionKey: "Smoke test returned invalid Claude output"]
-                )
-            }
-            return validatedRawOutput
-        }
-        if acceptsAcknowledgementSmokeTest,
-           normalizedAcknowledgement(from: trimmed) != nil {
-            return trimmed
-        }
-        guard let validatedRawOutput = validatedDailyStoryJSON(from: trimmed) else {
-            throw CocoaError(
-                .executableLoad,
-                userInfo: [NSLocalizedDescriptionKey: "Smoke test returned invalid story JSON"]
-            )
-        }
-        return validatedRawOutput
-    }
-
-    func arguments(for prompt: String) -> [String] {
         switch tool {
         case .claude:
-            return [
-                "-p", prompt,
-                "--output-format", "json",
-                "--json-schema", Self.dailyStorySchema,
-            ]
-        case .gemini:
-            return [
-                "-p", prompt,
-                "--output-format", "json",
-            ]
+            let raw = try await run(
+                prompt: prompt ?? "Return a minimal valid JSON object that matches the daily story schema.",
+                expectation: .story,
+                timeoutSeconds: Self.automationPrimaryTimeoutSeconds
+            )
+            guard let validated = validatedStoryOutput(from: raw) else {
+                throw CLISummarizerError.invalidStructuredOutput
+            }
+            return validated
         case .codex:
-            return [
-                "exec",
-                "--skip-git-repo-check",
-                prompt,
-            ]
+            let raw = try await run(
+                prompt: prompt ?? "Reply with OK.",
+                expectation: .acknowledgement,
+                timeoutSeconds: Self.automationPrimaryTimeoutSeconds
+            )
+            if let acknowledged = normalizedAcknowledgement(from: raw) {
+                return acknowledged.uppercased()
+            }
+            if let object = extractedJSONObject(from: raw),
+               let ok = object["ok"] as? String,
+               normalizedAcknowledgement(from: ok) != nil {
+                return "OK"
+            }
+            throw CLISummarizerError.invalidStructuredOutput
+        case .gemini, .openclaw:
+            let raw = try await run(
+                prompt: prompt ?? "Reply with OK.",
+                expectation: .acknowledgement,
+                timeoutSeconds: Self.automationPrimaryTimeoutSeconds
+            )
+            guard let acknowledged = normalizedAcknowledgement(from: raw) else {
+                throw CLISummarizerError.invalidStructuredOutput
+            }
+            return acknowledged.uppercased()
+        }
+    }
+
+    private func run(
+        prompt: String,
+        expectation: Expectation,
+        timeoutSeconds: Int
+    ) async throws -> String {
+        let plan = try makeInvocationPlan(prompt: prompt, expectation: expectation, timeoutSeconds: timeoutSeconds)
+        defer {
+            if let schemaURL = plan.schemaURL {
+                try? FileManager.default.removeItem(at: schemaURL)
+            }
+            if let outputURL = plan.outputURL {
+                try? FileManager.default.removeItem(at: outputURL)
+            }
+        }
+
+        let executionResult: ProcessExecutionResult
+        do {
+            executionResult = try await runner.run(
+                executable: executablePath,
+                arguments: plan.arguments,
+                timeoutSeconds: timeoutSeconds
+            )
+        } catch let error as ProcessRunError {
+            switch error {
+            case .timedOut(let seconds):
+                throw CLISummarizerError.timedOut(seconds: seconds)
+            }
+        } catch {
+            throw error
+        }
+
+        let detail = failureDetail(for: executionResult)
+        guard executionResult.terminationStatus == 0 else {
+            throw CLISummarizerError.nonZeroExit(status: executionResult.terminationStatus, detail: detail)
+        }
+
+        if let outputURL = plan.outputURL,
+           let fileOutput = try? String(contentsOf: outputURL, encoding: .utf8),
+           !fileOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return fileOutput
+        }
+
+        let extracted = extractedTextOutput(from: executionResult.stdout)
+            ?? executionResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return extracted
+    }
+
+    private func primaryTimeoutSeconds(for context: SummaryInvocationContext) -> Int {
+        switch context {
+        case .manualRefresh:
+            return Self.manualPrimaryTimeoutSeconds
+        case .automationRefresh, .defaultBehavior:
+            return Self.automationPrimaryTimeoutSeconds
+        }
+    }
+
+    private func repairTimeoutSeconds(for context: SummaryInvocationContext) -> Int {
+        switch context {
+        case .manualRefresh:
+            return Self.manualRepairTimeoutSeconds
+        case .automationRefresh, .defaultBehavior:
+            return Self.automationRepairTimeoutSeconds
+        }
+    }
+
+    private func makeInvocationPlan(
+        prompt: String,
+        expectation: Expectation,
+        timeoutSeconds: Int
+    ) throws -> InvocationPlan {
+        switch tool {
+        case .claude:
+            return InvocationPlan(
+                arguments: [
+                    "-p", prompt,
+                    "--output-format", "json",
+                    "--json-schema", Self.dailyStorySchema,
+                ],
+                schemaURL: nil,
+                outputURL: nil
+            )
+        case .gemini:
+            return InvocationPlan(
+                arguments: [
+                    "-p", prompt,
+                    "--output-format", "json",
+                ],
+                schemaURL: nil,
+                outputURL: nil
+            )
         case .openclaw:
-            return [
-                "agent",
-                "--agent", "main",
-                "--message", prompt,
-                "--local",
-                "--json",
-            ]
+            return InvocationPlan(
+                arguments: [
+                    "agent",
+                    "--agent", "main",
+                    "--message", prompt,
+                    "--local",
+                    "--json",
+                ],
+                schemaURL: nil,
+                outputURL: nil
+            )
+        case .codex:
+            let schemaURL = try writeTemporaryFile(contents: expectation == .story ? Self.dailyStorySchema : Self.acknowledgementSchema)
+            let outputURL = temporaryFileURL()
+            try "".write(to: outputURL, atomically: true, encoding: .utf8)
+            return InvocationPlan(
+                arguments: [
+                    "exec",
+                    "--skip-git-repo-check",
+                    "--ephemeral",
+                    "--output-schema", schemaURL.path,
+                    "-o", outputURL.path,
+                    prompt,
+                ],
+                schemaURL: schemaURL,
+                outputURL: outputURL
+            )
         }
     }
 
-    private func smokeTestPrompt() -> String {
-        switch tool {
-        case .claude:
-            return "Return a minimal valid JSON object that matches the daily story schema."
-        case .codex, .gemini, .openclaw:
-            return "Reply with OK."
-        }
+    private func writeTemporaryFile(contents: String) throws -> URL {
+        let url = temporaryFileURL()
+        try contents.write(to: url, atomically: true, encoding: .utf8)
+        return url
     }
 
-    private var acceptsAcknowledgementSmokeTest: Bool {
+    private func temporaryFileURL() -> URL {
+        URL.temporaryDirectory.appending(path: UUID().uuidString)
+    }
+
+    private func repairPrompt(for raw: String) -> String {
+        """
+        Convert the following content into strict JSON only. Do not add markdown fences.
+
+        Required JSON shape:
+        {
+          "sections": [
+            { "id": "daily-journal", "paragraphs": [{ "text": "...", "sourceEventIDs": ["uuid"] }] }
+          ]
+        }
+
+        Rules:
+        - Preserve supported facts only.
+        - Keep the section id exactly as "daily-journal".
+        - Keep between 1 and 4 paragraphs.
+        - Each paragraph must include at least one valid UUID string in sourceEventIDs.
+        - Return JSON only.
+
+        Content to repair:
+        \(raw)
+        """
+    }
+
+    private func failureDetail(for result: ProcessExecutionResult) -> String {
+        let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !stderr.isEmpty {
+            return stderr
+        }
+
+        let stdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return stdout
+    }
+
+    private func validatedStoryOutput(from raw: String) -> String? {
         switch tool {
         case .claude:
-            return false
+            return validatedClaudeStoryJSON(from: raw)
         case .codex, .gemini, .openclaw:
-            return true
+            if let extracted = extractedTextOutput(from: raw),
+               let validated = validatedDailyStoryJSON(from: extracted) {
+                return validated
+            }
+            return validatedDailyStoryJSON(from: raw)
         }
     }
 

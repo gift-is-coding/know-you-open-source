@@ -166,24 +166,102 @@ struct SummarizerConfig {
         commandName: String,
         environment: [String: String]
     ) -> String? {
-        let trimmedConfiguredPath = configuredPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        if FileManager.default.isExecutableFile(atPath: trimmedConfiguredPath) {
-            return trimmedConfiguredPath
-        }
-
-        let pathEntries = (environment["PATH"] ?? "")
-            .split(separator: ":")
-            .map(String.init)
-            .filter { !$0.isEmpty }
-
-        for entry in pathEntries {
-            let candidate = URL(fileURLWithPath: entry).appendingPathComponent(commandName).path
+        for candidate in candidateExecutablePaths(
+            configuredPath: configuredPath,
+            commandName: commandName,
+            environment: environment
+        ) {
             if FileManager.default.isExecutableFile(atPath: candidate) {
                 return candidate
             }
         }
 
         return nil
+    }
+
+    private static func candidateExecutablePaths(
+        configuredPath: String,
+        commandName: String,
+        environment: [String: String]
+    ) -> [String] {
+        var candidates: [String] = []
+        var seen: Set<String> = []
+
+        func append(_ path: String) {
+            let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, seen.insert(trimmed).inserted else {
+                return
+            }
+            candidates.append(trimmed)
+        }
+
+        append(configuredPath)
+
+        let pathEntries = (environment["PATH"] ?? "")
+            .split(separator: ":")
+            .map(String.init)
+            .filter { !$0.isEmpty }
+        for entry in pathEntries {
+            append(URL(fileURLWithPath: entry).appendingPathComponent(commandName).path)
+        }
+
+        for directory in commonExecutableDirectories(environment: environment) {
+            append(URL(fileURLWithPath: directory).appendingPathComponent(commandName).path)
+        }
+
+        for path in nvmExecutablePaths(commandName: commandName, environment: environment) {
+            append(path)
+        }
+
+        return candidates
+    }
+
+    private static func commonExecutableDirectories(environment: [String: String]) -> [String] {
+        let homeDirectory = resolvedHomeDirectory(environment: environment)
+
+        return [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/opt/local/bin",
+            URL(fileURLWithPath: homeDirectory).appendingPathComponent(".local/bin").path,
+            URL(fileURLWithPath: homeDirectory).appendingPathComponent(".bun/bin").path
+        ]
+    }
+
+    private static func nvmExecutablePaths(
+        commandName: String,
+        environment: [String: String]
+    ) -> [String] {
+        let homeDirectory = resolvedHomeDirectory(environment: environment)
+        let nodeVersionsDirectory = URL(fileURLWithPath: homeDirectory)
+            .appendingPathComponent(".nvm", isDirectory: true)
+            .appendingPathComponent("versions", isDirectory: true)
+            .appendingPathComponent("node", isDirectory: true)
+
+        guard let versionDirectories = try? FileManager.default.contentsOfDirectory(
+            at: nodeVersionsDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+
+        return versionDirectories
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedDescending }
+            .map { versionDirectory in
+                versionDirectory
+                    .appendingPathComponent("bin", isDirectory: true)
+                    .appendingPathComponent(commandName)
+                    .path
+            }
+    }
+
+    private static func resolvedHomeDirectory(environment: [String: String]) -> String {
+        let trimmedHome = environment["HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmedHome.isEmpty {
+            return trimmedHome
+        }
+        return FileManager.default.homeDirectoryForCurrentUser.path
     }
 
     private func validatedAPIBaseURL() -> URL? {

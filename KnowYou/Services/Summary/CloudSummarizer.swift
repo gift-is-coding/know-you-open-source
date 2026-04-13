@@ -1,7 +1,19 @@
 import Foundation
 
+enum SummaryInvocationContext: Sendable, Equatable {
+    case manualRefresh
+    case automationRefresh
+    case defaultBehavior
+}
+
 protocol SummaryGenerating: Sendable {
-    func summarize(dayKey: String, markdown: String) async throws -> String
+    func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String
+}
+
+extension SummaryGenerating {
+    func summarize(dayKey: String, markdown: String) async throws -> String {
+        try await summarize(dayKey: dayKey, markdown: markdown, context: .defaultBehavior)
+    }
 }
 
 struct CloudSummarizer: SummaryGenerating {
@@ -22,7 +34,7 @@ struct CloudSummarizer: SummaryGenerating {
         self.model = model
     }
 
-    func summarize(dayKey: String, markdown: String) async throws -> String {
+    func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
         var request = URLRequest(url: apiURL)
         request.httpMethod = "POST"
         request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")

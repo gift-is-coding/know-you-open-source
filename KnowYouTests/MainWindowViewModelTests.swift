@@ -2,7 +2,7 @@ import XCTest
 @testable import KnowYou
 
 private struct ThrowingSummarizer: SummaryGenerating {
-    func summarize(dayKey: String, markdown: String) async throws -> String {
+    func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
         throw URLError(.cannotConnectToHost)
     }
 }
@@ -10,8 +10,28 @@ private struct ThrowingSummarizer: SummaryGenerating {
 private struct StaticSummarizer: SummaryGenerating {
     let response: String
 
-    func summarize(dayKey: String, markdown: String) async throws -> String {
+    func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
         response
+    }
+}
+
+private struct HandlerSummarizer: SummaryGenerating {
+    let handler: @Sendable (String, String, SummaryInvocationContext) async throws -> String
+
+    func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
+        try await handler(dayKey, markdown, context)
+    }
+}
+
+private actor EngineAttemptRecorder {
+    private var attempts: [DiaryEngine] = []
+
+    func record(_ engine: DiaryEngine) {
+        attempts.append(engine)
+    }
+
+    func values() -> [DiaryEngine] {
+        attempts
     }
 }
 
@@ -24,7 +44,7 @@ private final class RecordingPromptSummarizer: SummaryGenerating, @unchecked Sen
         self.response = response
     }
 
-    func summarize(dayKey: String, markdown: String) async throws -> String {
+    func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
         capturedDayKey = dayKey
         capturedMarkdown = markdown
         return response
@@ -184,7 +204,7 @@ private actor RefreshBlockGate {
 private struct BlockingSummarizer: SummaryGenerating {
     let gate: RefreshBlockGate
 
-    func summarize(dayKey: String, markdown: String) async throws -> String {
+    func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
         await gate.markStarted(dayKey: dayKey)
         await gate.waitForRelease(dayKey: dayKey)
         return """
@@ -232,6 +252,39 @@ private func waitUntil(
         try? await Task.sleep(nanoseconds: pollNanoseconds)
     }
     return await condition()
+}
+
+private func waitUntilAsync(
+    timeoutNanoseconds: UInt64 = 1_000_000_000,
+    pollNanoseconds: UInt64 = 10_000_000,
+    condition: @escaping @Sendable () async -> Bool
+) async -> Bool {
+    let start = DispatchTime.now().uptimeNanoseconds
+    while DispatchTime.now().uptimeNanoseconds - start < timeoutNanoseconds {
+        if await condition() {
+            return true
+        }
+        try? await Task.sleep(nanoseconds: pollNanoseconds)
+    }
+    return await condition()
+}
+
+private func makeValidStoryResponse(sourceEventID: UUID = UUID(), summaryLine: String = "Recovered day") -> String {
+    """
+    {"sections":[{"id":"daily-journal","paragraphs":[{"text":"# Summary\\n- \(summaryLine)","sourceEventIDs":["\(sourceEventID.uuidString)"]}]}]}
+    """
+}
+
+private func makeIsolatedCLIProcessEnvironment() throws -> ([String: String], URL) {
+    let homeURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: homeURL, withIntermediateDirectories: true)
+    return (
+        [
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "HOME": homeURL.path,
+        ],
+        homeURL
+    )
 }
 
 @MainActor
@@ -381,17 +434,16 @@ final class MainWindowViewModelTests: XCTestCase {
         )
     }
 
-    func testAutomationStatusTextReflectsBackfillDays() {
+    func testAutomationStatusTextReflectsManualOnlyHistoryPolicy() {
         let appState = AppState(bootstrapServices: false)
         appState.lastImportedNotificationCount = 3
         appState.pendingBackfillDays = ["2026-04-06", "2026-04-07"]
 
         XCTAssertTrue(appState.automationStatusText.contains("Notifications: 3"))
-        XCTAssertTrue(appState.automationStatusText.contains("2026-04-06"))
-        XCTAssertTrue(appState.automationStatusText.contains("2026-04-07"))
+        XCTAssertTrue(appState.automationStatusText.contains("History refresh is manual-only"))
     }
 
-    func testGenerateDailyNotePersistsFallbackWhenNoExistingModelStory() async throws {
+    func testGenerateDailyNoteFailsWithoutPersistingFilesWhenSummarizerFails() async throws {
         let writer = try DatabaseWriter.inMemory()
         let capturedAt = Date(timeIntervalSince1970: 1_775_000_000)
         try writer.insert(
@@ -425,14 +477,12 @@ final class MainWindowViewModelTests: XCTestCase {
 
         let savedURL = vaultURL.appending(path: "2026-04-07.md")
         let storyURL = vaultURL.appending(path: "2026-04-07.story.json")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: savedURL.path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: storyURL.path))
-        XCTAssertEqual(appState.statusMessage, "Refreshed 2026-04-07; story fell back to local summary")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: savedURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: storyURL.path))
+        XCTAssertTrue(appState.statusMessage?.contains("Daily note failed:") == true)
         XCTAssertEqual(appState.summarizerStatus.lastError, URLError(.cannotConnectToHost).localizedDescription)
-        XCTAssertEqual(appState.selectedStory?.dayKey, "2026-04-07")
-        XCTAssertEqual(appState.selectedStoryParagraphID, appState.selectedStory?.sections.first?.paragraphs.first?.id)
-        XCTAssertFalse(appState.selectedStorySourceEvents.isEmpty)
-        XCTAssertEqual(try writer.fetchRuns(runType: "daily-note").last?.status, "succeeded")
+        XCTAssertNil(appState.selectedStory)
+        XCTAssertEqual(try writer.fetchRuns(runType: "daily-note").last?.status, "failed")
     }
 
     func testGenerateDailyNoteDoesNotOverwriteExistingModelStoryWhenSummarizerFails() async throws {
@@ -477,13 +527,12 @@ final class MainWindowViewModelTests: XCTestCase {
         let storyURL = vaultURL.appending(path: "\(dayKey).story.json")
         XCTAssertEqual(try String(contentsOf: savedURL, encoding: .utf8), existingMarkdown)
         XCTAssertEqual(try environment.loadDailyStory(dayKey: dayKey), existingStory)
-        XCTAssertEqual(appState.selectedStory?.provenance?.generationMode, .model)
-        XCTAssertEqual(appState.statusMessage, "Daily note failed: Preserved existing model story after fallback")
+        XCTAssertTrue(appState.statusMessage?.contains("Daily note failed: Model refresh failed") == true)
         XCTAssertEqual(try writer.fetchRuns(runType: "daily-note").last?.status, "failed")
         XCTAssertEqual(try JSONDecoder().decode(DailyStory.self, from: Data(contentsOf: storyURL)), existingStory)
     }
 
-    func testRunAutomationImportsNotificationsFromOldestPendingDay() async throws {
+    func testRunAutomationImportsNotificationsFromStartOfToday() async throws {
         let writer = try DatabaseWriter.inMemory()
         let completedRun = try writer.startRun(runType: "daily-note", dayKey: "2026-04-01")
         try writer.finishRun(id: completedRun, status: "succeeded")
@@ -494,7 +543,7 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: vaultURL,
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Today kept despite notification failure")),
             notificationReader: reader,
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
@@ -506,11 +555,11 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertEqual(
             ISO8601DayKey.format(reader.requestedSince ?? .distantPast),
-            "2026-04-02"
+            "2026-04-07"
         )
     }
 
-    func testRunAutomationRebuildsTodayEvenWhenNoteAlreadyExists() async throws {
+    func testRunAutomationSkipsTodayWhenOnlyMarkdownAlreadyExists() async throws {
         let writer = try DatabaseWriter.inMemory()
         let today = "2026-04-07"
         let capturedAt = DateComponents(
@@ -544,7 +593,7 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: vaultURL,
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Selected day refreshed")),
             notificationReader: RecordingNotificationReader(),
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
@@ -555,9 +604,140 @@ final class MainWindowViewModelTests: XCTestCase {
         await appState.runAutomation(now: capturedAt)
 
         let rebuiltMarkdown = try String(contentsOf: existingNoteURL)
-        XCTAssertTrue(rebuiltMarkdown.contains("Fresh clipboard entry"))
+        XCTAssertEqual(rebuiltMarkdown, "stale note")
         XCTAssertEqual(appState.selectedDate, today)
-        XCTAssertEqual(try writer.fetchRuns(runType: "daily-note").last?.dayKey, today)
+        XCTAssertEqual(
+            appState.selectedMarkdownURL?.standardizedFileURL.path,
+            existingNoteURL.standardizedFileURL.path
+        )
+        XCTAssertNil(try writer.fetchRuns(runType: "daily-note").last)
+    }
+
+    func testRunAutomationAppendsTodayWhenModelStoryHasNewEvents() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let dayKey = "2026-04-07"
+        let oldID = UUID()
+        let newID = UUID()
+        let oldEvent = EventRecord(
+            id: oldID,
+            sourceType: .clipboard,
+            sourceApp: "Notes",
+            capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 7, hour: 9).date!,
+            dayKey: dayKey,
+            text: "Wrapped the first pass",
+            auditText: nil,
+            privacyAction: .keep,
+            contentHash: "old-event"
+        )
+        let newEvent = EventRecord(
+            id: newID,
+            sourceType: .notification,
+            sourceApp: "Mail",
+            capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 7, hour: 11).date!,
+            dayKey: dayKey,
+            text: "Customer approved the follow-up",
+            auditText: nil,
+            privacyAction: .keep,
+            contentHash: "new-event"
+        )
+        try writer.insert(oldEvent)
+        try writer.insert(newEvent)
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: StaticSummarizer(response: "{}"),
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let initialStory = DailyStory(
+            dayKey: dayKey,
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: """
+                            # You did a good job today
+
+                            Keep the pace.
+
+                            # Summary
+
+                            - Wrapped the first pass
+
+                            # Details
+
+                            ## Existing Thread
+
+                            Closed the first workflow.
+
+                            # To-do
+
+                            - [ ] Send recap
+                            """,
+                            sourceEventIDs: [oldID]
+                        )
+                    ]
+                )
+            ],
+            provenance: StoryProvenance(
+                generationMode: .model,
+                engineKind: "codexCLI",
+                engineLabel: "Codex (CLI)",
+                model: nil,
+                pipelineVersion: "diary-story-v1",
+                curatedEventCount: 1
+            )
+        )
+        try writeStoryDay(
+            dayKey: dayKey,
+            markdown: environment.composer.compose(dayKey: dayKey, events: [oldEvent], story: initialStory),
+            story: initialStory,
+            environment: environment
+        )
+
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            makeSummarizer: { engine, _, _ in
+                guard engine == .codexCLI else { return nil }
+                return StaticSummarizer(
+                    response: """
+                    {
+                      "summaryBulletsToAppend": [{ "text": "- Customer approved the follow-up", "sourceEventIDs": ["\(newID.uuidString)"] }],
+                      "detailBlocksToAppend": [{ "text": "## Follow-up\\n\\nHandled the approval loop.", "sourceEventIDs": ["\(newID.uuidString)"] }],
+                      "todoItemsToAppend": [{ "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(newID.uuidString)"] }]
+                    }
+                    """
+                )
+            }
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "Ready.",
+            lastVerifiedAt: Date(),
+            configurationSignature: "codex"
+        )
+
+        await appState.runAutomation(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 7, hour: 12).date!)
+
+        let markdown = try String(contentsOf: vaultURL.appending(path: "\(dayKey).md"))
+        XCTAssertTrue(markdown.contains("Keep the pace."))
+        XCTAssertTrue(markdown.contains("- Customer approved the follow-up"))
+        XCTAssertTrue(markdown.contains("## Follow-up"))
+        XCTAssertTrue(markdown.contains("- [ ] Queue the final handoff"))
+        XCTAssertEqual(try writer.fetchRuns(runType: "daily-note").last?.dayKey, dayKey)
     }
 
     func testRunNotificationCatchUpRecoversTodayNotificationsFromStartOfDay() async throws {
@@ -574,7 +754,7 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Selected day refreshed")),
             notificationReader: reader,
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: calendar)
@@ -627,7 +807,7 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Selected day refreshed")),
             notificationReader: reader,
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: calendar)
@@ -660,7 +840,7 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Today kept despite notification failure")),
             notificationReader: reader,
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: calendar)
@@ -680,7 +860,7 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.notificationStatus.lastImportedCount, 0)
     }
 
-    func testStartAutomationStillRunsAutomationWhileSchedulingCatchUp() async throws {
+    func testStartAutomationStillRunsTodayOnlyAutomationWhileSchedulingCatchUp() async throws {
         let writer = try DatabaseWriter.inMemory()
         let calendar = Calendar(identifier: .gregorian)
         let now = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 13).date!
@@ -728,13 +908,10 @@ final class MainWindowViewModelTests: XCTestCase {
             appState.lastAutomationRunAt == now
         }
         XCTAssertTrue(automationStarted)
-        let noteWritten = await waitUntil {
-            FileManager.default.fileExists(atPath: vaultURL.appending(path: "\(dayKey).md").path)
-        }
-        XCTAssertTrue(noteWritten)
         XCTAssertEqual(appState.lastAutomationRunAt, now)
         XCTAssertEqual(appState.notificationStatus.lastImportedCount, 1)
-        XCTAssertEqual(try writer.fetchRuns(runType: "daily-note").last?.dayKey, dayKey)
+        XCTAssertNil(try writer.fetchRuns(runType: "daily-note").last)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: vaultURL.appending(path: "\(dayKey).md").path))
     }
 
     func testRelaunchRestoresPersistedLastNotificationImportAtForCatchUpWindow() async throws {
@@ -893,7 +1070,7 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Selected day refreshed")),
             notificationReader: reader,
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: calendar)
@@ -944,7 +1121,7 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Selected day refreshed")),
             notificationReader: reader,
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: calendar)
@@ -1009,7 +1186,7 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Selected day refreshed")),
             notificationReader: reader,
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: calendar)
@@ -1085,7 +1262,7 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: vaultURL,
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Today refreshed")),
             notificationReader: reader,
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
@@ -1137,7 +1314,7 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: vaultURL,
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Today kept despite notification failure")),
             notificationReader: reader,
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
@@ -1419,7 +1596,7 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: vaultURL,
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Today kept despite notification failure")),
             notificationReader: reader,
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
@@ -1430,6 +1607,47 @@ final class MainWindowViewModelTests: XCTestCase {
         await appState.runAutomation(now: DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 7).date!)
 
         XCTAssertEqual(appState.notificationStatus.lastError, CocoaError(.fileReadUnknown).localizedDescription)
+    }
+
+    func testRunAutomationDoesNotBackfillHistoricalDays() async throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let writer = try DatabaseWriter.inMemory()
+        let runID = try writer.startRun(runType: "daily-note", dayKey: "2026-04-08")
+        try writer.finishRun(id: runID, status: "succeeded")
+
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 10).date!,
+                dayKey: "2026-04-09",
+                text: "Historical gap event",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "historical-gap-event"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Should stay manual-only")),
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(environment: environment)
+
+        await appState.runAutomation(
+            now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 10, hour: 12).date!
+        )
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: vaultURL.appending(path: "2026-04-09.md").path))
+        XCTAssertTrue(appState.pendingBackfillDays.isEmpty)
     }
 
     func testRefreshSelectedDayDoesNotMaskTodayGenerationFailure() async throws {
@@ -1496,7 +1714,7 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: vaultURL,
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Today kept despite notification failure")),
             notificationReader: reader,
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
@@ -1514,6 +1732,412 @@ final class MainWindowViewModelTests: XCTestCase {
             appState.statusMessage,
             "Refreshed today without notifications: \(CocoaError(.fileReadUnknown).localizedDescription)"
         )
+    }
+
+    func testRefreshSelectedDayWritesRefreshLogFile() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let dayKey = "2026-04-09"
+        let eventID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: eventID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 9).date!,
+                dayKey: dayKey,
+                text: "Log this refresh",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "refresh-log-file"
+            )
+        )
+
+        let supportURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: supportURL.appending(path: "events.sqlite"),
+            vaultURL: supportURL.appending(path: "Vault", directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Loggable refresh")),
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(environment: environment)
+        appState.selectDate(dayKey)
+
+        await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11).date!)
+
+        let logDirectory = supportURL.appending(path: "RefreshLogs", directoryHint: .isDirectory)
+        let logFiles = try FileManager.default.contentsOfDirectory(at: logDirectory, includingPropertiesForKeys: nil)
+        XCTAssertEqual(logFiles.count, 1)
+
+        let data = try Data(contentsOf: try XCTUnwrap(logFiles.first))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["dayKey"] as? String, dayKey)
+        XCTAssertEqual(object["trigger"] as? String, "manual")
+        XCTAssertEqual(object["mode"] as? String, "fullRecovery")
+        XCTAssertEqual(object["finalStatus"] as? String, "completed")
+        XCTAssertEqual((object["attempts"] as? [[String: Any]])?.count, 1)
+    }
+
+    func testRefreshSelectedDayIncrementallyAppendsToModelStory() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let dayKey = "2026-04-09"
+        let oldID = UUID()
+        let newID = UUID()
+        let oldEvent = EventRecord(
+            id: oldID,
+            sourceType: .clipboard,
+            sourceApp: "Notes",
+            capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 9).date!,
+            dayKey: dayKey,
+            text: "Wrapped the first pass",
+            auditText: nil,
+            privacyAction: .keep,
+            contentHash: "incremental-old"
+        )
+        let newEvent = EventRecord(
+            id: newID,
+            sourceType: .notification,
+            sourceApp: "Mail",
+            capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 11).date!,
+            dayKey: dayKey,
+            text: "Customer approved the follow-up",
+            auditText: nil,
+            privacyAction: .keep,
+            contentHash: "incremental-new"
+        )
+        try writer.insert(oldEvent)
+        try writer.insert(newEvent)
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: StaticSummarizer(response: "{}"),
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let existingStory = DailyStory(
+            dayKey: dayKey,
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: """
+                            # You did a good job today
+
+                            Keep the pace.
+
+                            # Summary
+
+                            - Wrapped the first pass
+
+                            # Details
+
+                            ## Existing Thread
+
+                            Closed the first workflow.
+
+                            # To-do
+
+                            - [ ] Send recap
+                            """,
+                            sourceEventIDs: [oldID]
+                        )
+                    ]
+                )
+            ],
+            provenance: StoryProvenance(
+                generationMode: .model,
+                engineKind: "codexCLI",
+                engineLabel: "Codex (CLI)",
+                model: nil,
+                pipelineVersion: "diary-story-v1",
+                curatedEventCount: 1
+            )
+        )
+        try writeStoryDay(
+            dayKey: dayKey,
+            markdown: environment.composer.compose(dayKey: dayKey, events: [oldEvent], story: existingStory),
+            story: existingStory,
+            environment: environment
+        )
+
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            makeSummarizer: { engine, _, _ in
+                guard engine == .codexCLI else { return nil }
+                return StaticSummarizer(
+                    response: """
+                    {
+                      "summaryBulletsToAppend": [{ "text": "- Customer approved the follow-up", "sourceEventIDs": ["\(newID.uuidString)"] }],
+                      "detailBlocksToAppend": [{ "text": "## Follow-up\\n\\nHandled the approval loop.", "sourceEventIDs": ["\(newID.uuidString)"] }],
+                      "todoItemsToAppend": [{ "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(newID.uuidString)"] }]
+                    }
+                    """
+                )
+            }
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(state: .green, detail: "Ready.", lastVerifiedAt: Date(), configurationSignature: "codex")
+        appState.selectDate(dayKey)
+
+        await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11).date!)
+
+        let refreshedMarkdown = try String(contentsOf: vaultURL.appending(path: "\(dayKey).md"))
+        XCTAssertTrue(refreshedMarkdown.contains("Keep the pace."))
+        XCTAssertTrue(refreshedMarkdown.contains("- Wrapped the first pass"))
+        XCTAssertTrue(refreshedMarkdown.contains("- Customer approved the follow-up"))
+        XCTAssertTrue(refreshedMarkdown.contains("## Existing Thread"))
+        XCTAssertTrue(refreshedMarkdown.contains("## Follow-up"))
+        XCTAssertTrue(refreshedMarkdown.contains("- [ ] Send recap"))
+        XCTAssertTrue(refreshedMarkdown.contains("- [ ] Queue the final handoff"))
+        XCTAssertNil(appState.dayRefreshStatus.lastError)
+    }
+
+    func testRefreshSelectedDayIncrementalFailurePreservesExistingFiles() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let dayKey = "2026-04-09"
+        let oldID = UUID()
+        let newID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: oldID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 9).date!,
+                dayKey: dayKey,
+                text: "Wrapped the first pass",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "preserve-old"
+            )
+        )
+        try writer.insert(
+            EventRecord(
+                id: newID,
+                sourceType: .notification,
+                sourceApp: "Mail",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 11).date!,
+                dayKey: dayKey,
+                text: "Customer approved the follow-up",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "preserve-new"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: StaticSummarizer(response: "{}"),
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let existingStory = DailyStory(
+            dayKey: dayKey,
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: "# You did a good job today\n\nKeep the pace.\n\n# Summary\n\n- Wrapped the first pass\n\n# Details\n\n## Existing Thread\n\nClosed the first workflow.\n\n# To-do\n\n- [ ] Send recap",
+                            sourceEventIDs: [oldID]
+                        )
+                    ]
+                )
+            ],
+            provenance: StoryProvenance(
+                generationMode: .model,
+                engineKind: "codexCLI",
+                engineLabel: "Codex (CLI)",
+                model: nil,
+                pipelineVersion: "diary-story-v1",
+                curatedEventCount: 1
+            )
+        )
+        let originalMarkdown = environment.composer.compose(dayKey: dayKey, events: try writer.fetchEvents(dayKey: dayKey), story: existingStory)
+        try writeStoryDay(dayKey: dayKey, markdown: originalMarkdown, story: existingStory, environment: environment)
+
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            makeSummarizer: { engine, _, _ in
+                guard engine == .codexCLI else { return nil }
+                return StaticSummarizer(response: "not json")
+            }
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(state: .green, detail: "Ready.", lastVerifiedAt: Date(), configurationSignature: "codex")
+        appState.selectDate(dayKey)
+
+        await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11).date!)
+
+        XCTAssertEqual(try String(contentsOf: vaultURL.appending(path: "\(dayKey).md")), originalMarkdown)
+        XCTAssertEqual(try environment.loadDailyStory(dayKey: dayKey), existingStory)
+        XCTAssertNotNil(appState.dayRefreshStatus.lastError)
+    }
+
+    func testRefreshSelectedDayRetriesAcrossGreenEngines() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let dayKey = "2026-04-09"
+        let eventID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: eventID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 9).date!,
+                dayKey: dayKey,
+                text: "Recover this day",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "retry-day"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: StaticSummarizer(response: "{}"),
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let attemptRecorder = EngineAttemptRecorder()
+
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            makeSummarizer: { engine, _, _ in
+                HandlerSummarizer { dayKey, _, _ in
+                    await attemptRecorder.record(engine)
+                    switch engine {
+                    case .codexCLI:
+                        return "not json"
+                    case .geminiCLI:
+                        return """
+                        {"sections":[{"id":"daily-journal","paragraphs":[{"text":"# Summary\\n- \(dayKey) recovered","sourceEventIDs":["\(eventID.uuidString)"]}]}]}
+                        """
+                    default:
+                        throw URLError(.cannotConnectToHost)
+                    }
+                }
+            }
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(state: .green, detail: "Ready.", lastVerifiedAt: Date(), configurationSignature: "codex")
+        appState.engineStatuses[.geminiCLI] = EngineRuntimeStatus(state: .green, detail: "Ready.", lastVerifiedAt: Date(), configurationSignature: "gemini")
+        appState.selectDate(dayKey)
+
+        await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11).date!)
+
+        let attempts = await attemptRecorder.values()
+        XCTAssertEqual(attempts, [.codexCLI, .geminiCLI])
+        XCTAssertTrue(try String(contentsOf: vaultURL.appending(path: "\(dayKey).md")).contains("2026-04-09 recovered"))
+        XCTAssertNil(appState.dayRefreshStatus.lastError)
+    }
+
+    func testRefreshSelectedDayFullRecoveryWithoutVerifiedEngineFailsAndPreservesExistingFiles() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let dayKey = "2026-04-11"
+        let eventID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: eventID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 9).date!,
+                dayKey: dayKey,
+                text: "Recover this day",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "full-recovery-no-engine"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let existingStory = DailyStory(
+            dayKey: dayKey,
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: "# Summary\n\n- Existing fallback content",
+                            sourceEventIDs: [eventID]
+                        )
+                    ]
+                )
+            ],
+            provenance: StoryProvenance(
+                generationMode: .fallback,
+                engineKind: "codexCLI",
+                engineLabel: "Codex (CLI)",
+                model: nil,
+                pipelineVersion: "diary-story-v1",
+                curatedEventCount: 1
+            )
+        )
+        let originalMarkdown = environment.composer.compose(dayKey: dayKey, events: try writer.fetchEvents(dayKey: dayKey), story: existingStory)
+        try writeStoryDay(dayKey: dayKey, markdown: originalMarkdown, story: existingStory, environment: environment)
+
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            makeSummarizer: { _, _, _ in nil }
+        )
+        appState.selectDate(dayKey)
+
+        await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 13).date!)
+
+        XCTAssertEqual(try String(contentsOf: vaultURL.appending(path: "\(dayKey).md")), originalMarkdown)
+        XCTAssertEqual(try environment.loadDailyStory(dayKey: dayKey), existingStory)
+        XCTAssertEqual(appState.refreshJob(for: dayKey)?.stage, .failed)
+        XCTAssertEqual(appState.dayRefreshStatus.lastError, "No verified engine available for full recovery")
     }
 
     func testRefreshSelectedDayPublishesVisibleStages() async throws {
@@ -1536,7 +2160,7 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Visible stages")),
             notificationReader: RecordingNotificationReader(),
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
@@ -1591,8 +2215,12 @@ final class MainWindowViewModelTests: XCTestCase {
         async let refreshNine: Void = appState.refreshDay("2026-04-09", now: now, environment: environment)
         async let refreshTen: Void = appState.refreshDay("2026-04-10", now: now, environment: environment)
 
-        await gate.waitUntilStarted(dayKey: "2026-04-09")
-        await gate.waitUntilStarted(dayKey: "2026-04-10")
+        let bothStarted = await waitUntilAsync(timeoutNanoseconds: 2_000_000_000) {
+            let startCountNine = await gate.startCount(for: "2026-04-09")
+            let startCountTen = await gate.startCount(for: "2026-04-10")
+            return startCountNine > 0 && startCountTen > 0
+        }
+        XCTAssertTrue(bothStarted, "Expected both refresh jobs to start within the timeout")
 
         let startCountNine = await gate.startCount(for: "2026-04-09")
         let startCountTen = await gate.startCount(for: "2026-04-10")
@@ -1626,7 +2254,7 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Terminal state complete")),
             notificationReader: RecordingNotificationReader(),
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
@@ -1662,13 +2290,15 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Terminal summary complete")),
             notificationReader: RecordingNotificationReader(),
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
             )
         )
-        let appState = AppState(environment: environment)
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        let appState = AppState(environment: environment, summarizerConfig: config)
         appState.selectDate("2026-04-09")
 
         await appState.refreshSelectedDay(
@@ -1681,7 +2311,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         XCTAssertEqual(
             appState.refreshJob(for: "2026-04-09")?.summary,
-            "Completed · local fallback"
+            "Completed · Codex (CLI) returned successfully"
         )
     }
 
@@ -1707,6 +2337,29 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertEqual(appState.summarizerStatus.lastCompletedAt, completedAt)
         XCTAssertEqual(appState.summarizerStatus.lastError, "timed out")
+    }
+
+    func testSummarizerStatusInfersFailureKindFromActiveEngineDetail() throws {
+        let executableURL = try makeStubExecutable(named: "codex")
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        config.codexCLIPath = executableURL.path
+
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(
+            state: .yellow,
+            detail: "Structured repair failed: repair output was not valid structured JSON",
+            lastVerifiedAt: Date(timeIntervalSince1970: 1_775_100_000),
+            configurationSignature: "codex|\(executableURL.path)"
+        )
+
+        XCTAssertEqual(appState.summarizerStatus.failureKind, .repairFailed)
     }
 
     func testRefreshEngineStatusesPreservesLastVerifiedStateForUnchangedEngine() {
@@ -2445,7 +3098,10 @@ final class MainWindowViewModelTests: XCTestCase {
     func testRetestRebuildsActiveSummarizerWhenCurrentDefaultTurnsGreen() async throws {
         let executableDirectory = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: executableDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: executableDirectory) }
         let codexURL = executableDirectory.appending(path: "codex")
+        let (processEnvironment, isolatedHomeURL) = try makeIsolatedCLIProcessEnvironment()
+        defer { try? FileManager.default.removeItem(at: isolatedHomeURL) }
         var initialConfig = SummarizerConfig.default
         initialConfig.defaultEngine = .codexCLI
         initialConfig.codexCLIPath = codexURL.path
@@ -2467,6 +3123,7 @@ final class MainWindowViewModelTests: XCTestCase {
                     verifiedAt: state == .green ? verifiedAt : nil
                 )
             },
+            processEnvironment: processEnvironment,
             userDefaults: engineDefaults,
             keychain: engineKeychain,
             keychainService: "MainWindowViewModelTests"
@@ -2684,11 +3341,14 @@ final class MainWindowViewModelTests: XCTestCase {
         var config = SummarizerConfig.default
         config.defaultEngine = .claudeCLI
         config.claudeCLIPath = "/definitely/missing/claude"
+        let (processEnvironment, isolatedHomeURL) = try makeIsolatedCLIProcessEnvironment()
+        defer { try? FileManager.default.removeItem(at: isolatedHomeURL) }
 
         let environment = try makeEngineEnvironment()
         let appState = AppState(
             environment: environment,
             summarizerConfig: config,
+            processEnvironment: processEnvironment,
             userDefaults: engineDefaults,
             keychain: engineKeychain,
             keychainService: "MainWindowViewModelTests"
@@ -2891,9 +3551,12 @@ final class MainWindowViewModelTests: XCTestCase {
             keychain: engineKeychain,
             keychainService: "MainWindowViewModelTests"
         )
+        let (processEnvironment, isolatedHomeURL) = try makeIsolatedCLIProcessEnvironment()
+        defer { try? FileManager.default.removeItem(at: isolatedHomeURL) }
 
         let appState = AppState(
             bootstrapServices: false,
+            processEnvironment: processEnvironment,
             userDefaults: engineDefaults,
             keychain: engineKeychain,
             keychainService: "MainWindowViewModelTests"
@@ -2957,10 +3620,12 @@ final class MainWindowViewModelTests: XCTestCase {
     func testSelectStoryParagraphUpdatesVisibleSourceEvents() async throws {
         let writer = try DatabaseWriter.inMemory()
         let dayKey = "2026-04-07"
+        let firstID = UUID()
+        let secondID = UUID()
         let baseDate = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 7, hour: 9).date!
         try writer.insert(
             EventRecord(
-                id: UUID(),
+                id: firstID,
                 sourceType: .clipboard,
                 sourceApp: "Drafts",
                 capturedAt: baseDate,
@@ -2973,7 +3638,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         try writer.insert(
             EventRecord(
-                id: UUID(),
+                id: secondID,
                 sourceType: .notification,
                 sourceApp: "Calendar",
                 capturedAt: baseDate.addingTimeInterval(300),
@@ -2990,7 +3655,19 @@ final class MainWindowViewModelTests: XCTestCase {
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: vaultURL,
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(
+                response: """
+                {
+                  "sections": [{
+                    "id": "daily-journal",
+                    "paragraphs": [
+                      { "text": "# Summary\\n\\n- Outlined launch story", "sourceEventIDs": ["\(firstID.uuidString)"] },
+                      { "text": "## Calendar\\n\\nDesign review in 10 minutes", "sourceEventIDs": ["\(secondID.uuidString)"] }
+                    ]
+                  }]
+                }
+                """
+            ),
             notificationReader: RecordingNotificationReader(),
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))

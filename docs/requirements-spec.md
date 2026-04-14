@@ -76,7 +76,6 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 段落级 source link
 - 五步 onboarding 与 settings 配置
 - 顶部 diary engine selector
-- 主窗口右上角 `Edit Prompt` 全局 diary prompt 编辑入口
 - 可选 diary engine：
   - OpenAI API
   - Claude Code CLI
@@ -147,9 +146,8 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - `今日总结` 必须使用 bullet list，`详情` 必须按事务线程使用 `##` 子标题，`待办事项` 必须使用 Markdown task list
 - `详情` 中的每个事务线程都应成为独立的 story paragraph，并各自保留自己的 `sourceEventIDs`
 - 当前产品不对 `详情` 段落数量设置硬性上限，分段质量主要由 prompt 约束“合理分段、避免碎片化”
+- 当前产品不向用户暴露 raw diary prompt 编辑能力；prompt 变更只通过内置 canonical prompt、代码和测试管理
 - 历史 `.story.json` 如果仍把多个 `详情` 子线程合并在同一个 paragraph 中，加载时必须拆分并回写为新的 paragraph 结构
-- 用户必须能够在主窗口右上角打开全局 diary prompt 编辑器，编辑并保存自定义 override，并可恢复为系统默认 prompt
-- 全局 diary prompt override 只影响之后的手动刷新与未来自动生成，不会自动回写、重排或改写已经生成过的历史日期内容
 - 当某天已有 `provenance.generationMode == .model` 的成功 story 时，增量更新只能消费尚未写入该 story 的新事件
 - 增量更新给模型的事件输入必须只包含增量事件；既有内容只能以压缩锚点形式提供，不能作为可重写全文输入
 - 增量成功时，只允许追加 `今日总结`、`详情`、`待办事项`；不得改写 `你今天做得很棒`
@@ -208,7 +206,6 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 
 - 首次 onboarding 中的故事化五步流程
 - 主窗口右上角 diary engine selector
-- 主窗口右上角 `Edit Prompt` 全局 prompt 编辑器
 - Settings 页面中的次级状态入口
 - Settings 页面中的作者联系、社区与法律文档入口
 

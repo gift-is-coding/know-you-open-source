@@ -40,8 +40,6 @@ final class SummarizerConfigTests: XCTestCase {
     func testDefaultConfigTypeIsNone() {
         let config = SummarizerConfig.load(from: defaults)
         XCTAssertEqual(config.type, .none)
-        XCTAssertNil(config.globalDiaryPromptOverride)
-        XCTAssertFalse(config.hasCustomGlobalDiaryPrompt)
     }
 
     func testSaveAndLoadRoundTripsOpenAIConfig() {
@@ -92,28 +90,21 @@ final class SummarizerConfigTests: XCTestCase {
         XCTAssertEqual(loaded.apiToken, "token-test-123")
     }
 
-    func testSaveAndLoadRoundTripsGlobalDiaryPromptOverride() {
-        var config = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
-        config.globalDiaryPromptOverride = "Use a reflective, concise diary voice."
-        config.save(to: defaults, keychain: keychain, keychainService: "tests")
+    func testLoadIgnoresAndClearsLegacyGlobalDiaryPromptOverride() {
+        defaults.set("Use a reflective, concise diary voice.", forKey: "summarizerGlobalDiaryPromptOverride")
 
-        let loaded = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
-        XCTAssertEqual(loaded.globalDiaryPromptOverride, "Use a reflective, concise diary voice.")
-        XCTAssertTrue(loaded.hasCustomGlobalDiaryPrompt)
+        _ = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+
+        XCTAssertNil(defaults.string(forKey: "summarizerGlobalDiaryPromptOverride"))
     }
 
-    func testSaveAndLoadClearsGlobalDiaryPromptOverrideWhenResetToDefault() {
-        var config = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
-        config.globalDiaryPromptOverride = "Use a reflective, concise diary voice."
-        config.save(to: defaults, keychain: keychain, keychainService: "tests")
-        XCTAssertTrue(config.hasCustomGlobalDiaryPrompt)
+    func testSaveClearsLegacyGlobalDiaryPromptOverrideKey() {
+        defaults.set("Use a reflective, concise diary voice.", forKey: "summarizerGlobalDiaryPromptOverride")
+        let config = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
 
-        config.globalDiaryPromptOverride = nil
         config.save(to: defaults, keychain: keychain, keychainService: "tests")
 
-        let loaded = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
-        XCTAssertNil(loaded.globalDiaryPromptOverride)
-        XCTAssertFalse(loaded.hasCustomGlobalDiaryPrompt)
+        XCTAssertNil(defaults.string(forKey: "summarizerGlobalDiaryPromptOverride"))
     }
 
     func testMakeSummarizerRejectsMalformedAPIBaseURL() {

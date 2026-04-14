@@ -88,13 +88,6 @@ flowchart LR
 - 保证只有绿色引擎可以成为默认项，`.none` 是唯一允许的禁用例外
 - 仅当默认项当前为 `.none` 且用户没有显式保持 `None` 时，按 `Claude -> Codex -> Gemini -> Openclaw -> OpenAI` 的固定优先级自动挑选最高优先级绿色引擎
 
-当前 `AppState` 也负责全局 diary prompt 状态：
-
-- 持有并持久化 `SummarizerConfig.globalDiaryPromptOverride`
-- 为主窗口右上角的 `Edit Prompt` sheet 提供 apply / restore default 动作
-- 在真实生成路径里把已保存的全局 override 传给 `DailyMarkdownComposer.storyPrompt(...)`
-- 保证该配置只影响未来的生成请求，不会因为保存 prompt 而自动刷新当前选中日期，也不会直接改写历史 `.story.json` 或 `.md`
-
 Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 - 作者联系入口
@@ -253,8 +246,6 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 `generateStory(...)` 仍保留为底层 fallback/story 生成辅助能力，但不再承担主手动刷新入口语义。
 
 不过当前实现增加了一条保护规则：如果某天已经存在 `generationMode == model` 的成功 story，而本次刷新只得到了 fallback，那么刷新会以失败结束并保留原来的 `.story.json` / `.md`，不会用 fallback 降级覆写成功内容。
-
-如果用户在主窗口右上角的 `Edit Prompt` sheet 中保存了全局 override，`fullRecovery` 发给 summarizer 的 prompt 会改用这个 override；如果用户恢复默认值，则回到 `DailyMarkdownComposer` 的 canonical 默认 prompt。这个设置是“面向未来生成”的配置，不会触发对旧日期内容的被动迁移。
 
 如果 summarizer 成功返回结构化 JSON，`DailyStoryParagraph.text` 当前允许承载 Markdown 富文本，而不是只存纯 prose。现在的 prompt 会要求模型把当天内容组织成单个 `daily-journal` section 下的 Markdown 日记骨架，包含：
 

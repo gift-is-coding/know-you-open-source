@@ -131,33 +131,7 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertTrue(preview.contains("整理今天的日记预览内容"), preview)
     }
 
-    func testStoryPromptReturnsGlobalOverrideWhenProvided() {
-        let composer = DailyMarkdownComposer()
-        let events = [
-            EventRecord(
-                id: UUID(),
-                sourceType: .clipboard,
-                sourceApp: "Notes",
-                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
-                dayKey: "2026-04-08",
-                text: "Existing prompt semantics should remain intact",
-                auditText: nil,
-                privacyAction: .keep,
-                contentHash: "prompt-override-check"
-            )
-        ]
-
-        XCTAssertEqual(
-            composer.storyPrompt(
-                dayKey: "2026-04-08",
-                events: events,
-                globalOverride: "Custom global diary prompt override"
-            ),
-            "Custom global diary prompt override"
-        )
-    }
-
-    func testStoryPromptFallsBackToCanonicalDefaultWhenGlobalOverrideIsNil() {
+    func testStoryPromptUsesCanonicalDefaultPrompt() {
         let composer = DailyMarkdownComposer()
         let events = [
             EventRecord(
@@ -174,29 +148,7 @@ final class DailyMarkdownComposerTests: XCTestCase {
         ]
 
         XCTAssertEqual(
-            composer.storyPrompt(dayKey: "2026-04-08", events: events, globalOverride: nil),
-            composer.defaultStoryPrompt(dayKey: "2026-04-08", events: events)
-        )
-    }
-
-    func testStoryPromptFallsBackToCanonicalDefaultWhenGlobalOverrideIsWhitespaceOnly() {
-        let composer = DailyMarkdownComposer()
-        let events = [
-            EventRecord(
-                id: UUID(),
-                sourceType: .clipboard,
-                sourceApp: "Notes",
-                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
-                dayKey: "2026-04-08",
-                text: "Whitespace-only override should not replace the canonical prompt",
-                auditText: nil,
-                privacyAction: .keep,
-                contentHash: "prompt-override-whitespace"
-            )
-        ]
-
-        XCTAssertEqual(
-            composer.storyPrompt(dayKey: "2026-04-08", events: events, globalOverride: "   \n\t "),
+            composer.storyPrompt(dayKey: "2026-04-08", events: events),
             composer.defaultStoryPrompt(dayKey: "2026-04-08", events: events)
         )
     }
@@ -498,10 +450,11 @@ final class DailyMarkdownComposerTests: XCTestCase {
         )
     }
 
-    func testIncrementalPromptUsesOnlyNewEventsAndCompressedAnchors() {
+    func testIncrementalPromptUsesExistingStoryAndNewEventsForReplacementAndAppendContract() {
         let composer = DailyMarkdownComposer()
         let oldID = UUID()
         let newID = UUID()
+        let fallbackID = UUID()
         let existingStory = DailyStory(
             dayKey: "2026-04-12",
             generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
@@ -511,26 +464,23 @@ final class DailyMarkdownComposerTests: XCTestCase {
                     title: "",
                     paragraphs: [
                         DailyStoryParagraph(
-                            id: "daily-journal-0",
-                            text: """
-                            # You did a good job today
-
-                            Keep going.
-
-                            # Summary
-
-                            - Finished the morning pass
-
-                            # Details
-
-                            ## Main Thread
-
-                            Closed one core workflow.
-
-                            # To-do
-
-                            - [ ] Follow up
-                            """,
+                            id: "daily-journal-encouragement",
+                            text: "# You did a good job today\n\nKeep going.",
+                            sourceEventIDs: [oldID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-summary",
+                            text: "# Summary\n\n- Finished the morning pass",
+                            sourceEventIDs: [oldID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-details-0",
+                            text: "# Details\n\n## Main Thread\n\nClosed one core workflow.",
+                            sourceEventIDs: [oldID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-todo",
+                            text: "# To-do\n\n- [ ] Follow up",
                             sourceEventIDs: [oldID]
                         )
                     ]
@@ -545,17 +495,6 @@ final class DailyMarkdownComposerTests: XCTestCase {
                 curatedEventCount: 1
             )
         )
-        let oldEvent = EventRecord(
-            id: oldID,
-            sourceType: .clipboard,
-            sourceApp: "Notes",
-            capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
-            dayKey: "2026-04-12",
-            text: "Finished the morning pass",
-            auditText: nil,
-            privacyAction: .keep,
-            contentHash: "old"
-        )
         let newEvent = EventRecord(
             id: newID,
             sourceType: .notification,
@@ -567,22 +506,43 @@ final class DailyMarkdownComposerTests: XCTestCase {
             privacyAction: .keep,
             contentHash: "new"
         )
+        let fallbackEvent = EventRecord(
+            id: fallbackID,
+            sourceType: .clipboard,
+            sourceApp: "终端",
+            capturedAt: Date(timeIntervalSince1970: 1_775_000_400),
+            dayKey: "2026-04-12",
+            text: "补充整理中文线索，用来测试回退语言判定",
+            auditText: nil,
+            privacyAction: .keep,
+            contentHash: "fallback"
+        )
 
         let prompt = composer.incrementalPrompt(
             dayKey: "2026-04-12",
             existingStory: existingStory,
             newEvents: [newEvent],
-            allEvents: [oldEvent, newEvent]
+            allEvents: [fallbackEvent]
         )
 
         XCTAssertTrue(prompt.contains(newID.uuidString), prompt)
-        XCTAssertFalse(prompt.contains("Finished the morning pass\n              text"), prompt)
+        XCTAssertFalse(prompt.contains("app: Notes"), prompt)
         XCTAssertTrue(prompt.contains("Existing encouragement anchor"), prompt)
         XCTAssertTrue(prompt.contains("Existing summary anchor"), prompt)
+        XCTAssertTrue(prompt.contains("Existing details anchor"), prompt)
+        XCTAssertTrue(prompt.contains("Existing todo anchor"), prompt)
         XCTAssertTrue(prompt.contains("Already used sourceEventIDs"), prompt)
         XCTAssertTrue(prompt.contains(oldID.uuidString), prompt)
         XCTAssertTrue(prompt.contains("Customer approved the next revision"), prompt)
-        XCTAssertFalse(prompt.contains("Do not rewrite or re-summarize the whole day.") == false)
+        XCTAssertTrue(prompt.contains("\"encouragementToReplace\""), prompt)
+        XCTAssertTrue(prompt.contains("\"summaryBulletsToReplace\""), prompt)
+        XCTAssertTrue(prompt.contains("\"detailBlocksToAppend\""), prompt)
+        XCTAssertTrue(prompt.contains("\"todoItemsToReplace\""), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("rewrite \"# Summary\" as the current full summary state"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("append only the new markdown blocks needed for \"# Details\""), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("rewrite \"# To-do\" as the current full to-do state"), prompt)
+        XCTAssertFalse(prompt.contains("all events"), prompt)
+        XCTAssertFalse(prompt.contains("# 你今天做得很棒"), prompt)
     }
 
     func testStoryPromptRequestsReasonableDetailsParagraphSplits() {
@@ -607,9 +567,85 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("do not fragment the day into tiny paragraphs"), prompt)
     }
 
-    func testMergeIncrementalUpdatePreservesEncouragementAndAppendsSections() {
+    func testParseIncrementalUpdateRequiresReplacementAndAppendPayloadAtomically() {
+        let composer = DailyMarkdownComposer()
+        let encouragementID = UUID()
+        let summaryID = UUID()
+        let detailID = UUID()
+        let todoID = UUID()
+
+        let validUpdate = composer.parseIncrementalUpdate(
+            raw: """
+            {
+              "encouragementToReplace": {
+                "text": "You kept the day moving even after the late change.",
+                "sourceEventIDs": ["\(encouragementID.uuidString)"]
+              },
+              "summaryBulletsToReplace": [
+                { "text": "- Closed the follow-up review", "sourceEventIDs": ["\(summaryID.uuidString)"] }
+              ],
+              "detailBlocksToAppend": [
+                { "text": "## Follow-up\\n\\nHandled the customer feedback loop.", "sourceEventIDs": ["\(detailID.uuidString)"] }
+              ],
+              "todoItemsToReplace": [
+                { "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(todoID.uuidString)"] }
+              ]
+            }
+            """
+        )
+
+        XCTAssertNotNil(validUpdate)
+        XCTAssertEqual(validUpdate?.encouragementToReplace.text, "You kept the day moving even after the late change.")
+        XCTAssertEqual(validUpdate?.summaryBulletsToReplace.map(\.text), ["- Closed the follow-up review"])
+        XCTAssertEqual(validUpdate?.detailBlocksToAppend.map(\.text), ["## Follow-up\n\nHandled the customer feedback loop."])
+        XCTAssertEqual(validUpdate?.todoItemsToReplace.map(\.text), ["- [ ] Queue the final handoff"])
+
+        let missingField = composer.parseIncrementalUpdate(
+            raw: """
+            {
+              "encouragementToReplace": {
+                "text": "You kept the day moving even after the late change.",
+                "sourceEventIDs": ["\(encouragementID.uuidString)"]
+              },
+              "summaryBulletsToReplace": [
+                { "text": "- Closed the follow-up review", "sourceEventIDs": ["\(summaryID.uuidString)"] }
+              ],
+              "detailBlocksToAppend": [
+                { "text": "## Follow-up\\n\\nHandled the customer feedback loop.", "sourceEventIDs": ["\(detailID.uuidString)"] }
+              ]
+            }
+            """
+        )
+
+        XCTAssertNil(missingField)
+
+        let invalidNestedField = composer.parseIncrementalUpdate(
+            raw: """
+            {
+              "encouragementToReplace": {
+                "text": "",
+                "sourceEventIDs": ["\(encouragementID.uuidString)"]
+              },
+              "summaryBulletsToReplace": [
+                { "text": "- Closed the follow-up review", "sourceEventIDs": ["\(summaryID.uuidString)"] }
+              ],
+              "detailBlocksToAppend": [
+                { "text": "## Follow-up\\n\\nHandled the customer feedback loop.", "sourceEventIDs": ["\(detailID.uuidString)"] }
+              ],
+              "todoItemsToReplace": [
+                { "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(todoID.uuidString)"] }
+              ]
+            }
+            """
+        )
+
+        XCTAssertNil(invalidNestedField)
+    }
+
+    func testMergeIncrementalUpdateReplacesEncouragementSummaryTodoAndAppendsDetailsAsSeparateParagraphs() {
         let composer = DailyMarkdownComposer()
         let oldID = UUID()
+        let encouragementID = UUID()
         let newSummaryID = UUID()
         let newDetailID = UUID()
         let newTodoID = UUID()
@@ -622,26 +658,23 @@ final class DailyMarkdownComposerTests: XCTestCase {
                     title: "",
                     paragraphs: [
                         DailyStoryParagraph(
-                            id: "daily-journal-0",
-                            text: """
-                            # You did a good job today
-
-                            Keep the steady pace.
-
-                            # Summary
-
-                            - Wrapped the first pass
-
-                            # Details
-
-                            ## Existing Thread
-
-                            Shipped the first iteration.
-
-                            # To-do
-
-                            - [ ] Send recap
-                            """,
+                            id: "daily-journal-encouragement",
+                            text: "# You did a good job today\n\nKeep the steady pace.",
+                            sourceEventIDs: [oldID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-summary",
+                            text: "# Summary\n\n- Wrapped the first pass",
+                            sourceEventIDs: [oldID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-details-0",
+                            text: "# Details\n\n## Existing Thread\n\nShipped the first iteration.",
+                            sourceEventIDs: [oldID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-todo",
+                            text: "# To-do\n\n- [ ] Send recap",
                             sourceEventIDs: [oldID]
                         )
                     ]
@@ -659,13 +692,17 @@ final class DailyMarkdownComposerTests: XCTestCase {
         let update = composer.parseIncrementalUpdate(
             raw: """
             {
-              "summaryBulletsToAppend": [
+              "encouragementToReplace": {
+                "text": "You stayed steady once the feedback loop tightened.",
+                "sourceEventIDs": ["\(encouragementID.uuidString)"]
+              },
+              "summaryBulletsToReplace": [
                 { "text": "- Landed the follow-up review", "sourceEventIDs": ["\(newSummaryID.uuidString)"] }
               ],
               "detailBlocksToAppend": [
                 { "text": "## Follow-up\\n\\nHandled the customer feedback loop.", "sourceEventIDs": ["\(newDetailID.uuidString)"] }
               ],
-              "todoItemsToAppend": [
+              "todoItemsToReplace": [
                 { "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(newTodoID.uuidString)"] }
               ]
             }
@@ -690,18 +727,17 @@ final class DailyMarkdownComposerTests: XCTestCase {
         )
 
         let paragraphs = merged.sections.flatMap(\.paragraphs)
-        XCTAssertEqual(paragraphs.count, 4)
-        XCTAssertEqual(paragraphs[0].text, "# You did a good job today\n\nKeep the steady pace.")
-        XCTAssertTrue(paragraphs[1].text.contains("- Wrapped the first pass"))
-        XCTAssertTrue(paragraphs[1].text.contains("- Landed the follow-up review"))
-        XCTAssertTrue(paragraphs[2].text.contains("## Existing Thread"))
-        XCTAssertTrue(paragraphs[2].text.contains("## Follow-up"))
-        XCTAssertTrue(paragraphs[3].text.contains("- [ ] Send recap"))
-        XCTAssertTrue(paragraphs[3].text.contains("- [ ] Queue the final handoff"))
-        XCTAssertEqual(Set(paragraphs[0].sourceEventIDs), [oldID])
-        XCTAssertEqual(Set(paragraphs[1].sourceEventIDs), [oldID, newSummaryID])
-        XCTAssertEqual(Set(paragraphs[2].sourceEventIDs), [oldID, newDetailID])
-        XCTAssertEqual(Set(paragraphs[3].sourceEventIDs), [oldID, newTodoID])
+        XCTAssertEqual(paragraphs.count, 5)
+        XCTAssertEqual(paragraphs[0].text, "# You did a good job today\n\nYou stayed steady once the feedback loop tightened.")
+        XCTAssertEqual(paragraphs[1].text, "# Summary\n\n- Landed the follow-up review")
+        XCTAssertEqual(paragraphs[2].text, "# Details\n\n## Existing Thread\n\nShipped the first iteration.")
+        XCTAssertEqual(paragraphs[3].text, "## Follow-up\n\nHandled the customer feedback loop.")
+        XCTAssertEqual(paragraphs[4].text, "# To-do\n\n- [ ] Queue the final handoff")
+        XCTAssertEqual(paragraphs[0].sourceEventIDs, [encouragementID])
+        XCTAssertEqual(paragraphs[1].sourceEventIDs, [newSummaryID])
+        XCTAssertEqual(paragraphs[2].sourceEventIDs, [oldID])
+        XCTAssertEqual(paragraphs[3].sourceEventIDs, [newDetailID])
+        XCTAssertEqual(paragraphs[4].sourceEventIDs, [newTodoID])
         XCTAssertEqual(merged.provenance?.engineLabel, "Claude CLI")
     }
 

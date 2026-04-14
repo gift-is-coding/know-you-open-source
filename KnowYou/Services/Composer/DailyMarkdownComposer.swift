@@ -229,27 +229,23 @@ struct DailyMarkdownComposer {
         defaultStoryPrompt(dayKey: dayKey, events: events)
     }
 
-    func storyPrompt(dayKey: String, events: [EventRecord], globalOverride: String?) -> String {
-        guard let globalOverride, !globalOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return defaultStoryPrompt(dayKey: dayKey, events: events)
-        }
-
-        return globalOverride
-    }
-
     func incrementalPrompt(
         dayKey: String,
         existingStory: DailyStory,
         newEvents: [EventRecord],
         allEvents: [EventRecord]
     ) -> String {
-        let language = dominantNarrativeLanguage(for: allEvents)
+        _ = allEvents
+        let language = incrementalNarrativeLanguage(for: existingStory, fallbackEvents: newEvents)
         let headings = journalHeadings(for: language)
         let blocks = journalBlocks(from: existingStory, language: language)
         let usedIDs = usedSourceEventIDs(in: existingStory)
             .map(\.uuidString)
             .sorted()
             .joined(separator: ", ")
+        let encouragementAnchorIDs = blocks.encouragement.sourceEventIDs.map(\.uuidString).sorted().joined(separator: ", ")
+        let summaryAnchorIDs = blocks.summary.sourceEventIDs.map(\.uuidString).sorted().joined(separator: ", ")
+        let todoAnchorIDs = blocks.todo.sourceEventIDs.map(\.uuidString).sorted().joined(separator: ", ")
         let eventLines: String = newEvents.map { event -> String in
             """
             - id: \(event.id.uuidString)
@@ -267,20 +263,24 @@ struct DailyMarkdownComposer {
 
         Required JSON shape:
         {
-          "summaryBulletsToAppend": [{ "text": "...", "sourceEventIDs": ["uuid"] }],
+          "encouragementToReplace": { "text": "...", "sourceEventIDs": ["uuid"] },
+          "summaryBulletsToReplace": [{ "text": "...", "sourceEventIDs": ["uuid"] }],
           "detailBlocksToAppend": [{ "text": "...", "sourceEventIDs": ["uuid"] }],
-          "todoItemsToAppend": [{ "text": "...", "sourceEventIDs": ["uuid"] }]
+          "todoItemsToReplace": [{ "text": "...", "sourceEventIDs": ["uuid"] }]
         }
 
         Rules:
-        - Only use the new events below. Do not rewrite or re-summarize the whole day.
-        - The existing "\(headings.encouragement)" content is frozen. Do not change it.
-        - You may append concise bullets to "\(headings.summary)".
-        - You may append new markdown blocks to "\(headings.details)". Each detail block may use markdown `##` subheadings.
-        - You may append new task items to "\(headings.todo)".
-        - Do not repeat points that are already covered in the existing anchors.
-        - Only reference sourceEventIDs from the new events below.
-        - Keep the writing language aligned with the existing diary.
+        - Use the existing diary below as the current state snapshot, and use the new events below as the only fresh evidence to integrate.
+        - Re-evaluate "\(headings.encouragement)" as the current end-of-day tone and return it in "encouragementToReplace".
+        - Rewrite "\(headings.summary)" as the current full summary state and return it in "summaryBulletsToReplace".
+        - Append only the new markdown blocks needed for "\(headings.details)" and return them in "detailBlocksToAppend".
+        - Rewrite "\(headings.todo)" as the current full to-do state and return it in "todoItemsToReplace".
+        - Do not repeat detail threads that are already covered in the existing details anchor.
+        - Keep the writing language aligned with the existing diary. If the existing diary is empty or malformed, infer the language from the new events.
+        - "encouragementToReplace.sourceEventIDs" may use only these existing encouragement IDs plus the new event IDs: \(encouragementAnchorIDs.isEmpty ? "(none)" : encouragementAnchorIDs)
+        - "summaryBulletsToReplace[*].sourceEventIDs" may use only these existing summary IDs plus the new event IDs: \(summaryAnchorIDs.isEmpty ? "(none)" : summaryAnchorIDs)
+        - "todoItemsToReplace[*].sourceEventIDs" may use only these existing to-do IDs plus the new event IDs: \(todoAnchorIDs.isEmpty ? "(none)" : todoAnchorIDs)
+        - "detailBlocksToAppend[*].sourceEventIDs" must reference only the new events below.
         - If a list is empty, return an empty array for that field.
 
         Day: \(dayKey)
@@ -448,21 +448,41 @@ struct DailyMarkdownComposer {
             return nil
         }
 
-        func convert(_ items: [GeneratedStoryParagraph]) -> [JournalIncrementalItem] {
-            items.compactMap { item in
-                let sourceIDs = item.sourceEventIDs.compactMap(UUID.init(uuidString:))
-                let text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !text.isEmpty, !sourceIDs.isEmpty else {
+        func convert(_ item: GeneratedStoryParagraph) -> JournalIncrementalItem? {
+            let sourceIDs = item.sourceEventIDs.compactMap(UUID.init(uuidString:))
+            let text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty, !sourceIDs.isEmpty else {
+                return nil
+            }
+            return JournalIncrementalItem(text: text, sourceEventIDs: sourceIDs)
+        }
+
+        func convert(_ items: [GeneratedStoryParagraph]) -> [JournalIncrementalItem]? {
+            var converted: [JournalIncrementalItem] = []
+            converted.reserveCapacity(items.count)
+            for item in items {
+                guard let convertedItem = convert(item) else {
                     return nil
                 }
-                return JournalIncrementalItem(text: text, sourceEventIDs: sourceIDs)
+                converted.append(convertedItem)
             }
+            return converted
+        }
+
+        guard
+            let encouragementToReplace = convert(payload.encouragementToReplace),
+            let summaryBulletsToReplace = convert(payload.summaryBulletsToReplace),
+            let detailBlocksToAppend = convert(payload.detailBlocksToAppend),
+            let todoItemsToReplace = convert(payload.todoItemsToReplace)
+        else {
+            return nil
         }
 
         return JournalIncrementalUpdate(
-            summaryBulletsToAppend: convert(payload.summaryBulletsToAppend),
-            detailBlocksToAppend: convert(payload.detailBlocksToAppend),
-            todoItemsToAppend: convert(payload.todoItemsToAppend)
+            encouragementToReplace: encouragementToReplace,
+            summaryBulletsToReplace: summaryBulletsToReplace,
+            detailBlocksToAppend: detailBlocksToAppend,
+            todoItemsToReplace: todoItemsToReplace
         )
     }
 
@@ -491,19 +511,33 @@ struct DailyMarkdownComposer {
         allEvents: [EventRecord],
         provenance: StoryProvenance
     ) -> DailyStory {
-        let language = dominantNarrativeLanguage(for: allEvents)
+        let language = incrementalNarrativeLanguage(for: existingStory, fallbackEvents: allEvents)
         let headings = journalHeadings(for: language)
-        var blocks = journalBlocks(from: existingStory, language: language)
-
-        blocks.summary = appendSummaryItems(update.summaryBulletsToAppend, to: blocks.summary, heading: headings.summary)
-        blocks.details = appendDetailItems(update.detailBlocksToAppend, to: blocks.details, heading: headings.details)
-        blocks.todo = appendTodoItems(update.todoItemsToAppend, to: blocks.todo, heading: headings.todo)
+        let existingBlocks = journalBlocks(from: existingStory, language: language)
+        let encouragement = replaceBlock(
+            with: update.encouragementToReplace,
+            heading: headings.encouragement
+        )
+        let summary = replaceSummaryItems(
+            update.summaryBulletsToReplace,
+            heading: headings.summary
+        )
+        let details = detailParagraphs(
+            from: existingStory,
+            existingDetailsBlock: existingBlocks.details,
+            appendedBlocks: update.detailBlocksToAppend,
+            heading: headings.details
+        )
+        let todo = replaceTodoItems(
+            update.todoItemsToReplace,
+            heading: headings.todo
+        )
 
         let paragraphs = [
-            makeParagraph(id: "daily-journal-encouragement", block: blocks.encouragement),
-            makeParagraph(id: "daily-journal-summary", block: blocks.summary),
-            makeParagraph(id: "daily-journal-details", block: blocks.details),
-            makeParagraph(id: "daily-journal-todo", block: blocks.todo),
+            makeParagraph(id: "daily-journal-encouragement", block: encouragement),
+            makeParagraph(id: "daily-journal-summary", block: summary),
+        ].compactMap { $0 } + details + [
+            makeParagraph(id: "daily-journal-todo", block: todo)
         ].compactMap { $0 }
 
         return DailyStory(
@@ -757,6 +791,29 @@ struct DailyMarkdownComposer {
         return chineseEventCount > 0 && chineseEventCount >= latinEventCount ? .chinese : .english
     }
 
+    private func incrementalNarrativeLanguage(
+        for existingStory: DailyStory,
+        fallbackEvents: [EventRecord]
+    ) -> NarrativeLanguage {
+        let storyText = existingStory.sections
+            .flatMap(\.paragraphs)
+            .map(\.text)
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !storyText.isEmpty {
+            let chineseCharacterCount = storyText.filter(\.isChineseIdeograph).count
+            let latinCharacterCount = storyText.unicodeScalars.filter {
+                CharacterSet.letters.contains($0) && $0.properties.isAlphabetic && $0.value < 128
+            }.count
+            if chineseCharacterCount > 0 || latinCharacterCount > 0 {
+                return chineseCharacterCount >= latinCharacterCount ? .chinese : .english
+            }
+        }
+
+        return dominantNarrativeLanguage(for: fallbackEvents)
+    }
+
     private func groupedLooseFragments(from events: [EventRecord]) -> [[EventRecord]] {
         guard !events.isEmpty else { return [] }
 
@@ -879,79 +936,98 @@ struct DailyMarkdownComposer {
         )
     }
 
-    private func appendRawText(_ text: String, to body: String) -> String {
-        let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedText.isEmpty else { return trimmedBody }
-        guard !trimmedBody.isEmpty else { return trimmedText }
-        return "\(trimmedBody)\n\n\(trimmedText)"
-    }
-
     private func blockBodyText(_ block: JournalMarkdownBlock, heading: String) -> String {
         let trimmed = block.body.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "\(heading)\n\n(empty)" : "\(heading)\n\n\(trimmed)"
     }
 
-    private func appendSummaryItems(
-        _ items: [JournalIncrementalItem],
-        to block: JournalMarkdownBlock,
+    private func replaceBlock(
+        with item: JournalIncrementalItem,
         heading: String
     ) -> JournalMarkdownBlock {
-        var body = block.body.trimmingCharacters(in: .whitespacesAndNewlines)
-        var sourceIDs = Set(block.sourceEventIDs)
+        JournalMarkdownBlock(
+            heading: heading,
+            body: item.text.trimmingCharacters(in: .whitespacesAndNewlines),
+            sourceEventIDs: Array(Set(item.sourceEventIDs)).sorted { $0.uuidString < $1.uuidString }
+        )
+    }
 
-        for item in items {
+    private func replaceSummaryItems(
+        _ items: [JournalIncrementalItem],
+        heading: String
+    ) -> JournalMarkdownBlock {
+        let normalizedItems = items.map { item -> JournalIncrementalItem in
             let line = item.text.hasPrefix("- ") ? item.text : "- \(item.text)"
-            body = appendRawText(line, to: body)
-            sourceIDs.formUnion(item.sourceEventIDs)
+            return JournalIncrementalItem(text: line, sourceEventIDs: item.sourceEventIDs)
         }
 
         return JournalMarkdownBlock(
             heading: heading,
-            body: body,
-            sourceEventIDs: Array(sourceIDs).sorted { $0.uuidString < $1.uuidString }
+            body: normalizedItems.map(\.text).joined(separator: "\n"),
+            sourceEventIDs: Array(Set(normalizedItems.flatMap(\.sourceEventIDs))).sorted { $0.uuidString < $1.uuidString }
         )
     }
 
-    private func appendDetailItems(
+    private func replaceTodoItems(
         _ items: [JournalIncrementalItem],
-        to block: JournalMarkdownBlock,
         heading: String
     ) -> JournalMarkdownBlock {
-        var body = block.body.trimmingCharacters(in: .whitespacesAndNewlines)
-        var sourceIDs = Set(block.sourceEventIDs)
-
-        for item in items {
-            body = appendRawText(item.text, to: body)
-            sourceIDs.formUnion(item.sourceEventIDs)
-        }
-
-        return JournalMarkdownBlock(
-            heading: heading,
-            body: body,
-            sourceEventIDs: Array(sourceIDs).sorted { $0.uuidString < $1.uuidString }
-        )
-    }
-
-    private func appendTodoItems(
-        _ items: [JournalIncrementalItem],
-        to block: JournalMarkdownBlock,
-        heading: String
-    ) -> JournalMarkdownBlock {
-        var body = block.body.trimmingCharacters(in: .whitespacesAndNewlines)
-        var sourceIDs = Set(block.sourceEventIDs)
-
-        for item in items {
+        let normalizedItems = items.map { item -> JournalIncrementalItem in
             let line = item.text.hasPrefix("- [") ? item.text : "- [ ] \(item.text)"
-            body = appendRawText(line, to: body)
-            sourceIDs.formUnion(item.sourceEventIDs)
+            return JournalIncrementalItem(text: line, sourceEventIDs: item.sourceEventIDs)
         }
 
         return JournalMarkdownBlock(
             heading: heading,
-            body: body,
-            sourceEventIDs: Array(sourceIDs).sorted { $0.uuidString < $1.uuidString }
+            body: normalizedItems.map(\.text).joined(separator: "\n"),
+            sourceEventIDs: Array(Set(normalizedItems.flatMap(\.sourceEventIDs))).sorted { $0.uuidString < $1.uuidString }
         )
+    }
+
+    private func detailParagraphs(
+        from story: DailyStory,
+        existingDetailsBlock: JournalMarkdownBlock,
+        appendedBlocks: [JournalIncrementalItem],
+        heading: String
+    ) -> [DailyStoryParagraph] {
+        let existingParagraphs = story.sections
+            .flatMap(\.paragraphs)
+            .filter { paragraph in
+                let trimmed = paragraph.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                return !trimmed.isEmpty && (trimmed == heading || trimmed.hasPrefix("\(heading)\n"))
+            }
+
+        var paragraphs: [DailyStoryParagraph] = []
+
+        if existingParagraphs.isEmpty {
+            if let detailsParagraph = makeParagraph(
+                id: "daily-journal-details-0",
+                block: existingDetailsBlock
+            ) {
+                paragraphs.append(detailsParagraph)
+            }
+        } else {
+            paragraphs.append(contentsOf: existingParagraphs)
+        }
+
+        let startIndex = paragraphs.count
+        for (offset, item) in appendedBlocks.enumerated() {
+            let text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            paragraphs.append(
+                DailyStoryParagraph(
+                    id: "daily-journal-details-\(startIndex + offset)",
+                    text: text,
+                    sourceEventIDs: Array(Set(item.sourceEventIDs)).sorted { $0.uuidString < $1.uuidString }
+                )
+            )
+        }
+
+        if paragraphs.isEmpty, let detailsParagraph = makeParagraph(id: "daily-journal-details-0", block: existingDetailsBlock) {
+            paragraphs.append(detailsParagraph)
+        }
+
+        return paragraphs
     }
 
     private func makeParagraph(id: String, block: JournalMarkdownBlock) -> DailyStoryParagraph? {
@@ -994,15 +1070,17 @@ private struct GeneratedStoryParagraph: Decodable {
 }
 
 private struct GeneratedIncrementalPayload: Decodable {
-    let summaryBulletsToAppend: [GeneratedStoryParagraph]
+    let encouragementToReplace: GeneratedStoryParagraph
+    let summaryBulletsToReplace: [GeneratedStoryParagraph]
     let detailBlocksToAppend: [GeneratedStoryParagraph]
-    let todoItemsToAppend: [GeneratedStoryParagraph]
+    let todoItemsToReplace: [GeneratedStoryParagraph]
 }
 
 struct JournalIncrementalUpdate {
-    let summaryBulletsToAppend: [JournalIncrementalItem]
+    let encouragementToReplace: JournalIncrementalItem
+    let summaryBulletsToReplace: [JournalIncrementalItem]
     let detailBlocksToAppend: [JournalIncrementalItem]
-    let todoItemsToAppend: [JournalIncrementalItem]
+    let todoItemsToReplace: [JournalIncrementalItem]
 }
 
 struct JournalIncrementalItem {

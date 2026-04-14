@@ -5,7 +5,6 @@ struct MainWindowView: View {
     @Environment(AppState.self) private var appState
     @State private var keyMonitor: Any?
     @State private var isShowingEnginePanel = false
-    @State private var isShowingDiaryPromptEditor = false
     @State private var isShowingAPIDetail = false
     @State private var apiConfigDraft = SummarizerConfig.load()
     @State private var isTestingAPIConnection = false
@@ -79,24 +78,7 @@ struct MainWindowView: View {
                         }
                     )
                 }
-
-                Button("Edit Prompt", action: openDiaryPromptEditor)
             }
-        }
-        .sheet(isPresented: $isShowingDiaryPromptEditor) {
-            DiaryPromptEditorSheet(
-                initialPrompt: appState.activeGlobalDiaryPromptOverride,
-                hasActiveOverride: appState.hasActiveGlobalDiaryPromptOverride,
-                onApply: { prompt in
-                    appState.applyGlobalDiaryPromptOverride(prompt)
-                },
-                onRestoreDefault: {
-                    appState.restoreDefaultGlobalDiaryPrompt()
-                },
-                onClose: {
-                    isShowingDiaryPromptEditor = false
-                }
-            )
         }
         .sheet(isPresented: $isShowingAPIDetail) {
             APIDetailSheet(
@@ -188,10 +170,6 @@ struct MainWindowView: View {
 
     private func openEnginePanel() {
         isShowingEnginePanel = true
-    }
-
-    private func openDiaryPromptEditor() {
-        isShowingDiaryPromptEditor = true
     }
 
     private func openAPIDetail() {

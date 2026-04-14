@@ -1,5 +1,10 @@
 import Foundation
 
+enum TodayAutomationRefreshAction: Equatable {
+    case fullRecovery
+    case incremental
+}
+
 struct DailyAutomationPlanner {
     let backfillPlanner: BackfillPlanner
 
@@ -7,7 +12,13 @@ struct DailyAutomationPlanner {
         []
     }
 
-    func shouldAttemptTodayIncremental(todayStory: DailyStory?, hasVerifiedSummarizer: Bool) -> Bool {
-        hasVerifiedSummarizer && todayStory?.provenance?.generationMode == .model
+    func todayRefreshAction(todayStory: DailyStory?, hasVerifiedSummarizer: Bool) -> TodayAutomationRefreshAction? {
+        guard hasVerifiedSummarizer else {
+            return nil
+        }
+        if todayStory?.provenance?.generationMode == .model {
+            return .incremental
+        }
+        return .fullRecovery
     }
 }

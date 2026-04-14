@@ -6,6 +6,7 @@ struct DailyMarkdownView: View {
     let selectedParagraphID: String?
     let dayKey: String?
     let refreshJob: DayRefreshJob?
+    let refreshLogNotice: String?
     let isActive: Bool
     let onSelectParagraph: (String) -> Void
     let onFocusStory: () -> Void
@@ -68,11 +69,35 @@ struct DailyMarkdownView: View {
                                                     .multilineTextAlignment(.trailing)
                                                     .frame(maxWidth: 220, alignment: .trailing)
                                             }
+
+                                            if let refreshLogNotice {
+                                                Text(refreshLogNotice)
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                                    .multilineTextAlignment(.trailing)
+                                                    .frame(maxWidth: 220, alignment: .trailing)
+                                            }
                                         }
                                     } else if let summaryText = refreshPresentation.summaryText {
-                                        Text(summaryText)
-                                            .font(.caption)
-                                            .foregroundStyle(refreshPresentation.summaryColor)
+                                        VStack(alignment: .trailing, spacing: 4) {
+                                            Text(summaryText)
+                                                .font(.caption)
+                                                .foregroundStyle(refreshPresentation.summaryColor)
+                                                .multilineTextAlignment(.trailing)
+                                                .frame(maxWidth: 220, alignment: .trailing)
+
+                                            if let refreshLogNotice {
+                                                Text(refreshLogNotice)
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                                    .multilineTextAlignment(.trailing)
+                                                    .frame(maxWidth: 220, alignment: .trailing)
+                                            }
+                                        }
+                                    } else if let refreshLogNotice {
+                                        Text(refreshLogNotice)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
                                             .multilineTextAlignment(.trailing)
                                             .frame(maxWidth: 220, alignment: .trailing)
                                     }

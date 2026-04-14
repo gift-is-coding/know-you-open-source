@@ -25,6 +25,7 @@ struct MainWindowView: View {
                 selectedParagraphID: appState.selectedStoryParagraphID,
                 dayKey: appState.selectedDate,
                 refreshJob: selectedRefreshJob,
+                refreshLogNotice: appState.refreshLogNotice(for: appState.selectedDate),
                 isActive: appState.readerFocus == .storyParagraphs,
                 onSelectParagraph: { paragraphID in
                     appState.selectStoryParagraph(paragraphID)

@@ -594,7 +594,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
     }
 
-    func testRunAutomationSkipsTodayWhenOnlyMarkdownAlreadyExists() async throws {
+    func testRunAutomationFullRecoversTodayWhenOnlyMarkdownAlreadyExists() async throws {
         let writer = try DatabaseWriter.inMemory()
         let today = "2026-04-07"
         let capturedAt = DateComponents(
@@ -639,12 +639,90 @@ final class MainWindowViewModelTests: XCTestCase {
         await appState.runAutomation(now: capturedAt)
 
         let rebuiltMarkdown = try String(contentsOf: existingNoteURL)
-        XCTAssertEqual(rebuiltMarkdown, "stale note")
+        XCTAssertNotEqual(rebuiltMarkdown, "stale note")
         XCTAssertEqual(appState.selectedDate, today)
         XCTAssertEqual(
             appState.selectedMarkdownURL?.standardizedFileURL.path,
             existingNoteURL.standardizedFileURL.path
         )
+        XCTAssertEqual(try environment.loadDailyStory(dayKey: today)?.provenance?.generationMode, .model)
+        XCTAssertEqual(try writer.fetchRuns(runType: "daily-note").last?.status, "succeeded")
+    }
+
+    func testRunAutomationFullRecoversTodayWhenNoModelStoryExists() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let dayKey = "2026-04-07"
+        let capturedAt = DateComponents(calendar: calendar, year: 2026, month: 4, day: 7, hour: 9).date!
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: capturedAt,
+                dayKey: dayKey,
+                text: "Fresh start for the day",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "automation-first-full-recovery"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Automation created the first story")),
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(environment: environment)
+
+        await appState.runAutomation(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 7, hour: 12).date!)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: vaultURL.appending(path: "\(dayKey).md").path))
+        XCTAssertEqual(try environment.loadDailyStory(dayKey: dayKey)?.provenance?.generationMode, .model)
+        XCTAssertEqual(try writer.fetchRuns(runType: "daily-note").last?.status, "succeeded")
+    }
+
+    func testRunAutomationWithoutVerifiedEnginePromptsConfigurationForFreshToday() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let dayKey = "2026-04-07"
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 7, hour: 9).date!,
+                dayKey: dayKey,
+                text: "Need an engine before automation can write",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "automation-no-engine"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(environment: environment)
+
+        await appState.runAutomation(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 7, hour: 12).date!)
+
+        XCTAssertEqual(appState.statusMessage, "Configure and verify an engine to generate today's journal")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: vaultURL.appending(path: "\(dayKey).md").path))
         XCTAssertNil(try writer.fetchRuns(runType: "daily-note").last)
     }
 
@@ -1817,6 +1895,43 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual((object["attempts"] as? [[String: Any]])?.count, 1)
     }
 
+    func testRefreshSelectedDaySurfacesRefreshLogWriteFailure() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let dayKey = "2026-04-09"
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 9).date!,
+                dayKey: dayKey,
+                text: "Log failure should stay visible but low-key",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "refresh-log-failure"
+            )
+        )
+
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/dev/null/events.sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Refresh succeeds even if log writing does not")),
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(environment: environment)
+        appState.selectDate(dayKey)
+
+        await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11).date!)
+
+        XCTAssertEqual(appState.refreshLogNotice(for: dayKey), "Refresh log unavailable")
+        XCTAssertEqual(appState.refreshJob(for: dayKey)?.stage, .completed)
+    }
+
     func testRefreshSelectedDayIncrementallyAppendsToModelStory() async throws {
         let writer = try DatabaseWriter.inMemory()
         let calendar = Calendar(identifier: .gregorian)
@@ -2241,6 +2356,51 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertNil(appState.dayRefreshStatus.lastError)
     }
 
+    func testRefreshSelectedDayFailsInsteadOfFullRecoveryWhenExistingStoryCannotBeLoaded() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let dayKey = "2026-04-11"
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 10).date!,
+                dayKey: dayKey,
+                text: "Existing day should not be regenerated if story loading fails",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "invalid-story-load"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: vaultURL, withIntermediateDirectories: true)
+        let markdownURL = vaultURL.appending(path: "\(dayKey).md")
+        try "keep this markdown".write(to: markdownURL, atomically: true, encoding: .utf8)
+        let storyURL = vaultURL.appending(path: "\(dayKey).story.json")
+        try "{ invalid json".write(to: storyURL, atomically: true, encoding: .utf8)
+
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: StaticSummarizer(response: makeValidStoryResponse(summaryLine: "Should not be used")),
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(environment: environment)
+        appState.selectDate(dayKey)
+
+        await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 12).date!)
+
+        XCTAssertEqual(try String(contentsOf: markdownURL, encoding: .utf8), "keep this markdown")
+        XCTAssertEqual(appState.refreshJob(for: dayKey)?.stage, .failed)
+        XCTAssertTrue(appState.dayRefreshStatus.lastError?.contains("Failed to load existing story") == true)
+    }
+
     func testRefreshSelectedDayFullRecoveryWithoutVerifiedEngineFailsAndPreservesExistingFiles() async throws {
         let writer = try DatabaseWriter.inMemory()
         let calendar = Calendar(identifier: .gregorian)
@@ -2313,7 +2473,7 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: vaultURL.appending(path: "\(dayKey).md")), originalMarkdown)
         XCTAssertEqual(try environment.loadDailyStory(dayKey: dayKey), existingStory)
         XCTAssertEqual(appState.refreshJob(for: dayKey)?.stage, .failed)
-        XCTAssertEqual(appState.dayRefreshStatus.lastError, "No verified engine available for full recovery")
+        XCTAssertEqual(appState.dayRefreshStatus.lastError, "Configure and verify an engine to generate this journal")
     }
 
     func testRefreshSelectedDayPublishesVisibleStages() async throws {
@@ -3547,6 +3707,24 @@ final class MainWindowViewModelTests: XCTestCase {
         let markdown = try String(contentsOf: vaultURL.appending(path: "\(dayKey).md"), encoding: .utf8)
         XCTAssertTrue(markdown.contains("## Demo polish"))
         XCTAssertTrue(markdown.contains("## Verification"))
+    }
+
+    func testApplyGlobalDiaryPromptOverrideTrimsWhitespace() throws {
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: try DatabaseWriter.inMemory(),
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let appState = AppState(environment: environment)
+
+        appState.applyGlobalDiaryPromptOverride("\n\n  Custom override with padding  \n")
+
+        XCTAssertEqual(appState.activeGlobalDiaryPromptOverride, "Custom override with padding")
     }
 
     func testCompleteOnboardingPersistsVaultAndSelectedVerifiedEngine() throws {

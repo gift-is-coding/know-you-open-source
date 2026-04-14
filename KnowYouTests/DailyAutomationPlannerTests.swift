@@ -2,6 +2,14 @@ import XCTest
 @testable import KnowYou
 
 final class DailyAutomationPlannerTests: XCTestCase {
+    func testTodayRefreshActionUsesFullRecoveryWhenNoModelStoryExists() {
+        let planner = DailyAutomationPlanner(
+            backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+        )
+
+        XCTAssertEqual(planner.todayRefreshAction(todayStory: nil, hasVerifiedSummarizer: true), .fullRecovery)
+    }
+
     func testPendingDaysNeverSchedulesHistoricalBackfill() {
         let planner = DailyAutomationPlanner(
             backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
@@ -57,7 +65,7 @@ final class DailyAutomationPlannerTests: XCTestCase {
         )
     }
 
-    func testShouldAttemptTodayIncrementalRequiresModelStoryAndSummarizer() {
+    func testTodayRefreshActionRequiresVerifiedSummarizerAndUsesIncrementalForModelStories() {
         let planner = DailyAutomationPlanner(
             backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
         )
@@ -83,8 +91,8 @@ final class DailyAutomationPlannerTests: XCTestCase {
             )
         )
 
-        XCTAssertTrue(planner.shouldAttemptTodayIncremental(todayStory: story, hasVerifiedSummarizer: true))
-        XCTAssertFalse(planner.shouldAttemptTodayIncremental(todayStory: story, hasVerifiedSummarizer: false))
-        XCTAssertFalse(planner.shouldAttemptTodayIncremental(todayStory: nil, hasVerifiedSummarizer: true))
+        XCTAssertEqual(planner.todayRefreshAction(todayStory: story, hasVerifiedSummarizer: true), .incremental)
+        XCTAssertNil(planner.todayRefreshAction(todayStory: story, hasVerifiedSummarizer: false))
+        XCTAssertEqual(planner.todayRefreshAction(todayStory: nil, hasVerifiedSummarizer: true), .fullRecovery)
     }
 }

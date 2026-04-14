@@ -233,7 +233,7 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 1. 先为该天执行 day-scoped 通知同步
 2. 读取 SQLite 中该天事件
-3. 判断是 `fullRecovery` 还是 `incrementalUpdate`
+3. 判断是 `fullRecovery` 还是 `incrementalUpdate`；若现有 `.story.json` 存在但读取失败，则直接失败并暴露读取错误，而不是静默降级
 4. 调用结构化 summarizer；手动刷新会先尝试默认引擎，失败后再并行尝试其它绿色引擎
 5. 只有合法结构化结果才写 `.story.json` 与 `.md`
 6. 写入刷新日志，并更新 UI 状态、run 状态与状态栏信息
@@ -485,7 +485,7 @@ sequenceDiagram
 
 这条后台路径在当前实现里拆成两种节奏不同的任务：
 
-- `runAutomation()`：启动即执行一次，随后每 3 小时执行；只负责今天的通知导入与必要的 today incremental
+- `runAutomation()`：启动即执行一次，随后每 3 小时执行；只负责今天的通知导入，以及“已有 model story 时的 today incremental / 没有成功 story 时的 today full recovery”
 - `runNotificationCatchUp()`：启动即执行一次，随后每 30 秒执行；只负责今天的通知增量导入，不直接生成文档
 
 两者共同保证：
@@ -493,6 +493,8 @@ sequenceDiagram
 - today 的通知接近实时进入本地事件库
 - 重叠时间窗依赖去重，避免重复通知事件无限累积
 - 历史日期不会被后台自动改写
+- 若今天还没有可用引擎，自动化不会写 fallback，而是保留事件并提示用户先配置并验证引擎
+- 刷新日志写失败不会中断主刷新，但会在主阅读器刷新按钮下方显示低调提示
 
 ### 10.2 用户手动刷新某一天
 

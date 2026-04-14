@@ -102,6 +102,17 @@ enum DayRefreshMode: Equatable {
     case incrementalUpdate
 }
 
+enum RefreshModeResolutionError: LocalizedError {
+    case failedToLoadExistingStory(dayKey: String, underlying: Error)
+
+    var errorDescription: String? {
+        switch self {
+        case .failedToLoadExistingStory(let dayKey, let underlying):
+            return "Failed to load existing story for \(dayKey): \(underlying.localizedDescription)"
+        }
+    }
+}
+
 enum RefreshTrigger: String, Codable, Sendable {
     case manual
     case automation
@@ -243,6 +254,7 @@ final class AppState {
     var selectedDayEvents: [EventRecord] = []
     var selectedMarkdownText: String?
     var selectedSourceNotesMarkdown: String?
+    var refreshLogNoticesByDay: [String: String] = [:]
     var readerFocus: ReaderFocusZone = .dateList
     private var refreshJobsByDay: [String: DayRefreshJob] = [:]
     private(set) var environment: AppEnvironment?
@@ -795,7 +807,7 @@ final class AppState {
         refreshNotesIndex()
         let today = ISO8601DayKey.format(now)
         let todayStory = (try? environment.loadDailyStory(dayKey: today)) ?? nil
-        let shouldAttemptTodayIncremental = environment.dailyAutomationPlanner.shouldAttemptTodayIncremental(
+        let todayRefreshAction = environment.dailyAutomationPlanner.todayRefreshAction(
             todayStory: todayStory,
             hasVerifiedSummarizer: environment.summarizer != nil
         )
@@ -823,26 +835,38 @@ final class AppState {
         refreshNotesIndex()
         pendingBackfillDays = []
 
-        if shouldAttemptTodayIncremental {
+        if let todayRefreshAction {
             let refreshStartedAt = Date()
             let refreshLog = RefreshLogBuffer(
                 record: RefreshLogRecord(
                     dayKey: today,
                     trigger: .automation,
-                    mode: "incrementalUpdate",
+                    mode: todayRefreshAction == .incremental ? "incrementalUpdate" : "fullRecovery",
                     startedAt: refreshStartedAt,
                     notificationImportedCount: lastImportedNotificationCount,
                     notificationError: notificationStatus.lastError
                 )
             )
-            _ = await incrementallyRefreshDay(
-                dayKey: today,
-                recordsRun: true,
-                now: now,
-                environment: environment,
-                trigger: .automation,
-                refreshLog: refreshLog
-            )
+            switch todayRefreshAction {
+            case .incremental:
+                _ = await incrementallyRefreshDay(
+                    dayKey: today,
+                    recordsRun: true,
+                    now: now,
+                    environment: environment,
+                    trigger: .automation,
+                    refreshLog: refreshLog
+                )
+            case .fullRecovery:
+                _ = await refreshDayWithRetry(
+                    dayKey: today,
+                    recordsRun: true,
+                    now: now,
+                    environment: environment,
+                    trigger: .automation,
+                    refreshLog: refreshLog
+                )
+            }
             refreshLog.record.finishedAt = Date()
             refreshLog.record.totalDurationSeconds = refreshLog.record.finishedAt?.timeIntervalSince(refreshStartedAt)
             refreshLog.record.finalStatus = dayRefreshStatus.lastError == nil ? "completed" : "failed"
@@ -852,8 +876,10 @@ final class AppState {
 
         if let lastError = notificationStatus.lastError {
             statusMessage = "Refresh completed with notification issue: \(lastError)"
-        } else if shouldAttemptTodayIncremental, let detail = dayRefreshStatus.detail, detail.contains(today) {
+        } else if let todayRefreshAction, let detail = dayRefreshStatus.detail, detail.contains(today) {
             statusMessage = detail
+        } else if todayRefreshAction == nil, todayStory?.provenance?.generationMode != .model {
+            statusMessage = "Configure and verify an engine to generate today's journal"
         } else {
             statusMessage = lastImportedNotificationCount == 0
                 ? "Capture services ready"
@@ -993,7 +1019,27 @@ extension AppState {
                 detail: syncOutcome.error ?? "Imported \(syncOutcome.importedCount) notification(s)"
             )
         )
-        let mode = refreshMode(for: dayKey, environment: environment)
+        let mode: DayRefreshMode
+        do {
+            mode = try refreshMode(for: dayKey, environment: environment)
+        } catch {
+            dayRefreshStatus.lastRequestedDay = dayKey
+            dayRefreshStatus.lastRefreshedAt = Date()
+            dayRefreshStatus.lastError = error.localizedDescription
+            statusMessage = "Daily note failed: \(error.localizedDescription)"
+            refreshLog.record.finishedAt = Date()
+            refreshLog.record.totalDurationSeconds = refreshLog.record.finishedAt?.timeIntervalSince(refreshStartedAt)
+            refreshLog.record.finalStatus = "failed"
+            refreshLog.record.finalSummary = error.localizedDescription
+            persistRefreshLog(refreshLog.record, environment: environment)
+            transitionRefreshJob(
+                for: dayKey,
+                stage: .failed,
+                detail: "Failed · \(error.localizedDescription)",
+                error: error.localizedDescription
+            )
+            return
+        }
         refreshLog.record.mode = mode == .fullRecovery ? "fullRecovery" : "incrementalUpdate"
         let noteResult: DayRefreshGenerationResult
         switch mode {
@@ -1130,14 +1176,22 @@ extension AppState {
         }
     }
 
-    private func refreshMode(for dayKey: String, environment: AppEnvironment) -> DayRefreshMode {
-        guard
-            let existingStory = try? environment.loadDailyStory(dayKey: dayKey),
-            existingStory.provenance?.generationMode == .model
-        else {
+    private func refreshMode(for dayKey: String, environment: AppEnvironment) throws -> DayRefreshMode {
+        guard let storyURL = storyURL(for: dayKey, environment: environment) else {
             return .fullRecovery
         }
-        return .incrementalUpdate
+        guard FileManager.default.fileExists(atPath: storyURL.path) else {
+            return .fullRecovery
+        }
+
+        do {
+            guard let existingStory = try environment.loadDailyStory(dayKey: dayKey) else {
+                return .fullRecovery
+            }
+            return existingStory.provenance?.generationMode == .model ? .incrementalUpdate : .fullRecovery
+        } catch {
+            throw RefreshModeResolutionError.failedToLoadExistingStory(dayKey: dayKey, underlying: error)
+        }
     }
 
     private func incrementallyRefreshDay(
@@ -1528,8 +1582,8 @@ extension AppState {
     private func failFullRecoveryWithoutVerifiedEngine(dayKey: String) -> DayRefreshGenerationResult {
         dayRefreshStatus.lastRequestedDay = dayKey
         dayRefreshStatus.lastRefreshedAt = Date()
-        dayRefreshStatus.lastError = "No verified engine available for full recovery"
-        statusMessage = "Daily note failed: No verified engine available for full recovery"
+        dayRefreshStatus.lastError = "Configure and verify an engine to generate this journal"
+        statusMessage = "Daily note failed: Configure and verify an engine to generate this journal"
         return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
     }
 
@@ -2030,7 +2084,10 @@ extension AppState {
             persistedLog.logPath = fileURL.path
             let finalData = try encoder.encode(persistedLog)
             _ = try environment.writeRefreshLog(filename: filename, data: finalData)
-        } catch {}
+            refreshLogNoticesByDay.removeValue(forKey: refreshLog.dayKey)
+        } catch {
+            refreshLogNoticesByDay[refreshLog.dayKey] = "Refresh log unavailable"
+        }
     }
 
     func generateStory(
@@ -2214,6 +2271,11 @@ extension AppState {
             return detail
         }
         return ""
+    }
+
+    func refreshLogNotice(for dayKey: String?) -> String? {
+        guard let dayKey else { return nil }
+        return refreshLogNoticesByDay[dayKey]
     }
 
     var summarizerSummary: String {
@@ -2444,7 +2506,7 @@ extension AppState {
 
     private static func normalizedGlobalDiaryPromptOverride(_ prompt: String) -> String? {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : prompt
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func persistSummarizerConfig() {

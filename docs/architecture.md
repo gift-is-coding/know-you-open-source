@@ -19,12 +19,13 @@ Know You 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 
 ## 2. 系统总览
 
-当前系统由 4 层组成：
+当前系统由 5 层组成：
 
 1. 采集层：剪贴板监听、通知数据库读取与导入
 2. 存储与调度层：SQLite、run 记录、刷新日志、today-only 定时自动化
 3. 生成层：本地 fallback story 生成、可选云端/CLI 总结器、Markdown 组合
-4. 界面层：五步 story onboarding、三栏主阅读器、设置页、菜单栏状态入口、About & Community 对外入口
+4. 记忆同步层：Obsidian / OpenClaw 目标探测、文件复制、LaunchAgent 定时注册
+5. 界面层：五步 story onboarding、三栏主阅读器、设置页、菜单栏状态入口、About & Community 对外入口
 
 ```mermaid
 flowchart LR
@@ -47,6 +48,10 @@ flowchart LR
     L --> P[MainWindowView]
     F --> Q[OnboardingView]
     E --> P
+    F --> R[SyncMemoryCoordinator]
+    R --> S[Obsidian Vault/Know You/Daily Memories]
+    R --> T[OpenClaw Workspace/know-you-memory]
+    F --> U[LaunchAgentManager]
 ```
 
 ## 3. 运行时入口
@@ -88,6 +93,20 @@ flowchart LR
 - 保证只有绿色引擎可以成为默认项，`.none` 是唯一允许的禁用例外
 - 仅当默认项当前为 `.none` 且用户没有显式保持 `None` 时，按 `Claude -> Codex -> Gemini -> Openclaw -> OpenAI` 的固定优先级自动挑选最高优先级绿色引擎
 
+当前 `AppState` 也负责全局 diary prompt 状态：
+
+- 持有并持久化 `SummarizerConfig.globalDiaryPromptOverride`
+- 为主窗口右上角的 `Edit Prompt` sheet 提供 apply / restore default 动作
+- 在真实生成路径里把已保存的全局 override 传给 `DailyMarkdownComposer.storyPrompt(...)`
+- 保证该配置只影响未来的生成请求，不会因为保存 prompt 而自动刷新当前选中日期，也不会直接改写历史 `.story.json` 或 `.md`
+
+当前 `AppState` 还负责 Sync Memory 编排：
+
+- 持有并持久化 `SyncMemoryConfig`
+- 在启动时尽力探测 Obsidian vault 与 OpenClaw workspace
+- 暴露 `openSyncMemoryPanel()`、`closeSyncMemoryPanel()`、`syncMemoryNow()`
+- 在用户修改自动同步配置时注册或移除用户级 `LaunchAgent`
+- 通过 `SyncMemoryCoordinator` 把全部 `YYYY-MM-DD.md` 复制到外部记忆目录，并以同名覆盖方式做增量修正
 Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 - 作者联系入口

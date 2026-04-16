@@ -21,6 +21,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 应用内三栏阅读器
 - 每日 Markdown 文件
 - 每日结构化 `.story.json` 文件
+- 外部 memory 渠道同步（Obsidian / OpenClaw）
 
 其中：
 
@@ -75,6 +76,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - story-first 三栏阅读器
 - 段落级 source link
 - 五步 onboarding 与 settings 配置
+- 左下角 `...` 二级菜单中的 `Sync Memory`
 - 顶部 diary engine selector
 - 可选 diary engine：
   - OpenAI API
@@ -93,6 +95,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 浏览器历史、邮件、日历等更多信号源
 - 主界面中的原始 Markdown 编辑模式
 - App Store 分发约束下的沙盒化方案
+- 双向外部知识库同步
 
 ## 6. 功能需求
 
@@ -152,6 +155,14 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 增量更新给模型的事件输入必须只包含增量事件；既有内容只能以压缩锚点形式提供，不能作为可重写全文输入
 - 增量成功时，只允许追加 `今日总结`、`详情`、`待办事项`；不得改写 `你今天做得很棒`
 - 增量失败时，不得覆盖已有 `.story.json` 或 `.md`
+- 系统必须支持把全部每日日记复制到 Obsidian 和 OpenClaw
+- Obsidian 目标目录固定为 `<vault>/Know You/Daily Memories/`
+- OpenClaw 目标目录固定为 `<workspace>/know-you-memory/`
+- 系统不得覆盖 OpenClaw 原生 daily memory 文件
+- 同步时必须覆盖 Know You 在目标目录中已有的同名日记文件，但不得删除目标目录中的其他历史文件
+- 用户必须能手动触发 `Sync Memory`
+- 用户必须能开启 `Auto Sync Daily`
+- 当启用 `Auto Sync Daily` 时，系统必须安装用户级 `LaunchAgent`，在用户登录后按固定时间执行同步
 
 ## 6.5 阅读器需求
 
@@ -205,6 +216,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 配置入口包括：
 
 - 首次 onboarding 中的故事化五步流程
+- 主窗口左下角 `...` 菜单中的 `Sync Memory`
 - 主窗口右上角 diary engine selector
 - Settings 页面中的次级状态入口
 - Settings 页面中的作者联系、社区与法律文档入口

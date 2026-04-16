@@ -5,19 +5,42 @@ struct DateSidebarView: View {
     let selectedDate: String?
     let isActive: Bool
     let onSelect: (String) -> Void
+    let onOpenSyncMemory: () -> Void
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        List(selection: activeBinding) {
-            ForEach(dates, id: \.self) { date in
-                let isSelected = selectedDate == date
-                Label(formattedDate(date), systemImage: "doc.plaintext")
-                    .padding(.vertical, 4)
-                    .fontWeight(isSelected ? .semibold : .regular)
-                    .foregroundStyle(isActive || isSelected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                    .tag(date)
+        VStack(spacing: 0) {
+            List(selection: activeBinding) {
+                ForEach(dates, id: \.self) { date in
+                    let isSelected = selectedDate == date
+                    Label(formattedDate(date), systemImage: "doc.plaintext")
+                        .padding(.vertical, 4)
+                        .fontWeight(isSelected ? .semibold : .regular)
+                        .foregroundStyle(isActive || isSelected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                        .tag(date)
+                }
+            }
+            .listStyle(.sidebar)
+
+            Divider()
+
+            HStack {
+                Menu {
+                    Button("Sync Memory", action: onOpenSyncMemory)
+                    Button("Settings") {
+                        openSettings()
+                    }
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.title3)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .padding(12)
+
+                Spacer()
             }
         }
-        .listStyle(.sidebar)
         .navigationTitle("Journals")
         .background(Color(nsColor: .controlBackgroundColor))
     }

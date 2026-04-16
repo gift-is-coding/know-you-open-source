@@ -15,7 +15,8 @@ struct MainWindowView: View {
                 dates: appState.availableDates,
                 selectedDate: appState.selectedDate,
                 isActive: appState.readerFocus == .dateList,
-                onSelect: appState.selectDate
+                onSelect: appState.selectDate,
+                onOpenSyncMemory: openSyncMemoryPanel
             )
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
         } content: {
@@ -95,6 +96,57 @@ struct MainWindowView: View {
                 onTest: testAPIConnection
             )
         }
+        .sheet(
+            isPresented: Binding(
+                get: { appState.isShowingSyncMemoryPanel },
+                set: { isPresented in
+                    if isPresented {
+                        appState.openSyncMemoryPanel()
+                    } else {
+                        appState.closeSyncMemoryPanel()
+                    }
+                }
+            )
+        ) {
+            SyncMemoryPanel(
+                obsidianPath: appState.syncMemoryConfig.obsidian.resolvedPath,
+                openClawPath: appState.syncMemoryConfig.openClaw.resolvedPath,
+                statusMessage: appState.syncMemoryStatusMessage,
+                isAutoSyncDailyEnabled: Binding(
+                    get: { appState.syncMemoryConfig.autoSyncEnabled },
+                    set: { isEnabled in
+                        var config = appState.syncMemoryConfig
+                        config.autoSyncEnabled = isEnabled
+                        appState.saveSyncMemoryConfig(config)
+                    }
+                ),
+                dailySyncTime: Binding(
+                    get: {
+                        var components = DateComponents()
+                        components.hour = appState.syncMemoryConfig.dailySyncHour
+                        components.minute = appState.syncMemoryConfig.dailySyncMinute
+                        return Calendar.current.date(from: components) ?? Date()
+                    },
+                    set: { date in
+                        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+                        var config = appState.syncMemoryConfig
+                        config.dailySyncHour = components.hour ?? 21
+                        config.dailySyncMinute = components.minute ?? 0
+                        appState.saveSyncMemoryConfig(config)
+                    }
+                ),
+                onChooseObsidian: { chooseSyncMemoryFolder(for: .obsidian) },
+                onChooseOpenClaw: { chooseSyncMemoryFolder(for: .openClaw) },
+                onOpenObsidian: { openSyncMemoryFolder(at: appState.syncMemoryConfig.obsidian.resolvedPath) },
+                onOpenOpenClaw: { openSyncMemoryFolder(at: appState.syncMemoryConfig.openClaw.resolvedPath) },
+                onSyncNow: {
+                    appState.syncMemoryNow()
+                },
+                onClose: {
+                    appState.closeSyncMemoryPanel()
+                }
+            )
+        }
         .onAppear {
             startKeyMonitor()
         }
@@ -172,6 +224,13 @@ struct MainWindowView: View {
         isShowingEnginePanel = true
     }
 
+    private func openDiaryPromptEditor() {
+        isShowingDiaryPromptEditor = true
+    }
+
+    private func openSyncMemoryPanel() {
+        appState.openSyncMemoryPanel()
+    }
     private func openAPIDetail() {
         apiConfigDraft = SummarizerConfig.load()
         apiConfigDraft.defaultEngine = .openAI
@@ -193,5 +252,35 @@ struct MainWindowView: View {
             await appState.retestEngine(.openAI)
             isTestingAPIConnection = false
         }
+    }
+
+    private func chooseSyncMemoryFolder(for channel: SyncMemoryChannel) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.prompt = "Select Folder"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+
+            let resolvedPath: String
+            switch channel {
+            case .obsidian:
+                resolvedPath = url
+                    .appendingPathComponent("Know You", isDirectory: true)
+                    .appendingPathComponent("Daily Memories", isDirectory: true)
+                    .path
+            case .openClaw:
+                resolvedPath = url
+                    .appendingPathComponent("know-you-memory", isDirectory: true)
+                    .path
+            }
+            appState.updateSyncMemoryChannel(channel, resolvedPath: resolvedPath)
+        }
+    }
+
+    private func openSyncMemoryFolder(at path: String?) {
+        guard let path, path.isEmpty == false else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: path, isDirectory: true))
     }
 }

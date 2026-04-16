@@ -3758,6 +3758,142 @@ final class MainWindowViewModelTests: XCTestCase {
         )
     }
 
+    func testSyncMemoryConfigLoadsFromDefaultsAndPanelStateCanToggle() throws {
+        var config = SyncMemoryConfig.default
+        config.obsidian.isEnabled = true
+        config.obsidian.resolvedPath = "/tmp/\(UUID().uuidString)/obsidian"
+        config.autoSyncEnabled = true
+        config.save(to: engineDefaults)
+
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertTrue(appState.syncMemoryConfig.obsidian.isEnabled)
+        XCTAssertEqual(appState.syncMemoryConfig.obsidian.resolvedPath, config.obsidian.resolvedPath)
+        XCTAssertTrue(appState.syncMemoryConfig.autoSyncEnabled)
+        XCTAssertEqual(appState.syncMemoryConfig.dailySyncHour, config.dailySyncHour)
+        XCTAssertEqual(appState.syncMemoryConfig.dailySyncMinute, config.dailySyncMinute)
+        XCTAssertFalse(appState.isShowingSyncMemoryPanel)
+
+        appState.openSyncMemoryPanel()
+        XCTAssertTrue(appState.isShowingSyncMemoryPanel)
+
+        appState.closeSyncMemoryPanel()
+        XCTAssertFalse(appState.isShowingSyncMemoryPanel)
+    }
+
+    func testSyncMemoryNowCopiesAllDailyNotesToEnabledConfiguredDestinations() throws {
+        let environment = try makeEngineEnvironment()
+        try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
+        try "# Older".write(
+            to: environment.vaultURL.appending(path: "2026-04-10.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "# Latest".write(
+            to: environment.vaultURL.appending(path: "2026-04-11.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let obsidianURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let openClawURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        var config = SyncMemoryConfig.default
+        config.obsidian.isEnabled = true
+        config.obsidian.resolvedPath = obsidianURL.path
+        config.openClaw.isEnabled = true
+        config.openClaw.resolvedPath = openClawURL.path
+        config.save(to: engineDefaults)
+
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        appState.syncMemoryNow()
+
+        XCTAssertEqual(
+            try String(contentsOf: obsidianURL.appending(path: "2026-04-10.md"), encoding: .utf8),
+            "# Older"
+        )
+        XCTAssertEqual(
+            try String(contentsOf: obsidianURL.appending(path: "2026-04-11.md"), encoding: .utf8),
+            "# Latest"
+        )
+        XCTAssertEqual(
+            try String(contentsOf: openClawURL.appending(path: "2026-04-10.md"), encoding: .utf8),
+            "# Older"
+        )
+        XCTAssertEqual(
+            try String(contentsOf: openClawURL.appending(path: "2026-04-11.md"), encoding: .utf8),
+            "# Latest"
+        )
+        XCTAssertEqual(appState.statusMessage, "Synced 2 notes to 2 destinations")
+        XCTAssertEqual(appState.syncMemoryStatusMessage, "Synced 2 notes to 2 destinations")
+    }
+
+    func testSyncMemoryNowSkipsChannelsWithBlankResolvedPath() throws {
+        let environment = try makeEngineEnvironment()
+        try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
+        try "# Latest".write(
+            to: environment.vaultURL.appending(path: "2026-04-12.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let obsidianURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let openClawURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        var config = SyncMemoryConfig.default
+        config.obsidian.isEnabled = true
+        config.obsidian.resolvedPath = obsidianURL.path
+        config.openClaw.isEnabled = true
+        config.openClaw.resolvedPath = "   "
+        config.save(to: engineDefaults)
+
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        appState.syncMemoryNow()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: obsidianURL.appending(path: "2026-04-12.md").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: openClawURL.appending(path: "2026-04-12.md").path))
+        XCTAssertEqual(appState.statusMessage, "Synced 1 note to 1 destination")
+        XCTAssertEqual(appState.syncMemoryStatusMessage, "Synced 1 note to 1 destination")
+    }
+
+    func testSavingSyncMemoryConfigPublishesAutoSyncStatusMessage() {
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests",
+            launchAgentManager: LaunchAgentManager(
+                fileManager: .default,
+                commandRunner: { _ in },
+                userIDProvider: { 501 }
+            )
+        )
+
+        var config = appState.syncMemoryConfig
+        config.autoSyncEnabled = true
+        config.dailySyncHour = 8
+        config.dailySyncMinute = 45
+
+        appState.saveSyncMemoryConfig(config)
+
+        XCTAssertEqual(appState.syncMemoryStatusMessage, "Auto Sync Daily enabled for 08:45")
+    }
+
     func testDailyStoryDecodingBackfillsLegacyProvenanceWhenMissingFromPayload() throws {
         let json = """
         {
@@ -4335,6 +4471,89 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertEqual(appState.availableDates, [newerDayKey, olderDayKey])
         XCTAssertEqual(appState.selectedDate, newerDayKey)
+    }
+
+    func testAppStateLoadsSyncMemoryDefaultsAndExposesClosedPanelInitially() {
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: defaults,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertFalse(appState.isShowingSyncMemoryPanel)
+        XCTAssertEqual(appState.syncMemoryConfig.dailySyncHour, 21)
+        XCTAssertEqual(appState.syncMemoryConfig.dailySyncMinute, 0)
+    }
+
+    func testAppStateCanToggleSyncMemoryPanelVisibility() {
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: defaults,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        appState.openSyncMemoryPanel()
+        XCTAssertTrue(appState.isShowingSyncMemoryPanel)
+
+        appState.closeSyncMemoryPanel()
+        XCTAssertFalse(appState.isShowingSyncMemoryPanel)
+    }
+
+    func testSyncNowCopiesLatestDiaryIntoConfiguredDestinations() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let vault = root.appendingPathComponent("Vault", isDirectory: true)
+        let databaseURL = root.appendingPathComponent("events.sqlite")
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try "# Day".write(
+            to: vault.appendingPathComponent("2026-04-14.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let environment = try AppEnvironment(
+            databasePath: databaseURL.path,
+            vaultURL: vault,
+            summarizer: nil
+        )
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: defaults,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.syncMemoryConfig.obsidian.isEnabled = true
+        appState.syncMemoryConfig.obsidian.resolvedPath = root
+            .appendingPathComponent("Obsidian/Know You/Daily Memories", isDirectory: true)
+            .path
+        appState.syncMemoryConfig.openClaw.isEnabled = true
+        appState.syncMemoryConfig.openClaw.resolvedPath = root
+            .appendingPathComponent("OpenClaw/know-you-memory", isDirectory: true)
+            .path
+
+        appState.syncMemoryNow()
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: root.appendingPathComponent("Obsidian/Know You/Daily Memories/2026-04-14.md").path
+        ))
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: root.appendingPathComponent("OpenClaw/know-you-memory/2026-04-14.md").path
+        ))
+        XCTAssertEqual(appState.statusMessage, "Synced 1 note to 2 destinations")
     }
 
     private func makeModelStory(dayKey: String, eventID: UUID) -> DailyStory {

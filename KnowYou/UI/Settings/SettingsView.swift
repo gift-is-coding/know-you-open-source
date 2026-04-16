@@ -102,6 +102,9 @@ struct SettingsView: View {
                 Section("Automation") {
                     Text("Runs on launch and every 15 minutes")
                         .foregroundStyle(.secondary)
+                    Text("Open Sync Memory from the sidebar ellipsis menu in the main window.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("About & Community") {

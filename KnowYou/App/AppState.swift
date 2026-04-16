@@ -236,6 +236,8 @@ final class AppState {
     var selectedMarkdownURL: URL?
     var noteIndex: [String: URL] = [:]
     var statusMessage: String?
+    var syncMemoryStatusMessage: String?
+    var isShowingSyncMemoryPanel = false
     var lastAutomationRunAt: Date?
     var lastImportedNotificationCount = 0
     var lastNotificationImportAt: Date?
@@ -243,6 +245,7 @@ final class AppState {
     var clipboardStatus = ClipboardMonitorStatus()
     var notificationStatus = NotificationImportStatus()
     var dayRefreshStatus = DayRefreshStatus()
+    var syncMemoryConfig: SyncMemoryConfig
     var engineStatuses: [DiaryEngine: EngineRuntimeStatus]
     var defaultEngine: DiaryEngine
     var isRetestingEngines = false
@@ -274,6 +277,7 @@ final class AppState {
     @ObservationIgnored private let probeEngine: @Sendable (DiaryEngine, SummarizerConfig, [String: String]) async -> EngineProbeResult
     @ObservationIgnored private let makeSummarizer: SummarizerFactory
     @ObservationIgnored private let onRefreshStageChange: RefreshStageChangeHandler?
+    @ObservationIgnored private let launchAgentManager: LaunchAgentManager
     @ObservationIgnored private var summarizerConfig: SummarizerConfig
     @ObservationIgnored private var autoSelectionSuppressedByExplicitNone: Bool
 
@@ -325,7 +329,8 @@ final class AppState {
         currentDate: @escaping @Sendable () -> Date = Date.init,
         userDefaults: UserDefaults = .standard,
         keychain: KeychainStoring = KeychainHelper.shared,
-        keychainService: String = KeychainHelper.service
+        keychainService: String = KeychainHelper.service,
+        launchAgentManager: LaunchAgentManager = LaunchAgentManager()
     ) {
         let explicitSummarizerConfig = summarizerConfig
         self.userDefaults = userDefaults
@@ -336,10 +341,15 @@ final class AppState {
         self.probeEngine = probeEngine
         self.makeSummarizer = makeSummarizer
         self.onRefreshStageChange = onRefreshStageChange
+        self.launchAgentManager = launchAgentManager
         self.summarizerConfig = summarizerConfig ?? SummarizerConfig.load(
             from: userDefaults,
             keychain: keychain,
             keychainService: keychainService
+        )
+        self.syncMemoryConfig = Self.bootstrapSyncMemoryConfigIfNeeded(
+            startingFrom: SyncMemoryConfig.load(from: userDefaults),
+            userDefaults: userDefaults
         )
         let persistedSuppression = userDefaults.object(
             forKey: UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection
@@ -483,6 +493,100 @@ final class AppState {
         environment.vaultURL = url
         refreshNotesIndex()
         statusMessage = "Vault set to \(url.lastPathComponent)"
+    }
+
+    func openSyncMemoryPanel() {
+        isShowingSyncMemoryPanel = true
+    }
+
+    func closeSyncMemoryPanel() {
+        isShowingSyncMemoryPanel = false
+    }
+
+    func saveSyncMemoryConfig(_ config: SyncMemoryConfig) {
+        syncMemoryConfig = config
+        syncMemoryConfig.save(to: userDefaults)
+        do {
+            try launchAgentManager.syncRegistration(
+                executablePath: Bundle.main.executableURL?.path,
+                hour: config.dailySyncHour,
+                minute: config.dailySyncMinute,
+                isEnabled: config.autoSyncEnabled
+            )
+            if config.autoSyncEnabled {
+                let timeSummary = String(format: "%02d:%02d", config.dailySyncHour, config.dailySyncMinute)
+                setSyncMemoryStatus("Auto Sync Daily enabled for \(timeSummary)")
+            } else {
+                setSyncMemoryStatus("Auto Sync Daily disabled")
+            }
+        } catch {
+            setSyncMemoryStatus("Auto Sync Daily setup failed: \(error.localizedDescription)")
+        }
+    }
+
+    func updateSyncMemoryChannel(_ channel: SyncMemoryChannel, resolvedPath: String, isEnabled: Bool = true) {
+        var config = syncMemoryConfig
+        switch channel {
+        case .obsidian:
+            config.obsidian.resolvedPath = resolvedPath
+            config.obsidian.isEnabled = isEnabled
+        case .openClaw:
+            config.openClaw.resolvedPath = resolvedPath
+            config.openClaw.isEnabled = isEnabled
+        }
+        saveSyncMemoryConfig(config)
+    }
+
+    func syncMemoryNow() {
+        guard let environment else {
+            setSyncMemoryStatus("Capture unavailable")
+            return
+        }
+
+        var destinations: [SyncMemoryChannel: URL] = [:]
+        if syncMemoryConfig.obsidian.isEnabled,
+           let resolvedPath = normalizedSyncMemoryPath(syncMemoryConfig.obsidian.resolvedPath) {
+            destinations[.obsidian] = URL(fileURLWithPath: resolvedPath, isDirectory: true)
+        }
+        if syncMemoryConfig.openClaw.isEnabled,
+           let resolvedPath = normalizedSyncMemoryPath(syncMemoryConfig.openClaw.resolvedPath) {
+            destinations[.openClaw] = URL(fileURLWithPath: resolvedPath, isDirectory: true)
+        }
+
+        guard !destinations.isEmpty else {
+            setSyncMemoryStatus("No Sync Memory destinations enabled")
+            return
+        }
+
+        let coordinator = SyncMemoryCoordinator()
+        do {
+            let results = try coordinator.syncDiaries(
+                sourceVault: environment.vaultURL,
+                destinations: destinations
+            )
+            let count = results.count
+            let syncedFileCount = results.values.first?.copiedFileNames.count ?? 0
+            guard syncedFileCount > 0 else {
+                setSyncMemoryStatus("No Sync Memory destinations enabled")
+                return
+            }
+            let noteNoun = syncedFileCount == 1 ? "note" : "notes"
+            let destinationNoun = count == 1 ? "destination" : "destinations"
+            setSyncMemoryStatus("Synced \(syncedFileCount) \(noteNoun) to \(count) \(destinationNoun)")
+        } catch {
+            setSyncMemoryStatus("Sync Memory failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func normalizedSyncMemoryPath(_ path: String?) -> String? {
+        guard let path else { return nil }
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func setSyncMemoryStatus(_ message: String) {
+        syncMemoryStatusMessage = message
+        statusMessage = message
     }
 
     func completeOnboarding(vaultURL: URL, preferredEngine: DiaryEngine) {
@@ -774,6 +878,51 @@ final class AppState {
         formatter.dateFormat = "HH:mm"
         return formatter
     }()
+
+    private static func bootstrapSyncMemoryConfigIfNeeded(
+        startingFrom initialConfig: SyncMemoryConfig,
+        userDefaults: UserDefaults
+    ) -> SyncMemoryConfig {
+        var config = initialConfig
+        let detector = SyncMemoryPathDetector()
+        let fileManager = FileManager.default
+        let homeURL = fileManager.homeDirectoryForCurrentUser
+
+        if !config.obsidian.isEnabled,
+           config.obsidian.resolvedPath?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            let configuredVaults = detector.detectConfiguredObsidianVaults(
+                configDirectory: detector.defaultObsidianConfigDirectory(homePath: homeURL.path)
+            )
+            let searchRoots = [
+                homeURL.appendingPathComponent("Documents", isDirectory: true),
+                homeURL,
+            ].filter { fileManager.fileExists(atPath: $0.path) }
+
+            if let vault = (configuredVaults + detector.detectObsidianVaults(searchRoots: searchRoots)).first {
+                config.obsidian.resolvedPath = vault
+                    .appendingPathComponent("Know You", isDirectory: true)
+                    .appendingPathComponent("Daily Memories", isDirectory: true)
+                    .path
+                config.obsidian.isEnabled = true
+                config.obsidian.lastDetectionSummary = "Detected Obsidian vault"
+            }
+        }
+
+        if !config.openClaw.isEnabled,
+           config.openClaw.resolvedPath?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            let workspace = detector.defaultOpenClawWorkspace(homePath: homeURL.path)
+            if fileManager.fileExists(atPath: workspace.path) {
+                config.openClaw.resolvedPath = detector.openClawMemoryDirectory(for: workspace).path
+                config.openClaw.isEnabled = true
+                config.openClaw.lastDetectionSummary = "Detected OpenClaw workspace"
+            }
+        }
+
+        if config != initialConfig {
+            config.save(to: userDefaults)
+        }
+        return config
+    }
 
     func runAutomation(now: Date = Date()) async {
         guard let environment else {

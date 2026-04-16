@@ -16,6 +16,12 @@
 - [ ] 付费功能：具体付费方式暂未确定
 - [ ] 结构化 diary 生成控制：不要再暴露 raw prompt 编辑；改为探索受限的风格/语气、Summary 密度、Details 分组强度等可控配置
 
+## Bug Fix 清单
+
+- [ ] CLI health check 进程泄漏：终端关闭后不应继续残留一批 probe / health check 子进程；检查是否存在 `detached` / `unref()` / 忽略 `SIGHUP` / 退出时未级联清理的问题
+- [ ] CLI health check 执行策略：避免每次探测都新开进程，优先复用已有 runner 或串行化同类探测，至少要限制并发与堆积
+- [ ] CLI health check 生命周期兜底：如果必须为每次探测单独 spawn，增加明显更长的超时预算，而不是 10 秒硬杀；同时在 app 退出、刷新取消、任务结束时主动回收残留子进程
+
 ## 已完成
 
 - [x] macOS 本地优先桌面应用基础形态

@@ -7,6 +7,8 @@ struct OnboardingView: View {
 
     @State private var step: OnboardingStep = .intro
     @State private var vaultPath: String = (try? AppState.defaultVaultURL().path) ?? ""
+    @State private var selectedEngine: DiaryEngine = SummarizerConfig.load().defaultEngine
+    @State private var hasStartedEngineProbe = false
 
     init(
         onComplete: @escaping () -> Void,
@@ -60,6 +62,13 @@ struct OnboardingView: View {
                 endPoint: .bottomTrailing
             )
         )
+        .onAppear {
+            guard !hasStartedEngineProbe else { return }
+            hasStartedEngineProbe = true
+            Task { @MainActor in
+                await appState.retestAllEngines()
+            }
+        }
     }
 
     private var currentContent: OnboardingStepContent {
@@ -286,6 +295,28 @@ struct OnboardingView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Default engine")
+                        .font(.headline)
+
+                    Text("Choose any engine now, or keep `None` and finish setup first. Know You will verify engines in the background while onboarding continues.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+
+                    Picker("Engine", selection: $selectedEngine) {
+                        ForEach(DiaryEngine.allCases, id: \.self) { engine in
+                            Text(engine.displayName).tag(engine)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Text(enginePickerStatusText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding(22)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -475,10 +506,17 @@ struct OnboardingView: View {
         NSWorkspace.shared.open(url)
     }
 
+    private var enginePickerStatusText: String {
+        let status = appState.engineStatuses[selectedEngine] ?? EngineRuntimeStatus()
+        if selectedEngine == .none {
+            return "No summarizer will be selected during onboarding. Local fallback story generation stays available."
+        }
+        return "\(selectedEngine.displayName) · \(status.detail)"
+    }
+
     private func finish() {
         let vaultURL = URL(fileURLWithPath: vaultPath, isDirectory: true)
-        appState.applyVaultURL(vaultURL)
-        UserDefaults.standard.set(true, forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
+        appState.completeOnboarding(vaultURL: vaultURL, preferredEngine: selectedEngine)
         onComplete()
     }
 }

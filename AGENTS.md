@@ -39,6 +39,7 @@ For any non-trivial change:
 - Run full verification before completion:
   - `xcodebuild test -scheme KnowYou -destination 'platform=macOS'`
   - `xcodebuild build -scheme KnowYou -destination 'platform=macOS'`
+- When launching the app after a build, inspect the current session's DerivedData output, use only the freshly built `KnowYou.app`, and delete stale historical `KnowYou.app` build artifacts so verification never points at an old binary and disk usage stays bounded.
 
 Do not claim a feature is complete, fixed, or passing without fresh command output from the current session.
 

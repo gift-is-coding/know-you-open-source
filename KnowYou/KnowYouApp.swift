@@ -1,20 +1,31 @@
 import SwiftUI
+import AppKit
 
 @main
 struct KnowYouApp: App {
+    private let launchMode: LaunchMode
     @State private var appState = AppState()
     @State private var hasCompletedOnboarding = UserDefaults.standard.bool(forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
 
+    init() {
+        self.launchMode = CommandLine.arguments.contains("--sync-memory-now") ? .syncMemory : .interactive
+    }
+
     var body: some Scene {
         WindowGroup("Know You", id: "main") {
-            if hasCompletedOnboarding {
-                MainWindowView()
+            if launchMode == .syncMemory {
+                SyncMemoryLaunchView()
                     .environment(appState)
             } else {
-                OnboardingView {
-                    hasCompletedOnboarding = true
+                if hasCompletedOnboarding {
+                    MainWindowView()
+                        .environment(appState)
+                } else {
+                    OnboardingView {
+                        hasCompletedOnboarding = true
+                    }
+                    .environment(appState)
                 }
-                .environment(appState)
             }
         }
 
@@ -27,6 +38,24 @@ struct KnowYouApp: App {
             SettingsView()
                 .environment(appState)
         }
+    }
+}
+
+private enum LaunchMode {
+    case interactive
+    case syncMemory
+}
+
+private struct SyncMemoryLaunchView: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        Text("Sync Memory")
+            .hidden()
+            .task {
+                appState.syncMemoryNow()
+                NSApp.terminate(nil)
+            }
     }
 }
 

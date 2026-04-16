@@ -29,7 +29,7 @@ struct DailyMarkdownComposer {
             .joined(separator: "\n\n")
         let sourceLines = bulletList(
             for: events.map { event in
-                "[\(Self.timeFormatter.string(from: event.capturedAt))] \(event.sourceApp) (\(event.sourceType.rawValue)): \(event.displayText)"
+                "[\(Self.timeFormatter.string(from: event.capturedAt))] \(event.sourceApp) (\(event.sourceType.rawValue)): \(event.sanitizedSourceNoteText)"
             },
             emptyState: sourceNotesEmptyState(for: events)
         )
@@ -62,10 +62,89 @@ struct DailyMarkdownComposer {
 
     func sourceNotesMarkdown(for events: [EventRecord]) -> String {
         let lines = events.map { event in
-            "- [\(Self.timeFormatter.string(from: event.capturedAt))] \(event.sourceApp) (\(event.sourceType.rawValue)): \(event.displayText)"
+            "- [\(Self.timeFormatter.string(from: event.capturedAt))] \(event.sourceApp) (\(event.sourceType.rawValue)): \(event.sanitizedSourceNoteText)"
         }
         let body = lines.isEmpty ? sourceNotesEmptyState(for: events) : lines.joined(separator: "\n")
         return "\(sourceNotesHeading(for: events))\n\n\(body)"
+    }
+
+    func defaultStoryPrompt(dayKey: String, events: [EventRecord]) -> String {
+        let language = dominantNarrativeLanguage(for: events)
+        let journalHeadings = journalHeadings(for: language)
+        let forbiddenHeading = language == .chinese ? "# 今日节奏" : "# Today's Rhythm"
+        let eventLines: String = events.enumerated().map { _, event -> String in
+            let eventID = event.id.uuidString
+            return """
+            - id: \(eventID)
+              time: \(Self.timeFormatter.string(from: event.capturedAt))
+              app: \(event.sourceApp)
+              source: \(event.sourceType.rawValue)
+              text: \(event.displayText)
+            """
+        }.joined(separator: "\n")
+
+        return """
+        You are turning one day of raw computer context into a first-person diary entry written by the person who lived that day.
+
+        Return strict JSON only. Do not use markdown fences.
+
+        Required JSON shape:
+        {
+          "sections": [
+            { "id": "daily-journal", "paragraphs": [{ "text": "...", "sourceEventIDs": ["uuid"] }] }
+          ]
+        }
+
+        Rules:
+        - Keep the single section id exactly as given.
+        - Write in first person (I / 我). Never describe the user in third person. Write as if the user is writing their own diary.
+        - Base the content strictly on the source events. Do not invent, infer, or embellish anything not directly supported by the events.
+        - Follow the actual chronology at the thread level, but you may merge related events into the same workstream when it reads more naturally.
+        - Determine whether the day is mainly English or mainly Chinese from the source events.
+        - Write all diary prose and all diary headings in that same dominant language.
+        - If the day is mainly English, use English for all diary prose and headings.
+        - If the day is mainly Chinese, use Chinese for all diary prose and headings.
+        - Do not mix Chinese and English in the diary except for app names or product names that already appear in the source material.
+        - The final combined markdown across paragraph texts must render exactly these first-level headings, in this order:
+          1. \(journalHeadings.encouragement)
+          2. \(journalHeadings.summary)
+          3. \(journalHeadings.details)
+          4. \(journalHeadings.todo)
+        - Do not emit any other first-level heading. In particular, do not include \(forbiddenHeading).
+        - The "\(journalHeadings.encouragement)" section must contain exactly one sentence.
+        - That sentence should read like a short inspirational quote for the person who lived the day, not a recap of tasks.
+        - It should feel warm, distilled, and encouraging, but still loosely grounded in the overall pattern of the source events.
+        - Do not retell the chronology or summarize what the person did step by step in this section.
+        - Avoid app names, file names, branch names, URLs, tool instructions, and other concrete technical debris in this section unless absolutely necessary.
+        - Do not add a quote author, do not use quotation marks, and do not format it as a citation.
+        - Keep the wording in the same dominant language as the rest of the diary.
+        - The "\(journalHeadings.summary)" section should use markdown bullet points.
+        - The "\(journalHeadings.details)" section should use markdown second-level headings (##) for the main workstreams or threads of the day.
+        - Each Details workstream should be its own paragraph in the JSON output instead of combining all Details subsections into one large paragraph.
+        - Do not fragment the day into tiny paragraphs. Split only when a workstream or thread is genuinely distinct.
+        - The "\(journalHeadings.todo)" section should use markdown task list items like - [ ].
+        - Markdown headings, bullet lists, and task lists are allowed inside paragraph text and should be used deliberately.
+        - Only reference sourceEventIDs that appear below.
+        - Put all narrative paragraphs inside the single daily-journal section.
+        - Organize the day by major threads or workstreams, not by raw fragment order.
+        - Notifications, meetings, task reminders, and incoming messages are important when they changed the day's priorities or pushed work forward. Integrate them into the relevant thread instead of dumping them as noise.
+        - Do not copy file paths, branch names, commit hashes, URLs, file names, or tool instructions into the diary unless they are absolutely central. Abstract technical debris into normal diary language.
+        - Prefer summarizing the main work, coordination, decisions, and next steps instead of listing every fragment.
+        - Use natural transitions between blocks, but never introduce facts, emotions, or context that are not present in the source events.
+
+        Day: \(dayKey)
+        Source events:
+        \(eventLines)
+        """
+    }
+
+    func defaultStoryPromptPreview(language: NarrativeLanguage) -> String {
+        let seed = Self.previewSeedData(for: language)
+        return defaultStoryPrompt(dayKey: seed.dayKey, events: seed.events)
+    }
+
+    func usedSourceEventIDs(in story: DailyStory) -> Set<UUID> {
+        Set(story.sections.flatMap(\.paragraphs).flatMap(\.sourceEventIDs))
     }
 
     func extractSourceNotesSection(from markdown: String) -> String? {
@@ -147,10 +226,32 @@ struct DailyMarkdownComposer {
     }
 
     func storyPrompt(dayKey: String, events: [EventRecord]) -> String {
-        let eventLines = events.enumerated().map { index, event in
-            let eventID = event.id.uuidString
-            return """
-            - id: \(eventID)
+        defaultStoryPrompt(dayKey: dayKey, events: events)
+    }
+
+    func incrementalPrompt(
+        dayKey: String,
+        existingStory: DailyStory,
+        newEvents: [EventRecord],
+        allEvents: [EventRecord]
+    ) -> String {
+        _ = allEvents
+        let language = incrementalNarrativeLanguage(
+            for: existingStory,
+            fallbackTexts: newEvents.map(\.displayText)
+        )
+        let headings = journalHeadings(for: language)
+        let blocks = journalBlocks(from: existingStory, language: language)
+        let usedIDs = usedSourceEventIDs(in: existingStory)
+            .map(\.uuidString)
+            .sorted()
+            .joined(separator: ", ")
+        let encouragementAnchorIDs = blocks.encouragement.sourceEventIDs.map(\.uuidString).sorted().joined(separator: ", ")
+        let summaryAnchorIDs = blocks.summary.sourceEventIDs.map(\.uuidString).sorted().joined(separator: ", ")
+        let todoAnchorIDs = blocks.todo.sourceEventIDs.map(\.uuidString).sorted().joined(separator: ", ")
+        let eventLines: String = newEvents.map { event -> String in
+            """
+            - id: \(event.id.uuidString)
               time: \(Self.timeFormatter.string(from: event.capturedAt))
               app: \(event.sourceApp)
               source: \(event.sourceType.rawValue)
@@ -159,48 +260,151 @@ struct DailyMarkdownComposer {
         }.joined(separator: "\n")
 
         return """
-        You are turning one day of raw computer context into a first-person diary entry written by the person who lived that day.
+        You are updating an existing diary entry with new source events from the same day.
 
         Return strict JSON only. Do not use markdown fences.
 
         Required JSON shape:
         {
-          "sections": [
-            { "id": "daily-journal", "paragraphs": [{ "text": "...", "sourceEventIDs": ["uuid"] }] }
-          ]
+          "encouragementToReplace": { "text": "...", "sourceEventIDs": ["uuid"] },
+          "summaryBulletsToReplace": [{ "text": "...", "sourceEventIDs": ["uuid"] }],
+          "detailBlocksToAppend": [{ "text": "...", "sourceEventIDs": ["uuid"] }],
+          "todoItemsToReplace": [{ "text": "...", "sourceEventIDs": ["uuid"] }]
         }
 
         Rules:
-        - Keep the single section id exactly as given.
-        - Write in first person (I / 我). Never describe the user in third person. Write as if the user is writing their own diary.
-        - Base the content strictly on the source events. Do not invent, infer, or embellish anything not directly supported by the events.
-        - Follow the actual chronology at the thread level, but you may merge related events into the same workstream when it reads more naturally.
-        - Write all narration in the same dominant language as the source events.
-        - If the day is mainly Chinese, write all prose in Chinese.
-        - Do not mix Chinese and English in the narration except for app names or product names that already appear in the source material.
-        - The final combined markdown across paragraph texts must render exactly these first-level headings, in this order:
-          1. # 你今天做得很棒
-          2. # 今日总结
-          3. # 详情
-          4. # 待办事项
-        - Do not emit any other first-level heading. In particular, do not include # 今日节奏.
-        - The "你今天做得很棒" section must be positive, encouraging, and grounded in concrete things the person actually did well that day. It should feel supportive, not generic or fake.
-        - The "今日总结" section should use markdown bullet points.
-        - The "详情" section should use markdown second-level headings (##) for the main workstreams or threads of the day.
-        - The "待办事项" section should use markdown task list items like - [ ].
-        - Markdown headings, bullet lists, and task lists are allowed inside paragraph text and should be used deliberately.
-        - Only reference sourceEventIDs that appear below.
-        - Put all narrative paragraphs inside the single daily-journal section.
-        - Organize the day by major threads or workstreams, not by raw fragment order.
-        - Notifications, meetings, task reminders, and incoming messages are important when they changed the day's priorities or pushed work forward. Integrate them into the relevant thread instead of dumping them as noise.
-        - Do not copy file paths, branch names, commit hashes, URLs, file names, or tool instructions into the diary unless they are absolutely central. Abstract technical debris into normal diary language.
-        - Prefer summarizing the main work, coordination, decisions, and next steps instead of listing every fragment.
-        - Use natural transitions between blocks, but never introduce facts, emotions, or context that are not present in the source events.
+        - Use the existing diary below as the current state snapshot, and use the new events below as the only fresh evidence to integrate.
+        - Re-evaluate "\(headings.encouragement)" as the current end-of-day tone and return it in "encouragementToReplace".
+        - Rewrite "\(headings.summary)" as the current full summary state and return it in "summaryBulletsToReplace".
+        - Append only the new markdown blocks needed for "\(headings.details)" and return them in "detailBlocksToAppend".
+        - Rewrite "\(headings.todo)" as the current full to-do state and return it in "todoItemsToReplace".
+        - Do not repeat detail threads that are already covered in the existing details anchor.
+        - Keep the writing language aligned with the existing diary. If the existing diary is empty or malformed, infer the language from the new events.
+        - "encouragementToReplace.sourceEventIDs" may use only these existing encouragement IDs plus the new event IDs: \(encouragementAnchorIDs.isEmpty ? "(none)" : encouragementAnchorIDs)
+        - "summaryBulletsToReplace[*].sourceEventIDs" may use only these existing summary IDs plus the new event IDs: \(summaryAnchorIDs.isEmpty ? "(none)" : summaryAnchorIDs)
+        - "todoItemsToReplace[*].sourceEventIDs" may use only these existing to-do IDs plus the new event IDs: \(todoAnchorIDs.isEmpty ? "(none)" : todoAnchorIDs)
+        - "detailBlocksToAppend[*].sourceEventIDs" must reference only the new events below.
+        - If a list is empty, return an empty array for that field.
 
         Day: \(dayKey)
-        Source events:
+
+        Existing encouragement anchor:
+        \(blockBodyText(blocks.encouragement, heading: headings.encouragement))
+
+        Existing summary anchor:
+        \(blockBodyText(blocks.summary, heading: headings.summary))
+
+        Existing details anchor:
+        \(blockBodyText(blocks.details, heading: headings.details))
+
+        Existing todo anchor:
+        \(blockBodyText(blocks.todo, heading: headings.todo))
+
+        Already used sourceEventIDs:
+        \(usedIDs)
+
+        New events to append from:
         \(eventLines)
         """
+    }
+
+    private func journalHeadings(for language: NarrativeLanguage) -> (
+        encouragement: String,
+        summary: String,
+        details: String,
+        todo: String
+    ) {
+        switch language {
+        case .english:
+            return (
+                encouragement: "# You did a good job today",
+                summary: "# Summary",
+                details: "# Details",
+                todo: "# To-do"
+            )
+        case .chinese:
+            return (
+                encouragement: "# 你今天做得很棒",
+                summary: "# 今日总结",
+                details: "# 详情",
+                todo: "# 待办事项"
+            )
+        }
+    }
+
+    private static func previewSeedData(for language: NarrativeLanguage) -> (dayKey: String, events: [EventRecord]) {
+        let isChinese: Bool
+        switch language {
+        case .english:
+            isChinese = false
+        case .chinese:
+            isChinese = true
+        }
+
+        if isChinese {
+            return (
+                dayKey: "preview-zh",
+                events: [
+                    EventRecord(
+                        id: Self.previewUUID("11111111-1111-1111-1111-111111111111"),
+                        sourceType: .clipboard,
+                        sourceApp: "备忘录",
+                        capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                        dayKey: "preview-zh",
+                        text: "整理今天的日记预览内容",
+                        auditText: nil,
+                        privacyAction: .keep,
+                        contentHash: "preview-zh-1"
+                    ),
+                    EventRecord(
+                        id: Self.previewUUID("22222222-2222-2222-2222-222222222222"),
+                        sourceType: .notification,
+                        sourceApp: "日历",
+                        capturedAt: Date(timeIntervalSince1970: 1_775_000_120),
+                        dayKey: "preview-zh",
+                        text: "下午确认日记生成预览",
+                        auditText: nil,
+                        privacyAction: .keep,
+                        contentHash: "preview-zh-2"
+                    )
+                ]
+            )
+        }
+
+        return (
+            dayKey: "preview-en",
+            events: [
+                EventRecord(
+                    id: Self.previewUUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                    sourceType: .clipboard,
+                    sourceApp: "Notes",
+                    capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                    dayKey: "preview-en",
+                    text: "Drafted a stable preview for the daily story prompt",
+                    auditText: nil,
+                    privacyAction: .keep,
+                    contentHash: "preview-en-1"
+                ),
+                EventRecord(
+                    id: Self.previewUUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+                    sourceType: .notification,
+                    sourceApp: "Calendar",
+                    capturedAt: Date(timeIntervalSince1970: 1_775_000_120),
+                    dayKey: "preview-en",
+                    text: "Preview check stayed on the canonical prompt path",
+                    auditText: nil,
+                    privacyAction: .keep,
+                    contentHash: "preview-en-2"
+                )
+            ]
+        )
+    }
+
+    private static func previewUUID(_ value: String) -> UUID {
+        guard let uuid = UUID(uuidString: value) else {
+            preconditionFailure("Invalid preview UUID: \(value)")
+        }
+        return uuid
     }
 
     func parseStory(dayKey: String, raw: String) -> DailyStory? {
@@ -235,6 +439,164 @@ struct DailyMarkdownComposer {
         return DailyStory(dayKey: dayKey, generatedAt: Date(), sections: sections)
     }
 
+    func parseIncrementalUpdate(raw: String) -> JournalIncrementalUpdate? {
+        let cleaned = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let data = cleaned.data(using: .utf8) else { return nil }
+        guard let payload = try? JSONDecoder().decode(GeneratedIncrementalPayload.self, from: data) else {
+            return nil
+        }
+
+        func convert(_ item: GeneratedStoryParagraph) -> JournalIncrementalItem? {
+            guard let sourceIDs = parseSourceEventIDs(item.sourceEventIDs) else {
+                return nil
+            }
+            let text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty, !sourceIDs.isEmpty else {
+                return nil
+            }
+            return JournalIncrementalItem(text: text, sourceEventIDs: sourceIDs)
+        }
+
+        func convert(_ items: [GeneratedStoryParagraph]) -> [JournalIncrementalItem]? {
+            var converted: [JournalIncrementalItem] = []
+            converted.reserveCapacity(items.count)
+            for item in items {
+                guard let convertedItem = convert(item) else {
+                    return nil
+                }
+                converted.append(convertedItem)
+            }
+            return converted
+        }
+
+        guard
+            let encouragementToReplace = convert(payload.encouragementToReplace),
+            let summaryBulletsToReplace = convert(payload.summaryBulletsToReplace),
+            let detailBlocksToAppend = convert(payload.detailBlocksToAppend),
+            let todoItemsToReplace = convert(payload.todoItemsToReplace)
+        else {
+            return nil
+        }
+
+        return JournalIncrementalUpdate(
+            encouragementToReplace: encouragementToReplace,
+            summaryBulletsToReplace: summaryBulletsToReplace,
+            detailBlocksToAppend: detailBlocksToAppend,
+            todoItemsToReplace: todoItemsToReplace
+        )
+    }
+
+    func normalizeStory(_ story: DailyStory, events: [EventRecord]) -> DailyStory {
+        let eventsByID = Dictionary(uniqueKeysWithValues: events.map { ($0.id, $0) })
+        let sections = story.sections.map { section in
+            DailyStorySection(
+                id: section.id,
+                title: section.title,
+                paragraphs: section.paragraphs.flatMap { normalizeParagraph($0, eventsByID: eventsByID) }
+            )
+        }
+
+        return DailyStory(
+            dayKey: story.dayKey,
+            generatedAt: story.generatedAt,
+            sections: sections,
+            provenance: story.provenance
+        )
+    }
+
+    func mergeIncrementalUpdate(
+        dayKey: String,
+        existingStory: DailyStory,
+        update: JournalIncrementalUpdate,
+        allEvents: [EventRecord],
+        provenance: StoryProvenance
+    ) -> DailyStory {
+        _ = allEvents
+        let language = incrementalNarrativeLanguage(
+            for: existingStory,
+            fallbackTexts: incrementalUpdateTexts(update)
+        )
+        let headings = journalHeadings(for: language)
+        let existingBlocks = journalBlocks(from: existingStory, language: language)
+        let encouragement = replaceBlock(
+            with: update.encouragementToReplace,
+            heading: headings.encouragement
+        )
+        let summary = replaceSummaryItems(
+            update.summaryBulletsToReplace,
+            heading: headings.summary
+        )
+        let details = detailParagraphs(
+            from: existingStory,
+            existingDetailsBlock: existingBlocks.details,
+            appendedBlocks: update.detailBlocksToAppend,
+            heading: headings.details
+        )
+        let todo = replaceTodoItems(
+            update.todoItemsToReplace,
+            heading: headings.todo
+        )
+
+        let paragraphs = [
+            makeParagraph(id: "daily-journal-encouragement", block: encouragement),
+            makeParagraph(id: "daily-journal-summary", block: summary),
+        ].compactMap { $0 } + details + [
+            makeParagraph(id: "daily-journal-todo", block: todo)
+        ].compactMap { $0 }
+
+        return DailyStory(
+            dayKey: dayKey,
+            generatedAt: Date(),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: paragraphs
+                )
+            ],
+            provenance: provenance
+        )
+    }
+
+    func validatedIncrementalUpdate(
+        _ update: JournalIncrementalUpdate,
+        allowedSourceEventIDs: Set<UUID>,
+        allowedDetailSourceEventIDs: Set<UUID>
+    ) -> JournalIncrementalUpdate? {
+        guard
+            let encouragementToReplace = validatedIncrementalItem(
+                update.encouragementToReplace,
+                allowedSourceEventIDs: allowedSourceEventIDs
+            ),
+            let summaryBulletsToReplace = validatedIncrementalItems(
+                update.summaryBulletsToReplace,
+                allowedSourceEventIDs: allowedSourceEventIDs
+            ),
+            let todoItemsToReplace = validatedIncrementalItems(
+                update.todoItemsToReplace,
+                allowedSourceEventIDs: allowedSourceEventIDs
+            )
+        else {
+            return nil
+        }
+
+        let detailBlocksToAppend = update.detailBlocksToAppend.compactMap { item in
+            validatedIncrementalItem(item, allowedSourceEventIDs: allowedDetailSourceEventIDs)
+        }
+
+        return JournalIncrementalUpdate(
+            encouragementToReplace: encouragementToReplace,
+            summaryBulletsToReplace: summaryBulletsToReplace,
+            detailBlocksToAppend: detailBlocksToAppend,
+            todoItemsToReplace: todoItemsToReplace
+        )
+    }
+
     private func bulletList(for items: [String], emptyState: String) -> String {
         let lines = items
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -242,6 +604,133 @@ struct DailyMarkdownComposer {
             .map { "- \($0)" }
 
         return lines.isEmpty ? emptyState : lines.joined(separator: "\n")
+    }
+
+    private func normalizeParagraph(
+        _ paragraph: DailyStoryParagraph,
+        eventsByID: [UUID: EventRecord]
+    ) -> [DailyStoryParagraph] {
+        guard let subsections = legacyDetailsSubsections(from: paragraph.text), subsections.count > 1 else {
+            return [paragraph]
+        }
+
+        let candidateEvents = paragraph.sourceEventIDs.compactMap { eventsByID[$0] }
+        return subsections.enumerated().map { index, subsection in
+            DailyStoryParagraph(
+                id: "\(paragraph.id)-detail-\(index)",
+                text: subsection.markdown,
+                sourceEventIDs: narrowedSourceIDs(
+                    for: subsection.searchText,
+                    candidates: candidateEvents,
+                    fallback: paragraph.sourceEventIDs
+                )
+            )
+        }
+    }
+
+    private func legacyDetailsSubsections(from markdown: String) -> [LegacyDetailsSubsection]? {
+        let lines = markdown.components(separatedBy: .newlines)
+        guard let headingIndex = lines.firstIndex(where: { Self.isLegacyDetailsHeading($0) }) else {
+            return nil
+        }
+
+        let bodyLines = Array(lines[(headingIndex + 1)...])
+        let subsectionStarts = bodyLines.indices.filter { Self.isSecondLevelHeading(bodyLines[$0]) }
+        guard subsectionStarts.count > 1 else {
+            return nil
+        }
+
+        let topHeading = lines[headingIndex].trimmingCharacters(in: .whitespaces)
+        let preambleLines = Array(bodyLines[..<subsectionStarts[0]])
+
+        return subsectionStarts.enumerated().map { index, start in
+            let end = index + 1 < subsectionStarts.count ? subsectionStarts[index + 1] : bodyLines.endIndex
+            let subsectionLines = Array(bodyLines[start..<end])
+            let body = Self.trimmedMarkdown(subsectionLines)
+
+            if index == 0 {
+                let preamble = Self.trimmedMarkdown(preambleLines)
+                let markdown = [topHeading, preamble, body]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: "\n\n")
+                return LegacyDetailsSubsection(markdown: markdown, searchText: body)
+            }
+
+            return LegacyDetailsSubsection(markdown: body, searchText: body)
+        }
+    }
+
+    private func narrowedSourceIDs(
+        for subsectionText: String,
+        candidates: [EventRecord],
+        fallback: [UUID]
+    ) -> [UUID] {
+        guard !candidates.isEmpty else { return fallback }
+
+        let normalizedSubsection = Self.normalizedSearchText(subsectionText)
+        let appMatched = candidates.filter { event in
+            let normalizedApp = Self.normalizedSearchText(event.sourceApp)
+            return !normalizedApp.isEmpty && normalizedSubsection.contains(normalizedApp)
+        }
+        if !appMatched.isEmpty {
+            return appMatched.map(\.id)
+        }
+
+        let subsectionTokens = Self.searchTokens(from: subsectionText)
+        let keywordMatched = candidates.filter { event in
+            let eventTokens = Self.searchTokens(from: "\(event.sourceApp) \(event.displayText)")
+            return subsectionTokens.intersection(eventTokens).isEmpty == false
+        }
+        if !keywordMatched.isEmpty {
+            return keywordMatched.map(\.id)
+        }
+
+        return fallback
+    }
+
+    private static func isLegacyDetailsHeading(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed == "# Details" || trimmed == "# 详情"
+    }
+
+    private static func isSecondLevelHeading(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.hasPrefix("## ") && trimmed.hasPrefix("### ") == false
+    }
+
+    private static func trimmedMarkdown(_ lines: [String]) -> String {
+        let leadingTrimmed = lines.drop(while: { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+        let trailingTrimmed = leadingTrimmed
+            .reversed()
+            .drop(while: { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+            .reversed()
+        return trailingTrimmed.joined(separator: "\n")
+    }
+
+    private static func normalizedSearchText(_ text: String) -> String {
+        text
+            .lowercased()
+            .unicodeScalars
+            .map { scalar in
+                if CharacterSet.alphanumerics.contains(scalar) || (0x4E00...0x9FFF).contains(scalar.value) {
+                    return String(scalar)
+                }
+                return " "
+            }
+            .joined()
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
+
+    private static func searchTokens(from text: String) -> Set<String> {
+        Set(
+            normalizedSearchText(text)
+                .split(separator: " ")
+                .map(String.init)
+                .filter { token in
+                    token.count >= 4 || token.contains(where: \.isChineseIdeograph)
+                }
+        )
     }
 
     private func makeParagraphs(for sectionID: String, events: [EventRecord]) -> [DailyStoryParagraph] {
@@ -345,6 +834,45 @@ struct DailyMarkdownComposer {
         return chineseEventCount > 0 && chineseEventCount >= latinEventCount ? .chinese : .english
     }
 
+    private func incrementalNarrativeLanguage(
+        for existingStory: DailyStory,
+        fallbackTexts: [String]
+    ) -> NarrativeLanguage {
+        let storyText = existingStory.sections
+            .flatMap(\.paragraphs)
+            .map(\.text)
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !storyText.isEmpty {
+            let chineseCharacterCount = storyText.filter(\.isChineseIdeograph).count
+            let latinCharacterCount = storyText.unicodeScalars.filter {
+                CharacterSet.letters.contains($0) && $0.properties.isAlphabetic && $0.value < 128
+            }.count
+            if chineseCharacterCount > 0 || latinCharacterCount > 0 {
+                return chineseCharacterCount >= latinCharacterCount ? .chinese : .english
+            }
+        }
+
+        return narrativeLanguage(for: fallbackTexts)
+    }
+
+    private func incrementalUpdateTexts(_ update: JournalIncrementalUpdate) -> [String] {
+        [update.encouragementToReplace.text]
+            + update.summaryBulletsToReplace.map(\.text)
+            + update.detailBlocksToAppend.map(\.text)
+            + update.todoItemsToReplace.map(\.text)
+    }
+
+    private func narrativeLanguage(for texts: [String]) -> NarrativeLanguage {
+        let combined = texts.joined(separator: "\n")
+        let chineseCharacterCount = combined.filter(\.isChineseIdeograph).count
+        let latinCharacterCount = combined.unicodeScalars.filter {
+            CharacterSet.letters.contains($0) && $0.properties.isAlphabetic && $0.value < 128
+        }.count
+        return chineseCharacterCount > 0 && chineseCharacterCount >= latinCharacterCount ? .chinese : .english
+    }
+
     private func groupedLooseFragments(from events: [EventRecord]) -> [[EventRecord]] {
         guard !events.isEmpty else { return [] }
 
@@ -384,6 +912,311 @@ struct DailyMarkdownComposer {
         }
     }
 
+    private func journalBlocks(from story: DailyStory, language: NarrativeLanguage) -> JournalStoryBlocks {
+        let headings = journalHeadings(for: language)
+        let paragraphs = story.sections
+            .flatMap(\.paragraphs)
+            .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let combinedText = paragraphs
+            .map(\.text)
+            .joined(separator: "\n\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let allSourceIDs = Array(Set(paragraphs.flatMap(\.sourceEventIDs))).sorted { $0.uuidString < $1.uuidString }
+
+        guard !combinedText.isEmpty else {
+            return JournalStoryBlocks(
+                encouragement: JournalMarkdownBlock(heading: headings.encouragement, body: "", sourceEventIDs: []),
+                summary: JournalMarkdownBlock(heading: headings.summary, body: "", sourceEventIDs: []),
+                details: JournalMarkdownBlock(heading: headings.details, body: "", sourceEventIDs: []),
+                todo: JournalMarkdownBlock(heading: headings.todo, body: "", sourceEventIDs: [])
+            )
+        }
+
+        let extracted = extractBlocks(
+            from: combinedText,
+            headings: [headings.encouragement, headings.summary, headings.details, headings.todo]
+        )
+
+        return JournalStoryBlocks(
+            encouragement: mergeExistingBlock(
+                heading: headings.encouragement,
+                extracted: extracted[headings.encouragement],
+                sourceEventIDs: paragraphs.first(where: { $0.text.contains(headings.encouragement) })?.sourceEventIDs ?? allSourceIDs
+            ),
+            summary: mergeExistingBlock(
+                heading: headings.summary,
+                extracted: extracted[headings.summary],
+                sourceEventIDs: paragraphs.first(where: { $0.text.contains(headings.summary) })?.sourceEventIDs ?? allSourceIDs
+            ),
+            details: mergeExistingBlock(
+                heading: headings.details,
+                extracted: extracted[headings.details],
+                sourceEventIDs: paragraphs.first(where: { $0.text.contains(headings.details) })?.sourceEventIDs ?? allSourceIDs
+            ),
+            todo: mergeExistingBlock(
+                heading: headings.todo,
+                extracted: extracted[headings.todo],
+                sourceEventIDs: paragraphs.first(where: { $0.text.contains(headings.todo) })?.sourceEventIDs ?? allSourceIDs
+            )
+        )
+    }
+
+    private func extractBlocks(from markdown: String, headings: [String]) -> [String: String] {
+        var result: [String: String] = [:]
+        let lines = markdown.components(separatedBy: .newlines)
+
+        for (index, heading) in headings.enumerated() {
+            guard let startLine = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines) == heading }) else {
+                continue
+            }
+            let nextHeadingIndex = headings[(index + 1)...]
+                .compactMap { nextHeading in
+                    lines[(startLine + 1)...].firstIndex(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines) == nextHeading })
+                }
+                .min() ?? lines.endIndex
+            let body = lines[(startLine + 1)..<nextHeadingIndex]
+                .joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            result[heading] = body
+        }
+
+        return result
+    }
+
+    private func mergeExistingBlock(
+        heading: String,
+        extracted: String?,
+        sourceEventIDs: [UUID]
+    ) -> JournalMarkdownBlock {
+        JournalMarkdownBlock(
+            heading: heading,
+            body: extracted?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+            sourceEventIDs: Array(Set(sourceEventIDs)).sorted { $0.uuidString < $1.uuidString }
+        )
+    }
+
+    private func blockBodyText(_ block: JournalMarkdownBlock, heading: String) -> String {
+        let trimmed = block.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "\(heading)\n\n(empty)" : "\(heading)\n\n\(trimmed)"
+    }
+
+    private func parseSourceEventIDs(_ values: [String]) -> [UUID]? {
+        var sourceIDs: [UUID] = []
+        sourceIDs.reserveCapacity(values.count)
+        for value in values {
+            guard let uuid = UUID(uuidString: value) else {
+                return nil
+            }
+            sourceIDs.append(uuid)
+        }
+        return sourceIDs
+    }
+
+    private func validatedIncrementalItems(
+        _ items: [JournalIncrementalItem],
+        allowedSourceEventIDs: Set<UUID>
+    ) -> [JournalIncrementalItem]? {
+        var validated: [JournalIncrementalItem] = []
+        validated.reserveCapacity(items.count)
+        for item in items {
+            guard let validatedItem = validatedIncrementalItem(item, allowedSourceEventIDs: allowedSourceEventIDs) else {
+                return nil
+            }
+            validated.append(validatedItem)
+        }
+        return validated
+    }
+
+    private func validatedIncrementalItem(
+        _ item: JournalIncrementalItem,
+        allowedSourceEventIDs: Set<UUID>
+    ) -> JournalIncrementalItem? {
+        guard Set(item.sourceEventIDs).isSubset(of: allowedSourceEventIDs) else {
+            return nil
+        }
+        return item
+    }
+
+    private func replaceBlock(
+        with item: JournalIncrementalItem,
+        heading: String
+    ) -> JournalMarkdownBlock {
+        JournalMarkdownBlock(
+            heading: heading,
+            body: item.text.trimmingCharacters(in: .whitespacesAndNewlines),
+            sourceEventIDs: Array(Set(item.sourceEventIDs)).sorted { $0.uuidString < $1.uuidString }
+        )
+    }
+
+    private func replaceSummaryItems(
+        _ items: [JournalIncrementalItem],
+        heading: String
+    ) -> JournalMarkdownBlock {
+        let normalizedItems = items.map { item -> JournalIncrementalItem in
+            let line = item.text.hasPrefix("- ") ? item.text : "- \(item.text)"
+            return JournalIncrementalItem(text: line, sourceEventIDs: item.sourceEventIDs)
+        }
+
+        return JournalMarkdownBlock(
+            heading: heading,
+            body: normalizedItems.map(\.text).joined(separator: "\n"),
+            sourceEventIDs: Array(Set(normalizedItems.flatMap(\.sourceEventIDs))).sorted { $0.uuidString < $1.uuidString }
+        )
+    }
+
+    private func replaceTodoItems(
+        _ items: [JournalIncrementalItem],
+        heading: String
+    ) -> JournalMarkdownBlock {
+        let normalizedItems = items.map { item -> JournalIncrementalItem in
+            let line = item.text.hasPrefix("- [") ? item.text : "- [ ] \(item.text)"
+            return JournalIncrementalItem(text: line, sourceEventIDs: item.sourceEventIDs)
+        }
+
+        return JournalMarkdownBlock(
+            heading: heading,
+            body: normalizedItems.map(\.text).joined(separator: "\n"),
+            sourceEventIDs: Array(Set(normalizedItems.flatMap(\.sourceEventIDs))).sorted { $0.uuidString < $1.uuidString }
+        )
+    }
+
+    private func detailParagraphs(
+        from story: DailyStory,
+        existingDetailsBlock: JournalMarkdownBlock,
+        appendedBlocks: [JournalIncrementalItem],
+        heading: String
+    ) -> [DailyStoryParagraph] {
+        let existingParagraphs = existingDetailParagraphs(
+            from: story,
+            detailsHeading: heading
+        )
+
+        var paragraphs: [DailyStoryParagraph] = []
+
+        if existingParagraphs.isEmpty == false {
+            paragraphs.append(contentsOf: existingParagraphs)
+        } else if existingDetailsBlock.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            if let detailsParagraph = makeParagraph(
+                id: "daily-journal-details-0",
+                block: existingDetailsBlock
+            ) {
+                paragraphs.append(detailsParagraph)
+            }
+        } else if appendedBlocks.isEmpty == false {
+            let firstItem = appendedBlocks[0]
+            if let firstParagraph = makeParagraph(
+                id: "daily-journal-details-0",
+                block: JournalMarkdownBlock(
+                    heading: heading,
+                    body: firstItem.text,
+                    sourceEventIDs: Array(Set(firstItem.sourceEventIDs)).sorted { $0.uuidString < $1.uuidString }
+                )
+            ) {
+                paragraphs.append(firstParagraph)
+            }
+        } else {
+            if let detailsParagraph = makeParagraph(
+                id: "daily-journal-details-0",
+                block: existingDetailsBlock
+            ) {
+                paragraphs.append(detailsParagraph)
+            }
+        }
+
+        let appendStartIndex =
+            existingParagraphs.isEmpty &&
+            existingDetailsBlock.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            appendedBlocks.isEmpty == false ? 1 : 0
+        let startIndex = paragraphs.count
+        for (offset, item) in appendedBlocks.dropFirst(appendStartIndex).enumerated() {
+            let text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            paragraphs.append(
+                DailyStoryParagraph(
+                    id: "daily-journal-details-\(startIndex + offset)",
+                    text: text,
+                    sourceEventIDs: Array(Set(item.sourceEventIDs)).sorted { $0.uuidString < $1.uuidString }
+                )
+            )
+        }
+
+        if paragraphs.isEmpty, let detailsParagraph = makeParagraph(id: "daily-journal-details-0", block: existingDetailsBlock) {
+            paragraphs.append(detailsParagraph)
+        }
+
+        return paragraphs
+    }
+
+    private func existingDetailParagraphs(
+        from story: DailyStory,
+        detailsHeading: String
+    ) -> [DailyStoryParagraph] {
+        let paragraphs = story.sections.flatMap(\.paragraphs)
+        guard
+            let startIndex = paragraphs.firstIndex(where: { paragraph in
+                let trimmed = paragraph.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed == detailsHeading || trimmed.hasPrefix("\(detailsHeading)\n")
+            })
+        else {
+            return []
+        }
+
+        let englishHeadings = journalHeadings(for: .english)
+        let chineseHeadings = journalHeadings(for: .chinese)
+        let stopHeadings = Set([
+            englishHeadings.encouragement,
+            englishHeadings.summary,
+            englishHeadings.todo,
+            chineseHeadings.encouragement,
+            chineseHeadings.summary,
+            chineseHeadings.todo,
+        ]).subtracting([detailsHeading])
+
+        var collected: [DailyStoryParagraph] = []
+        for (offset, paragraph) in paragraphs[startIndex...].enumerated() {
+            let trimmed = paragraph.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if offset == 0 {
+                collected.append(paragraph)
+                continue
+            }
+
+            if
+                trimmed == detailsHeading ||
+                trimmed.hasPrefix("\(detailsHeading)\n") ||
+                stopHeadings.contains(where: { heading in
+                    trimmed == heading || trimmed.hasPrefix("\(heading)\n")
+                })
+            {
+                break
+            }
+
+            let looksLikeStandaloneDetailBlock =
+                Self.isSecondLevelHeading(trimmed) ||
+                paragraph.id.contains("details")
+
+            guard looksLikeStandaloneDetailBlock else {
+                break
+            }
+
+            collected.append(paragraph)
+        }
+
+        return collected
+    }
+
+    private func makeParagraph(id: String, block: JournalMarkdownBlock) -> DailyStoryParagraph? {
+        let body = block.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = body.isEmpty ? block.heading : "\(block.heading)\n\n\(body)"
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return DailyStoryParagraph(
+            id: id,
+            text: text,
+            sourceEventIDs: block.sourceEventIDs
+        )
+    }
+
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
@@ -391,7 +1224,7 @@ struct DailyMarkdownComposer {
     }()
 }
 
-private enum NarrativeLanguage {
+enum NarrativeLanguage {
     case english
     case chinese
 }
@@ -410,6 +1243,43 @@ private struct GeneratedStoryParagraph: Decodable {
     let sourceEventIDs: [String]
 }
 
+private struct GeneratedIncrementalPayload: Decodable {
+    let encouragementToReplace: GeneratedStoryParagraph
+    let summaryBulletsToReplace: [GeneratedStoryParagraph]
+    let detailBlocksToAppend: [GeneratedStoryParagraph]
+    let todoItemsToReplace: [GeneratedStoryParagraph]
+}
+
+struct JournalIncrementalUpdate {
+    let encouragementToReplace: JournalIncrementalItem
+    let summaryBulletsToReplace: [JournalIncrementalItem]
+    let detailBlocksToAppend: [JournalIncrementalItem]
+    let todoItemsToReplace: [JournalIncrementalItem]
+}
+
+struct JournalIncrementalItem {
+    let text: String
+    let sourceEventIDs: [UUID]
+}
+
+private struct JournalStoryBlocks {
+    var encouragement: JournalMarkdownBlock
+    var summary: JournalMarkdownBlock
+    var details: JournalMarkdownBlock
+    var todo: JournalMarkdownBlock
+}
+
+private struct JournalMarkdownBlock {
+    let heading: String
+    let body: String
+    let sourceEventIDs: [UUID]
+}
+
+private struct LegacyDetailsSubsection {
+    let markdown: String
+    let searchText: String
+}
+
 private enum FallbackTheme {
     case reference
     case verification
@@ -422,6 +1292,16 @@ private extension EventRecord {
     var displayText: String {
         let value = text ?? auditText ?? ""
         return value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var sanitizedSourceNoteText: String {
+        let flattened = displayText
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+
+        return flattened.isEmpty ? "empty item" : flattened
     }
 
     var displayTextSentence: String {

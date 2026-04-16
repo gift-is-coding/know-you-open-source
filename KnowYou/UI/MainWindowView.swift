@@ -3,8 +3,11 @@ import AppKit
 
 struct MainWindowView: View {
     @Environment(AppState.self) private var appState
-    @State private var isRefreshing = false
     @State private var keyMonitor: Any?
+    @State private var isShowingEnginePanel = false
+    @State private var isShowingAPIDetail = false
+    @State private var apiConfigDraft = SummarizerConfig.load()
+    @State private var isTestingAPIConnection = false
 
     var body: some View {
         NavigationSplitView {
@@ -12,7 +15,8 @@ struct MainWindowView: View {
                 dates: appState.availableDates,
                 selectedDate: appState.selectedDate,
                 isActive: appState.readerFocus == .dateList,
-                onSelect: appState.selectDate
+                onSelect: appState.selectDate,
+                onOpenSyncMemory: openSyncMemoryPanel
             )
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
         } content: {
@@ -20,21 +24,19 @@ struct MainWindowView: View {
                 story: appState.selectedStory,
                 selectedParagraphID: appState.selectedStoryParagraphID,
                 dayKey: appState.selectedDate,
-                isRefreshing: isRefreshing,
+                refreshJob: selectedRefreshJob,
+                refreshLogNotice: appState.refreshLogNotice(for: appState.selectedDate),
                 isActive: appState.readerFocus == .storyParagraphs,
                 onSelectParagraph: { paragraphID in
-                    appState.focusStoryParagraphs()
                     appState.selectStoryParagraph(paragraphID)
                 },
                 onFocusStory: {
+                    guard appState.readerFocus != .storyParagraphs else { return }
                     appState.focusStoryParagraphs()
                 },
                 onRefresh: {
-                    guard !isRefreshing else { return }
-                    isRefreshing = true
                     Task { @MainActor in
                         await appState.refreshSelectedDay()
-                        isRefreshing = false
                     }
                 }
             )
@@ -47,6 +49,115 @@ struct MainWindowView: View {
             .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
         }
         .frame(minWidth: 1240, minHeight: 720)
+        .overlay(alignment: .bottomTrailing) {
+            Text(AppBuildMetadata.current.badgeText)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(12)
+                .allowsHitTesting(false)
+                .accessibilityIdentifier("build-version-badge")
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                DiaryEngineSelectorButton(
+                    title: currentEngineTitle,
+                    state: currentEngineState,
+                    action: openEnginePanel
+                )
+                .popover(isPresented: $isShowingEnginePanel, arrowEdge: .top) {
+                    DiaryEnginePanel(
+                        rows: engineRows,
+                        isRetestingAll: appState.isRetestingEngines,
+                        onSelectDefault: { engine in
+                            appState.selectDefaultEngine(engine)
+                            isShowingEnginePanel = false
+                        },
+                        onRetestEngine: { engine in
+                            Task { @MainActor in
+                                await appState.retestEngine(engine)
+                            }
+                        },
+                        onRetestAll: {
+                            Task { @MainActor in
+                                await appState.retestAllEngines()
+                            }
+                        },
+                        onConfigureAPI: {
+                            openAPIDetail()
+                        }
+                    )
+                }
+            }
+        }
+        .sheet(isPresented: $isShowingAPIDetail) {
+            APIDetailSheet(
+                config: $apiConfigDraft,
+                status: appState.engineStatuses[.openAI] ?? EngineRuntimeStatus(),
+                isTesting: isTestingAPIConnection,
+                onClose: {
+                    isShowingAPIDetail = false
+                },
+                onSave: {
+                    saveAPIConfig()
+                    isShowingAPIDetail = false
+                },
+                onTest: testAPIConnection
+            )
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { appState.isShowingSyncMemoryPanel },
+                set: { isPresented in
+                    if isPresented {
+                        appState.openSyncMemoryPanel()
+                    } else {
+                        appState.closeSyncMemoryPanel()
+                    }
+                }
+            )
+        ) {
+            SyncMemoryPanel(
+                obsidianPath: appState.syncMemoryConfig.obsidian.resolvedPath,
+                openClawPath: appState.syncMemoryConfig.openClaw.resolvedPath,
+                statusMessage: appState.syncMemoryStatusMessage,
+                isAutoSyncDailyEnabled: Binding(
+                    get: { appState.syncMemoryConfig.autoSyncEnabled },
+                    set: { isEnabled in
+                        var config = appState.syncMemoryConfig
+                        config.autoSyncEnabled = isEnabled
+                        appState.saveSyncMemoryConfig(config)
+                    }
+                ),
+                dailySyncTime: Binding(
+                    get: {
+                        var components = DateComponents()
+                        components.hour = appState.syncMemoryConfig.dailySyncHour
+                        components.minute = appState.syncMemoryConfig.dailySyncMinute
+                        return Calendar.current.date(from: components) ?? Date()
+                    },
+                    set: { date in
+                        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+                        var config = appState.syncMemoryConfig
+                        config.dailySyncHour = components.hour ?? 21
+                        config.dailySyncMinute = components.minute ?? 0
+                        appState.saveSyncMemoryConfig(config)
+                    }
+                ),
+                onChooseObsidian: { chooseSyncMemoryFolder(for: .obsidian) },
+                onChooseOpenClaw: { chooseSyncMemoryFolder(for: .openClaw) },
+                onOpenObsidian: { openSyncMemoryFolder(at: appState.syncMemoryConfig.obsidian.resolvedPath) },
+                onOpenOpenClaw: { openSyncMemoryFolder(at: appState.syncMemoryConfig.openClaw.resolvedPath) },
+                onSyncNow: {
+                    appState.syncMemoryNow()
+                },
+                onClose: {
+                    appState.closeSyncMemoryPanel()
+                }
+            )
+        }
         .onAppear {
             startKeyMonitor()
         }
@@ -55,7 +166,35 @@ struct MainWindowView: View {
         }
     }
 
+    private var currentEngineTitle: String {
+        appState.defaultEngine == .none ? "Select Engine" : appState.defaultEngine.displayName
+    }
+
+    private var selectedRefreshJob: DayRefreshJob? {
+        guard let selectedDate = appState.selectedDate else { return nil }
+        return appState.refreshJob(for: selectedDate)
+    }
+
+    private var currentEngineState: EngineIndicatorState {
+        appState.engineStatuses[appState.defaultEngine]?.state ?? .gray
+    }
+
+    private var engineRows: [DiaryEnginePanelRow] {
+        DiaryEngine.allCases
+            .filter { $0 != .none }
+            .map { engine in
+                DiaryEnginePanelRow(
+                    engine: engine,
+                    status: appState.engineStatuses[engine] ?? EngineRuntimeStatus(),
+                    isDefault: appState.defaultEngine == engine,
+                    isRetesting: appState.retestingEngines.contains(engine)
+                )
+            }
+    }
+
     private func startKeyMonitor() {
+        guard keyMonitor == nil else { return }
+
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak appState] event in
             guard let appState else { return event }
             let handled = handleKeyEvent(event, appState: appState)
@@ -90,5 +229,65 @@ struct MainWindowView: View {
             default:  return false
             }
         }
+    }
+
+    private func openEnginePanel() {
+        isShowingEnginePanel = true
+    }
+
+    private func openSyncMemoryPanel() {
+        appState.openSyncMemoryPanel()
+    }
+    private func openAPIDetail() {
+        apiConfigDraft = SummarizerConfig.load()
+        apiConfigDraft.defaultEngine = .openAI
+        isShowingEnginePanel = false
+        isShowingAPIDetail = true
+    }
+
+    private func saveAPIConfig() {
+        var config = apiConfigDraft
+        config.defaultEngine = .openAI
+        appState.applyEngineConfig(config)
+        apiConfigDraft = config
+    }
+
+    private func testAPIConnection() {
+        saveAPIConfig()
+        isTestingAPIConnection = true
+        Task { @MainActor in
+            await appState.retestEngine(.openAI)
+            isTestingAPIConnection = false
+        }
+    }
+
+    private func chooseSyncMemoryFolder(for channel: SyncMemoryChannel) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.prompt = "Select Folder"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+
+            let resolvedPath: String
+            switch channel {
+            case .obsidian:
+                resolvedPath = url
+                    .appendingPathComponent("Know You", isDirectory: true)
+                    .appendingPathComponent("Daily Memories", isDirectory: true)
+                    .path
+            case .openClaw:
+                resolvedPath = url
+                    .appendingPathComponent("know-you-memory", isDirectory: true)
+                    .path
+            }
+            appState.updateSyncMemoryChannel(channel, resolvedPath: resolvedPath)
+        }
+    }
+
+    private func openSyncMemoryFolder(at path: String?) {
+        guard let path, path.isEmpty == false else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: path, isDirectory: true))
     }
 }

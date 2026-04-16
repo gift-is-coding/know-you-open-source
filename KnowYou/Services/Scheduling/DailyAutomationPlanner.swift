@@ -1,21 +1,24 @@
 import Foundation
 
+enum TodayAutomationRefreshAction: Equatable {
+    case fullRecovery
+    case incremental
+}
+
 struct DailyAutomationPlanner {
     let backfillPlanner: BackfillPlanner
 
     func pendingDays(latestCompletedDay: String?, existingNoteDays: Set<String>, today: String) -> [String] {
-        let latestExistingNoteDay = existingNoteDays.filter { $0 <= today }.max()
-        let baseline = [latestCompletedDay, latestExistingNoteDay].compactMap { $0 }.max()
+        []
+    }
 
-        guard let baseline else {
-            return [today]
+    func todayRefreshAction(todayStory: DailyStory?, hasVerifiedSummarizer: Bool) -> TodayAutomationRefreshAction? {
+        guard hasVerifiedSummarizer else {
+            return nil
         }
-
-        var pendingDays = backfillPlanner.missingDates(lastCompletedDay: baseline, today: today)
-        if !pendingDays.contains(today) {
-            pendingDays.append(today)
+        if todayStory?.provenance?.generationMode == .model {
+            return .incremental
         }
-
-        return pendingDays
+        return .fullRecovery
     }
 }

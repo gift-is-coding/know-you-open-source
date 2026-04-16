@@ -3,126 +3,197 @@ import AppKit
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
-    @State private var summarizerConfig = SummarizerConfig.load()
     @State private var vaultPath: String = UserDefaults.standard.string(forKey: AppState.UserDefaultsKeys.vaultPath) ?? ""
+    @State private var presentedDocument: AppSupportDocument?
 
     var body: some View {
-        Form {
-            Section("Status") {
-                Text(appState.statusMessage ?? "Idle")
-                Text(appState.automationStatusText)
-                    .foregroundStyle(.secondary)
-                ForEach(appState.statusDetails, id: \.self) { detail in
-                    Text(detail)
+        ScrollView {
+            Form {
+                Section("Status") {
+                    Text(appState.statusMessage ?? "Idle")
+                    Text(appState.automationStatusText)
+                        .foregroundStyle(.secondary)
+                    ForEach(appState.statusDetails, id: \.self) { detail in
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("Services") {
+                    StatusRow(
+                        label: "Clipboard capture",
+                        detail: appState.clipboardServiceDetail,
+                        ok: appState.clipboardStatus.isActive
+                    )
+                    StatusRow(
+                        label: "Local storage",
+                        detail: appState.environment?.vaultURL.path ?? "Unavailable",
+                        ok: appState.environment != nil
+                    )
+                    StatusRow(
+                        label: "Notification import",
+                        detail: appState.notificationStatus.availabilityMessage
+                            .map { "\($0) \(appState.notificationServiceDetail)" }
+                            ?? appState.notificationServiceDetail,
+                        ok: appState.notificationStatus.isDatabaseAvailable
+                    )
+                    StatusRow(
+                        label: "Diary engine",
+                        detail: appState.defaultEngine == .none
+                            ? "No verified default engine selected"
+                            : "\(appState.defaultEngine.displayName) active",
+                        ok: appState.defaultEngine != .none
+                    )
+
+                    HStack {
+                        Button("Re-check Services") {
+                            appState.refreshServiceStatuses()
+                        }
+                        Button("Open Full Disk Access") {
+                            openFullDiskAccess()
+                        }
+                    }
+                }
+
+                Section("Vault Folder") {
+                    HStack {
+                        Text(vaultPath.isEmpty ? (try? AppState.defaultVaultURL().path) ?? "Default" : vaultPath)
+                            .foregroundStyle(.secondary)
+                            .font(.system(.body, design: .monospaced))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer()
+                        Button("Choose…") {
+                            chooseVaultFolder()
+                        }
+                    }
+                }
+
+                Section("Diary Engine") {
+                    Text("Manage diary engines from the top-right selector in the main window. This page is now a secondary reference view.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+
+                    Text("Clipboard capture, notifications, and local note generation keep working even if you leave the default engine disabled.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    ForEach(DiaryEngine.allCases.filter { $0 != .none }, id: \.self) { engine in
+                        let status = appState.engineStatuses[engine] ?? EngineRuntimeStatus()
+                        HStack(alignment: .top, spacing: 10) {
+                            EngineIndicatorLight(state: status.state)
+                                .padding(.top, 4)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(engine.displayName)
+                                    .fontWeight(appState.defaultEngine == engine ? .semibold : .regular)
+                                Text(status.detail)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
+                    Button("Refresh Engine States") {
+                        appState.refreshEngineStatuses()
+                    }
+                }
+
+                Section("Automation") {
+                    Text("Runs on launch and every 15 minutes")
+                        .foregroundStyle(.secondary)
+                    Text("Open Sync Memory from the sidebar ellipsis menu in the main window.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-            }
 
-            Section("Services") {
-                StatusRow(
-                    label: "Clipboard capture",
-                    detail: appState.clipboardServiceDetail,
-                    ok: appState.clipboardStatus.isActive
-                )
-                StatusRow(
-                    label: "Local storage",
-                    detail: appState.environment?.vaultURL.path ?? "Unavailable",
-                    ok: appState.environment != nil
-                )
-                StatusRow(
-                    label: "Notification import",
-                    detail: appState.notificationStatus.availabilityMessage
-                        .map { "\($0) \(appState.notificationServiceDetail)" }
-                        ?? appState.notificationServiceDetail,
-                    ok: appState.notificationStatus.isDatabaseAvailable
-                )
-                StatusRow(
-                    label: "Summarizer",
-                    detail: appState.summarizerStatus.isConfigured
-                        ? "\(appState.summarizerStatus.mode) active"
-                        : "No summarizer configured",
-                    ok: appState.summarizerStatus.isConfigured
-                )
+                Section("About & Community") {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Know You")
+                            .font(.headline)
+                        Text(AppSupportMetadata.productTagline)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
 
-                HStack {
-                    Button("Re-check Services") {
-                        appState.refreshServiceStatuses()
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Contact")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                            HStack(spacing: 10) {
+                                Button {
+                                    open(AppSupportMetadata.twitterURL)
+                                } label: {
+                                    Label(AppSupportMetadata.twitterButtonTitle, systemImage: "bubble.left.and.text.bubble.right")
+                                }
+
+                                Button {
+                                    open(AppSupportMetadata.emailURL)
+                                } label: {
+                                    Label(AppSupportMetadata.emailButtonTitle, systemImage: "envelope")
+                                }
+
+                                if let discordURL = AppSupportMetadata.discordURL {
+                                    Button {
+                                        open(discordURL)
+                                    } label: {
+                                        Label(AppSupportMetadata.discordButtonTitle, systemImage: "person.3")
+                                    }
+                                }
+                            }
+                            .labelStyle(.titleAndIcon)
+                        }
+
+                        Text(AppSupportMetadata.discordDescription)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Policies & Docs")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 10) {
+                                    Button(AppSupportDocument.privacy.buttonTitle) {
+                                        presentedDocument = .privacy
+                                    }
+                                    Button(AppSupportDocument.terms.buttonTitle) {
+                                        presentedDocument = .terms
+                                    }
+                                    Button(AppSupportDocument.community.buttonTitle) {
+                                        presentedDocument = .community
+                                    }
+                                    Button(AppSupportDocument.launchChecklist.buttonTitle) {
+                                        presentedDocument = .launchChecklist
+                                    }
+                                }
+                            }
+                        }
+
+                        Text(AppSupportMetadata.supportDescription)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Divider()
+
+                        Text(AppSupportMetadata.copyrightLine)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
                     }
-                    Button("Open Full Disk Access") {
-                        openFullDiskAccess()
-                    }
+                    .padding(.vertical, 6)
                 }
-            }
-
-            Section("Vault Folder") {
-                HStack {
-                    Text(vaultPath.isEmpty ? (try? AppState.defaultVaultURL().path) ?? "Default" : vaultPath)
-                        .foregroundStyle(.secondary)
-                        .font(.system(.body, design: .monospaced))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer()
-                    Button("Choose…") {
-                        chooseVaultFolder()
-                    }
-                }
-            }
-
-            Section("Summarizer") {
-                Text("Optional after onboarding. Your vault, clipboard capture, and notification capture keep working even if you leave summarization off.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                Text("Set up Claude, Codex, Gemini, or OpenAI here whenever you want extra help shaping the daily story.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Picker("Type", selection: $summarizerConfig.type) {
-                    ForEach(SummarizerType.allCases, id: \.self) { type in
-                        Text(type.displayName).tag(type)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                switch summarizerConfig.type {
-                case .none:
-                    EmptyView()
-                case .openAI:
-                    SecureField("OpenAI API Key", text: $summarizerConfig.openAIKey)
-                        .textFieldStyle(.roundedBorder)
-                case .claudeCLI:
-                    TextField("claude executable path", text: $summarizerConfig.claudeCLIPath)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced))
-                case .codexCLI:
-                    TextField("codex executable path", text: $summarizerConfig.codexCLIPath)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced))
-                case .geminiCLI:
-                    TextField("gemini executable path", text: $summarizerConfig.geminiCLIPath)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced))
-                }
-
-                Button("Save Summarizer Settings") {
-                    if !vaultPath.isEmpty {
-                        appState.applyVaultURL(URL(fileURLWithPath: vaultPath, isDirectory: true))
-                    }
-                    appState.applySummarizerConfig(summarizerConfig)
-                }
-                .buttonStyle(.borderedProminent)
-            }
-
-            Section("Automation") {
-                Text("Runs on launch and every 15 minutes")
-                    .foregroundStyle(.secondary)
             }
         }
         .padding()
-        .frame(width: 460)
+        .scrollIndicators(.visible)
+        .frame(width: 540, height: 760)
         .onAppear {
             appState.refreshServiceStatuses()
+        }
+        .sheet(item: $presentedDocument) { document in
+            AppSupportDocumentSheet(document: document)
         }
     }
 
@@ -135,7 +206,7 @@ struct SettingsView: View {
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             vaultPath = url.path
-            // Not applied yet — user must press Save
+            appState.applyVaultURL(url)
         }
     }
 
@@ -143,6 +214,37 @@ struct SettingsView: View {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    private func open(_ url: URL) {
+        NSWorkspace.shared.open(url)
+    }
+}
+
+private struct AppSupportDocumentSheet: View {
+    let document: AppSupportDocument
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text(document.title)
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                Spacer()
+                Button("Close") {
+                    dismiss()
+                }
+            }
+
+            ScrollView {
+                Text(document.body)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 520, minHeight: 420)
     }
 }
 

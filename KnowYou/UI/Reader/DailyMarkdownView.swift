@@ -1,10 +1,12 @@
 import SwiftUI
+import AppKit
 
 struct DailyMarkdownView: View {
     let story: DailyStory?
     let selectedParagraphID: String?
     let dayKey: String?
-    let isRefreshing: Bool
+    let refreshJob: DayRefreshJob?
+    let refreshLogNotice: String?
     let isActive: Bool
     let onSelectParagraph: (String) -> Void
     let onFocusStory: () -> Void
@@ -13,59 +15,128 @@ struct DailyMarkdownView: View {
     @State private var hoveredParagraphID: String?
 
     var body: some View {
-        let presentation = DailyMarkdownPresentation(story: story)
+        let presentation = DailyMarkdownPresentation(
+            story: story,
+            selectedParagraphID: selectedParagraphID
+        )
+        let refreshPresentation = DayRefreshProgressPresentation(refreshJob: refreshJob)
 
         Group {
             if presentation.showsEmptyState == false {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        // Date header row
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(formattedDayKey)
-                                .font(.title2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button {
-                                onRefresh()
-                            } label: {
-                                if isRefreshing {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                } else {
-                                    Image(systemName: "arrow.clockwise")
-                                        .foregroundStyle(.secondary)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            // Date header row
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(formattedDayKey)
+                                    .font(.title2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 6) {
+                                    Button {
+                                        onRefresh()
+                                    } label: {
+                                        if isRefreshing {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                        } else {
+                                            Image(systemName: "arrow.clockwise")
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(isRefreshing)
+                                    .help("Regenerate this day's journal")
+
+                                    if refreshPresentation.showsSteps {
+                                        VStack(alignment: .trailing, spacing: 4) {
+                                            ForEach(refreshPresentation.steps) { step in
+                                                HStack(spacing: 6) {
+                                                    Image(systemName: step.symbolName)
+                                                        .font(.caption2)
+                                                        .foregroundStyle(step.color)
+                                                    Text(step.title)
+                                                        .font(.caption)
+                                                        .foregroundStyle(step.color)
+                                                }
+                                                .frame(maxWidth: 220, alignment: .trailing)
+                                            }
+
+                                            if let currentDetail = refreshPresentation.currentDetail {
+                                                Text(currentDetail)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                                    .multilineTextAlignment(.trailing)
+                                                    .frame(maxWidth: 220, alignment: .trailing)
+                                            }
+
+                                            if let refreshLogNotice {
+                                                Text(refreshLogNotice)
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                                    .multilineTextAlignment(.trailing)
+                                                    .frame(maxWidth: 220, alignment: .trailing)
+                                            }
+                                        }
+                                    } else if let summaryText = refreshPresentation.summaryText {
+                                        VStack(alignment: .trailing, spacing: 4) {
+                                            Text(summaryText)
+                                                .font(.caption)
+                                                .foregroundStyle(refreshPresentation.summaryColor)
+                                                .multilineTextAlignment(.trailing)
+                                                .frame(maxWidth: 220, alignment: .trailing)
+
+                                            if let refreshLogNotice {
+                                                Text(refreshLogNotice)
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                                    .multilineTextAlignment(.trailing)
+                                                    .frame(maxWidth: 220, alignment: .trailing)
+                                            }
+                                        }
+                                    } else if let refreshLogNotice {
+                                        Text(refreshLogNotice)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .multilineTextAlignment(.trailing)
+                                            .frame(maxWidth: 220, alignment: .trailing)
+                                    }
                                 }
                             }
-                            .buttonStyle(.plain)
-                            .disabled(isRefreshing)
-                            .help("Regenerate this day's journal")
-                        }
-                        .padding(.horizontal, 28)
-                        .padding(.top, 24)
-                        .padding(.bottom, 16)
-
-                        Divider()
                             .padding(.horizontal, 28)
+                            .padding(.top, 24)
+                            .padding(.bottom, 16)
 
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(presentation.storyHeading)
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(.primary)
-                                .padding(.horizontal, 14)
-                                .padding(.top, 4)
-                                .padding(.bottom, 16)
+                            Divider()
+                                .padding(.horizontal, 28)
 
-                            ForEach(presentation.paragraphs) { paragraph in
-                                paragraphRow(paragraph)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(presentation.storyHeading)
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .padding(.horizontal, 14)
+                                    .padding(.top, 4)
+                                    .padding(.bottom, 16)
+
+                                ForEach(presentation.paragraphs) { paragraph in
+                                    paragraphRow(paragraph)
+                                        .id(paragraph.id)
+                                }
                             }
+                            .padding(.horizontal, 28)
+                            .padding(.top, 16)
+                            .padding(.bottom, 24)
                         }
-                        .padding(.horizontal, 28)
-                        .padding(.top, 16)
-                        .padding(.bottom, 24)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .task(id: presentation.scrollRequest) {
+                        scrollToParagraphIfNeeded(
+                            presentation.scrollTargetParagraphID,
+                            using: proxy
+                        )
+                    }
                 }
-                .background(Color(nsColor: .textBackgroundColor))
             } else {
                 ContentUnavailableView("No Story Yet", systemImage: "text.book.closed")
             }
@@ -121,19 +192,157 @@ struct DailyMarkdownView: View {
         weekday.locale = Locale(identifier: "en_US")
         return "\(monthDay.string(from: date)) · \(weekday.string(from: date))"
     }
+
+    private func scrollToParagraphIfNeeded(
+        _ paragraphID: String?,
+        using proxy: ScrollViewProxy
+    ) {
+        guard let paragraphID else { return }
+
+        withAnimation(.easeInOut(duration: 0.2)) {
+            proxy.scrollTo(paragraphID, anchor: .center)
+        }
+    }
+
+    private var isRefreshing: Bool {
+        refreshJob?.inFlight == true
+    }
+}
+
+struct DayRefreshProgressPresentation {
+    enum StepState: Equatable {
+        case completed
+        case current
+        case pending
+    }
+
+    struct Step: Identifiable, Equatable {
+        let id: DayRefreshStage
+        let title: String
+        let state: StepState
+
+        var symbolName: String {
+            switch state {
+            case .completed: "checkmark.circle.fill"
+            case .current: "arrow.triangle.2.circlepath.circle.fill"
+            case .pending: "circle"
+            }
+        }
+
+        var color: Color {
+            switch state {
+            case .completed: .green
+            case .current: .accentColor
+            case .pending: .secondary.opacity(0.5)
+            }
+        }
+    }
+
+    private static let visibleStages: [DayRefreshStage] = [
+        .syncingNotifications,
+        .loadingEvents,
+        .preparingStory,
+        .generatingStory,
+        .writingFiles,
+    ]
+
+    let steps: [Step]
+    let currentDetail: String?
+    let summaryText: String?
+    let summaryColor: Color
+
+    init(refreshJob: DayRefreshJob?) {
+        guard let refreshJob else {
+            steps = []
+            currentDetail = nil
+            summaryText = nil
+            summaryColor = .secondary
+            return
+        }
+
+        if refreshJob.inFlight {
+            steps = Self.visibleStages.map { stage in
+                let state: StepState
+                if refreshJob.completedStages.contains(stage) {
+                    state = .completed
+                } else if refreshJob.stage == stage {
+                    state = .current
+                } else {
+                    state = .pending
+                }
+                return Step(id: stage, title: stage.progressTitle, state: state)
+            }
+            currentDetail = refreshJob.detail
+            summaryText = nil
+            summaryColor = .secondary
+        } else {
+            steps = []
+            currentDetail = nil
+            summaryText = refreshJob.summary
+            summaryColor = refreshJob.error == nil ? .secondary : .red
+        }
+    }
+
+    var showsSteps: Bool {
+        !steps.isEmpty
+    }
+}
+
+private extension DayRefreshStage {
+    var progressTitle: String {
+        switch self {
+        case .syncingNotifications:
+            return "Sync notifications"
+        case .loadingEvents:
+            return "Load events"
+        case .preparingStory:
+            return "Prepare journal"
+        case .generatingStory:
+            return "Generate journal"
+        case .writingFiles:
+            return "Write files"
+        case .completed, .failed:
+            return detail
+        }
+    }
 }
 
 struct DailyMarkdownPresentation: Equatable {
+    struct ScrollRequest: Equatable {
+        let targetParagraphID: String?
+        let dayKey: String?
+        let paragraphIDs: [String]
+    }
+
     let paragraphs: [DailyStoryParagraph]
+    let selectedParagraphID: String?
+    let scrollTargetParagraphID: String?
+    let scrollRequest: ScrollRequest
     let storyHeading: String
 
-    init(story: DailyStory?) {
+    init(story: DailyStory?, selectedParagraphID: String? = nil) {
         paragraphs = story?.sections.flatMap(\.paragraphs) ?? []
+        self.selectedParagraphID = selectedParagraphID
+        if let selectedParagraphID,
+           paragraphs.contains(where: { $0.id == selectedParagraphID }) {
+            scrollTargetParagraphID = selectedParagraphID
+        } else {
+            scrollTargetParagraphID = paragraphs.first?.id
+        }
+        scrollRequest = ScrollRequest(
+            targetParagraphID: scrollTargetParagraphID,
+            dayKey: story?.dayKey,
+            paragraphIDs: paragraphs.map(\.id)
+        )
         storyHeading = Self.resolvedStoryHeading(for: story, paragraphs: paragraphs)
     }
 
     var showsEmptyState: Bool {
         paragraphs.isEmpty
+    }
+
+    var initialScrollParagraphID: String? {
+        scrollTargetParagraphID
     }
 
     private static func resolvedStoryHeading(
@@ -151,6 +360,612 @@ struct DailyMarkdownPresentation: Equatable {
 
         return "Story"
     }
+}
+
+struct SourceBrand: Equatable {
+    enum Identity: Equatable {
+        case chatGPT
+        case notes
+        case mail
+        case calendar
+        case drafts
+        case taio
+        case teams
+        case ghostty
+        case weChat
+        case feishu
+        case claude
+        case perplexity
+        case notion
+        case gitHub
+        case slack
+        case x
+        case google
+        case genericApp
+    }
+
+    enum Glyph: Equatable {
+        enum Symbol: String, Equatable {
+            case app = "app.fill"
+        }
+
+        case asset(String)
+        case symbol(Symbol)
+    }
+
+    let identity: Identity
+    let glyph: Glyph
+    let fallbackSymbol: Glyph.Symbol
+
+    var assetName: String? {
+        guard case .asset(let assetName) = glyph else { return nil }
+        return assetName
+    }
+
+    var fallbackSymbolName: String {
+        fallbackSymbol.rawValue
+    }
+}
+
+enum SourceBrandResolver {
+    private struct BrandEntry {
+        let aliases: [String]
+        let brand: SourceBrand
+    }
+
+    private static let fallbackBrand = SourceBrand(
+        identity: .genericApp,
+        glyph: .symbol(.app),
+        fallbackSymbol: .app
+    )
+
+    private static let brandLookup: [String: SourceBrand] = {
+        var lookup: [String: SourceBrand] = [:]
+        for entry in entries {
+            for alias in entry.aliases {
+                lookup[normalize(alias)] = entry.brand
+            }
+        }
+        return lookup
+    }()
+
+    static func resolve(appName: String) -> SourceBrand {
+        let normalizedName = normalize(appName)
+        if let exactBrand = brandLookup[normalizedName] {
+            return exactBrand
+        }
+
+        return fuzzyMatch(normalizedName) ?? fallbackBrand
+    }
+
+    private static func normalize(_ appName: String) -> String {
+        appName
+            .unicodeScalars
+            .map { scalar in
+                if CharacterSet.alphanumerics.contains(scalar) || (0x4E00...0x9FFF).contains(scalar.value) {
+                    return String(scalar)
+                }
+                return " "
+            }
+            .joined()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .lowercased()
+    }
+
+    private static func fuzzyMatch(_ normalizedName: String) -> SourceBrand? {
+        let nameTokens = normalizedName.split(separator: " ").map(String.init)
+
+        for entry in entries {
+            for alias in entry.aliases {
+                let normalizedAlias = normalize(alias)
+
+                if normalizedAlias.contains(" ") {
+                    if normalizedName.contains(normalizedAlias) {
+                        return entry.brand
+                    }
+                    continue
+                }
+
+                guard normalizedAlias.count >= 4 || normalizedAlias.contains(where: \.isChineseIdeograph) else {
+                    continue
+                }
+
+                let matched = nameTokens.contains { token in
+                    token == normalizedAlias || token.hasSuffix(normalizedAlias) || token.hasPrefix(normalizedAlias)
+                }
+                if matched {
+                    return entry.brand
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private static func brand(
+        assetName: String,
+        aliases: [String],
+        identity: SourceBrand.Identity = .genericApp
+    ) -> BrandEntry {
+        BrandEntry(
+            aliases: aliases,
+            brand: SourceBrand(
+                identity: identity,
+                glyph: .asset(assetName),
+                fallbackSymbol: .app
+            )
+        )
+    }
+
+    private static let entries: [BrandEntry] = [
+        brand(
+            assetName: "SourceLogoChatGPT",
+            aliases: ["ChatGPT", "OpenAI ChatGPT"],
+            identity: .chatGPT
+        ),
+        brand(
+            assetName: "SourceLogoClaude",
+            aliases: ["Claude", "Anthropic Claude"],
+            identity: .claude
+        ),
+        brand(
+            assetName: "SourceLogoPerplexity",
+            aliases: ["Perplexity"],
+            identity: .perplexity
+        ),
+        brand(
+            assetName: "SourceLogoNotion",
+            aliases: ["Notion"],
+            identity: .notion
+        ),
+        brand(
+            assetName: "SourceLogoGitHub",
+            aliases: ["GitHub"],
+            identity: .gitHub
+        ),
+        brand(
+            assetName: "SourceLogoGitHubDesktop",
+            aliases: ["GitHub Desktop"]
+        ),
+        brand(
+            assetName: "SourceLogoSlack",
+            aliases: ["Slack"],
+            identity: .slack
+        ),
+        brand(
+            assetName: "SourceLogoX",
+            aliases: ["X", "Twitter"],
+            identity: .x
+        ),
+        brand(
+            assetName: "SourceLogoGoogle",
+            aliases: ["Google", "Gmail", "Google Calendar", "Google Docs"],
+            identity: .google
+        ),
+        brand(
+            assetName: "SourceLogoChrome",
+            aliases: ["Google Chrome", "Chrome", "Chrome Browser", "谷歌浏览器", "com.google.Chrome"]
+        ),
+        brand(
+            assetName: "SourceLogoSafari",
+            aliases: ["Safari"]
+        ),
+        brand(
+            assetName: "SourceLogoFinder",
+            aliases: ["Finder"]
+        ),
+        brand(
+            assetName: "SourceLogoMail",
+            aliases: ["Mail", "Apple Mail", "邮件"],
+            identity: .mail
+        ),
+        brand(
+            assetName: "SourceLogoNotes",
+            aliases: ["Notes", "Apple Notes", "备忘录"],
+            identity: .notes
+        ),
+        brand(
+            assetName: "SourceLogoCalendar",
+            aliases: ["Calendar", "Apple Calendar", "日历"],
+            identity: .calendar
+        ),
+        brand(
+            assetName: "SourceLogoMessages",
+            aliases: ["Messages", "iMessage", "信息", "MobileSMS"]
+        ),
+        brand(
+            assetName: "SourceLogoPreview",
+            aliases: ["Preview", "预览"]
+        ),
+        brand(
+            assetName: "SourceLogoTextEdit",
+            aliases: ["TextEdit"]
+        ),
+        brand(
+            assetName: "SourceLogoReminders",
+            aliases: ["Reminders", "提醒事项"]
+        ),
+        brand(
+            assetName: "SourceLogoContacts",
+            aliases: ["Contacts", "通讯录"]
+        ),
+        brand(
+            assetName: "SourceLogoPhotos",
+            aliases: ["Photos", "照片"]
+        ),
+        brand(
+            assetName: "SourceLogoMusic",
+            aliases: ["Music", "Apple Music", "音乐"]
+        ),
+        brand(
+            assetName: "SourceLogoMaps",
+            aliases: ["Maps", "地图"]
+        ),
+        brand(
+            assetName: "SourceLogoAppStore",
+            aliases: ["App Store"]
+        ),
+        brand(
+            assetName: "SourceLogoSystemSettings",
+            aliases: ["System Settings", "Settings", "系统设置"]
+        ),
+        brand(
+            assetName: "SourceLogoActivityMonitor",
+            aliases: ["Activity Monitor"]
+        ),
+        brand(
+            assetName: "SourceLogoDiskUtility",
+            aliases: ["Disk Utility"]
+        ),
+        brand(
+            assetName: "SourceLogoCalculator",
+            aliases: ["Calculator"]
+        ),
+        brand(
+            assetName: "SourceLogoClock",
+            aliases: ["Clock"]
+        ),
+        brand(
+            assetName: "SourceLogoBooks",
+            aliases: ["Books", "Apple Books"]
+        ),
+        brand(
+            assetName: "SourceLogoFaceTime",
+            aliases: ["FaceTime"]
+        ),
+        brand(
+            assetName: "SourceLogoFreeform",
+            aliases: ["Freeform"]
+        ),
+        brand(
+            assetName: "SourceLogoShortcuts",
+            aliases: ["Shortcuts", "快捷指令"]
+        ),
+        brand(
+            assetName: "SourceLogoConsole",
+            aliases: ["Console"]
+        ),
+        brand(
+            assetName: "SourceLogoFontBook",
+            aliases: ["Font Book"]
+        ),
+        brand(
+            assetName: "SourceLogoImageCapture",
+            aliases: ["Image Capture"]
+        ),
+        brand(
+            assetName: "SourceLogoWeather",
+            aliases: ["Weather"]
+        ),
+        brand(
+            assetName: "SourceLogoNews",
+            aliases: ["News"]
+        ),
+        brand(
+            assetName: "SourceLogoHome",
+            aliases: ["Home"]
+        ),
+        brand(
+            assetName: "SourceLogoStocks",
+            aliases: ["Stocks"]
+        ),
+        brand(
+            assetName: "SourceLogoTV",
+            aliases: ["TV", "Apple TV"]
+        ),
+        brand(
+            assetName: "SourceLogoQuickTime",
+            aliases: ["QuickTime", "QuickTime Player"]
+        ),
+        brand(
+            assetName: "SourceLogoPhotoBooth",
+            aliases: ["Photo Booth"]
+        ),
+        brand(
+            assetName: "SourceLogoJournal",
+            aliases: ["Journal"]
+        ),
+        brand(
+            assetName: "SourceLogoVoiceMemos",
+            aliases: ["Voice Memos", "VoiceMemos"]
+        ),
+        brand(
+            assetName: "SourceLogoFindMy",
+            aliases: ["Find My", "FindMy"]
+        ),
+        brand(
+            assetName: "SourceLogoPhone",
+            aliases: ["Phone"]
+        ),
+        brand(
+            assetName: "SourceLogoDrafts",
+            aliases: ["Drafts"],
+            identity: .drafts
+        ),
+        brand(
+            assetName: "SourceLogoTaio",
+            aliases: ["Taio"],
+            identity: .taio
+        ),
+        brand(
+            assetName: "SourceLogoTeams",
+            aliases: ["Microsoft Teams", "Teams", "com.microsoft.teams2"],
+            identity: .teams
+        ),
+        brand(
+            assetName: "SourceLogoWord",
+            aliases: ["Microsoft Word", "Word"]
+        ),
+        brand(
+            assetName: "SourceLogoExcel",
+            aliases: ["Microsoft Excel", "Excel", "com.microsoft.Excel"]
+        ),
+        brand(
+            assetName: "SourceLogoPowerPoint",
+            aliases: ["Microsoft PowerPoint", "PowerPoint", "PPT"]
+        ),
+        brand(
+            assetName: "SourceLogoOutlook",
+            aliases: ["Microsoft Outlook", "Outlook"]
+        ),
+        brand(
+            assetName: "SourceLogoPages",
+            aliases: ["Pages"]
+        ),
+        brand(
+            assetName: "SourceLogoNumbers",
+            aliases: ["Numbers"]
+        ),
+        brand(
+            assetName: "SourceLogoGhostty",
+            aliases: ["Ghostty"],
+            identity: .ghostty
+        ),
+        brand(
+            assetName: "SourceLogoAntigravity",
+            aliases: ["Antigravity", "com.google.antigravity"]
+        ),
+        brand(
+            assetName: "SourceLogoTerminal",
+            aliases: ["Terminal"]
+        ),
+        brand(
+            assetName: "SourceLogoITerm",
+            aliases: ["iTerm", "iTerm2"]
+        ),
+        brand(
+            assetName: "SourceLogoXcode",
+            aliases: ["Xcode"]
+        ),
+        brand(
+            assetName: "SourceLogoVSCode",
+            aliases: ["Visual Studio Code", "VS Code", "VSCode", "Code"]
+        ),
+        brand(
+            assetName: "SourceLogoCursor",
+            aliases: ["Cursor"]
+        ),
+        brand(
+            assetName: "SourceLogoFigma",
+            aliases: ["Figma"]
+        ),
+        brand(
+            assetName: "SourceLogoDocker",
+            aliases: ["Docker", "Docker Desktop"]
+        ),
+        brand(
+            assetName: "SourceLogoOBS",
+            aliases: ["OBS", "OBS Studio"]
+        ),
+        brand(
+            assetName: "SourceLogoDBBrowser",
+            aliases: ["DB Browser for SQLite", "DB Browser"]
+        ),
+        brand(
+            assetName: "SourceLogoObsidian",
+            aliases: ["Obsidian"]
+        ),
+        brand(
+            assetName: "SourceLogoOneDrive",
+            aliases: ["OneDrive", "Microsoft OneDrive"]
+        ),
+        brand(
+            assetName: "SourceLogoTelegram",
+            aliases: ["Telegram"]
+        ),
+        brand(
+            assetName: "SourceLogoWhatsApp",
+            aliases: ["WhatsApp"]
+        ),
+        brand(
+            assetName: "SourceLogoZoom",
+            aliases: ["Zoom", "zoom.us", "Zoom Workplace"]
+        ),
+        brand(
+            assetName: "SourceLogoCisco",
+            aliases: ["Cisco Secure Client", "Cisco"]
+        ),
+        brand(
+            assetName: "SourceLogoSpotify",
+            aliases: ["Spotify"]
+        ),
+        brand(
+            assetName: "SourceLogoWeChat",
+            aliases: ["微信", "WeChat", "Weixin"],
+            identity: .weChat
+        ),
+        brand(
+            assetName: "SourceLogoFeishu",
+            aliases: ["飞书", "Feishu", "Lark", "LarkSuite"],
+            identity: .feishu
+        ),
+        brand(
+            assetName: "SourceLogoDingTalk",
+            aliases: ["DingTalk", "钉钉"]
+        ),
+        brand(
+            assetName: "SourceLogoTencentMeeting",
+            aliases: ["TencentMeeting", "Tencent Meeting", "腾讯会议"]
+        ),
+        brand(
+            assetName: "SourceLogoArc",
+            aliases: ["Arc"]
+        ),
+        brand(
+            assetName: "SourceLogoFirefox",
+            aliases: ["Firefox", "Mozilla Firefox"]
+        ),
+        brand(
+            assetName: "SourceLogoBrave",
+            aliases: ["Brave", "Brave Browser"]
+        ),
+        brand(
+            assetName: "SourceLogoOpera",
+            aliases: ["Opera"]
+        ),
+        brand(
+            assetName: "SourceLogoVivaldi",
+            aliases: ["Vivaldi"]
+        ),
+        brand(
+            assetName: "SourceLogoDiscord",
+            aliases: ["Discord"]
+        ),
+        brand(
+            assetName: "SourceLogoLinear",
+            aliases: ["Linear"]
+        ),
+        brand(
+            assetName: "SourceLogoJira",
+            aliases: ["Jira"]
+        ),
+        brand(
+            assetName: "SourceLogoConfluence",
+            aliases: ["Confluence"]
+        ),
+        brand(
+            assetName: "SourceLogoAsana",
+            aliases: ["Asana"]
+        ),
+        brand(
+            assetName: "SourceLogoTrello",
+            aliases: ["Trello"]
+        ),
+        brand(
+            assetName: "SourceLogoClickUp",
+            aliases: ["ClickUp"]
+        ),
+        brand(
+            assetName: "SourceLogoMiro",
+            aliases: ["Miro"]
+        ),
+        brand(
+            assetName: "SourceLogoLoom",
+            aliases: ["Loom"]
+        ),
+        brand(
+            assetName: "SourceLogoGoogleMeet",
+            aliases: ["Google Meet", "GoogleMeet"]
+        ),
+        brand(
+            assetName: "SourceLogoSignal",
+            aliases: ["Signal"]
+        ),
+        brand(
+            assetName: "SourceLogoSketch",
+            aliases: ["Sketch"]
+        ),
+        brand(
+            assetName: "SourceLogoFramer",
+            aliases: ["Framer"]
+        ),
+        brand(
+            assetName: "SourceLogoReddit",
+            aliases: ["Reddit"]
+        ),
+        brand(
+            assetName: "SourceLogoYouTube",
+            aliases: ["YouTube", "Youtube"]
+        ),
+        brand(
+            assetName: "SourceLogoThreads",
+            aliases: ["Threads"]
+        ),
+        brand(
+            assetName: "SourceLogoBluesky",
+            aliases: ["Bluesky", "BlueSky"]
+        ),
+        brand(
+            assetName: "SourceLogoInstagram",
+            aliases: ["Instagram"]
+        ),
+        brand(
+            assetName: "SourceLogoFacebook",
+            aliases: ["Facebook"]
+        ),
+        brand(
+            assetName: "SourceLogoTikTok",
+            aliases: ["TikTok", "Tiktok"]
+        ),
+        brand(
+            assetName: "SourceLogoGemini",
+            aliases: ["Gemini", "Google Gemini"]
+        ),
+        brand(
+            assetName: "SourceLogoCopilot",
+            aliases: ["Copilot", "GitHub Copilot", "Github Copilot"]
+        ),
+        brand(
+            assetName: "SourceLogoPoe",
+            aliases: ["Poe"]
+        ),
+        brand(
+            assetName: "SourceLogoPostman",
+            aliases: ["Postman"]
+        ),
+        brand(
+            assetName: "SourceLogoWarp",
+            aliases: ["Warp"]
+        ),
+        brand(
+            assetName: "SourceLogoInsomnia",
+            aliases: ["Insomnia"]
+        ),
+        brand(
+            assetName: "SourceLogoRaycast",
+            aliases: ["Raycast"]
+        ),
+        brand(
+            assetName: "SourceLogoDropbox",
+            aliases: ["Dropbox"]
+        ),
+        brand(
+            assetName: "SourceLogoGoogleDrive",
+            aliases: ["Google Drive", "GoogleDrive"]
+        )
+    ]
 }
 
 enum DailyMarkdownRenderer {
@@ -467,10 +1282,7 @@ struct StorySourceDetailView: View {
                             Text("Sources")
                                 .font(.title3.weight(.semibold))
 
-                            if let selectedParagraph {
-                                MarkdownParagraphContent(markdown: selectedParagraph.text)
-                                    .foregroundStyle(.secondary)
-                            } else {
+                            if selectedParagraph == nil {
                                 Text("Select a story paragraph to inspect the original source items.")
                                     .font(.callout)
                                     .foregroundStyle(.secondary)
@@ -523,6 +1335,7 @@ private struct SourceEventCard: View {
                 Text(timeText)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+                SourceBrandIcon(brand: SourceBrandResolver.resolve(appName: event.sourceApp))
                 Text(event.sourceApp)
                     .font(.callout.weight(.semibold))
                 Spacer(minLength: 8)
@@ -550,6 +1363,34 @@ private struct SourceEventCard: View {
         formatter.dateFormat = "HH:mm"
         return formatter
     }()
+}
+
+private struct SourceBrandIcon: View {
+    let brand: SourceBrand
+
+    var body: some View {
+        Group {
+            switch brand.glyph {
+            case .asset(let assetName):
+                if let image = NSImage(named: assetName) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    Image(systemName: brand.fallbackSymbol.rawValue)
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundStyle(.secondary)
+                }
+            case .symbol(let symbol):
+                Image(systemName: symbol.rawValue)
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 14, height: 14)
+    }
 }
 
 private extension Character {

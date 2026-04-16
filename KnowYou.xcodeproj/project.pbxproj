@@ -34,19 +34,39 @@
 		A10000010000000000000019 /* DailyMarkdownComposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000001C /* DailyMarkdownComposer.swift */; };
 		A1000001000000000000001A /* BackfillPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000001D /* BackfillPlanner.swift */; };
 		A1000001000000000000001B /* CloudSummarizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000001E /* CloudSummarizer.swift */; };
-		A1000001000000000000001C /* NotificationDatabaseReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000001F /* NotificationDatabaseReader.swift */; };
-		A1000001000000000000001D /* DailyAutomationPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000020 /* DailyAutomationPlanner.swift */; };
-		A1000001000000000000001E /* DailyAutomationPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000021 /* DailyAutomationPlannerTests.swift */; };
-		A1000001000000000000001F /* NotificationDatabaseReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000022 /* NotificationDatabaseReaderTests.swift */; };
-		A10000010000000000000020 /* CLISummarizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000023 /* CLISummarizer.swift */; };
-		A10000010000000000000021 /* SummarizerConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000024 /* SummarizerConfig.swift */; };
-		A10000010000000000000022 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000025 /* OnboardingView.swift */; };
-		A10000010000000000000023 /* CLISummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000026 /* CLISummarizerTests.swift */; };
-		A10000010000000000000024 /* SummarizerConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000027 /* SummarizerConfigTests.swift */; };
-			A10000010000000000000025 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000028 /* KeychainHelper.swift */; };
-			A10000010000000000000026 /* OnboardingContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000029 /* OnboardingContent.swift */; };
-			A10000010000000000000027 /* OnboardingContentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000002A /* OnboardingContentTests.swift */; };
-			A10000010000000000000028 /* OnboardingViewLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000002B /* OnboardingViewLayoutTests.swift */; };
+		A1000001000000000000001C /* DiaryEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000031 /* DiaryEngine.swift */; };
+		A1000001000000000000001D /* NotificationDatabaseReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000001F /* NotificationDatabaseReader.swift */; };
+		A1000001000000000000001E /* DailyAutomationPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000020 /* DailyAutomationPlanner.swift */; };
+		A1000001000000000000001F /* DailyAutomationPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000021 /* DailyAutomationPlannerTests.swift */; };
+		A10000010000000000000020 /* NotificationDatabaseReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000022 /* NotificationDatabaseReaderTests.swift */; };
+		A10000010000000000000021 /* CLISummarizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000023 /* CLISummarizer.swift */; };
+		A10000010000000000000022 /* SummarizerConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000024 /* SummarizerConfig.swift */; };
+		A10000010000000000000023 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000025 /* OnboardingView.swift */; };
+		A10000010000000000000024 /* CLISummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000026 /* CLISummarizerTests.swift */; };
+		A10000010000000000000025 /* SummarizerConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000027 /* SummarizerConfigTests.swift */; };
+		A10000010000000000000033 /* EngineProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000033 /* EngineProbe.swift */; };
+		A10000010000000000000034 /* DiaryEngineSelectorButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000034 /* DiaryEngineSelectorButton.swift */; };
+		A10000010000000000000035 /* DiaryEnginePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000035 /* DiaryEnginePanel.swift */; };
+		A10000010000000000000036 /* APIDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000036 /* APIDetailSheet.swift */; };
+		A10000010000000000000041 /* SyncMemoryPathDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000041 /* SyncMemoryPathDetector.swift */; };
+		A10000010000000000000032 /* EngineProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000032 /* EngineProbeTests.swift */; };
+		A10000010000000000000037 /* SettingsMetadataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000037 /* SettingsMetadataTests.swift */; };
+		A10000010000000000000038 /* AppSupportMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000038 /* AppSupportMetadata.swift */; };
+		A1000001000000000000003A /* ManualDiaryRefreshTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000003A /* ManualDiaryRefreshTests.swift */; };
+		A10000010000000000000040 /* SyncMemoryPathDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000040 /* SyncMemoryPathDetectorTests.swift */; };
+		A10000010000000000000042 /* SyncMemoryConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000042 /* SyncMemoryConfigTests.swift */; };
+		A10000010000000000000045 /* SyncMemoryCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000045 /* SyncMemoryCoordinatorTests.swift */; };
+		A10000010000000000000046 /* LaunchAgentManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000046 /* LaunchAgentManagerTests.swift */; };
+		A10000010000000000000048 /* LaunchAgentManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000048 /* LaunchAgentManager.swift */; };
+		A10000010000000000000049 /* SyncMemoryPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000049 /* SyncMemoryPanel.swift */; };
+		A1000001000000000000004A /* SyncMemoryPanelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004A /* SyncMemoryPanelTests.swift */; };
+		A10000010000000000000043 /* SyncMemoryChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000043 /* SyncMemoryChannel.swift */; };
+		A10000010000000000000044 /* SyncMemoryConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000044 /* SyncMemoryConfig.swift */; };
+		A10000010000000000000047 /* SyncMemoryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000047 /* SyncMemoryCoordinator.swift */; };
+			A10000010000000000000026 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000028 /* KeychainHelper.swift */; };
+			A10000010000000000000027 /* OnboardingContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000029 /* OnboardingContent.swift */; };
+			A10000010000000000000028 /* OnboardingContentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000002A /* OnboardingContentTests.swift */; };
+			A10000010000000000000029 /* OnboardingViewLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000002B /* OnboardingViewLayoutTests.swift */; };
 			A10000010000000000000030 /* DailyMarkdownViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000030 /* DailyMarkdownViewTests.swift */; };
 			DB2772FFED33760F5D742D9B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
@@ -97,8 +117,28 @@
 		A10001010000000000000023 /* CLISummarizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLISummarizer.swift; sourceTree = "<group>"; };
 		A10001010000000000000024 /* SummarizerConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummarizerConfig.swift; sourceTree = "<group>"; };
 		A10001010000000000000025 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
-		A10001010000000000000026 /* CLISummarizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLISummarizerTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000033 /* EngineProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineProbe.swift; sourceTree = "<group>"; };
+		A10001010000000000000034 /* DiaryEngineSelectorButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryEngineSelectorButton.swift; sourceTree = "<group>"; };
+		A10001010000000000000035 /* DiaryEnginePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryEnginePanel.swift; sourceTree = "<group>"; };
+		A10001010000000000000036 /* APIDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIDetailSheet.swift; sourceTree = "<group>"; };
+		A10001010000000000000041 /* SyncMemoryPathDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryPathDetector.swift; sourceTree = "<group>"; };
+		A10001010000000000000037 /* SettingsMetadataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsMetadataTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000038 /* AppSupportMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSupportMetadata.swift; sourceTree = "<group>"; };
+		A1000101000000000000003A /* ManualDiaryRefreshTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualDiaryRefreshTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000040 /* SyncMemoryPathDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryPathDetectorTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000042 /* SyncMemoryConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryConfigTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000045 /* SyncMemoryCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryCoordinatorTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000046 /* LaunchAgentManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAgentManagerTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000048 /* LaunchAgentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAgentManager.swift; sourceTree = "<group>"; };
+		A10001010000000000000049 /* SyncMemoryPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryPanel.swift; sourceTree = "<group>"; };
+		A1000101000000000000004A /* SyncMemoryPanelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryPanelTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000043 /* SyncMemoryChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryChannel.swift; sourceTree = "<group>"; };
+		A10001010000000000000044 /* SyncMemoryConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryConfig.swift; sourceTree = "<group>"; };
+		A10001010000000000000047 /* SyncMemoryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryCoordinator.swift; sourceTree = "<group>"; };
+			A10001010000000000000026 /* CLISummarizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLISummarizerTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000027 /* SummarizerConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummarizerConfigTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000032 /* EngineProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineProbeTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000031 /* DiaryEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryEngine.swift; sourceTree = "<group>"; };
 			A10001010000000000000028 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 			A10001010000000000000029 /* OnboardingContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingContent.swift; sourceTree = "<group>"; };
 			A1000101000000000000002A /* OnboardingContentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingContentTests.swift; sourceTree = "<group>"; };
@@ -154,6 +194,7 @@
 			children = (
 				A10001010000000000000002 /* AppEnvironment.swift */,
 				A10001010000000000000003 /* AppState.swift */,
+				A10001010000000000000038 /* AppSupportMetadata.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -182,6 +223,9 @@
 		A10000060000000000000006 /* Reader */ = {
 			isa = PBXGroup;
 			children = (
+				A10001010000000000000034 /* DiaryEngineSelectorButton.swift */,
+				A10001010000000000000035 /* DiaryEnginePanel.swift */,
+				A10001010000000000000036 /* APIDetailSheet.swift */,
 				A10001010000000000000006 /* DailyMarkdownView.swift */,
 			);
 			path = Reader;
@@ -199,6 +243,7 @@
 			isa = PBXGroup;
 			children = (
 				A10001010000000000000008 /* SettingsView.swift */,
+				A10001010000000000000049 /* SyncMemoryPanel.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -214,8 +259,16 @@
 				A10001010000000000000021 /* DailyAutomationPlannerTests.swift */,
 				A10001010000000000000022 /* NotificationDatabaseReaderTests.swift */,
 					A10001010000000000000026 /* CLISummarizerTests.swift */,
-					A10001010000000000000027 /* SummarizerConfigTests.swift */,
-					A1000101000000000000002A /* OnboardingContentTests.swift */,
+				A10001010000000000000027 /* SummarizerConfigTests.swift */,
+				A10001010000000000000032 /* EngineProbeTests.swift */,
+				A10001010000000000000037 /* SettingsMetadataTests.swift */,
+				A1000101000000000000003A /* ManualDiaryRefreshTests.swift */,
+				A10001010000000000000040 /* SyncMemoryPathDetectorTests.swift */,
+				A10001010000000000000042 /* SyncMemoryConfigTests.swift */,
+				A10001010000000000000045 /* SyncMemoryCoordinatorTests.swift */,
+				A1000101000000000000004A /* SyncMemoryPanelTests.swift */,
+				A10001010000000000000046 /* LaunchAgentManagerTests.swift */,
+				A1000101000000000000002A /* OnboardingContentTests.swift */,
 					A1000101000000000000002B /* OnboardingViewLayoutTests.swift */,
 					A10001010000000000000030 /* DailyMarkdownViewTests.swift */,
 				);
@@ -237,6 +290,7 @@
 				A1000101000000000000000B /* EventRecord.swift */,
 				A10001010000000000000012 /* RunRecord.swift */,
 				A1000101000000000000001B /* DailyNote.swift */,
+				A10001010000000000000043 /* SyncMemoryChannel.swift */,
 			);
 			path = Domain;
 			sourceTree = "<group>";
@@ -250,6 +304,7 @@
 				A10000060000000000000017 /* Notifications */,
 				A10000060000000000000014 /* Privacy */,
 				A1000006000000000000001C /* Scheduling */,
+				A1000006000000000000001E /* SyncMemory */,
 				A10000060000000000000015 /* Storage */,
 				A1000006000000000000001B /* Summary */,
 			);
@@ -319,6 +374,8 @@
 		A1000006000000000000001B /* Summary */ = {
 			isa = PBXGroup;
 			children = (
+				A10001010000000000000031 /* DiaryEngine.swift */,
+				A10001010000000000000033 /* EngineProbe.swift */,
 				A1000101000000000000001E /* CloudSummarizer.swift */,
 				A10001010000000000000023 /* CLISummarizer.swift */,
 				A10001010000000000000024 /* SummarizerConfig.swift */,
@@ -343,6 +400,17 @@
 			path = Onboarding;
 			sourceTree = "<group>";
 		};
+		A1000006000000000000001E /* SyncMemory */ = {
+			isa = PBXGroup;
+			children = (
+				A10001010000000000000048 /* LaunchAgentManager.swift */,
+				A10001010000000000000041 /* SyncMemoryPathDetector.swift */,
+				A10001010000000000000044 /* SyncMemoryConfig.swift */,
+				A10001010000000000000047 /* SyncMemoryCoordinator.swift */,
+			);
+			path = SyncMemory;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -353,6 +421,7 @@
 				A10000080000000000000001 /* Sources */,
 				A10000050000000000000001 /* Frameworks */,
 				A10000090000000000000001 /* Resources */,
+				A100000C0000000000000001 /* Write Build Metadata */,
 			);
 			buildRules = (
 			);
@@ -443,6 +512,29 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		A100000C0000000000000001 /* Write Build Metadata */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Write Build Metadata";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/BuildMetadata.json",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nOUTPUT_PATH=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/BuildMetadata.json\"\nINFO_PLIST_PATH=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\nAUTO_BUILD_NUMBER=\"1\"\nGIT_SHORT_SHA=\"\"\nif command -v git >/dev/null 2>&1; then\n  AUTO_BUILD_NUMBER=\"$(git -C \"$SRCROOT\" rev-list --count HEAD 2>/dev/null || printf '1')\"\n  GIT_SHORT_SHA=\"$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || true)\"\nfi\nif [ -f \"$INFO_PLIST_PATH\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $AUTO_BUILD_NUMBER\" \"$INFO_PLIST_PATH\" \\\n    || /usr/libexec/PlistBuddy -c \"Add :CFBundleVersion string $AUTO_BUILD_NUMBER\" \"$INFO_PLIST_PATH\"\nfi\ncat > \"$OUTPUT_PATH\" <<EOF\n{\"buildNumber\":\"$AUTO_BUILD_NUMBER\",\"gitShortSHA\":\"$GIT_SHORT_SHA\"}\nEOF\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		A10000080000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -451,9 +543,10 @@
 				A10000010000000000000001 /* KnowYouApp.swift in Sources */,
 				A10000010000000000000002 /* AppEnvironment.swift in Sources */,
 				A10000010000000000000003 /* AppState.swift in Sources */,
+				A10000010000000000000038 /* AppSupportMetadata.swift in Sources */,
 				A10000010000000000000012 /* ClipboardWatcher.swift in Sources */,
 				A10000010000000000000013 /* NotificationCollector.swift in Sources */,
-				A1000001000000000000001C /* NotificationDatabaseReader.swift in Sources */,
+				A1000001000000000000001D /* NotificationDatabaseReader.swift in Sources */,
 				A10000010000000000000014 /* SHA256Hasher.swift in Sources */,
 				A10000010000000000000015 /* ISO8601DayKey.swift in Sources */,
 				A1000001000000000000000B /* EventRecord.swift in Sources */,
@@ -464,18 +557,29 @@
 				A10000010000000000000006 /* DailyMarkdownView.swift in Sources */,
 				A10000010000000000000019 /* DailyMarkdownComposer.swift in Sources */,
 				A1000001000000000000001A /* BackfillPlanner.swift in Sources */,
-				A1000001000000000000001D /* DailyAutomationPlanner.swift in Sources */,
+				A1000001000000000000001E /* DailyAutomationPlanner.swift in Sources */,
 				A1000001000000000000001B /* CloudSummarizer.swift in Sources */,
+				A1000001000000000000001C /* DiaryEngine.swift in Sources */,
+				A10000010000000000000036 /* APIDetailSheet.swift in Sources */,
+				A10000010000000000000035 /* DiaryEnginePanel.swift in Sources */,
+				A10000010000000000000041 /* SyncMemoryPathDetector.swift in Sources */,
+				A10000010000000000000043 /* SyncMemoryChannel.swift in Sources */,
+				A10000010000000000000044 /* SyncMemoryConfig.swift in Sources */,
+				A10000010000000000000047 /* SyncMemoryCoordinator.swift in Sources */,
+				A10000010000000000000048 /* LaunchAgentManager.swift in Sources */,
+				A10000010000000000000049 /* SyncMemoryPanel.swift in Sources */,
+				A10000010000000000000034 /* DiaryEngineSelectorButton.swift in Sources */,
 				A1000001000000000000000C /* PrivacyFilter.swift in Sources */,
 				A1000001000000000000000F /* Migrations.swift in Sources */,
 				A10000010000000000000010 /* DatabaseWriter.swift in Sources */,
 				A10000010000000000000007 /* StatusBannerView.swift in Sources */,
 				A10000010000000000000008 /* SettingsView.swift in Sources */,
-				A10000010000000000000020 /* CLISummarizer.swift in Sources */,
-				A10000010000000000000021 /* SummarizerConfig.swift in Sources */,
-				A10000010000000000000022 /* OnboardingView.swift in Sources */,
-				A10000010000000000000025 /* KeychainHelper.swift in Sources */,
-				A10000010000000000000026 /* OnboardingContent.swift in Sources */,
+				A10000010000000000000021 /* CLISummarizer.swift in Sources */,
+				A10000010000000000000022 /* SummarizerConfig.swift in Sources */,
+				A10000010000000000000033 /* EngineProbe.swift in Sources */,
+				A10000010000000000000023 /* OnboardingView.swift in Sources */,
+				A10000010000000000000026 /* KeychainHelper.swift in Sources */,
+				A10000010000000000000027 /* OnboardingContent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -488,14 +592,22 @@
 				A1000001000000000000000D /* DatabaseWriterTests.swift in Sources */,
 				A10000010000000000000016 /* DailyMarkdownComposerTests.swift in Sources */,
 				A10000010000000000000017 /* BackfillPlannerTests.swift in Sources */,
-				A1000001000000000000001E /* DailyAutomationPlannerTests.swift in Sources */,
-				A1000001000000000000001F /* NotificationDatabaseReaderTests.swift in Sources */,
-					A10000010000000000000023 /* CLISummarizerTests.swift in Sources */,
-					A10000010000000000000024 /* SummarizerConfigTests.swift in Sources */,
-					A10000010000000000000027 /* OnboardingContentTests.swift in Sources */,
-					A10000010000000000000028 /* OnboardingViewLayoutTests.swift in Sources */,
-					A10000010000000000000030 /* DailyMarkdownViewTests.swift in Sources */,
-				);
+				A1000001000000000000001F /* DailyAutomationPlannerTests.swift in Sources */,
+				A10000010000000000000020 /* NotificationDatabaseReaderTests.swift in Sources */,
+				A10000010000000000000024 /* CLISummarizerTests.swift in Sources */,
+				A10000010000000000000025 /* SummarizerConfigTests.swift in Sources */,
+				A10000010000000000000032 /* EngineProbeTests.swift in Sources */,
+				A10000010000000000000037 /* SettingsMetadataTests.swift in Sources */,
+				A1000001000000000000003A /* ManualDiaryRefreshTests.swift in Sources */,
+				A10000010000000000000040 /* SyncMemoryPathDetectorTests.swift in Sources */,
+				A10000010000000000000042 /* SyncMemoryConfigTests.swift in Sources */,
+				A10000010000000000000045 /* SyncMemoryCoordinatorTests.swift in Sources */,
+				A1000001000000000000004A /* SyncMemoryPanelTests.swift in Sources */,
+				A10000010000000000000046 /* LaunchAgentManagerTests.swift in Sources */,
+				A10000010000000000000028 /* OnboardingContentTests.swift in Sources */,
+				A10000010000000000000029 /* OnboardingViewLayoutTests.swift in Sources */,
+				A10000010000000000000030 /* DailyMarkdownViewTests.swift in Sources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

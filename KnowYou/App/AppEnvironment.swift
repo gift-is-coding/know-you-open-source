@@ -8,10 +8,13 @@ final class AppEnvironment {
     let privacyFilter: PrivacyFilter
     let clipboardWatcher: ClipboardWatcher
     let notificationCollector: NotificationCollector
-    let notificationReader: NotificationDatabaseReader
+    let notificationReader: any NotificationDatabaseReading
     let composer: DailyMarkdownComposer
     var summarizer: SummaryGenerating?
     let dailyAutomationPlanner: DailyAutomationPlanner
+    var refreshLogsDirectoryURL: URL {
+        databaseURL.deletingLastPathComponent().appending(path: "RefreshLogs", directoryHint: .isDirectory)
+    }
 
     convenience init(
         databasePath: String,
@@ -45,13 +48,11 @@ final class AppEnvironment {
         onClipboardCapture: ((ClipboardCaptureSnapshot) -> Void)? = nil
     ) {
         let privacyFilter = PrivacyFilter()
-        let concreteNotificationReader = notificationReader as? NotificationDatabaseReader ?? NotificationDatabaseReader()
-
         self.databaseURL = databaseURL
         self.vaultURL = vaultURL
         self.databaseWriter = databaseWriter
         self.privacyFilter = privacyFilter
-        self.notificationReader = concreteNotificationReader
+        self.notificationReader = notificationReader
         self.composer = DailyMarkdownComposer()
         self.summarizer = summarizer
         self.dailyAutomationPlanner = dailyAutomationPlanner
@@ -112,6 +113,30 @@ final class AppEnvironment {
                 .map { ($0.deletingPathExtension().lastPathComponent, $0) },
             uniquingKeysWith: { _, new in new }
         )
+    }
+
+    func writeRefreshLog(filename: String, data: Data) throws -> URL {
+        try FileManager.default.createDirectory(at: refreshLogsDirectoryURL, withIntermediateDirectories: true)
+        let fileURL = refreshLogsDirectoryURL.appending(path: filename)
+        try data.write(to: fileURL, options: .atomic)
+        return fileURL
+    }
+
+    func loadDailyStoryDayKeys() throws -> [String] {
+        guard FileManager.default.fileExists(atPath: vaultURL.path) else {
+            return []
+        }
+
+        let fileURLs = try FileManager.default.contentsOfDirectory(
+            at: vaultURL,
+            includingPropertiesForKeys: nil
+        )
+
+        return fileURLs
+            .map(\.lastPathComponent)
+            .filter { $0.hasSuffix(".story.json") }
+            .map { $0.replacingOccurrences(of: ".story.json", with: "") }
+            .sorted(by: >)
     }
 }
 

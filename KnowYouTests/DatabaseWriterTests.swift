@@ -80,6 +80,40 @@ final class DatabaseWriterTests: XCTestCase {
         XCTAssertEqual(try writer.fetchEvents(dayKey: "2026-04-07").count, 1)
     }
 
+    func testInsertIgnoresDuplicateNotificationContentHash() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let capturedAt = Date(timeIntervalSince1970: 1_776_000_000)
+        let first = EventRecord(
+            id: UUID(),
+            sourceType: .notification,
+            sourceApp: "com.apple.MobileSMS",
+            capturedAt: capturedAt,
+            dayKey: "2026-04-11",
+            text: "hello",
+            auditText: nil,
+            privacyAction: .keep,
+            contentHash: "same-notification-hash"
+        )
+        let second = EventRecord(
+            id: UUID(),
+            sourceType: .notification,
+            sourceApp: "com.apple.MobileSMS",
+            capturedAt: capturedAt,
+            dayKey: "2026-04-11",
+            text: "hello",
+            auditText: nil,
+            privacyAction: .keep,
+            contentHash: "same-notification-hash"
+        )
+
+        try writer.insert(first)
+        try writer.insert(second)
+
+        let rows = try writer.fetchEvents(dayKey: "2026-04-11")
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.contentHash, "same-notification-hash")
+    }
+
     func testFetchEventsThrowsWhenStoredRowHasInvalidUUID() throws {
         let databaseURL = URL.temporaryDirectory.appending(path: "\(UUID().uuidString).sqlite")
         let writer = try DatabaseWriter(path: databaseURL.path)
@@ -191,6 +225,61 @@ final class DatabaseWriterTests: XCTestCase {
         XCTAssertEqual(events.count, 1)
         XCTAssertEqual(events.first?.sourceType, .notification)
         XCTAssertEqual(events.first?.sourceApp, "Calendar")
+    }
+
+    func testNotificationCollectorKeepsDistinctSameDayNotificationsWithMatchingBody() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let collector = NotificationCollector(
+            privacyFilter: PrivacyFilter(),
+            databaseWriter: writer,
+            databaseReader: StubNotificationReader()
+        )
+
+        let firstDeliveredAt = Date(timeIntervalSince1970: 1_776_000_000)
+        let secondDeliveredAt = Date(timeIntervalSince1970: 1_776_000_060)
+        let snapshots = [
+            NotificationSnapshot(
+                appName: "Calendar",
+                deliveredAt: firstDeliveredAt,
+                body: "Standup in 5"
+            ),
+            NotificationSnapshot(
+                appName: "Calendar",
+                deliveredAt: secondDeliveredAt,
+                body: "Standup in 5"
+            ),
+        ]
+
+        XCTAssertEqual(collector.ingest(snapshots), 2)
+
+        let events = try writer.fetchEvents(dayKey: ISO8601DayKey.format(firstDeliveredAt))
+        XCTAssertEqual(events.count, 2)
+        XCTAssertEqual(
+            events.map(\.capturedAt),
+            [firstDeliveredAt, secondDeliveredAt]
+        )
+    }
+
+    func testNotificationCollectorDedupesRescannedNotificationWithSameDeliveredAt() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let collector = NotificationCollector(
+            privacyFilter: PrivacyFilter(),
+            databaseWriter: writer,
+            databaseReader: StubNotificationReader()
+        )
+
+        let deliveredAt = Date(timeIntervalSince1970: 1_776_100_000)
+        let snapshot = NotificationSnapshot(
+            appName: "Calendar",
+            deliveredAt: deliveredAt,
+            body: "Standup in 5"
+        )
+
+        XCTAssertEqual(collector.ingest([snapshot]), 1)
+        XCTAssertEqual(collector.ingest([snapshot]), 1)
+
+        let events = try writer.fetchEvents(dayKey: ISO8601DayKey.format(deliveredAt))
+        XCTAssertEqual(events.count, 1)
     }
 
     func testClipboardHashesIncludeDayKeySoCrossDayCopiesPersistSeparately() {

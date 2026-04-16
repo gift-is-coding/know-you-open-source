@@ -19,12 +19,13 @@ Know You 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 
 ## 2. 系统总览
 
-当前系统由 4 层组成：
+当前系统由 5 层组成：
 
 1. 采集层：剪贴板监听、通知数据库读取与导入
-2. 存储与调度层：SQLite、run 记录、补跑计划、定时自动化
+2. 存储与调度层：SQLite、run 记录、刷新日志、today-only 定时自动化
 3. 生成层：本地 fallback story 生成、可选云端/CLI 总结器、Markdown 组合
-4. 界面层：五步 story onboarding、三栏主阅读器、设置页、菜单栏状态入口
+4. 记忆同步层：Obsidian / OpenClaw 目标探测、文件复制、LaunchAgent 定时注册
+5. 界面层：五步 story onboarding、三栏主阅读器、设置页、菜单栏状态入口、About & Community 对外入口
 
 ```mermaid
 flowchart LR
@@ -47,6 +48,10 @@ flowchart LR
     L --> P[MainWindowView]
     F --> Q[OnboardingView]
     E --> P
+    F --> R[SyncMemoryCoordinator]
+    R --> S[Obsidian Vault/Know You/Daily Memories]
+    R --> T[OpenClaw Workspace/know-you-memory]
+    F --> U[LaunchAgentManager]
 ```
 
 ## 3. 运行时入口
@@ -71,13 +76,43 @@ flowchart LR
 
 - 创建并持有 `AppEnvironment`
 - 启动剪贴板监听
-- 启动 launch-time automation 与 15 分钟定时刷新
+- 启动 launch-time automation、30 秒通知补同步与 3 小时定时自动化
 - 维护 UI 状态与服务状态
 - 管理选中日期、选中 story、选中段落及其来源事件
-- 触发“按天刷新”与“历史日补跑”
+- 触发“按天刷新”、今日通知补同步与 today-only 自动刷新
 - 在 onboarding 完成时应用 vault 目录，并持久化完成状态
 
 `AppEnvironment` 本身则负责组装主要依赖，包括数据库、隐私过滤器、采集器、composer 与 summarizer，见 [AppEnvironment.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppEnvironment.swift)。
+
+当前 `AppState` 还负责日记引擎状态编排：
+
+- 持有 `SummarizerConfig`
+- 暴露 `defaultEngine`
+- 为五个引擎维护 `engineStatuses`
+- 触发 `refreshEngineStatuses()`、`retestEngine(_:)`、`retestAllEngines()`
+- 保证只有绿色引擎可以成为默认项，`.none` 是唯一允许的禁用例外
+- 仅当默认项当前为 `.none` 且用户没有显式保持 `None` 时，按 `Claude -> Codex -> Gemini -> Openclaw -> OpenAI` 的固定优先级自动挑选最高优先级绿色引擎
+
+当前 `AppState` 也负责全局 diary prompt 状态：
+
+- 持有并持久化 `SummarizerConfig.globalDiaryPromptOverride`
+- 为主窗口右上角的 `Edit Prompt` sheet 提供 apply / restore default 动作
+- 在真实生成路径里把已保存的全局 override 传给 `DailyMarkdownComposer.storyPrompt(...)`
+- 保证该配置只影响未来的生成请求，不会因为保存 prompt 而自动刷新当前选中日期，也不会直接改写历史 `.story.json` 或 `.md`
+
+当前 `AppState` 还负责 Sync Memory 编排：
+
+- 持有并持久化 `SyncMemoryConfig`
+- 在启动时尽力探测 Obsidian vault 与 OpenClaw workspace
+- 暴露 `openSyncMemoryPanel()`、`closeSyncMemoryPanel()`、`syncMemoryNow()`
+- 在用户修改自动同步配置时注册或移除用户级 `LaunchAgent`
+- 通过 `SyncMemoryCoordinator` 把全部 `YYYY-MM-DD.md` 复制到外部记忆目录，并以同名覆盖方式做增量修正
+Settings 除了状态与配置外，还承接了一组对外信息入口：
+
+- 作者联系入口
+- 社区入口或社区状态说明
+- 隐私政策、使用条款、社区说明、上线清单的外部文档入口
+- 版权主体摘要
 
 ## 4. 采集层
 
@@ -115,6 +150,7 @@ flowchart LR
 - 将 `NotificationSnapshot` 转换为 `EventRecord`
 - 在写入前执行隐私过滤
 - 通过数据库写入层持久化
+- 依赖 `contentHash` 与存储层去重，让重叠时间窗扫描保持幂等
 
 通知事件的来源类型为 `notification`。
 
@@ -138,6 +174,8 @@ flowchart LR
 - `private_key`
 
 这意味着系统遵循“先过滤，后持久化”的边界，原始敏感文本不应进入 SQLite 或最终导出工件。这个边界也被 onboarding 的 `safety` 步显式解释给用户，而不是只留在实现内部。
+
+当前完整的法律正文与社区正文并不内嵌在应用中，而是先由仓库根目录下的 Markdown 文档承载，再由 Settings 页提供外部打开入口。
 
 ## 6. 存储层
 
@@ -178,6 +216,7 @@ flowchart LR
 
 - 数据库：`~/Library/Application Support/KnowYou/events.sqlite`
 - Vault：`~/Library/Application Support/KnowYou/Vault`
+- 刷新日志：`~/Library/Application Support/KnowYou/RefreshLogs`
 
 每一天会写出两份文件：
 
@@ -202,17 +241,31 @@ flowchart LR
 
 ### 7.2 生成流程
 
-`AppState.generateDailyNote(for:)` 是按天生成的核心入口，主要步骤如下：
+手动刷新当前主要通过 `AppState.generateDailyNote(for:) -> refreshDayWithRetry(...)` 进入统一刷新管线，主要步骤如下：
 
-1. 从 SQLite 读取某天全部事件
-2. 先构建本地 fallback story
-3. 如果配置了 summarizer，则尝试生成结构化 story
-4. 如果 structured output 解析失败，则回退到本地 fallback
-5. 将 story 写成 `.story.json`
-6. 将 story + source events 组合成 Markdown，并写成 `.md`
-7. 更新 UI 状态、run 状态与状态栏信息
+1. 先为该天执行 day-scoped 通知同步
+2. 读取 SQLite 中该天事件
+3. 判断是 `fullRecovery` 还是 `incrementalUpdate`；若现有 `.story.json` 存在但读取失败，则直接失败并暴露读取错误，而不是静默降级
+4. 调用结构化 summarizer；手动刷新会先尝试默认引擎，失败后再并行尝试其它绿色引擎
+5. 只有合法结构化结果才写 `.story.json` 与 `.md`
+6. 写入刷新日志，并更新 UI 状态、run 状态与状态栏信息
 
-因此 summarizer 是增强路径，不是首次生成内容的阻塞条件。
+其中：
+
+- `fullRecovery` 只在该天还没有 `provenance.generationMode == .model` 的成功 story 时发生
+- `incrementalUpdate` 只把 `existingStory + 尚未写入当前 story 的新增事件` 交给增量 summarizer，不再把当天 `allEvents` 全量回传给模型
+- 增量 structured payload 必须完整返回 `encouragementToReplace`、`summaryBulletsToReplace`、`detailBlocksToAppend`、`todoItemsToReplace`
+- 增量合并会替换 `Encouragement` / `Summary` / `To-do`，只追加 `Details`
+- 增量 payload 的 `sourceEventIDs` 至少必须属于当天已知事件集合；replacement field 出现非法引用时整次 attempt 失败，`detailBlocksToAppend` 出现非法引用时仅丢弃对应 detail block
+- 任何失败都不会覆盖现有 `.story.json` 或 `.md`
+- 新生成 story 的 `Details` 约定为“每个 workstream 一个 paragraph”，避免把多个 `##` 小节塞进同一个 `DailyStoryParagraph`
+- `fullRecovery` 在成功解析结构化结果后，会先对 story 执行一次 `normalizeStory(...)`，再落盘
+- 旧 `.story.json` 如果仍是单段 `# Details` / `# 详情` 内含多个 `##` 小节，应用会继续按旧格式读取显示；读取路径不再自动改写 `.story.json` 或 `.md`
+- 旧格式拆分规则只用于新生成结果的规范化，不再作为“打开应用时的一次性迁移”执行
+
+`generateStory(...)` 仍保留为底层 fallback/story 生成辅助能力，但不再承担主手动刷新入口语义。
+
+不过当前实现增加了一条保护规则：如果某天已经存在 `generationMode == model` 的成功 story，而本次刷新只得到了 fallback，那么刷新会以失败结束并保留原来的 `.story.json` / `.md`，不会用 fallback 降级覆写成功内容。
 
 如果 summarizer 成功返回结构化 JSON，`DailyStoryParagraph.text` 当前允许承载 Markdown 富文本，而不是只存纯 prose。现在的 prompt 会要求模型把当天内容组织成单个 `daily-journal` section 下的 Markdown 日记骨架，包含：
 
@@ -268,26 +321,50 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - `Claude Code (CLI)`
 - `Codex (CLI)`
 - `Gemini (CLI)`
+- `Openclaw (CLI)`
 
 其中：
 
-- OpenAI key 存 Keychain
-- CLI 路径存 UserDefaults
-- 若未显式配置 summarizer，启动时也会尝试读取 `OPENAI_API_KEY`
+- API token 存 Keychain
+- `defaultEngine`、CLI 路径、`apiBaseURL`、`apiModel` 存 UserDefaults
+- `CloudSummarizer` 走 OpenAI-compatible Responses API，不再依赖启动时读取 `OPENAI_API_KEY`
 - `CloudSummarizer` 已兼容 OpenAI Responses API 的两类文本返回形式：
   - 顶层 `output_text`
   - `output[].content[].text`
+- `EngineProbe` 会对 CLI/API 引擎做最小 smoke test，并产出灰/黄/绿三色状态
+- 若持久化的默认引擎在重启时无法证明仍可用，`AppState` 会把活动默认引擎归一到 `.none`，避免未验证引擎被直接重新激活
+- 状态刷新后的自动改选只会发生在当前默认值已经是 `.none` 的情况下；明确选中的非 `None` 引擎不会被被动覆盖
 
 ## 8. 调度与自动化
 
-[DailyAutomationPlanner.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Scheduling/DailyAutomationPlanner.swift) 负责决定待补跑日期。
+[DailyAutomationPlanner.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Scheduling/DailyAutomationPlanner.swift) 现在只负责判断“今天是否允许自动增量”，不再驱动历史补跑。
 
 自动化行为由 `AppState.startAutomation()` 触发，规则是：
 
-- 应用启动后立即运行一次
-- 之后每 15 分钟运行一次
-- 会根据最近成功 run 与现有 note 文件推断 pending days
-- 会先导入通知，再按待处理日期逐天生成 story 与 Markdown
+- 应用启动后立即串行执行一次 `runAutomation()` 与一次 `runNotificationCatchUp()`
+- `runAutomation()` 之后每 3 小时运行一次
+- `runNotificationCatchUp()` 之后每 30 秒运行一次
+- `runAutomation()` 先导入今天通知，再决定是否对今天执行自动增量
+- `runNotificationCatchUp()` 只针对今天做通知增量导入，起点为 `max(todayStart, lastNotificationImportAt - 30 秒 overlap buffer)`
+- 今天的通知水位会按数据库路径持久化；如果换库或今天还没有通知事件，旧水位会被清空
+- 当今天已经存在 `provenance.generationMode == .model` 的 `.story.json` 时，自动化不再整天重建今天，而是只检查并追加尚未写入 story 的新事件
+- 自动增量只处理今天；历史日期完全改为手动刷新
+- 自动刷新只有单次引擎尝试，不会像手动刷新一样轮询最多 5 个绿色引擎
+- 自动刷新和手动刷新都会把阶段、attempt、输出路径与结果写入 `RefreshLogs`
+
+手动刷新与自动化现在是两条明确分离的路径：
+
+- `refreshSelectedDay()` 永远只处理当前选中日期
+- 刷新前会对该日期执行一次 day-scoped 通知同步
+- 今天使用 `dayStart ... now` 时间窗
+- 历史日期使用 `dayStart ... nextDayStart` 时间窗
+- 如果该日已有 `model` 成功 story，则手动刷新进入增量更新；否则进入全量恢复
+- 增量更新只允许追加 `Summary`、`Details`、`To-do`，不会改写 `Encouragement`
+- 手动刷新失败时不会覆盖现有 `.story.json` 或 `.md`
+- 手动刷新会优先尝试当前选中引擎，并在需要时按绿色引擎优先级最多重试 5 次
+- 手动刷新不会复用 `DailyAutomationPlanner`，也不会顺带回补相邻日期
+- 剪贴板仍然完全依赖后台 watcher；手动刷新不会尝试重建历史剪贴板记录
+- 不同日期的手动刷新可以并发运行，初始并发上限为 2；同一天在已有任务进行中时不可重复触发
 
 历史日期也可以单独刷新；当前选中日期的刷新由主窗口工具栏按钮触发。
 
@@ -341,10 +418,19 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 - story 段落可点击选中
 - 中栏段落按 Markdown 富文本渲染，而不是原样 plain text 输出
 - 中栏会根据当天语言显示显式标题：`今日小记` 或 `Story`
+- 键盘或点击切换段落时，中栏会自动滚动到当前选中段落，避免选中状态离开可视区域
 - 右栏展示该段落关联的原始事件
 - 可展开 `View All Sources` 查看全日来源
+- 右栏 source card 会在 `sourceApp` 文本前显示渠道 logo；已识别渠道优先显示本地 asset，缺失时回退到通用 symbol
+- 渠道 logo 解析当前采用表驱动 alias catalog，而不是硬编码 `switch`，并已内置 100+ 个常见 global app / macOS app 品牌资产
+- alias 解析会先做标准化精确匹配，再对 bundle-id 风格来源名做保守 fuzzy match，因此同一 app 的中文名、英文名和诸如 `com.tencent.xinWeChat` 这样的来源字符串都能复用同一品牌 asset
 - 中栏阅读区内支持“重生成当前选中日期”
 - 主界面不再依赖顶部 status banner 承载运行时状态
+- 主窗口右下角会显示只读 build badge；marketing version 仍来自 bundle，build number 与 git short SHA 由 Xcode build phase 写入构建产物
+- 窗口右上角提供 `DiaryEngineSelectorButton`
+- 一级面板列出 `Claude / Codex / Gemini / Openclaw / API` 五个引擎及状态灯
+- 只有绿色引擎允许直接切为默认项
+- API 行会进入 `APIDetailSheet`，配置 `baseURL`、`model`、`token` 并执行 `Test Connection`
 
 需要注意的是，当前实现虽然在 `AppState` 中已经保存了从 `.md` 提取出来的 `selectedSourceNotesMarkdown`，但主阅读器仍然不在中栏重复显示 `Source Notes`；来源追溯继续主要通过右栏 source detail 完成。
 
@@ -372,10 +458,10 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 - 服务状态检查
 - Full Disk Access 跳转
 - vault 目录设置
-- summarizer 配置
+- diary engine 状态总览
 - 自动化状态查看
 
-其中 summarizer 区域明确标记为 onboarding 之后的可选增强配置，用于接入 Claude、Codex、Gemini 或 OpenAI。
+Settings 不再承担默认引擎选择和 API token 编辑的主流程；这些操作已经迁移到主窗口右上角 selector。Settings 现在只保留次级状态总览与 vault/权限相关操作。
 
 菜单栏入口用于：
 
@@ -388,7 +474,7 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 
 ## 10. 关键数据流
 
-### 10.1 启动后的自动刷新
+### 10.1 启动后的自动化与通知补同步
 
 ```mermaid
 sequenceDiagram
@@ -401,7 +487,7 @@ sequenceDiagram
 
     App->>State: init + startAutomation()
     State->>Reader: accessStatus()
-    State->>Collector: importDeliveredNotifications(since:)
+    State->>Collector: runAutomation() / runNotificationCatchUp()
     Collector->>Reader: fetchDeliveredNotifications()
     Collector->>DB: insert(notification events)
     State->>DB: fetchEvents(dayKey)
@@ -410,7 +496,41 @@ sequenceDiagram
     State->>AppEnvironment: write .story.json / .md
 ```
 
-### 10.2 用户阅读某一天
+这条后台路径在当前实现里拆成两种节奏不同的任务：
+
+- `runAutomation()`：启动即执行一次，随后每 3 小时执行；只负责今天的通知导入，以及“已有 model story 时的 today incremental / 没有成功 story 时的 today full recovery”
+- `runNotificationCatchUp()`：启动即执行一次，随后每 30 秒执行；只负责今天的通知增量导入，不直接生成文档
+
+两者共同保证：
+
+- today 的通知接近实时进入本地事件库
+- 重叠时间窗依赖去重，避免重复通知事件无限累积
+- 历史日期不会被后台自动改写
+- 若今天还没有可用引擎，自动化不会写 fallback，而是保留事件并提示用户先配置并验证引擎
+- 刷新日志写失败不会中断主刷新，但会在主阅读器刷新按钮下方显示低调提示
+
+### 10.2 用户手动刷新某一天
+
+1. 用户在主窗口或菜单栏触发 `refreshSelectedDay()`
+2. `AppState` 解析当前选中日期；若没有选中日期则回落到今天
+3. `syncNotifications(for:)` 只针对该日期时间窗导入通知
+4. `AppState` 先判断该日是否已有 `model` 成功 story
+5. 若已有成功 story，则只把新增事件送入增量 prompt，并携带压缩后的旧内容锚点
+6. 若没有成功 story，则走完整恢复式生成
+7. 手动路径会先试当前引擎，再按绿色引擎优先级最多重试 5 次
+8. 每次刷新都会把通知同步、事件加载、生成、写盘与 attempt 结果写入 `RefreshLogs`
+9. 只有当模型返回合法结构化结果时才会原子写入 `.story.json` 与 `.md`
+10. 主阅读器在刷新按钮旁以内联状态文案显示当前阶段、完成结果或错误信息
+11. UI 刷新当天内容与状态信息
+
+这条手动路径不会：
+
+- 调用 `DailyAutomationPlanner`
+- 顺带生成其他日期
+- 重新导入历史剪贴板
+- 在增量失败时破坏已有内容
+
+### 10.3 用户阅读某一天
 
 1. 用户在左侧选择日期
 2. `AppState.loadDayPresentation(for:)` 读取当天事件
@@ -420,7 +540,7 @@ sequenceDiagram
 
 当 `.md` 文件存在时，`AppState` 还会尝试从中提取 `Source Notes` 区块；如果缺失，则退回到根据当天 `EventRecord` 重新生成 source-notes Markdown。这条路径当前主要用于保持导出工件与阅读器状态同步，并由测试覆盖，但 UI 仍然以右栏 source detail 为主。
 
-### 10.3 首次用户完成 onboarding
+### 10.4 首次用户完成 onboarding
 
 1. 用户进入 `intro`，先看到本地 Markdown 承诺
 2. 用户经过 `capture` 与 `safety`，理解自动采集与过滤边界

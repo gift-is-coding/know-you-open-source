@@ -642,6 +642,103 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertNil(invalidNestedField)
     }
 
+    func testParseIncrementalUpdateRejectsMixedValidAndInvalidUUIDStrings() {
+        let composer = DailyMarkdownComposer()
+        let validID = UUID()
+
+        let update = composer.parseIncrementalUpdate(
+            raw: """
+            {
+              "encouragementToReplace": {
+                "text": "You kept the day moving even after the late change.",
+                "sourceEventIDs": ["\(validID.uuidString)", "not-a-uuid"]
+              },
+              "summaryBulletsToReplace": [
+                { "text": "- Closed the follow-up review", "sourceEventIDs": ["\(validID.uuidString)"] }
+              ],
+              "detailBlocksToAppend": [
+                { "text": "## Follow-up\\n\\nHandled the customer feedback loop.", "sourceEventIDs": ["\(validID.uuidString)"] }
+              ],
+              "todoItemsToReplace": [
+                { "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(validID.uuidString)"] }
+              ]
+            }
+            """
+        )
+
+        XCTAssertNil(update)
+    }
+
+    func testValidatedIncrementalUpdateRejectsReplacementRefsOutsideDayEventSet() {
+        let composer = DailyMarkdownComposer()
+        let validID = UUID()
+        let invalidID = UUID()
+        let parsed = composer.parseIncrementalUpdate(
+            raw: """
+            {
+              "encouragementToReplace": {
+                "text": "You kept the day moving even after the late change.",
+                "sourceEventIDs": ["\(validID.uuidString)"]
+              },
+              "summaryBulletsToReplace": [
+                { "text": "- Closed the follow-up review", "sourceEventIDs": ["\(invalidID.uuidString)"] }
+              ],
+              "detailBlocksToAppend": [
+                { "text": "## Follow-up\\n\\nHandled the customer feedback loop.", "sourceEventIDs": ["\(validID.uuidString)"] }
+              ],
+              "todoItemsToReplace": [
+                { "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(validID.uuidString)"] }
+              ]
+            }
+            """
+        )
+
+        let validated = composer.validatedIncrementalUpdate(
+            try! XCTUnwrap(parsed),
+            allowedSourceEventIDs: Set([validID]),
+            allowedDetailSourceEventIDs: Set([validID])
+        )
+
+        XCTAssertNil(validated)
+    }
+
+    func testValidatedIncrementalUpdateDropsDetailRefsOutsideNewEventSet() {
+        let composer = DailyMarkdownComposer()
+        let validOldID = UUID()
+        let validNewID = UUID()
+        let invalidDetailID = UUID()
+        let parsed = composer.parseIncrementalUpdate(
+            raw: """
+            {
+              "encouragementToReplace": {
+                "text": "You kept the day moving even after the late change.",
+                "sourceEventIDs": ["\(validOldID.uuidString)", "\(validNewID.uuidString)"]
+              },
+              "summaryBulletsToReplace": [
+                { "text": "- Closed the follow-up review", "sourceEventIDs": ["\(validNewID.uuidString)"] }
+              ],
+              "detailBlocksToAppend": [
+                { "text": "## Follow-up\\n\\nHandled the customer feedback loop.", "sourceEventIDs": ["\(validNewID.uuidString)"] },
+                { "text": "## Invalid\\n\\nThis should be dropped.", "sourceEventIDs": ["\(invalidDetailID.uuidString)"] }
+              ],
+              "todoItemsToReplace": [
+                { "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(validNewID.uuidString)"] }
+              ]
+            }
+            """
+        )
+
+        let validated = composer.validatedIncrementalUpdate(
+            try! XCTUnwrap(parsed),
+            allowedSourceEventIDs: Set([validOldID, validNewID]),
+            allowedDetailSourceEventIDs: Set([validNewID])
+        )
+
+        XCTAssertEqual(validated?.detailBlocksToAppend.map(\.text), ["## Follow-up\n\nHandled the customer feedback loop."])
+        XCTAssertEqual(validated?.summaryBulletsToReplace.map(\.text), ["- Closed the follow-up review"])
+        XCTAssertEqual(validated?.todoItemsToReplace.map(\.text), ["- [ ] Queue the final handoff"])
+    }
+
     func testMergeIncrementalUpdateReplacesEncouragementSummaryTodoAndAppendsDetailsAsSeparateParagraphs() {
         let composer = DailyMarkdownComposer()
         let oldID = UUID()
@@ -739,6 +836,261 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertEqual(paragraphs[3].sourceEventIDs, [newDetailID])
         XCTAssertEqual(paragraphs[4].sourceEventIDs, [newTodoID])
         XCTAssertEqual(merged.provenance?.engineLabel, "Claude CLI")
+    }
+
+    func testMergeIncrementalUpdatePreservesExistingStandaloneDetailParagraphsAcrossRepeatedRefreshes() {
+        let composer = DailyMarkdownComposer()
+        let firstID = UUID()
+        let secondID = UUID()
+        let thirdID = UUID()
+        let fourthID = UUID()
+        let fifthID = UUID()
+        let sixthID = UUID()
+
+        let existingStory = DailyStory(
+            dayKey: "2026-04-12",
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-encouragement",
+                            text: "# You did a good job today\n\nKeep the steady pace.",
+                            sourceEventIDs: [firstID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-summary",
+                            text: "# Summary\n\n- Wrapped the first pass",
+                            sourceEventIDs: [firstID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-details-0",
+                            text: "# Details\n\n## Existing Thread\n\nShipped the first iteration.",
+                            sourceEventIDs: [firstID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-details-1",
+                            text: "## Follow-up\n\nHandled the first feedback loop.",
+                            sourceEventIDs: [secondID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-todo",
+                            text: "# To-do\n\n- [ ] Send recap",
+                            sourceEventIDs: [thirdID]
+                        )
+                    ]
+                )
+            ]
+        )
+
+        let update = composer.parseIncrementalUpdate(
+            raw: """
+            {
+              "encouragementToReplace": {
+                "text": "You kept the thread moving into the second pass.",
+                "sourceEventIDs": ["\(fourthID.uuidString)"]
+              },
+              "summaryBulletsToReplace": [
+                { "text": "- Closed the second review pass", "sourceEventIDs": ["\(fifthID.uuidString)"] }
+              ],
+              "detailBlocksToAppend": [
+                { "text": "## Final polish\\n\\nQueued the last cleanup before handoff.", "sourceEventIDs": ["\(sixthID.uuidString)"] }
+              ],
+              "todoItemsToReplace": [
+                { "text": "- [ ] Send the final handoff", "sourceEventIDs": ["\(sixthID.uuidString)"] }
+              ]
+            }
+            """
+        )
+
+        XCTAssertNotNil(update)
+
+        let merged = composer.mergeIncrementalUpdate(
+            dayKey: "2026-04-12",
+            existingStory: existingStory,
+            update: update!,
+            allEvents: [],
+            provenance: StoryProvenance(
+                generationMode: .model,
+                engineKind: "claudeCLI",
+                engineLabel: "Claude CLI",
+                model: nil,
+                pipelineVersion: "diary-story-v1",
+                curatedEventCount: 6
+            )
+        )
+
+        let paragraphs = merged.sections.flatMap(\.paragraphs)
+        XCTAssertEqual(paragraphs.map(\.text), [
+            "# You did a good job today\n\nYou kept the thread moving into the second pass.",
+            "# Summary\n\n- Closed the second review pass",
+            "# Details\n\n## Existing Thread\n\nShipped the first iteration.",
+            "## Follow-up\n\nHandled the first feedback loop.",
+            "## Final polish\n\nQueued the last cleanup before handoff.",
+            "# To-do\n\n- [ ] Send the final handoff"
+        ])
+        XCTAssertEqual(paragraphs[2].sourceEventIDs, [firstID])
+        XCTAssertEqual(paragraphs[3].sourceEventIDs, [secondID])
+        XCTAssertEqual(paragraphs[4].sourceEventIDs, [sixthID])
+    }
+
+    func testMergeIncrementalUpdateUsesIncrementalUpdateContentForLanguageFallbackInsteadOfAllEvents() {
+        let composer = DailyMarkdownComposer()
+        let encouragementID = UUID()
+        let summaryID = UUID()
+        let detailID = UUID()
+        let todoID = UUID()
+        let englishEvent = EventRecord(
+            id: UUID(),
+            sourceType: .clipboard,
+            sourceApp: "Notes",
+            capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+            dayKey: "2026-04-12",
+            text: "English fallback signal that should not drive merge language.",
+            auditText: nil,
+            privacyAction: .keep,
+            contentHash: "merge-language-fallback"
+        )
+
+        let update = composer.parseIncrementalUpdate(
+            raw: """
+            {
+              "encouragementToReplace": {
+                "text": "你把最后一轮也稳稳接住了。",
+                "sourceEventIDs": ["\(encouragementID.uuidString)"]
+              },
+              "summaryBulletsToReplace": [
+                { "text": "- 完成最后一轮确认", "sourceEventIDs": ["\(summaryID.uuidString)"] }
+              ],
+              "detailBlocksToAppend": [
+                { "text": "## 收尾\\n\\n把最后的交付线索整理清楚。", "sourceEventIDs": ["\(detailID.uuidString)"] }
+              ],
+              "todoItemsToReplace": [
+                { "text": "- [ ] 发出最终交接", "sourceEventIDs": ["\(todoID.uuidString)"] }
+              ]
+            }
+            """
+        )
+
+        XCTAssertNotNil(update)
+
+        let merged = composer.mergeIncrementalUpdate(
+            dayKey: "2026-04-12",
+            existingStory: DailyStory(dayKey: "2026-04-12", generatedAt: Date(), sections: []),
+            update: update!,
+            allEvents: [englishEvent],
+            provenance: StoryProvenance(
+                generationMode: .model,
+                engineKind: "claudeCLI",
+                engineLabel: "Claude CLI",
+                model: nil,
+                pipelineVersion: "diary-story-v1",
+                curatedEventCount: 4
+            )
+        )
+
+        let paragraphs = merged.sections.flatMap(\.paragraphs)
+        XCTAssertEqual(paragraphs[0].text, "# 你今天做得很棒\n\n你把最后一轮也稳稳接住了。")
+        XCTAssertEqual(paragraphs[1].text, "# 今日总结\n\n- 完成最后一轮确认")
+        XCTAssertEqual(paragraphs[2].text, "# 详情\n\n## 收尾\n\n把最后的交付线索整理清楚。")
+        XCTAssertEqual(paragraphs[3].text, "# 待办事项\n\n- [ ] 发出最终交接")
+    }
+
+    func testMergeIncrementalUpdatePreservesMalformedLegacyDetailsBlockBeforeAppendingNewDetails() {
+        let composer = DailyMarkdownComposer()
+        let oldID = UUID()
+        let newEncouragementID = UUID()
+        let newSummaryID = UUID()
+        let newDetailID = UUID()
+        let newTodoID = UUID()
+        let existingStory = DailyStory(
+            dayKey: "2026-04-12",
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-encouragement",
+                            text: "# You did a good job today\n\nKeep the steady pace.",
+                            sourceEventIDs: [oldID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-summary",
+                            text: "# Summary\n\n- Wrapped the first pass",
+                            sourceEventIDs: [oldID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-weird",
+                            text: """
+                            Stray lead-in
+
+                            # Details
+
+                            Legacy thread that still needs to survive.
+                            """,
+                            sourceEventIDs: [oldID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-todo",
+                            text: "# To-do\n\n- [ ] Send recap",
+                            sourceEventIDs: [oldID]
+                        )
+                    ]
+                )
+            ]
+        )
+
+        let update = composer.parseIncrementalUpdate(
+            raw: """
+            {
+              "encouragementToReplace": {
+                "text": "You kept the old thread intact while moving the day forward.",
+                "sourceEventIDs": ["\(newEncouragementID.uuidString)"]
+              },
+              "summaryBulletsToReplace": [
+                { "text": "- Closed the second review pass", "sourceEventIDs": ["\(newSummaryID.uuidString)"] }
+              ],
+              "detailBlocksToAppend": [
+                { "text": "## Follow-up\\n\\nAdded the final customer response.", "sourceEventIDs": ["\(newDetailID.uuidString)"] }
+              ],
+              "todoItemsToReplace": [
+                { "text": "- [ ] Send the final handoff", "sourceEventIDs": ["\(newTodoID.uuidString)"] }
+              ]
+            }
+            """
+        )
+
+        XCTAssertNotNil(update)
+
+        let merged = composer.mergeIncrementalUpdate(
+            dayKey: "2026-04-12",
+            existingStory: existingStory,
+            update: update!,
+            allEvents: [],
+            provenance: StoryProvenance(
+                generationMode: .model,
+                engineKind: "claudeCLI",
+                engineLabel: "Claude CLI",
+                model: nil,
+                pipelineVersion: "diary-story-v1",
+                curatedEventCount: 5
+            )
+        )
+
+        let paragraphs = merged.sections.flatMap(\.paragraphs)
+        XCTAssertEqual(paragraphs.map(\.text), [
+            "# You did a good job today\n\nYou kept the old thread intact while moving the day forward.",
+            "# Summary\n\n- Closed the second review pass",
+            "# Details\n\nLegacy thread that still needs to survive.",
+            "## Follow-up\n\nAdded the final customer response.",
+            "# To-do\n\n- [ ] Send the final handoff"
+        ])
+        XCTAssertEqual(paragraphs[2].sourceEventIDs, [oldID])
+        XCTAssertEqual(paragraphs[3].sourceEventIDs, [newDetailID])
     }
 
     func testNormalizeStorySplitsLegacyDetailsParagraphAndNarrowsSourcesByAppMatch() {

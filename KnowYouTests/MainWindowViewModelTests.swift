@@ -23,6 +23,105 @@ private struct HandlerSummarizer: SummaryGenerating {
     }
 }
 
+private actor PlainSummarizerRecorder {
+    private var callCount = 0
+    private var lastDayKey: String?
+    private var lastMarkdown: String?
+    private var lastContext: SummaryInvocationContext?
+
+    func record(dayKey: String, markdown: String, context: SummaryInvocationContext) {
+        callCount += 1
+        lastDayKey = dayKey
+        lastMarkdown = markdown
+        lastContext = context
+    }
+
+    func snapshot() -> (callCount: Int, dayKey: String?, markdown: String?, context: SummaryInvocationContext?) {
+        (callCount, lastDayKey, lastMarkdown, lastContext)
+    }
+}
+
+private final class RecordingPlainSummarizer: SummaryGenerating, @unchecked Sendable {
+    let response: String
+    let recorder = PlainSummarizerRecorder()
+
+    init(response: String) {
+        self.response = response
+    }
+
+    func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
+        await recorder.record(dayKey: dayKey, markdown: markdown, context: context)
+        return response
+    }
+}
+
+private final class HandlerIncrementalSummarizer: IncrementalSummaryGenerating, @unchecked Sendable {
+    let summarizeHandler: @Sendable (String, String, SummaryInvocationContext) async throws -> String
+    let summarizeIncrementalHandler: @Sendable (String, String, SummaryInvocationContext) async throws -> String
+
+    init(
+        summarizeHandler: @escaping @Sendable (String, String, SummaryInvocationContext) async throws -> String,
+        summarizeIncrementalHandler: @escaping @Sendable (String, String, SummaryInvocationContext) async throws -> String
+    ) {
+        self.summarizeHandler = summarizeHandler
+        self.summarizeIncrementalHandler = summarizeIncrementalHandler
+    }
+
+    func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
+        try await summarizeHandler(dayKey, markdown, context)
+    }
+
+    func summarizeIncremental(
+        dayKey: String,
+        markdown: String,
+        context: SummaryInvocationContext
+    ) async throws -> String {
+        try await summarizeIncrementalHandler(dayKey, markdown, context)
+    }
+}
+
+private actor IncrementalSummarizerInvocationRecorder {
+    private var summarizeCallCount = 0
+    private var summarizeIncrementalCallCount = 0
+
+    func recordSummarize() {
+        summarizeCallCount += 1
+    }
+
+    func recordSummarizeIncremental() {
+        summarizeIncrementalCallCount += 1
+    }
+
+    func counts() -> (summarize: Int, summarizeIncremental: Int) {
+        (summarizeCallCount, summarizeIncrementalCallCount)
+    }
+}
+
+private final class RecordingIncrementalSummarizer: SummaryGenerating, IncrementalSummaryGenerating, @unchecked Sendable {
+    let summarizeResponse: String
+    let summarizeIncrementalResponse: String
+    let recorder = IncrementalSummarizerInvocationRecorder()
+
+    init(summarizeResponse: String, summarizeIncrementalResponse: String) {
+        self.summarizeResponse = summarizeResponse
+        self.summarizeIncrementalResponse = summarizeIncrementalResponse
+    }
+
+    func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
+        await recorder.recordSummarize()
+        return summarizeResponse
+    }
+
+    func summarizeIncremental(
+        dayKey: String,
+        markdown: String,
+        context: SummaryInvocationContext
+    ) async throws -> String {
+        await recorder.recordSummarizeIncremental()
+        return summarizeIncrementalResponse
+    }
+}
+
 private actor EngineAttemptRecorder {
     private var attempts: [DiaryEngine] = []
 
@@ -81,6 +180,92 @@ private final class RecordingPromptSummarizer: SummaryGenerating, @unchecked Sen
         capturedMarkdown = markdown
         return response
     }
+}
+
+private final class MainWindowStubURLProtocol: URLProtocol {
+    enum Behavior {
+        case success(statusCode: Int, body: Data)
+        case failure(Error)
+    }
+
+    nonisolated(unsafe) static var behavior: Behavior?
+    nonisolated(unsafe) static var lastRequest: URLRequest?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        Self.lastRequest = request
+
+        guard let behavior = Self.behavior else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+
+        switch behavior {
+        case .success(let statusCode, let body):
+            let response = HTTPURLResponse(
+                url: request.url ?? URL(string: "https://example.com")!,
+                statusCode: statusCode,
+                httpVersion: "HTTP/1.1",
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: body)
+            client?.urlProtocolDidFinishLoading(self)
+        case .failure(let error):
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+
+    static func makeSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MainWindowStubURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    static func reset() {
+        behavior = nil
+        lastRequest = nil
+    }
+}
+
+private func requestBodyData(from request: URLRequest) throws -> Data {
+    if let body = request.httpBody {
+        return body
+    }
+
+    guard let stream = request.httpBodyStream else {
+        throw NSError(domain: "MainWindowViewModelTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Request body missing"])
+    }
+
+    stream.open()
+    defer { stream.close() }
+
+    let bufferSize = 16 * 1024
+    var data = Data()
+    let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+    defer { buffer.deallocate() }
+
+    while stream.hasBytesAvailable {
+        let readCount = stream.read(buffer, maxLength: bufferSize)
+        if readCount < 0 {
+            throw stream.streamError ?? URLError(.cannotDecodeRawData)
+        }
+        if readCount == 0 {
+            break
+        }
+        data.append(buffer, count: readCount)
+    }
+
+    return data
 }
 
 private final class RecordingNotificationReader: NotificationDatabaseReading, @unchecked Sendable {
@@ -333,6 +518,7 @@ final class MainWindowViewModelTests: XCTestCase {
     }
 
     override func tearDown() {
+        MainWindowStubURLProtocol.reset()
         if let engineDefaultsSuiteName {
             engineDefaults.removePersistentDomain(forName: engineDefaultsSuiteName)
         }
@@ -726,7 +912,54 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertNil(try writer.fetchRuns(runType: "daily-note").last)
     }
 
-    func testRunAutomationAppendsTodayWhenModelStoryHasNewEvents() async throws {
+    func testSummaryGeneratingIncrementalFallbackUsesPlainSummarizeImplementation() async throws {
+        let concreteSummarizer = RecordingPlainSummarizer(response: "incremental payload")
+        let summarizer: any SummaryGenerating = concreteSummarizer
+
+        let result = try await summarizer.summarizeIncremental(
+            dayKey: "2026-04-14",
+            markdown: "Incremental prompt body",
+            context: .manualRefresh
+        )
+
+        XCTAssertEqual(result, "incremental payload")
+        let snapshot = await concreteSummarizer.recorder.snapshot()
+        XCTAssertEqual(snapshot.callCount, 1)
+        XCTAssertEqual(snapshot.dayKey, "2026-04-14")
+        XCTAssertEqual(snapshot.markdown, "Incremental prompt body")
+        XCTAssertEqual(snapshot.context, .manualRefresh)
+    }
+
+    func testCloudSummarizerIncrementalPreservesPromptContract() async throws {
+        MainWindowStubURLProtocol.behavior = .success(
+            statusCode: 200,
+            body: Data(#"{"output_text":"incremental ok"}"#.utf8)
+        )
+        let summarizer = CloudSummarizer(
+            apiKey: "test-key",
+            session: MainWindowStubURLProtocol.makeSession(),
+            model: "gpt-5"
+        )
+        let incrementalPrompt = """
+        Existing diary state goes here.
+        Add only the new events with replacement-and-append semantics.
+        """
+
+        let result = try await summarizer.summarizeIncremental(
+            dayKey: "2026-04-14",
+            markdown: incrementalPrompt,
+            context: .manualRefresh
+        )
+
+        XCTAssertEqual(result, "incremental ok")
+        let request = try XCTUnwrap(MainWindowStubURLProtocol.lastRequest)
+        let body = try requestBodyData(from: request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(object["model"] as? String, "gpt-5")
+        XCTAssertEqual(object["input"] as? String, incrementalPrompt)
+    }
+
+    func testRunAutomationIncrementallyReplacesAndAppendsTodayWhenModelStoryHasNewEvents() async throws {
         let writer = try DatabaseWriter.inMemory()
         let calendar = Calendar(identifier: .gregorian)
         let dayKey = "2026-04-07"
@@ -820,27 +1053,27 @@ final class MainWindowViewModelTests: XCTestCase {
 
         var config = SummarizerConfig.default
         config.defaultEngine = .codexCLI
+        let summarizer = RecordingIncrementalSummarizer(
+            summarizeResponse: makeValidStoryResponse(sourceEventID: newID, summaryLine: "Unexpected full refresh"),
+            summarizeIncrementalResponse: """
+            {
+              "encouragementToReplace": { "text": "Closed strong.", "sourceEventIDs": ["\(oldID.uuidString)", "\(newID.uuidString)"] },
+              "summaryBulletsToReplace": [
+                { "text": "- Customer approved the follow-up", "sourceEventIDs": ["\(newID.uuidString)"] }
+              ],
+              "detailBlocksToAppend": [{ "text": "## Follow-up\\n\\nHandled the approval loop.", "sourceEventIDs": ["\(newID.uuidString)"] }],
+              "todoItemsToReplace": [
+                { "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(newID.uuidString)"] }
+              ]
+            }
+            """
+        )
         let appState = AppState(
             environment: environment,
             summarizerConfig: config,
             makeSummarizer: { engine, _, _ in
                 guard engine == .codexCLI else { return nil }
-                return StaticSummarizer(
-                    response: """
-                    {
-                      "encouragementToReplace": { "text": "Keep the pace.", "sourceEventIDs": ["\(oldID.uuidString)", "\(newID.uuidString)"] },
-                      "summaryBulletsToReplace": [
-                        { "text": "- Wrapped the first pass", "sourceEventIDs": ["\(oldID.uuidString)"] },
-                        { "text": "- Customer approved the follow-up", "sourceEventIDs": ["\(newID.uuidString)"] }
-                      ],
-                      "detailBlocksToAppend": [{ "text": "## Follow-up\\n\\nHandled the approval loop.", "sourceEventIDs": ["\(newID.uuidString)"] }],
-                      "todoItemsToReplace": [
-                        { "text": "- [ ] Send recap", "sourceEventIDs": ["\(oldID.uuidString)"] },
-                        { "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(newID.uuidString)"] }
-                      ]
-                    }
-                    """
-                )
+                return summarizer
             }
         )
         appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(
@@ -853,10 +1086,17 @@ final class MainWindowViewModelTests: XCTestCase {
         await appState.runAutomation(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 7, hour: 12).date!)
 
         let markdown = try String(contentsOf: vaultURL.appending(path: "\(dayKey).md"))
-        XCTAssertTrue(markdown.contains("Keep the pace."))
+        XCTAssertTrue(markdown.contains("Closed strong."))
         XCTAssertTrue(markdown.contains("- Customer approved the follow-up"))
+        XCTAssertFalse(markdown.contains("- Wrapped the first pass"))
+        XCTAssertFalse(markdown.contains("- [ ] Send recap"))
+        XCTAssertFalse(markdown.contains("Keep the pace."))
+        XCTAssertTrue(markdown.contains("## Existing Thread"))
         XCTAssertTrue(markdown.contains("## Follow-up"))
         XCTAssertTrue(markdown.contains("- [ ] Queue the final handoff"))
+        let counts = await summarizer.recorder.counts()
+        XCTAssertEqual(counts.summarize, 0)
+        XCTAssertEqual(counts.summarizeIncremental, 1)
         XCTAssertEqual(try writer.fetchRuns(runType: "daily-note").last?.dayKey, dayKey)
     }
 
@@ -1939,7 +2179,7 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.refreshJob(for: dayKey)?.stage, .completed)
     }
 
-    func testRefreshSelectedDayIncrementallyAppendsToModelStory() async throws {
+    func testRefreshSelectedDayIncrementallyReplacesAndAppendsToModelStory() async throws {
         let writer = try DatabaseWriter.inMemory()
         let calendar = Calendar(identifier: .gregorian)
         let dayKey = "2026-04-09"
@@ -1994,7 +2234,7 @@ final class MainWindowViewModelTests: XCTestCase {
                             text: """
                             # You did a good job today
 
-                            Keep the pace.
+                            Keep the old pace.
 
                             # Summary
 
@@ -2033,27 +2273,27 @@ final class MainWindowViewModelTests: XCTestCase {
 
         var config = SummarizerConfig.default
         config.defaultEngine = .codexCLI
+        let summarizer = RecordingIncrementalSummarizer(
+            summarizeResponse: makeValidStoryResponse(sourceEventID: newID, summaryLine: "Unexpected full refresh"),
+            summarizeIncrementalResponse: """
+            {
+              "encouragementToReplace": { "text": "Closed strong.", "sourceEventIDs": ["\(oldID.uuidString)", "\(newID.uuidString)"] },
+              "summaryBulletsToReplace": [
+                { "text": "- Customer approved the follow-up", "sourceEventIDs": ["\(newID.uuidString)"] }
+              ],
+              "detailBlocksToAppend": [{ "text": "## Follow-up\\n\\nHandled the approval loop.", "sourceEventIDs": ["\(newID.uuidString)"] }],
+              "todoItemsToReplace": [
+                { "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(newID.uuidString)"] }
+              ]
+            }
+            """
+        )
         let appState = AppState(
             environment: environment,
             summarizerConfig: config,
             makeSummarizer: { engine, _, _ in
                 guard engine == .codexCLI else { return nil }
-                return StaticSummarizer(
-                    response: """
-                    {
-                      "encouragementToReplace": { "text": "Keep the pace.", "sourceEventIDs": ["\(oldID.uuidString)", "\(newID.uuidString)"] },
-                      "summaryBulletsToReplace": [
-                        { "text": "- Wrapped the first pass", "sourceEventIDs": ["\(oldID.uuidString)"] },
-                        { "text": "- Customer approved the follow-up", "sourceEventIDs": ["\(newID.uuidString)"] }
-                      ],
-                      "detailBlocksToAppend": [{ "text": "## Follow-up\\n\\nHandled the approval loop.", "sourceEventIDs": ["\(newID.uuidString)"] }],
-                      "todoItemsToReplace": [
-                        { "text": "- [ ] Send recap", "sourceEventIDs": ["\(oldID.uuidString)"] },
-                        { "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(newID.uuidString)"] }
-                      ]
-                    }
-                    """
-                )
+                return summarizer
             }
         )
         appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(state: .green, detail: "Ready.", lastVerifiedAt: Date(), configurationSignature: "codex")
@@ -2062,13 +2302,17 @@ final class MainWindowViewModelTests: XCTestCase {
         await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11).date!)
 
         let refreshedMarkdown = try String(contentsOf: vaultURL.appending(path: "\(dayKey).md"))
-        XCTAssertTrue(refreshedMarkdown.contains("Keep the pace."))
-        XCTAssertTrue(refreshedMarkdown.contains("- Wrapped the first pass"))
+        XCTAssertTrue(refreshedMarkdown.contains("Closed strong."))
         XCTAssertTrue(refreshedMarkdown.contains("- Customer approved the follow-up"))
+        XCTAssertFalse(refreshedMarkdown.contains("Keep the old pace."))
+        XCTAssertFalse(refreshedMarkdown.contains("- Wrapped the first pass"))
         XCTAssertTrue(refreshedMarkdown.contains("## Existing Thread"))
         XCTAssertTrue(refreshedMarkdown.contains("## Follow-up"))
-        XCTAssertTrue(refreshedMarkdown.contains("- [ ] Send recap"))
         XCTAssertTrue(refreshedMarkdown.contains("- [ ] Queue the final handoff"))
+        XCTAssertFalse(refreshedMarkdown.contains("- [ ] Send recap"))
+        let counts = await summarizer.recorder.counts()
+        XCTAssertEqual(counts.summarize, 0)
+        XCTAssertEqual(counts.summarizeIncremental, 1)
         XCTAssertNil(appState.dayRefreshStatus.lastError)
     }
 
@@ -2129,7 +2373,7 @@ final class MainWindowViewModelTests: XCTestCase {
                             text: """
                             # You did a good job today
 
-                            Keep the pace.
+                            Keep the old pace.
 
                             # Summary
 
@@ -2170,27 +2414,27 @@ final class MainWindowViewModelTests: XCTestCase {
 
         var config = SummarizerConfig.default
         config.defaultEngine = .codexCLI
+        let summarizer = RecordingIncrementalSummarizer(
+            summarizeResponse: makeValidStoryResponse(sourceEventID: newID, summaryLine: "Unexpected full refresh"),
+            summarizeIncrementalResponse: """
+            {
+              "encouragementToReplace": { "text": "Closed strong.", "sourceEventIDs": ["\(oldID.uuidString)", "\(newID.uuidString)"] },
+              "summaryBulletsToReplace": [
+                { "text": "- Queued the final handoff", "sourceEventIDs": ["\(newID.uuidString)"] }
+              ],
+              "detailBlocksToAppend": [],
+              "todoItemsToReplace": [
+                { "text": "- [ ] Finish the handoff", "sourceEventIDs": ["\(newID.uuidString)"] }
+              ]
+            }
+            """
+        )
         let appState = AppState(
             environment: environment,
             summarizerConfig: config,
             makeSummarizer: { engine, _, _ in
                 guard engine == .codexCLI else { return nil }
-                return StaticSummarizer(
-                    response: """
-                    {
-                      "encouragementToReplace": { "text": "Keep the pace.", "sourceEventIDs": ["\(oldID.uuidString)", "\(newID.uuidString)"] },
-                      "summaryBulletsToReplace": [
-                        { "text": "- Wrapped the first pass", "sourceEventIDs": ["\(oldID.uuidString)"] },
-                        { "text": "- Queued the final handoff", "sourceEventIDs": ["\(newID.uuidString)"] }
-                      ],
-                      "detailBlocksToAppend": [],
-                      "todoItemsToReplace": [
-                        { "text": "- [ ] Send recap", "sourceEventIDs": ["\(oldID.uuidString)"] },
-                        { "text": "- [ ] Finish the handoff", "sourceEventIDs": ["\(newID.uuidString)"] }
-                      ]
-                    }
-                    """
-                )
+                return summarizer
             }
         )
         appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(state: .green, detail: "Ready.", lastVerifiedAt: Date(), configurationSignature: "codex")
@@ -2198,10 +2442,682 @@ final class MainWindowViewModelTests: XCTestCase {
         await appState.generateDailyNote(for: dayKey)
 
         let refreshedMarkdown = try String(contentsOf: vaultURL.appending(path: "\(dayKey).md"))
-        XCTAssertTrue(refreshedMarkdown.contains("- Wrapped the first pass"))
+        XCTAssertTrue(refreshedMarkdown.contains("Closed strong."))
         XCTAssertTrue(refreshedMarkdown.contains("- Queued the final handoff"))
         XCTAssertTrue(refreshedMarkdown.contains("- [ ] Finish the handoff"))
+        XCTAssertFalse(refreshedMarkdown.contains("Keep the old pace."))
+        XCTAssertFalse(refreshedMarkdown.contains("- Wrapped the first pass"))
+        XCTAssertFalse(refreshedMarkdown.contains("- [ ] Send recap"))
         XCTAssertFalse(refreshedMarkdown.contains("Recovered day"))
+        let counts = await summarizer.recorder.counts()
+        XCTAssertEqual(counts.summarize, 0)
+        XCTAssertEqual(counts.summarizeIncremental, 1)
+        XCTAssertNil(appState.dayRefreshStatus.lastError)
+    }
+
+    func testGenerateDailyNoteFullRecoveryStillUsesSummarizeAPI() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let dayKey = "2026-04-10"
+        let eventID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: eventID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 10, hour: 9).date!,
+                dayKey: dayKey,
+                text: "Recover the day from scratch",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "full-recovery-api"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let summarizer = RecordingIncrementalSummarizer(
+            summarizeResponse: makeValidStoryResponse(sourceEventID: eventID, summaryLine: "Recovered through full path"),
+            summarizeIncrementalResponse: """
+            {
+              "encouragementToReplace": { "text": "Should not be used.", "sourceEventIDs": ["\(eventID.uuidString)"] },
+              "summaryBulletsToReplace": [{ "text": "- Wrong path", "sourceEventIDs": ["\(eventID.uuidString)"] }],
+              "detailBlocksToAppend": [],
+              "todoItemsToReplace": []
+            }
+            """
+        )
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: summarizer,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(environment: environment)
+
+        await appState.generateDailyNote(for: dayKey)
+
+        let refreshedMarkdown = try String(contentsOf: vaultURL.appending(path: "\(dayKey).md"))
+        XCTAssertTrue(refreshedMarkdown.contains("Recovered through full path"))
+        XCTAssertFalse(refreshedMarkdown.contains("Wrong path"))
+        let counts = await summarizer.recorder.counts()
+        XCTAssertEqual(counts.summarize, 1)
+        XCTAssertEqual(counts.summarizeIncremental, 0)
+        XCTAssertNil(appState.dayRefreshStatus.lastError)
+    }
+
+    func testRefreshSelectedDayIncrementalParallelFallbackKeepsSlowerValidResultAfterFasterMalformedResult() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let dayKey = "2026-04-09"
+        let oldID = UUID()
+        let newID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: oldID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 9).date!,
+                dayKey: dayKey,
+                text: "Wrapped the first pass",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "parallel-incremental-old"
+            )
+        )
+        try writer.insert(
+            EventRecord(
+                id: newID,
+                sourceType: .notification,
+                sourceApp: "Mail",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 11).date!,
+                dayKey: dayKey,
+                text: "Customer approved the follow-up",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "parallel-incremental-new"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let existingStory = DailyStory(
+            dayKey: dayKey,
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: """
+                            # You did a good job today
+
+                            Keep the old pace.
+
+                            # Summary
+
+                            - Wrapped the first pass
+
+                            # Details
+
+                            ## Existing Thread
+
+                            Closed the first workflow.
+
+                            # To-do
+
+                            - [ ] Send recap
+                            """,
+                            sourceEventIDs: [oldID]
+                        )
+                    ]
+                )
+            ],
+            provenance: StoryProvenance(
+                generationMode: .model,
+                engineKind: "codexCLI",
+                engineLabel: "Codex (CLI)",
+                model: nil,
+                pipelineVersion: "diary-story-v1",
+                curatedEventCount: 1
+            )
+        )
+        try writeStoryDay(
+            dayKey: dayKey,
+            markdown: environment.composer.compose(
+                dayKey: dayKey,
+                events: try writer.fetchEvents(dayKey: dayKey),
+                story: existingStory
+            ),
+            story: existingStory,
+            environment: environment
+        )
+
+        let attemptRecorder = ParallelAttemptRecorder()
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            makeSummarizer: { engine, _, _ in
+                let attemptEngine = engine
+                return HandlerIncrementalSummarizer(
+                    summarizeHandler: { _, _, _ in "Unexpected full refresh" },
+                    summarizeIncrementalHandler: { _, _, _ in
+                        await attemptRecorder.recordStart(attemptEngine)
+                        switch attemptEngine {
+                        case .codexCLI:
+                            return "not json"
+                        case .geminiCLI:
+                            await attemptRecorder.waitForGeminiAndClaudeToStart()
+                            return """
+                            {
+                              "encouragementToReplace": { "text": "bad payload" },
+                              "summaryBulletsToReplace": [],
+                              "detailBlocksToAppend": [],
+                              "todoItemsToReplace": []
+                            }
+                            """
+                        case .claudeCLI:
+                            try await Task.sleep(nanoseconds: 100_000_000)
+                            return """
+                            {
+                              "encouragementToReplace": { "text": "Closed strong.", "sourceEventIDs": ["\(oldID.uuidString)", "\(newID.uuidString)"] },
+                              "summaryBulletsToReplace": [
+                                { "text": "- Customer approved the follow-up", "sourceEventIDs": ["\(newID.uuidString)"] }
+                              ],
+                              "detailBlocksToAppend": [{ "text": "## Follow-up\\n\\nHandled the approval loop.", "sourceEventIDs": ["\(newID.uuidString)"] }],
+                              "todoItemsToReplace": [
+                                { "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(newID.uuidString)"] }
+                              ]
+                            }
+                            """
+                        default:
+                            throw URLError(.cannotConnectToHost)
+                        }
+                    }
+                )
+            }
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(state: .green, detail: "Ready.", lastVerifiedAt: Date(), configurationSignature: "codex")
+        appState.engineStatuses[.claudeCLI] = EngineRuntimeStatus(state: .green, detail: "Ready.", lastVerifiedAt: Date(), configurationSignature: "claude")
+        appState.engineStatuses[.geminiCLI] = EngineRuntimeStatus(state: .green, detail: "Ready.", lastVerifiedAt: Date(), configurationSignature: "gemini")
+        appState.selectDate(dayKey)
+
+        await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11).date!)
+
+        let snapshot = await attemptRecorder.snapshot()
+        XCTAssertTrue(snapshot.started.contains(.geminiCLI))
+        XCTAssertTrue(snapshot.started.contains(.claudeCLI))
+        XCTAssertTrue(snapshot.cancelled.isEmpty)
+
+        let refreshedMarkdown = try String(contentsOf: vaultURL.appending(path: "\(dayKey).md"))
+        XCTAssertTrue(refreshedMarkdown.contains("Closed strong."))
+        XCTAssertTrue(refreshedMarkdown.contains("- Customer approved the follow-up"))
+        XCTAssertTrue(refreshedMarkdown.contains("## Follow-up"))
+        XCTAssertFalse(refreshedMarkdown.contains("bad payload"))
+        XCTAssertNil(appState.dayRefreshStatus.lastError)
+    }
+
+    func testRefreshSelectedDayIncrementalParallelFallbackCancelsSlowerEngineAfterFirstValidResult() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let dayKey = "2026-04-09"
+        let oldID = UUID()
+        let newID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: oldID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 9).date!,
+                dayKey: dayKey,
+                text: "Wrapped the first pass",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "parallel-cancel-old"
+            )
+        )
+        try writer.insert(
+            EventRecord(
+                id: newID,
+                sourceType: .notification,
+                sourceApp: "Mail",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 11).date!,
+                dayKey: dayKey,
+                text: "Customer approved the follow-up",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "parallel-cancel-new"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let existingStory = DailyStory(
+            dayKey: dayKey,
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: """
+                            # You did a good job today
+
+                            Keep the old pace.
+
+                            # Summary
+
+                            - Wrapped the first pass
+
+                            # Details
+
+                            ## Existing Thread
+
+                            Closed the first workflow.
+
+                            # To-do
+
+                            - [ ] Send recap
+                            """,
+                            sourceEventIDs: [oldID]
+                        )
+                    ]
+                )
+            ],
+            provenance: StoryProvenance(
+                generationMode: .model,
+                engineKind: "codexCLI",
+                engineLabel: "Codex (CLI)",
+                model: nil,
+                pipelineVersion: "diary-story-v1",
+                curatedEventCount: 1
+            )
+        )
+        try writeStoryDay(
+            dayKey: dayKey,
+            markdown: environment.composer.compose(
+                dayKey: dayKey,
+                events: try writer.fetchEvents(dayKey: dayKey),
+                story: existingStory
+            ),
+            story: existingStory,
+            environment: environment
+        )
+
+        let attemptRecorder = ParallelAttemptRecorder()
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            makeSummarizer: { engine, _, _ in
+                let attemptEngine = engine
+                return HandlerIncrementalSummarizer(
+                    summarizeHandler: { _, _, _ in "Unexpected full refresh" },
+                    summarizeIncrementalHandler: { _, _, _ in
+                        await attemptRecorder.recordStart(attemptEngine)
+                        switch attemptEngine {
+                        case .codexCLI:
+                            return "not json"
+                        case .geminiCLI:
+                            await attemptRecorder.waitForGeminiAndClaudeToStart()
+                            return """
+                            {
+                              "encouragementToReplace": { "text": "Closed strong.", "sourceEventIDs": ["\(oldID.uuidString)", "\(newID.uuidString)"] },
+                              "summaryBulletsToReplace": [
+                                { "text": "- Customer approved the follow-up", "sourceEventIDs": ["\(newID.uuidString)"] }
+                              ],
+                              "detailBlocksToAppend": [{ "text": "## Follow-up\\n\\nHandled the approval loop.", "sourceEventIDs": ["\(newID.uuidString)"] }],
+                              "todoItemsToReplace": [
+                                { "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(newID.uuidString)"] }
+                              ]
+                            }
+                            """
+                        case .claudeCLI:
+                            do {
+                                try await Task.sleep(nanoseconds: 5_000_000_000)
+                                return """
+                                {
+                                  "encouragementToReplace": { "text": "Too slow.", "sourceEventIDs": ["\(oldID.uuidString)", "\(newID.uuidString)"] },
+                                  "summaryBulletsToReplace": [
+                                    { "text": "- slower fallback", "sourceEventIDs": ["\(newID.uuidString)"] }
+                                  ],
+                                  "detailBlocksToAppend": [],
+                                  "todoItemsToReplace": [
+                                    { "text": "- [ ] slower fallback", "sourceEventIDs": ["\(newID.uuidString)"] }
+                                  ]
+                                }
+                                """
+                            } catch {
+                                await attemptRecorder.recordCancelled(attemptEngine)
+                                throw error
+                            }
+                        default:
+                            throw URLError(.cannotConnectToHost)
+                        }
+                    }
+                )
+            }
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(state: .green, detail: "Ready.", lastVerifiedAt: Date(), configurationSignature: "codex")
+        appState.engineStatuses[.claudeCLI] = EngineRuntimeStatus(state: .green, detail: "Ready.", lastVerifiedAt: Date(), configurationSignature: "claude")
+        appState.engineStatuses[.geminiCLI] = EngineRuntimeStatus(state: .green, detail: "Ready.", lastVerifiedAt: Date(), configurationSignature: "gemini")
+        appState.selectDate(dayKey)
+
+        await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11).date!)
+
+        let snapshot = await attemptRecorder.snapshot()
+        XCTAssertTrue(snapshot.started.contains(.geminiCLI))
+        XCTAssertTrue(snapshot.started.contains(.claudeCLI))
+        XCTAssertEqual(snapshot.cancelled, [.claudeCLI])
+
+        let refreshedMarkdown = try String(contentsOf: vaultURL.appending(path: "\(dayKey).md"))
+        XCTAssertTrue(refreshedMarkdown.contains("Closed strong."))
+        XCTAssertTrue(refreshedMarkdown.contains("- Customer approved the follow-up"))
+        XCTAssertFalse(refreshedMarkdown.contains("Too slow."))
+        XCTAssertNil(appState.dayRefreshStatus.lastError)
+    }
+
+    func testRefreshSelectedDayIncrementalRejectsReplacementRefsOutsideCurrentDay() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let dayKey = "2026-04-09"
+        let oldID = UUID()
+        let newID = UUID()
+        let outsideDayID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: oldID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 9).date!,
+                dayKey: dayKey,
+                text: "Wrapped the first pass",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "invalid-ref-old"
+            )
+        )
+        try writer.insert(
+            EventRecord(
+                id: newID,
+                sourceType: .notification,
+                sourceApp: "Mail",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 11).date!,
+                dayKey: dayKey,
+                text: "Customer approved the follow-up",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "invalid-ref-new"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let existingStory = DailyStory(
+            dayKey: dayKey,
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: """
+                            # You did a good job today
+
+                            Keep the old pace.
+
+                            # Summary
+
+                            - Wrapped the first pass
+
+                            # Details
+
+                            ## Existing Thread
+
+                            Closed the first workflow.
+
+                            # To-do
+
+                            - [ ] Send recap
+                            """,
+                            sourceEventIDs: [oldID]
+                        )
+                    ]
+                )
+            ],
+            provenance: StoryProvenance(
+                generationMode: .model,
+                engineKind: "codexCLI",
+                engineLabel: "Codex (CLI)",
+                model: nil,
+                pipelineVersion: "diary-story-v1",
+                curatedEventCount: 1
+            )
+        )
+        try writeStoryDay(
+            dayKey: dayKey,
+            markdown: environment.composer.compose(
+                dayKey: dayKey,
+                events: try writer.fetchEvents(dayKey: dayKey),
+                story: existingStory
+            ),
+            story: existingStory,
+            environment: environment
+        )
+
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        let summarizer = RecordingIncrementalSummarizer(
+            summarizeResponse: makeValidStoryResponse(sourceEventID: newID, summaryLine: "Unexpected full refresh"),
+            summarizeIncrementalResponse: """
+            {
+              "encouragementToReplace": { "text": "Closed strong.", "sourceEventIDs": ["\(outsideDayID.uuidString)"] },
+              "summaryBulletsToReplace": [
+                { "text": "- Customer approved the follow-up", "sourceEventIDs": ["\(newID.uuidString)"] }
+              ],
+              "detailBlocksToAppend": [{ "text": "## Follow-up\\n\\nHandled the approval loop.", "sourceEventIDs": ["\(newID.uuidString)"] }],
+              "todoItemsToReplace": [
+                { "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(newID.uuidString)"] }
+              ]
+            }
+            """
+        )
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            makeSummarizer: { engine, _, _ in
+                guard engine == .codexCLI else { return nil }
+                return summarizer
+            }
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(state: .green, detail: "Ready.", lastVerifiedAt: Date(), configurationSignature: "codex")
+        appState.selectDate(dayKey)
+
+        await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11).date!)
+
+        let refreshedMarkdown = try String(contentsOf: vaultURL.appending(path: "\(dayKey).md"))
+        XCTAssertTrue(refreshedMarkdown.contains("Keep the old pace."))
+        XCTAssertFalse(refreshedMarkdown.contains("Closed strong."))
+        XCTAssertNotNil(appState.dayRefreshStatus.lastError)
+        let counts = await summarizer.recorder.counts()
+        XCTAssertEqual(counts.summarizeIncremental, 1)
+    }
+
+    func testRefreshSelectedDayIncrementalDropsDetailRefsOutsideNewEventSet() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let calendar = Calendar(identifier: .gregorian)
+        let dayKey = "2026-04-09"
+        let oldID = UUID()
+        let newID = UUID()
+        let invalidDetailID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: oldID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 9).date!,
+                dayKey: dayKey,
+                text: "Wrapped the first pass",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "drop-detail-old"
+            )
+        )
+        try writer.insert(
+            EventRecord(
+                id: newID,
+                sourceType: .notification,
+                sourceApp: "Mail",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 9, hour: 11).date!,
+                dayKey: dayKey,
+                text: "Customer approved the follow-up",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "drop-detail-new"
+            )
+        )
+
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let existingStory = DailyStory(
+            dayKey: dayKey,
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: """
+                            # You did a good job today
+
+                            Keep the old pace.
+
+                            # Summary
+
+                            - Wrapped the first pass
+
+                            # Details
+
+                            ## Existing Thread
+
+                            Closed the first workflow.
+
+                            # To-do
+
+                            - [ ] Send recap
+                            """,
+                            sourceEventIDs: [oldID]
+                        )
+                    ]
+                )
+            ],
+            provenance: StoryProvenance(
+                generationMode: .model,
+                engineKind: "codexCLI",
+                engineLabel: "Codex (CLI)",
+                model: nil,
+                pipelineVersion: "diary-story-v1",
+                curatedEventCount: 1
+            )
+        )
+        try writeStoryDay(
+            dayKey: dayKey,
+            markdown: environment.composer.compose(
+                dayKey: dayKey,
+                events: try writer.fetchEvents(dayKey: dayKey),
+                story: existingStory
+            ),
+            story: existingStory,
+            environment: environment
+        )
+
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        let summarizer = RecordingIncrementalSummarizer(
+            summarizeResponse: makeValidStoryResponse(sourceEventID: newID, summaryLine: "Unexpected full refresh"),
+            summarizeIncrementalResponse: """
+            {
+              "encouragementToReplace": { "text": "Closed strong.", "sourceEventIDs": ["\(oldID.uuidString)", "\(newID.uuidString)"] },
+              "summaryBulletsToReplace": [
+                { "text": "- Customer approved the follow-up", "sourceEventIDs": ["\(newID.uuidString)"] }
+              ],
+              "detailBlocksToAppend": [
+                { "text": "## Follow-up\\n\\nHandled the approval loop.", "sourceEventIDs": ["\(newID.uuidString)"] },
+                { "text": "## Invalid\\n\\nThis should be dropped.", "sourceEventIDs": ["\(invalidDetailID.uuidString)"] }
+              ],
+              "todoItemsToReplace": [
+                { "text": "- [ ] Queue the final handoff", "sourceEventIDs": ["\(newID.uuidString)"] }
+              ]
+            }
+            """
+        )
+        let appState = AppState(
+            environment: environment,
+            summarizerConfig: config,
+            makeSummarizer: { engine, _, _ in
+                guard engine == .codexCLI else { return nil }
+                return summarizer
+            }
+        )
+        appState.engineStatuses[.codexCLI] = EngineRuntimeStatus(state: .green, detail: "Ready.", lastVerifiedAt: Date(), configurationSignature: "codex")
+        appState.selectDate(dayKey)
+
+        await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11).date!)
+
+        let refreshedMarkdown = try String(contentsOf: vaultURL.appending(path: "\(dayKey).md"))
+        XCTAssertTrue(refreshedMarkdown.contains("Closed strong."))
+        XCTAssertTrue(refreshedMarkdown.contains("## Follow-up"))
+        XCTAssertFalse(refreshedMarkdown.contains("## Invalid"))
         XCTAssertNil(appState.dayRefreshStatus.lastError)
     }
 

@@ -10,13 +10,33 @@ protocol SummaryGenerating: Sendable {
     func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String
 }
 
+protocol IncrementalSummaryGenerating: SummaryGenerating {
+    func summarizeIncremental(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String
+}
+
 extension SummaryGenerating {
     func summarize(dayKey: String, markdown: String) async throws -> String {
         try await summarize(dayKey: dayKey, markdown: markdown, context: .defaultBehavior)
     }
+
+    func summarizeIncremental(
+        dayKey: String,
+        markdown: String,
+        context: SummaryInvocationContext
+    ) async throws -> String {
+        if let incrementalSummarizer = self as? any IncrementalSummaryGenerating {
+            return try await incrementalSummarizer.summarizeIncremental(
+                dayKey: dayKey,
+                markdown: markdown,
+                context: context
+            )
+        }
+
+        return try await summarize(dayKey: dayKey, markdown: markdown, context: context)
+    }
 }
 
-struct CloudSummarizer: SummaryGenerating {
+struct CloudSummarizer: IncrementalSummaryGenerating {
     let apiKey: String
     let apiURL: URL
     let session: URLSession
@@ -35,6 +55,20 @@ struct CloudSummarizer: SummaryGenerating {
     }
 
     func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
+        try await sendRequest(
+            input: "Summarize this day as a concise diary entry for \(dayKey):\n\n\(markdown)"
+        )
+    }
+
+    func summarizeIncremental(
+        dayKey: String,
+        markdown: String,
+        context: SummaryInvocationContext
+    ) async throws -> String {
+        try await sendRequest(input: markdown)
+    }
+
+    private func sendRequest(input: String) async throws -> String {
         var request = URLRequest(url: apiURL)
         request.httpMethod = "POST"
         request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -42,7 +76,7 @@ struct CloudSummarizer: SummaryGenerating {
         request.httpBody = try JSONEncoder().encode(
             ResponsesRequest(
                 model: model,
-                input: "Summarize this day as a concise diary entry for \(dayKey):\n\n\(markdown)"
+                input: input
             )
         )
 
@@ -58,6 +92,8 @@ struct CloudSummarizer: SummaryGenerating {
         return payload.outputText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Summary unavailable."
     }
 }
+
+extension CLISummarizer: IncrementalSummaryGenerating {}
 
 private struct ResponsesRequest: Encodable {
     let model: String

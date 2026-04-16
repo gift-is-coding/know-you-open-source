@@ -193,6 +193,7 @@ struct CLISummarizer: SummaryGenerating {
 
     private enum Expectation {
         case story
+        case incrementalUpdate
         case acknowledgement
     }
 
@@ -216,6 +217,9 @@ struct CLISummarizer: SummaryGenerating {
     private static let acknowledgementSchema = """
     {"type":"object","additionalProperties":false,"required":["ok"],"properties":{"ok":{"type":"string","const":"OK"}}}
     """
+    private static let incrementalUpdateSchema = """
+    {"type":"object","additionalProperties":false,"required":["encouragementToReplace","summaryBulletsToReplace","detailBlocksToAppend","todoItemsToReplace"],"properties":{"encouragementToReplace":{"type":"object","additionalProperties":false,"required":["text","sourceEventIDs"],"properties":{"text":{"type":"string"},"sourceEventIDs":{"type":"array","minItems":1,"items":{"type":"string","pattern":"^[0-9A-Fa-f-]{36}$"}}}},"summaryBulletsToReplace":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["text","sourceEventIDs"],"properties":{"text":{"type":"string"},"sourceEventIDs":{"type":"array","minItems":1,"items":{"type":"string","pattern":"^[0-9A-Fa-f-]{36}$"}}}}},"detailBlocksToAppend":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["text","sourceEventIDs"],"properties":{"text":{"type":"string"},"sourceEventIDs":{"type":"array","minItems":1,"items":{"type":"string","pattern":"^[0-9A-Fa-f-]{36}$"}}}}},"todoItemsToReplace":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["text","sourceEventIDs"],"properties":{"text":{"type":"string"},"sourceEventIDs":{"type":"array","minItems":1,"items":{"type":"string","pattern":"^[0-9A-Fa-f-]{36}$"}}}}}}}
+    """
 
     init(tool: Tool, executablePath: String, runner: ProcessRunning = SystemProcessRunner()) {
         self.tool = tool
@@ -224,40 +228,15 @@ struct CLISummarizer: SummaryGenerating {
     }
 
     func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
-        let prompt = markdown
-        let primaryRaw = try await run(
-            prompt: prompt,
-            expectation: .story,
-            timeoutSeconds: primaryTimeoutSeconds(for: context)
-        )
-        if let validated = validatedStoryOutput(from: primaryRaw) {
-            return validated
-        }
+        try await summarizeStructured(prompt: markdown, expectation: .story, context: context)
+    }
 
-        guard !primaryRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw CLISummarizerError.emptyOutput
-        }
-
-        do {
-            let repaired = try await run(
-                prompt: repairPrompt(for: primaryRaw),
-                expectation: .story,
-                timeoutSeconds: repairTimeoutSeconds(for: context)
-            )
-            if let validated = validatedStoryOutput(from: repaired) {
-                return validated
-            }
-            throw CLISummarizerError.repairFailed(detail: "repair output was not valid structured JSON")
-        } catch let error as CLISummarizerError {
-            switch error {
-            case .repairFailed:
-                throw error
-            default:
-                throw CLISummarizerError.repairFailed(detail: error.localizedDescription)
-            }
-        } catch {
-            throw CLISummarizerError.repairFailed(detail: error.localizedDescription)
-        }
+    func summarizeIncremental(
+        dayKey: String,
+        markdown: String,
+        context: SummaryInvocationContext
+    ) async throws -> String {
+        try await summarizeStructured(prompt: markdown, expectation: .incrementalUpdate, context: context)
     }
 
     func smokeTest(prompt: String? = nil) async throws -> String {
@@ -347,6 +326,46 @@ struct CLISummarizer: SummaryGenerating {
         return extracted
     }
 
+    private func summarizeStructured(
+        prompt: String,
+        expectation: Expectation,
+        context: SummaryInvocationContext
+    ) async throws -> String {
+        let primaryRaw = try await run(
+            prompt: prompt,
+            expectation: expectation,
+            timeoutSeconds: primaryTimeoutSeconds(for: context)
+        )
+        if let validated = validatedOutput(from: primaryRaw, expectation: expectation) {
+            return validated
+        }
+
+        guard !primaryRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw CLISummarizerError.emptyOutput
+        }
+
+        do {
+            let repaired = try await run(
+                prompt: repairPrompt(for: primaryRaw, expectation: expectation),
+                expectation: expectation,
+                timeoutSeconds: repairTimeoutSeconds(for: context)
+            )
+            if let validated = validatedOutput(from: repaired, expectation: expectation) {
+                return validated
+            }
+            throw CLISummarizerError.repairFailed(detail: "repair output was not valid structured JSON")
+        } catch let error as CLISummarizerError {
+            switch error {
+            case .repairFailed:
+                throw error
+            default:
+                throw CLISummarizerError.repairFailed(detail: error.localizedDescription)
+            }
+        } catch {
+            throw CLISummarizerError.repairFailed(detail: error.localizedDescription)
+        }
+    }
+
     private func primaryTimeoutSeconds(for context: SummaryInvocationContext) -> Int {
         switch context {
         case .manualRefresh:
@@ -376,7 +395,7 @@ struct CLISummarizer: SummaryGenerating {
                 arguments: [
                     "-p", prompt,
                     "--output-format", "json",
-                    "--json-schema", Self.dailyStorySchema,
+                    "--json-schema", schemaText(for: expectation),
                 ],
                 schemaURL: nil,
                 outputURL: nil
@@ -403,7 +422,7 @@ struct CLISummarizer: SummaryGenerating {
                 outputURL: nil
             )
         case .codex:
-            let schemaURL = try writeTemporaryFile(contents: expectation == .story ? Self.dailyStorySchema : Self.acknowledgementSchema)
+            let schemaURL = try writeTemporaryFile(contents: schemaText(for: expectation))
             let outputURL = temporaryFileURL()
             try "".write(to: outputURL, atomically: true, encoding: .utf8)
             return InvocationPlan(
@@ -431,7 +450,29 @@ struct CLISummarizer: SummaryGenerating {
         URL.temporaryDirectory.appending(path: UUID().uuidString)
     }
 
-    private func repairPrompt(for raw: String) -> String {
+    private func schemaText(for expectation: Expectation) -> String {
+        switch expectation {
+        case .story:
+            return Self.dailyStorySchema
+        case .incrementalUpdate:
+            return Self.incrementalUpdateSchema
+        case .acknowledgement:
+            return Self.acknowledgementSchema
+        }
+    }
+
+    private func repairPrompt(for raw: String, expectation: Expectation) -> String {
+        switch expectation {
+        case .story:
+            return storyRepairPrompt(for: raw)
+        case .incrementalUpdate:
+            return incrementalRepairPrompt(for: raw)
+        case .acknowledgement:
+            return #"{"ok":"OK"}"#
+        }
+    }
+
+    private func storyRepairPrompt(for raw: String) -> String {
         """
         Convert the following content into strict JSON only. Do not add markdown fences.
 
@@ -454,6 +495,42 @@ struct CLISummarizer: SummaryGenerating {
         """
     }
 
+    private func incrementalRepairPrompt(for raw: String) -> String {
+        """
+        Convert the following content into strict JSON only. Do not add markdown fences.
+
+        Required JSON shape:
+        {
+          "encouragementToReplace": {
+            "text": "...",
+            "sourceEventIDs": ["uuid"]
+          },
+          "summaryBulletsToReplace": [
+            { "text": "...", "sourceEventIDs": ["uuid"] }
+          ],
+          "detailBlocksToAppend": [
+            { "text": "...", "sourceEventIDs": ["uuid"] }
+          ],
+          "todoItemsToReplace": [
+            { "text": "...", "sourceEventIDs": ["uuid"] }
+          ]
+        }
+
+        Rules:
+        - Preserve supported facts only.
+        - Return all four top-level fields.
+        - Do not use null for any field.
+        - encouragementToReplace.text must be a non-empty string.
+        - encouragementToReplace.sourceEventIDs must contain at least one valid UUID string.
+        - summaryBulletsToReplace, detailBlocksToAppend, and todoItemsToReplace may be empty arrays.
+        - Every item in those arrays must include non-empty text and at least one valid UUID string in sourceEventIDs.
+        - Return JSON only.
+
+        Content to repair:
+        \(raw)
+        """
+    }
+
     private func failureDetail(for result: ProcessExecutionResult) -> String {
         let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
         if !stderr.isEmpty {
@@ -462,6 +539,17 @@ struct CLISummarizer: SummaryGenerating {
 
         let stdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         return stdout
+    }
+
+    private func validatedOutput(from raw: String, expectation: Expectation) -> String? {
+        switch expectation {
+        case .story:
+            return validatedStoryOutput(from: raw)
+        case .incrementalUpdate:
+            return validatedIncrementalOutput(from: raw)
+        case .acknowledgement:
+            return normalizedAcknowledgement(from: raw) == nil ? nil : #"{"ok":"OK"}"#
+        }
     }
 
     private func validatedStoryOutput(from raw: String) -> String? {
@@ -474,6 +562,23 @@ struct CLISummarizer: SummaryGenerating {
                 return validated
             }
             return validatedDailyStoryJSON(from: raw)
+        }
+    }
+
+    private func validatedIncrementalOutput(from raw: String) -> String? {
+        switch tool {
+        case .claude:
+            if let structuredOutput = extractClaudeStructuredOutput(from: raw),
+               let validatedStructuredOutput = validatedIncrementalUpdateJSON(from: structuredOutput) {
+                return validatedStructuredOutput
+            }
+            return validatedIncrementalUpdateJSON(from: raw)
+        case .codex, .gemini, .openclaw:
+            if let extracted = extractedTextOutput(from: raw),
+               let validated = validatedIncrementalUpdateJSON(from: extracted) {
+                return validated
+            }
+            return validatedIncrementalUpdateJSON(from: raw)
         }
     }
 
@@ -678,6 +783,67 @@ struct CLISummarizer: SummaryGenerating {
                     return UUID(uuidString: sourceID) != nil
                 }
             }
+        }
+    }
+
+    private func validatedIncrementalUpdateJSON(from raw: String) -> String? {
+        guard
+            let normalized = normalizedStoryJSONText(from: raw),
+            let data = normalized.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data),
+            isValidIncrementalUpdatePayload(json),
+            let serialized = try? JSONSerialization.data(withJSONObject: json, options: []),
+            let text = String(data: serialized, encoding: .utf8)
+        else {
+            return nil
+        }
+
+        return text
+    }
+
+    private func isValidIncrementalUpdatePayload(_ value: Any) -> Bool {
+        guard let object = value as? [String: Any],
+              object.keys.count == 4,
+              let encouragement = object["encouragementToReplace"] as? [String: Any],
+              let summaryBullets = object["summaryBulletsToReplace"] as? [Any],
+              let detailBlocks = object["detailBlocksToAppend"] as? [Any],
+              let todoItems = object["todoItemsToReplace"] as? [Any]
+        else {
+            return false
+        }
+
+        return isValidIncrementalItem(encouragement)
+            && isValidIncrementalItemArray(summaryBullets)
+            && isValidIncrementalItemArray(detailBlocks)
+            && isValidIncrementalItemArray(todoItems)
+    }
+
+    private func isValidIncrementalItemArray(_ values: [Any]) -> Bool {
+        values.allSatisfy { value in
+            guard let item = value as? [String: Any] else {
+                return false
+            }
+
+            return isValidIncrementalItem(item)
+        }
+    }
+
+    private func isValidIncrementalItem(_ value: [String: Any]) -> Bool {
+        guard value.keys.count == 2,
+              let text = value["text"] as? String,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let sourceEventIDs = value["sourceEventIDs"] as? [Any],
+              !sourceEventIDs.isEmpty
+        else {
+            return false
+        }
+
+        return sourceEventIDs.allSatisfy { sourceValue in
+            guard let sourceID = sourceValue as? String else {
+                return false
+            }
+
+            return UUID(uuidString: sourceID) != nil
         }
     }
 }

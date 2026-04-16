@@ -1003,7 +1003,7 @@ final class AppState {
 
         if let lastError = notificationStatus.lastError {
             statusMessage = "Refresh completed with notification issue: \(lastError)"
-        } else if let todayRefreshAction, let detail = dayRefreshStatus.detail, detail.contains(today) {
+        } else if todayRefreshAction != nil, let detail = dayRefreshStatus.detail, detail.contains(today) {
             statusMessage = detail
         } else if todayRefreshAction == nil, todayStory?.provenance?.generationMode != .model {
             statusMessage = "Configure and verify an engine to generate today's journal"
@@ -1395,7 +1395,7 @@ extension AppState {
             if trigger == .manual, let primaryAttempt = attempts.first {
                 onStageChange?(.generatingStory, "Appending with \(primaryAttempt.label) (1/\(attempts.count))...")
                 if let mergedStory = validateIncrementalResult(
-                    await runAttempt(
+                    await runIncrementalAttempt(
                         primaryAttempt,
                         dayKey: dayKey,
                         prompt: prompt,
@@ -1404,6 +1404,7 @@ extension AppState {
                     dayKey: dayKey,
                     existingStory: existingStory,
                     events: events,
+                    newEvents: newEvents,
                     environment: environment,
                     trigger: trigger,
                     refreshLog: refreshLog
@@ -1451,32 +1452,36 @@ extension AppState {
                 }
                 onStageChange?(.generatingStory, attemptDetail)
 
-                let results = trigger == .manual
-                    ? await runParallelAttempts(
+                let mergedStory = trigger == .manual
+                    ? await firstValidParallelIncrementalStory(
                         fallbackAttempts,
-                        dayKey: dayKey,
-                        prompt: prompt,
-                        context: invocationContext
-                    )
-                    : [await runAttempt(
-                        fallbackAttempts[0],
-                        dayKey: dayKey,
-                        prompt: prompt,
-                        context: invocationContext
-                    )]
-
-                for result in results {
-                    guard let mergedStory = validateIncrementalResult(
-                        result,
                         dayKey: dayKey,
                         existingStory: existingStory,
                         events: events,
+                        newEvents: newEvents,
+                        prompt: prompt,
+                        context: invocationContext,
                         environment: environment,
                         trigger: trigger,
                         refreshLog: refreshLog
-                    ) else {
-                        continue
-                    }
+                    )
+                    : validateIncrementalResult(
+                        await runIncrementalAttempt(
+                            fallbackAttempts[0],
+                            dayKey: dayKey,
+                            prompt: prompt,
+                            context: invocationContext
+                        ),
+                        dayKey: dayKey,
+                        existingStory: existingStory,
+                        events: events,
+                        newEvents: newEvents,
+                        environment: environment,
+                        trigger: trigger,
+                        refreshLog: refreshLog
+                    )
+
+                if let mergedStory {
                     let writeStartedAt = Date()
                     onStageChange?(.writingFiles, "Writing \(dayKey) artifacts...")
                     let fileURL = try persistArtifacts(dayKey: dayKey, story: mergedStory, events: events, environment: environment)
@@ -1830,17 +1835,25 @@ extension AppState {
         dayKey: String,
         existingStory: DailyStory,
         events: [EventRecord],
+        newEvents: [EventRecord],
         engine: DiaryEngine?,
         environment: AppEnvironment
     ) -> DailyStory? {
-        guard let update = environment.composer.parseIncrementalUpdate(raw: raw) else {
+        guard
+            let update = environment.composer.parseIncrementalUpdate(raw: raw),
+            let validatedUpdate = environment.composer.validatedIncrementalUpdate(
+                update,
+                allowedSourceEventIDs: Set(events.map(\.id)),
+                allowedDetailSourceEventIDs: Set(newEvents.map(\.id))
+            )
+        else {
             return nil
         }
 
         return environment.composer.mergeIncrementalUpdate(
             dayKey: dayKey,
             existingStory: existingStory,
-            update: update,
+            update: validatedUpdate,
             allEvents: events,
             provenance: makeStoryProvenance(
                 mode: .model,
@@ -1937,6 +1950,7 @@ extension AppState {
         dayKey: String,
         existingStory: DailyStory,
         events: [EventRecord],
+        newEvents: [EventRecord],
         environment: AppEnvironment,
         trigger: RefreshTrigger,
         refreshLog: RefreshLogBuffer?
@@ -1948,6 +1962,7 @@ extension AppState {
                 dayKey: dayKey,
                 existingStory: existingStory,
                 events: events,
+                newEvents: newEvents,
                 engine: attempt.engine,
                 environment: environment
             ) else {
@@ -2021,6 +2036,64 @@ extension AppState {
         }
     }
 
+    private func firstValidParallelIncrementalStory(
+        _ attempts: [RefreshSummarizerAttempt],
+        dayKey: String,
+        existingStory: DailyStory,
+        events: [EventRecord],
+        newEvents: [EventRecord],
+        prompt: String,
+        context: SummaryInvocationContext,
+        environment: AppEnvironment,
+        trigger: RefreshTrigger,
+        refreshLog: RefreshLogBuffer?
+    ) async -> DailyStory? {
+        await withTaskGroup(of: RefreshAttemptRunResult.self) { group in
+            for attempt in attempts {
+                group.addTask {
+                    await AppState.runParallelIncrementalAttempt(
+                        attempt,
+                        dayKey: dayKey,
+                        prompt: prompt,
+                        context: context
+                    )
+                }
+            }
+
+            var mergedStory: DailyStory?
+            while let result = await group.next() {
+                if mergedStory == nil,
+                   let validatedStory = validateIncrementalResult(
+                    result,
+                    dayKey: dayKey,
+                    existingStory: existingStory,
+                    events: events,
+                    newEvents: newEvents,
+                    environment: environment,
+                    trigger: trigger,
+                    refreshLog: refreshLog
+                   ) {
+                    mergedStory = validatedStory
+                    group.cancelAll()
+                    continue
+                }
+
+                _ = validateIncrementalResult(
+                    result,
+                    dayKey: dayKey,
+                    existingStory: existingStory,
+                    events: events,
+                    newEvents: newEvents,
+                    environment: environment,
+                    trigger: trigger,
+                    refreshLog: refreshLog
+                )
+            }
+
+            return mergedStory
+        }
+    }
+
     private func runAttempt(
         _ attempt: RefreshSummarizerAttempt,
         dayKey: String,
@@ -2088,6 +2161,67 @@ extension AppState {
         }
     }
 
+    private func runIncrementalAttempt(
+        _ attempt: RefreshSummarizerAttempt,
+        dayKey: String,
+        prompt: String,
+        context: SummaryInvocationContext
+    ) async -> RefreshAttemptRunResult {
+        let startedAt = Date()
+        do {
+            let raw = try await attempt.summarizer.summarizeIncremental(
+                dayKey: dayKey,
+                markdown: prompt,
+                context: context
+            )
+            return .succeeded(
+                attempt: attempt,
+                raw: raw,
+                startedAt: startedAt,
+                finishedAt: Date()
+            )
+        } catch is CancellationError {
+            return .cancelled(
+                attempt: attempt,
+                startedAt: startedAt,
+                finishedAt: Date()
+            )
+        } catch {
+            return .failed(
+                attempt: attempt,
+                error: error,
+                startedAt: startedAt,
+                finishedAt: Date()
+            )
+        }
+    }
+
+    private func runParallelIncrementalAttempts(
+        _ attempts: [RefreshSummarizerAttempt],
+        dayKey: String,
+        prompt: String,
+        context: SummaryInvocationContext
+    ) async -> [RefreshAttemptRunResult] {
+        await withTaskGroup(of: RefreshAttemptRunResult.self) { group in
+            for attempt in attempts {
+                group.addTask {
+                    await AppState.runParallelIncrementalAttempt(
+                        attempt,
+                        dayKey: dayKey,
+                        prompt: prompt,
+                        context: context
+                    )
+                }
+            }
+
+            var results: [RefreshAttemptRunResult] = []
+            while let result = await group.next() {
+                results.append(result)
+            }
+            return results
+        }
+    }
+
     nonisolated private static func runParallelAttempt(
         _ attempt: RefreshSummarizerAttempt,
         dayKey: String,
@@ -2097,6 +2231,41 @@ extension AppState {
         let startedAt = Date()
         do {
             let raw = try await attempt.summarizer.summarize(
+                dayKey: dayKey,
+                markdown: prompt,
+                context: context
+            )
+            return .succeeded(
+                attempt: attempt,
+                raw: raw,
+                startedAt: startedAt,
+                finishedAt: Date()
+            )
+        } catch is CancellationError {
+            return .cancelled(
+                attempt: attempt,
+                startedAt: startedAt,
+                finishedAt: Date()
+            )
+        } catch {
+            return .failed(
+                attempt: attempt,
+                error: error,
+                startedAt: startedAt,
+                finishedAt: Date()
+            )
+        }
+    }
+
+    nonisolated private static func runParallelIncrementalAttempt(
+        _ attempt: RefreshSummarizerAttempt,
+        dayKey: String,
+        prompt: String,
+        context: SummaryInvocationContext
+    ) async -> RefreshAttemptRunResult {
+        let startedAt = Date()
+        do {
+            let raw = try await attempt.summarizer.summarizeIncremental(
                 dayKey: dayKey,
                 markdown: prompt,
                 context: context

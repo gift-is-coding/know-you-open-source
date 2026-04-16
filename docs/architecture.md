@@ -253,9 +253,10 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 其中：
 
 - `fullRecovery` 只在该天还没有 `provenance.generationMode == .model` 的成功 story 时发生
-- `incrementalUpdate` 只消费尚未写入当前 story 的新增事件
-- 增量合并只允许追加 `Summary`、`Details`、`To-do`
-- `Encouragement` 在增量路径中保持冻结
+- `incrementalUpdate` 只把 `existingStory + 尚未写入当前 story 的新增事件` 交给增量 summarizer，不再把当天 `allEvents` 全量回传给模型
+- 增量 structured payload 必须完整返回 `encouragementToReplace`、`summaryBulletsToReplace`、`detailBlocksToAppend`、`todoItemsToReplace`
+- 增量合并会替换 `Encouragement` / `Summary` / `To-do`，只追加 `Details`
+- 增量 payload 的 `sourceEventIDs` 至少必须属于当天已知事件集合；replacement field 出现非法引用时整次 attempt 失败，`detailBlocksToAppend` 出现非法引用时仅丢弃对应 detail block
 - 任何失败都不会覆盖现有 `.story.json` 或 `.md`
 - 新生成 story 的 `Details` 约定为“每个 workstream 一个 paragraph”，避免把多个 `##` 小节塞进同一个 `DailyStoryParagraph`
 - `fullRecovery` 在成功解析结构化结果后，会先对 story 执行一次 `normalizeStory(...)`，再落盘

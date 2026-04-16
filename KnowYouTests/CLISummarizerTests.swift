@@ -56,6 +56,22 @@ final class CLISummarizerTests: XCTestCase {
         return try XCTUnwrap(JSONSerialization.jsonObject(with: payload) as? [String: Any])
     }
 
+    private func assertIncrementalSchema(
+        _ contents: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertTrue(contents.contains("encouragementToReplace"), file: file, line: line)
+        XCTAssertTrue(contents.contains("summaryBulletsToReplace"), file: file, line: line)
+        XCTAssertTrue(contents.contains("detailBlocksToAppend"), file: file, line: line)
+        XCTAssertTrue(contents.contains("todoItemsToReplace"), file: file, line: line)
+    }
+
+    private func schemaPath(from arguments: [String]) throws -> String {
+        let schemaIndex = try XCTUnwrap(arguments.firstIndex(of: "--output-schema"))
+        return try XCTUnwrap(arguments.indices.contains(schemaIndex + 1) ? arguments[schemaIndex + 1] : nil)
+    }
+
     func testClaudeCodePassesPromptWithStructuredOutputFlags() async throws {
         let stub = StubProcessRunner(output: """
         {"structured_output":{"sections":[{"id":"daily-journal","paragraphs":[{"text":"A productive day.","sourceEventIDs":["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]}]}]}}
@@ -194,6 +210,165 @@ final class CLISummarizerTests: XCTestCase {
         let firstParagraph = try XCTUnwrap(paragraphs.first)
         XCTAssertEqual(firstParagraph["text"] as? String, "Recovered story.")
         XCTAssertEqual(stub.invocations.count, 2)
+    }
+
+    func testCodexIncrementalRefreshReadsIncrementalSchemaOutputFile() async throws {
+        let incremental = """
+        {
+          "encouragementToReplace": {
+            "text": "Closed the day with steady follow-through.",
+            "sourceEventIDs": ["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]
+          },
+          "summaryBulletsToReplace": [
+            {
+              "text": "Closed the follow-up loop",
+              "sourceEventIDs": ["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]
+            }
+          ],
+          "detailBlocksToAppend": [
+            {
+              "text": "## Follow-up\\n\\nHandled the customer response.",
+              "sourceEventIDs": ["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]
+            }
+          ],
+          "todoItemsToReplace": [
+            {
+              "text": "Send the handoff",
+              "sourceEventIDs": ["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]
+            }
+          ]
+        }
+        """
+        let stub = StubProcessRunner(
+            behaviors: [
+                .success(ProcessExecutionResult(stdout: "", stderr: "", terminationStatus: 0, duration: 0))
+            ],
+            onInvocation: { _, arguments, _, _ in
+                XCTAssertTrue(arguments.contains("--output-schema"))
+                guard
+                    let outputIndex = arguments.firstIndex(of: "-o"),
+                    arguments.indices.contains(outputIndex + 1),
+                    let schemaPath = try? self.schemaPath(from: arguments),
+                    let schemaContents = try? String(contentsOfFile: schemaPath, encoding: .utf8)
+                else {
+                    return
+                }
+                self.assertIncrementalSchema(schemaContents)
+                try? incremental.write(toFile: arguments[outputIndex + 1], atomically: true, encoding: .utf8)
+            }
+        )
+        let summarizer = CLISummarizer(tool: .codex, executablePath: "/usr/local/bin/codex", runner: stub)
+
+        let result = try await summarizer.summarizeIncremental(
+            dayKey: "2026-04-14",
+            markdown: "Return the incremental refresh payload.",
+            context: .defaultBehavior
+        )
+
+        let object = try decodedJSONObject(from: result)
+        XCTAssertNotNil(object["encouragementToReplace"])
+        XCTAssertNotNil(object["summaryBulletsToReplace"])
+        XCTAssertNotNil(object["detailBlocksToAppend"])
+        XCTAssertNotNil(object["todoItemsToReplace"])
+    }
+
+    func testCodexIncrementalRefreshRepairsInvalidPrimaryOutputUsingIncrementalSchema() async throws {
+        let repaired = """
+        {
+          "encouragementToReplace": {
+            "text": "Recovered encouragement.",
+            "sourceEventIDs": ["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]
+          },
+          "summaryBulletsToReplace": [],
+          "detailBlocksToAppend": [],
+          "todoItemsToReplace": []
+        }
+        """
+        let stub = StubProcessRunner(
+            behaviors: [
+                .success(ProcessExecutionResult(stdout: "", stderr: "", terminationStatus: 0, duration: 0)),
+                .success(ProcessExecutionResult(stdout: "", stderr: "", terminationStatus: 0, duration: 0)),
+            ],
+            onInvocation: { _, arguments, invocationIndex, _ in
+                XCTAssertTrue(arguments.contains("--output-schema"))
+                guard
+                    let outputIndex = arguments.firstIndex(of: "-o"),
+                    arguments.indices.contains(outputIndex + 1),
+                    let schemaPath = try? self.schemaPath(from: arguments),
+                    let schemaContents = try? String(contentsOfFile: schemaPath, encoding: .utf8)
+                else {
+                    return
+                }
+                self.assertIncrementalSchema(schemaContents)
+                let outputPath = arguments[outputIndex + 1]
+                let contents = invocationIndex == 0 ? "not json" : repaired
+                try? contents.write(toFile: outputPath, atomically: true, encoding: .utf8)
+            }
+        )
+        let summarizer = CLISummarizer(tool: .codex, executablePath: "/usr/local/bin/codex", runner: stub)
+
+        let result = try await summarizer.summarizeIncremental(
+            dayKey: "2026-04-14",
+            markdown: "Repair the incremental refresh payload.",
+            context: .defaultBehavior
+        )
+
+        let object = try decodedJSONObject(from: result)
+        XCTAssertNotNil(object["encouragementToReplace"])
+        XCTAssertEqual(stub.invocations.count, 2)
+    }
+
+    func testCodexIncrementalRefreshRejectsOutputMissingARequiredField() async {
+        let invalid = """
+        {
+          "summaryBulletsToReplace": [
+            {
+              "text": "Keep the review loop moving",
+              "sourceEventIDs": ["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]
+            }
+          ],
+          "detailBlocksToAppend": [
+            {
+              "text": "## Follow-up\\n\\nTracked the customer response.",
+              "sourceEventIDs": ["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]
+            }
+          ],
+          "todoItemsToReplace": [
+            {
+              "text": "Send the handoff",
+              "sourceEventIDs": ["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]
+            }
+          ]
+        }
+        """
+        let stub = StubProcessRunner(
+            behaviors: [
+                .success(ProcessExecutionResult(stdout: "", stderr: "", terminationStatus: 0, duration: 0))
+            ],
+            onInvocation: { _, arguments, _, _ in
+                XCTAssertTrue(arguments.contains("--output-schema"))
+                guard
+                    let outputIndex = arguments.firstIndex(of: "-o"),
+                    arguments.indices.contains(outputIndex + 1),
+                    let schemaPath = try? self.schemaPath(from: arguments),
+                    let schemaContents = try? String(contentsOfFile: schemaPath, encoding: .utf8)
+                else {
+                    return
+                }
+                self.assertIncrementalSchema(schemaContents)
+                XCTAssertTrue(schemaContents.contains(#""required":["encouragementToReplace""#))
+                try? invalid.write(toFile: arguments[outputIndex + 1], atomically: true, encoding: .utf8)
+            }
+        )
+        let summarizer = CLISummarizer(tool: .codex, executablePath: "/usr/local/bin/codex", runner: stub)
+
+        await XCTAssertThrowsErrorAsync(
+            try await summarizer.summarizeIncremental(
+                dayKey: "2026-04-14",
+                markdown: "Reject the invalid incremental payload.",
+                context: .defaultBehavior
+            )
+        )
     }
 
     func testCodexManualRefreshUsesLongerPrimaryAndRepairTimeouts() async throws {

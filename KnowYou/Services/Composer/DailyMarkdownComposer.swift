@@ -236,7 +236,10 @@ struct DailyMarkdownComposer {
         allEvents: [EventRecord]
     ) -> String {
         _ = allEvents
-        let language = incrementalNarrativeLanguage(for: existingStory, fallbackEvents: newEvents)
+        let language = incrementalNarrativeLanguage(
+            for: existingStory,
+            fallbackTexts: newEvents.map(\.displayText)
+        )
         let headings = journalHeadings(for: language)
         let blocks = journalBlocks(from: existingStory, language: language)
         let usedIDs = usedSourceEventIDs(in: existingStory)
@@ -449,7 +452,9 @@ struct DailyMarkdownComposer {
         }
 
         func convert(_ item: GeneratedStoryParagraph) -> JournalIncrementalItem? {
-            let sourceIDs = item.sourceEventIDs.compactMap(UUID.init(uuidString:))
+            guard let sourceIDs = parseSourceEventIDs(item.sourceEventIDs) else {
+                return nil
+            }
             let text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty, !sourceIDs.isEmpty else {
                 return nil
@@ -511,7 +516,11 @@ struct DailyMarkdownComposer {
         allEvents: [EventRecord],
         provenance: StoryProvenance
     ) -> DailyStory {
-        let language = incrementalNarrativeLanguage(for: existingStory, fallbackEvents: allEvents)
+        _ = allEvents
+        let language = incrementalNarrativeLanguage(
+            for: existingStory,
+            fallbackTexts: incrementalUpdateTexts(update)
+        )
         let headings = journalHeadings(for: language)
         let existingBlocks = journalBlocks(from: existingStory, language: language)
         let encouragement = replaceBlock(
@@ -551,6 +560,40 @@ struct DailyMarkdownComposer {
                 )
             ],
             provenance: provenance
+        )
+    }
+
+    func validatedIncrementalUpdate(
+        _ update: JournalIncrementalUpdate,
+        allowedSourceEventIDs: Set<UUID>,
+        allowedDetailSourceEventIDs: Set<UUID>
+    ) -> JournalIncrementalUpdate? {
+        guard
+            let encouragementToReplace = validatedIncrementalItem(
+                update.encouragementToReplace,
+                allowedSourceEventIDs: allowedSourceEventIDs
+            ),
+            let summaryBulletsToReplace = validatedIncrementalItems(
+                update.summaryBulletsToReplace,
+                allowedSourceEventIDs: allowedSourceEventIDs
+            ),
+            let todoItemsToReplace = validatedIncrementalItems(
+                update.todoItemsToReplace,
+                allowedSourceEventIDs: allowedSourceEventIDs
+            )
+        else {
+            return nil
+        }
+
+        let detailBlocksToAppend = update.detailBlocksToAppend.compactMap { item in
+            validatedIncrementalItem(item, allowedSourceEventIDs: allowedDetailSourceEventIDs)
+        }
+
+        return JournalIncrementalUpdate(
+            encouragementToReplace: encouragementToReplace,
+            summaryBulletsToReplace: summaryBulletsToReplace,
+            detailBlocksToAppend: detailBlocksToAppend,
+            todoItemsToReplace: todoItemsToReplace
         )
     }
 
@@ -793,7 +836,7 @@ struct DailyMarkdownComposer {
 
     private func incrementalNarrativeLanguage(
         for existingStory: DailyStory,
-        fallbackEvents: [EventRecord]
+        fallbackTexts: [String]
     ) -> NarrativeLanguage {
         let storyText = existingStory.sections
             .flatMap(\.paragraphs)
@@ -811,7 +854,23 @@ struct DailyMarkdownComposer {
             }
         }
 
-        return dominantNarrativeLanguage(for: fallbackEvents)
+        return narrativeLanguage(for: fallbackTexts)
+    }
+
+    private func incrementalUpdateTexts(_ update: JournalIncrementalUpdate) -> [String] {
+        [update.encouragementToReplace.text]
+            + update.summaryBulletsToReplace.map(\.text)
+            + update.detailBlocksToAppend.map(\.text)
+            + update.todoItemsToReplace.map(\.text)
+    }
+
+    private func narrativeLanguage(for texts: [String]) -> NarrativeLanguage {
+        let combined = texts.joined(separator: "\n")
+        let chineseCharacterCount = combined.filter(\.isChineseIdeograph).count
+        let latinCharacterCount = combined.unicodeScalars.filter {
+            CharacterSet.letters.contains($0) && $0.properties.isAlphabetic && $0.value < 128
+        }.count
+        return chineseCharacterCount > 0 && chineseCharacterCount >= latinCharacterCount ? .chinese : .english
     }
 
     private func groupedLooseFragments(from events: [EventRecord]) -> [[EventRecord]] {
@@ -941,6 +1000,43 @@ struct DailyMarkdownComposer {
         return trimmed.isEmpty ? "\(heading)\n\n(empty)" : "\(heading)\n\n\(trimmed)"
     }
 
+    private func parseSourceEventIDs(_ values: [String]) -> [UUID]? {
+        var sourceIDs: [UUID] = []
+        sourceIDs.reserveCapacity(values.count)
+        for value in values {
+            guard let uuid = UUID(uuidString: value) else {
+                return nil
+            }
+            sourceIDs.append(uuid)
+        }
+        return sourceIDs
+    }
+
+    private func validatedIncrementalItems(
+        _ items: [JournalIncrementalItem],
+        allowedSourceEventIDs: Set<UUID>
+    ) -> [JournalIncrementalItem]? {
+        var validated: [JournalIncrementalItem] = []
+        validated.reserveCapacity(items.count)
+        for item in items {
+            guard let validatedItem = validatedIncrementalItem(item, allowedSourceEventIDs: allowedSourceEventIDs) else {
+                return nil
+            }
+            validated.append(validatedItem)
+        }
+        return validated
+    }
+
+    private func validatedIncrementalItem(
+        _ item: JournalIncrementalItem,
+        allowedSourceEventIDs: Set<UUID>
+    ) -> JournalIncrementalItem? {
+        guard Set(item.sourceEventIDs).isSubset(of: allowedSourceEventIDs) else {
+            return nil
+        }
+        return item
+    }
+
     private func replaceBlock(
         with item: JournalIncrementalItem,
         heading: String
@@ -990,28 +1086,49 @@ struct DailyMarkdownComposer {
         appendedBlocks: [JournalIncrementalItem],
         heading: String
     ) -> [DailyStoryParagraph] {
-        let existingParagraphs = story.sections
-            .flatMap(\.paragraphs)
-            .filter { paragraph in
-                let trimmed = paragraph.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                return !trimmed.isEmpty && (trimmed == heading || trimmed.hasPrefix("\(heading)\n"))
-            }
+        let existingParagraphs = existingDetailParagraphs(
+            from: story,
+            detailsHeading: heading
+        )
 
         var paragraphs: [DailyStoryParagraph] = []
 
-        if existingParagraphs.isEmpty {
+        if existingParagraphs.isEmpty == false {
+            paragraphs.append(contentsOf: existingParagraphs)
+        } else if existingDetailsBlock.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
             if let detailsParagraph = makeParagraph(
                 id: "daily-journal-details-0",
                 block: existingDetailsBlock
             ) {
                 paragraphs.append(detailsParagraph)
             }
+        } else if appendedBlocks.isEmpty == false {
+            let firstItem = appendedBlocks[0]
+            if let firstParagraph = makeParagraph(
+                id: "daily-journal-details-0",
+                block: JournalMarkdownBlock(
+                    heading: heading,
+                    body: firstItem.text,
+                    sourceEventIDs: Array(Set(firstItem.sourceEventIDs)).sorted { $0.uuidString < $1.uuidString }
+                )
+            ) {
+                paragraphs.append(firstParagraph)
+            }
         } else {
-            paragraphs.append(contentsOf: existingParagraphs)
+            if let detailsParagraph = makeParagraph(
+                id: "daily-journal-details-0",
+                block: existingDetailsBlock
+            ) {
+                paragraphs.append(detailsParagraph)
+            }
         }
 
+        let appendStartIndex =
+            existingParagraphs.isEmpty &&
+            existingDetailsBlock.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            appendedBlocks.isEmpty == false ? 1 : 0
         let startIndex = paragraphs.count
-        for (offset, item) in appendedBlocks.enumerated() {
+        for (offset, item) in appendedBlocks.dropFirst(appendStartIndex).enumerated() {
             let text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { continue }
             paragraphs.append(
@@ -1028,6 +1145,63 @@ struct DailyMarkdownComposer {
         }
 
         return paragraphs
+    }
+
+    private func existingDetailParagraphs(
+        from story: DailyStory,
+        detailsHeading: String
+    ) -> [DailyStoryParagraph] {
+        let paragraphs = story.sections.flatMap(\.paragraphs)
+        guard
+            let startIndex = paragraphs.firstIndex(where: { paragraph in
+                let trimmed = paragraph.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed == detailsHeading || trimmed.hasPrefix("\(detailsHeading)\n")
+            })
+        else {
+            return []
+        }
+
+        let englishHeadings = journalHeadings(for: .english)
+        let chineseHeadings = journalHeadings(for: .chinese)
+        let stopHeadings = Set([
+            englishHeadings.encouragement,
+            englishHeadings.summary,
+            englishHeadings.todo,
+            chineseHeadings.encouragement,
+            chineseHeadings.summary,
+            chineseHeadings.todo,
+        ]).subtracting([detailsHeading])
+
+        var collected: [DailyStoryParagraph] = []
+        for (offset, paragraph) in paragraphs[startIndex...].enumerated() {
+            let trimmed = paragraph.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if offset == 0 {
+                collected.append(paragraph)
+                continue
+            }
+
+            if
+                trimmed == detailsHeading ||
+                trimmed.hasPrefix("\(detailsHeading)\n") ||
+                stopHeadings.contains(where: { heading in
+                    trimmed == heading || trimmed.hasPrefix("\(heading)\n")
+                })
+            {
+                break
+            }
+
+            let looksLikeStandaloneDetailBlock =
+                Self.isSecondLevelHeading(trimmed) ||
+                paragraph.id.contains("details")
+
+            guard looksLikeStandaloneDetailBlock else {
+                break
+            }
+
+            collected.append(paragraph)
+        }
+
+        return collected
     }
 
     private func makeParagraph(id: String, block: JournalMarkdownBlock) -> DailyStoryParagraph? {

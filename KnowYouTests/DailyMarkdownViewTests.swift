@@ -81,6 +81,13 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "Ghostty").assetName, "SourceLogoGhostty")
     }
 
+    func testSourceBrandResolvesBundleStyleAliasesToDedicatedAssets() {
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "com.tencent.xinWeChat").assetName, "SourceLogoWeChat")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "com.apple.Notes").assetName, "SourceLogoNotes")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "com.apple.mail").assetName, "SourceLogoMail")
+        XCTAssertEqual(SourceBrandResolver.resolve(appName: "com.apple.MobileSMS").assetName, "SourceLogoMessages")
+    }
+
     func testSourceBrandResolvesChromeAndFinderAssets() {
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "Google Chrome").assetName, "SourceLogoChrome")
         XCTAssertEqual(SourceBrandResolver.resolve(appName: "Chrome").assetName, "SourceLogoChrome")

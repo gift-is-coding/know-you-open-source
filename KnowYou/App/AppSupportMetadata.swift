@@ -15,6 +15,58 @@ struct AppSupportMetadata {
     static let copyrightLine = "Copyright © 2026 Shanghai Erren Beiwu Software Co., Ltd. All rights reserved."
 }
 
+struct AppBuildMetadata: Equatable {
+    let marketingVersion: String
+    let buildNumber: String
+    let gitShortSHA: String?
+
+    init(marketingVersion: String, buildNumber: String, gitShortSHA: String?) {
+        self.marketingVersion = marketingVersion
+        self.buildNumber = buildNumber
+
+        let normalizedSHA = gitShortSHA?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedSHA, normalizedSHA.isEmpty == false, normalizedSHA != "unknown" {
+            self.gitShortSHA = normalizedSHA
+        } else {
+            self.gitShortSHA = nil
+        }
+    }
+
+    init(bundle: Bundle) {
+        let info = bundle.infoDictionary ?? [:]
+        let resource = BuildMetadataResource.load(from: bundle)
+        self.init(
+            marketingVersion: info["CFBundleShortVersionString"] as? String ?? "0",
+            buildNumber: resource?.buildNumber ?? (info["CFBundleVersion"] as? String ?? "0"),
+            gitShortSHA: resource?.gitShortSHA
+        )
+    }
+
+    static var current: AppBuildMetadata {
+        AppBuildMetadata(bundle: .main)
+    }
+
+    var badgeText: String {
+        let base = "v\(marketingVersion) (\(buildNumber))"
+        guard let gitShortSHA else { return base }
+        return "\(base) · \(gitShortSHA)"
+    }
+}
+
+private struct BuildMetadataResource: Decodable {
+    let buildNumber: String?
+    let gitShortSHA: String?
+
+    static func load(from bundle: Bundle) -> BuildMetadataResource? {
+        guard let url = bundle.url(forResource: "BuildMetadata", withExtension: "json"),
+              let data = try? Data(contentsOf: url) else {
+            return nil
+        }
+
+        return try? JSONDecoder().decode(BuildMetadataResource.self, from: data)
+    }
+}
+
 struct AppSupportDocument: Identifiable {
     let id: String
     let buttonTitle: String

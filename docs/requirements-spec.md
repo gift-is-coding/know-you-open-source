@@ -187,8 +187,10 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 在键盘上下切换 story 段落时，当前选中段落必须保持在可视区域内
 - 右侧 source detail card 应在 `sourceApp` 文本前显示渠道 logo；已识别渠道显示本地品牌 asset，未识别渠道回退为通用 icon
 - 产品当前应优先内置覆盖常见 global desktop apps 的品牌 logo 集合，目标覆盖 100+ 高频来源应用，而不是只覆盖少量演示品牌
+- 已识别渠道的 logo 解析不能只依赖精确 app 名，需要同时兼容中文名、英文名和常见 bundle-id 风格名称
 - `Source Notes` 不在中间阅读区重复显示，来源追溯继续通过右侧 source detail 区完成
 - 不同日期允许并发刷新，但同一天已有刷新任务进行中时，该天刷新按钮必须禁用
+- 主窗口右下角必须持续显示一个只读的 build badge，格式为 `v<marketing-version> (<build-number>) · <git-short-sha>`；当没有 SHA 时退回到 `v<marketing-version> (<build-number>)`
 
 ## 6.6 键盘与焦点需求
 

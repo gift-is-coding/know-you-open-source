@@ -431,15 +431,57 @@ enum SourceBrandResolver {
 
     static func resolve(appName: String) -> SourceBrand {
         let normalizedName = normalize(appName)
-        return brandLookup[normalizedName] ?? fallbackBrand
+        if let exactBrand = brandLookup[normalizedName] {
+            return exactBrand
+        }
+
+        return fuzzyMatch(normalizedName) ?? fallbackBrand
     }
 
     private static func normalize(_ appName: String) -> String {
         appName
+            .unicodeScalars
+            .map { scalar in
+                if CharacterSet.alphanumerics.contains(scalar) || (0x4E00...0x9FFF).contains(scalar.value) {
+                    return String(scalar)
+                }
+                return " "
+            }
+            .joined()
             .trimmingCharacters(in: .whitespacesAndNewlines)
-            .split(whereSeparator: { $0.isWhitespace })
+            .split(whereSeparator: \.isWhitespace)
             .joined(separator: " ")
             .lowercased()
+    }
+
+    private static func fuzzyMatch(_ normalizedName: String) -> SourceBrand? {
+        let nameTokens = normalizedName.split(separator: " ").map(String.init)
+
+        for entry in entries {
+            for alias in entry.aliases {
+                let normalizedAlias = normalize(alias)
+
+                if normalizedAlias.contains(" ") {
+                    if normalizedName.contains(normalizedAlias) {
+                        return entry.brand
+                    }
+                    continue
+                }
+
+                guard normalizedAlias.count >= 4 || normalizedAlias.contains(where: \.isChineseIdeograph) else {
+                    continue
+                }
+
+                let matched = nameTokens.contains { token in
+                    token == normalizedAlias || token.hasSuffix(normalizedAlias) || token.hasPrefix(normalizedAlias)
+                }
+                if matched {
+                    return entry.brand
+                }
+            }
+        }
+
+        return nil
     }
 
     private static func brand(
@@ -531,7 +573,7 @@ enum SourceBrandResolver {
         ),
         brand(
             assetName: "SourceLogoMessages",
-            aliases: ["Messages", "iMessage", "信息"]
+            aliases: ["Messages", "iMessage", "信息", "MobileSMS"]
         ),
         brand(
             assetName: "SourceLogoPreview",

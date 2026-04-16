@@ -49,6 +49,17 @@ struct MainWindowView: View {
             .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
         }
         .frame(minWidth: 1240, minHeight: 720)
+        .overlay(alignment: .bottomTrailing) {
+            Text(AppBuildMetadata.current.badgeText)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(12)
+                .allowsHitTesting(false)
+                .accessibilityIdentifier("build-version-badge")
+        }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 DiaryEngineSelectorButton(

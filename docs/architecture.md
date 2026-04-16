@@ -423,8 +423,10 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 - 可展开 `View All Sources` 查看全日来源
 - 右栏 source card 会在 `sourceApp` 文本前显示渠道 logo；已识别渠道优先显示本地 asset，缺失时回退到通用 symbol
 - 渠道 logo 解析当前采用表驱动 alias catalog，而不是硬编码 `switch`，并已内置 100+ 个常见 global app / macOS app 品牌资产
+- alias 解析会先做标准化精确匹配，再对 bundle-id 风格来源名做保守 fuzzy match，因此同一 app 的中文名、英文名和诸如 `com.tencent.xinWeChat` 这样的来源字符串都能复用同一品牌 asset
 - 中栏阅读区内支持“重生成当前选中日期”
 - 主界面不再依赖顶部 status banner 承载运行时状态
+- 主窗口右下角会显示只读 build badge；marketing version 仍来自 bundle，build number 与 git short SHA 由 Xcode build phase 写入构建产物
 - 窗口右上角提供 `DiaryEngineSelectorButton`
 - 一级面板列出 `Claude / Codex / Gemini / Openclaw / API` 五个引擎及状态灯
 - 只有绿色引擎允许直接切为默认项

@@ -2,6 +2,26 @@ import XCTest
 @testable import KnowYou
 
 final class SettingsMetadataTests: XCTestCase {
+    func testAppBuildMetadataBadgeTextIncludesVersionBuildAndGitSHA() {
+        let metadata = AppBuildMetadata(
+            marketingVersion: "1.0",
+            buildNumber: "42",
+            gitShortSHA: "379aff5"
+        )
+
+        XCTAssertEqual(metadata.badgeText, "v1.0 (42) · 379aff5")
+    }
+
+    func testAppBuildMetadataBadgeTextFallsBackToVersionAndBuildWhenGitSHAMissing() {
+        let metadata = AppBuildMetadata(
+            marketingVersion: "1.0",
+            buildNumber: "42",
+            gitShortSHA: nil
+        )
+
+        XCTAssertEqual(metadata.badgeText, "v1.0 (42)")
+    }
+
     func testAppSupportMetadataMatchesPublicContactContract() {
         XCTAssertEqual(AppSupportMetadata.twitterURL.absoluteString, "https://x.com/TianfuW49629")
         XCTAssertEqual(AppSupportMetadata.contactEmail, "cestlouiswu@gmail.com")

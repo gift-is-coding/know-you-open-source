@@ -421,6 +421,7 @@
 				A10000080000000000000001 /* Sources */,
 				A10000050000000000000001 /* Frameworks */,
 				A10000090000000000000001 /* Resources */,
+				A100000C0000000000000001 /* Write Build Metadata */,
 			);
 			buildRules = (
 			);
@@ -510,6 +511,29 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A100000C0000000000000001 /* Write Build Metadata */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Write Build Metadata";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/BuildMetadata.json",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nOUTPUT_PATH=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/BuildMetadata.json\"\nINFO_PLIST_PATH=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\nAUTO_BUILD_NUMBER=\"1\"\nGIT_SHORT_SHA=\"\"\nif command -v git >/dev/null 2>&1; then\n  AUTO_BUILD_NUMBER=\"$(git -C \"$SRCROOT\" rev-list --count HEAD 2>/dev/null || printf '1')\"\n  GIT_SHORT_SHA=\"$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || true)\"\nfi\nif [ -f \"$INFO_PLIST_PATH\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $AUTO_BUILD_NUMBER\" \"$INFO_PLIST_PATH\" \\\n    || /usr/libexec/PlistBuddy -c \"Add :CFBundleVersion string $AUTO_BUILD_NUMBER\" \"$INFO_PLIST_PATH\"\nfi\ncat > \"$OUTPUT_PATH\" <<EOF\n{\"buildNumber\":\"$AUTO_BUILD_NUMBER\",\"gitShortSHA\":\"$GIT_SHORT_SHA\"}\nEOF\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A10000080000000000000001 /* Sources */ = {

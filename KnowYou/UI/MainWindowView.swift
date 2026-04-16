@@ -224,10 +224,6 @@ struct MainWindowView: View {
         isShowingEnginePanel = true
     }
 
-    private func openDiaryPromptEditor() {
-        isShowingDiaryPromptEditor = true
-    }
-
     private func openSyncMemoryPanel() {
         appState.openSyncMemoryPanel()
     }

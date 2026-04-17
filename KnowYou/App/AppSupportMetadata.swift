@@ -18,11 +18,18 @@ struct AppSupportMetadata {
 struct AppBuildMetadata: Equatable {
     let marketingVersion: String
     let buildNumber: String
+    let buildTimestamp: String?
     let gitShortSHA: String?
 
-    init(marketingVersion: String, buildNumber: String, gitShortSHA: String?) {
+    init(marketingVersion: String, buildNumber: String, buildTimestamp: String?, gitShortSHA: String?) {
         self.marketingVersion = marketingVersion
         self.buildNumber = buildNumber
+        let normalizedTimestamp = buildTimestamp?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedTimestamp, normalizedTimestamp.isEmpty == false {
+            self.buildTimestamp = normalizedTimestamp
+        } else {
+            self.buildTimestamp = nil
+        }
 
         let normalizedSHA = gitShortSHA?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedSHA, normalizedSHA.isEmpty == false, normalizedSHA != "unknown" {
@@ -38,6 +45,7 @@ struct AppBuildMetadata: Equatable {
         self.init(
             marketingVersion: info["CFBundleShortVersionString"] as? String ?? "0",
             buildNumber: resource?.buildNumber ?? (info["CFBundleVersion"] as? String ?? "0"),
+            buildTimestamp: resource?.buildTimestamp,
             gitShortSHA: resource?.gitShortSHA
         )
     }
@@ -47,7 +55,12 @@ struct AppBuildMetadata: Equatable {
     }
 
     var badgeText: String {
-        let base = "v\(marketingVersion) (\(buildNumber))"
+        let base: String
+        if let buildTimestamp {
+            base = "v\(marketingVersion) · \(buildTimestamp) (\(buildNumber))"
+        } else {
+            base = "v\(marketingVersion) (\(buildNumber))"
+        }
         guard let gitShortSHA else { return base }
         return "\(base) · \(gitShortSHA)"
     }
@@ -55,6 +68,7 @@ struct AppBuildMetadata: Equatable {
 
 private struct BuildMetadataResource: Decodable {
     let buildNumber: String?
+    let buildTimestamp: String?
     let gitShortSHA: String?
 
     static func load(from bundle: Bundle) -> BuildMetadataResource? {

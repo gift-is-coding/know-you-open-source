@@ -182,6 +182,22 @@ private final class RecordingPromptSummarizer: SummaryGenerating, @unchecked Sen
     }
 }
 
+private struct StubUpdateService: UpdateServing {
+    let result: Result<UpdateOffer?, Error>
+
+    func fetchOffer() async throws -> UpdateOffer? {
+        try result.get()
+    }
+}
+
+private struct StubDirectAppUpdater: DirectAppUpdating {
+    let handler: @Sendable (UpdateOffer) async throws -> Void
+
+    func startUpdate(for offer: UpdateOffer) async throws {
+        try await handler(offer)
+    }
+}
+
 private final class MainWindowStubURLProtocol: URLProtocol {
     enum Behavior {
         case success(statusCode: Int, body: Data)
@@ -523,6 +539,201 @@ final class MainWindowViewModelTests: XCTestCase {
             engineDefaults.removePersistentDomain(forName: engineDefaultsSuiteName)
         }
         super.tearDown()
+    }
+
+    @MainActor
+    func test_checkForUpdates_setsOfferAndShowsPillWhenNewerVersionExists() throws {
+        let environment = try makeEngineEnvironment(updateService: StubUpdateService(result: .success(
+            UpdateOffer(
+                availableVersion: "1.4.0",
+                releaseSummary: "Update pill shipped",
+                publishedAt: nil,
+                actionKind: .installInApp,
+                storeURL: nil,
+                downloadURL: URL(string: "https://knowyou.example.com/download")
+            )
+        )))
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: UserDefaults(suiteName: UUID().uuidString)!,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let expectation = expectation(description: "update check")
+        Task { @MainActor in
+            await appState.checkForUpdatesIfNeeded(force: true)
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2.0)
+
+        XCTAssertEqual(appState.updateOffer?.availableVersion, "1.4.0")
+        XCTAssertTrue(appState.shouldShowUpdatePill)
+    }
+
+    @MainActor
+    func test_dismissingUpdateSheet_keepsPillVisible() {
+        let appState = AppState(bootstrapServices: false)
+        appState.updateOffer = UpdateOffer(
+            availableVersion: "1.4.0",
+            releaseSummary: "Update pill shipped",
+            publishedAt: nil,
+            actionKind: .installInApp,
+            storeURL: nil,
+            downloadURL: URL(string: "https://knowyou.example.com/download")
+        )
+        appState.isShowingUpdateSheet = true
+
+        appState.dismissUpdateSheet()
+
+        XCTAssertFalse(appState.isShowingUpdateSheet)
+        XCTAssertTrue(appState.shouldShowUpdatePill)
+    }
+
+    @MainActor
+    func test_checkForUpdates_skipsSecondNonForcedCheckOnSameDay() throws {
+        let environment = try makeEngineEnvironment(updateService: StubUpdateService(result: .success(
+            UpdateOffer(
+                availableVersion: "1.4.0",
+                releaseSummary: "Update pill shipped",
+                publishedAt: nil,
+                actionKind: .installInApp,
+                storeURL: nil,
+                downloadURL: URL(string: "https://knowyou.example.com/download")
+            )
+        )))
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: UserDefaults(suiteName: UUID().uuidString)!,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let date = Date(timeIntervalSince1970: 1_776_000_000)
+        let expectation = expectation(description: "same day checks")
+        Task { @MainActor in
+            await appState.checkForUpdatesIfNeeded(force: false, now: date)
+            let firstCheckAt = appState.lastUpdateCheckAt
+            await appState.checkForUpdatesIfNeeded(force: false, now: date.addingTimeInterval(60))
+            XCTAssertEqual(appState.lastUpdateCheckAt, firstCheckAt)
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2.0)
+    }
+
+    @MainActor
+    func test_openUpdateSheet_onlyOpensWhenOfferExists() {
+        let appState = AppState(bootstrapServices: false)
+
+        appState.openUpdateSheet()
+        XCTAssertFalse(appState.isShowingUpdateSheet)
+
+        appState.updateOffer = UpdateOffer(
+            availableVersion: "1.4.0",
+            releaseSummary: "Update pill shipped",
+            publishedAt: nil,
+            actionKind: .openAppStore,
+            storeURL: URL(string: "https://apps.apple.com/app/id123")
+        )
+
+        appState.openUpdateSheet()
+        XCTAssertTrue(appState.isShowingUpdateSheet)
+    }
+
+    @MainActor
+    func test_performUpdatePrimaryAction_marksProgressForDirectInstall() throws {
+        let updateStarted = expectation(description: "direct update started")
+        let environment = try makeEngineEnvironment(
+            directAppUpdater: StubDirectAppUpdater { offer in
+                XCTAssertEqual(offer.availableVersion, "1.4.0")
+                updateStarted.fulfill()
+            }
+        )
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: UserDefaults(suiteName: UUID().uuidString)!,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.updateOffer = UpdateOffer(
+            availableVersion: "1.4.0",
+            releaseSummary: "Update pill shipped",
+            publishedAt: nil,
+            actionKind: .installInApp,
+            storeURL: nil,
+            downloadURL: URL(string: "https://knowyou.example.com/download")
+        )
+
+        appState.performUpdatePrimaryAction()
+
+        wait(for: [updateStarted], timeout: 2.0)
+        XCTAssertEqual(appState.statusMessage, "Opening update download...")
+    }
+
+    @MainActor
+    func test_performUpdatePrimaryAction_usesInjectedExternalURLOpenerForAppStoreOffer() throws {
+        let openedStore = expectation(description: "store url opened")
+        let environment = try makeEngineEnvironment(
+            externalURLOpener: { url in
+                XCTAssertEqual(url.absoluteString, "https://apps.apple.com/app/id123")
+                openedStore.fulfill()
+            }
+        )
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: UserDefaults(suiteName: UUID().uuidString)!,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.updateOffer = UpdateOffer(
+            availableVersion: "1.4.0",
+            releaseSummary: "Update pill shipped",
+            publishedAt: nil,
+            actionKind: .openAppStore,
+            storeURL: URL(string: "https://apps.apple.com/app/id123"),
+            downloadURL: nil
+        )
+        appState.isShowingUpdateSheet = true
+
+        appState.performUpdatePrimaryAction()
+
+        wait(for: [openedStore], timeout: 2.0)
+        XCTAssertFalse(appState.isShowingUpdateSheet)
+    }
+
+    @MainActor
+    func test_performUpdatePrimaryAction_usesDefaultDirectDownloaderWhenConfigured() throws {
+        let openedDownload = expectation(description: "download url opened")
+        let environment = try makeEngineEnvironment(
+            externalURLOpener: { url in
+                XCTAssertEqual(url.absoluteString, "https://knowyou.example.com/download")
+                openedDownload.fulfill()
+            }
+        )
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: UserDefaults(suiteName: UUID().uuidString)!,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.updateOffer = UpdateOffer(
+            availableVersion: "1.4.0",
+            releaseSummary: "Update pill shipped",
+            publishedAt: nil,
+            actionKind: .installInApp,
+            storeURL: nil,
+            downloadURL: URL(string: "https://knowyou.example.com/download")
+        )
+
+        appState.performUpdatePrimaryAction()
+
+        wait(for: [openedDownload], timeout: 2.0)
+        XCTAssertFalse(appState.isShowingUpdateSheet)
     }
 
     func testSelectingDateLoadsMatchingMarkdownPath() {
@@ -5500,7 +5711,11 @@ final class MainWindowViewModelTests: XCTestCase {
         )
     }
 
-    private func makeEngineEnvironment() throws -> AppEnvironment {
+    private func makeEngineEnvironment(
+        updateService: any UpdateServing = StubUpdateService(result: .success(nil)),
+        directAppUpdater: (any DirectAppUpdating)? = nil,
+        externalURLOpener: @escaping @MainActor @Sendable (URL) -> Void = { _ in }
+    ) throws -> AppEnvironment {
         let writer = try DatabaseWriter.inMemory()
         let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         return AppEnvironment(
@@ -5511,7 +5726,10 @@ final class MainWindowViewModelTests: XCTestCase {
             notificationReader: RecordingNotificationReader(),
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
-            )
+            ),
+            updateService: updateService,
+            directAppUpdater: directAppUpdater,
+            externalURLOpener: externalURLOpener
         )
     }
 

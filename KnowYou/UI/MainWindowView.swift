@@ -8,7 +8,6 @@ struct MainWindowView: View {
     @State private var isShowingAPIDetail = false
     @State private var apiConfigDraft = SummarizerConfig.load()
     @State private var isTestingAPIConnection = false
-
     var body: some View {
         NavigationSplitView {
             DateSidebarView(
@@ -61,6 +60,13 @@ struct MainWindowView: View {
                 .accessibilityIdentifier("build-version-badge")
         }
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                if let offer = appState.updateOffer {
+                    UpdatePillView(title: offer.pillTitle) {
+                        appState.openUpdateSheet()
+                    }
+                }
+            }
             ToolbarItemGroup(placement: .primaryAction) {
                 DiaryEngineSelectorButton(
                     title: currentEngineTitle,
@@ -90,6 +96,31 @@ struct MainWindowView: View {
                         }
                     )
                 }
+            }
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { appState.isShowingUpdateSheet },
+                set: { isPresented in
+                    if isPresented {
+                        appState.openUpdateSheet()
+                    } else {
+                        appState.dismissUpdateSheet()
+                    }
+                }
+            )
+        ) {
+            if let offer = appState.updateOffer {
+                UpdateSheet(
+                    currentVersion: AppBuildMetadata.current.marketingVersion,
+                    offer: offer,
+                    onPrimaryAction: {
+                        appState.performUpdatePrimaryAction()
+                    },
+                    onClose: {
+                        appState.dismissUpdateSheet()
+                    }
+                )
             }
         }
         .sheet(isPresented: $isShowingAPIDetail) {

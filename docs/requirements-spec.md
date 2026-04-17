@@ -61,6 +61,10 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 
 用户应能看到通知导入是否可用、日记引擎是否可用、最近一次刷新是否成功，而不是只看到“没有内容”。
 
+### 4.6 感知应用有新版本可用
+
+当应用存在新版本时，用户应能在主窗口左上标题栏看到一个明确但不打扰正文阅读的更新提醒，并在点击后理解当前版本、可用版本以及更新动作。
+
 ## 5. 功能范围
 
 ### 5.1 In Scope
@@ -78,6 +82,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 五步 onboarding 与 settings 配置
 - 左下角 `...` 二级菜单中的 `Sync Memory`
 - 顶部 diary engine selector
+- 左上标题栏更新提醒胶囊与更新 sheet
 - 可选 diary engine：
   - OpenAI API
   - Claude Code CLI
@@ -192,9 +197,27 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 已识别渠道的 logo 解析不能只依赖精确 app 名，需要同时兼容中文名、英文名和常见 bundle-id 风格名称
 - `Source Notes` 不在中间阅读区重复显示，来源追溯继续通过右侧 source detail 区完成
 - 不同日期允许并发刷新，但同一天已有刷新任务进行中时，该天刷新按钮必须禁用
-- 主窗口右下角必须持续显示一个只读的 build badge，格式为 `v<marketing-version> (<build-number>) · <git-short-sha>`；当没有 SHA 时退回到 `v<marketing-version> (<build-number>)`
+- 主窗口右下角必须持续显示一个只读的 build badge，格式为 `v<marketing-version> · <MM-dd HH:mm> (<build-number>) · <git-short-sha>`；当没有 build time 或 SHA 时必须安全退回，只省略缺失片段
+- 当检测到真实新版本时，主窗口左上标题栏必须显示一个更新胶囊，位置应紧邻 traffic lights 但不得遮挡系统关闭、最小化、缩放按钮的命中区域
+- 更新胶囊默认隐藏，只有存在 `UpdateOffer` 时才允许显示
+- 更新胶囊文案固定为 `new updates`
+- 用户点击更新胶囊后，系统必须打开更新 sheet，而不是直接开始更新
+- 用户关闭更新 sheet 而不更新时，更新胶囊必须继续保留
+- 更新 sheet 必须显示当前版本、可用版本和简短更新说明
+- direct build 的更新 sheet 主按钮必须表示下载或打开官网更新入口；App Store build 的主按钮必须表示前往 App Store
+- App Store build 不得伪装成可在应用内自行安装更新
 
-## 6.6 键盘与焦点需求
+## 6.6 更新检查与分发需求
+
+- 系统必须在应用启动时检查更新
+- 当应用持续运行时，系统必须至少每天再次检查一次更新
+- 更新检查失败不得打断主阅读器，也不得弹出侵入式错误
+- 系统必须支持通过构建元数据解析当前分发渠道，至少区分 `direct`、`appStore`、`unknown`
+- 如果当前构建未配置 update feed，系统必须安全退回为“无可用更新提醒”，而不是报错或显示伪状态
+- 更新提醒的可见行为必须在 direct build 和 App Store build 之间保持一致；两者差异只允许体现在主动作上
+- 更新胶囊必须在成功安装到该版本或更高版本后才消失；不得因为用户关闭 sheet 就消失
+
+## 6.7 键盘与焦点需求
 
 阅读器必须维护显式焦点模型，而不是完全依赖系统默认焦点。
 
@@ -211,7 +234,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 在 `storyParagraphs` 中，`Left` 或退出命令回到日期列表
 - 每个日期需要记住最近一次选中的段落
 
-## 6.7 配置需求
+## 6.8 配置需求
 
 用户必须能够配置：
 

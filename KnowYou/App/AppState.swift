@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import AppKit
 
 enum ReaderFocusZone: Hashable {
     case dateList
@@ -259,6 +260,9 @@ final class AppState {
     var selectedSourceNotesMarkdown: String?
     var refreshLogNoticesByDay: [String: String] = [:]
     var readerFocus: ReaderFocusZone = .dateList
+    var updateOffer: UpdateOffer?
+    var isShowingUpdateSheet = false
+    var lastUpdateCheckAt: Date?
     private var refreshJobsByDay: [String: DayRefreshJob] = [:]
     private(set) var environment: AppEnvironment?
     @ObservationIgnored private var automationTimer: Timer?
@@ -356,6 +360,7 @@ final class AppState {
         ) as? Bool
         self.autoSelectionSuppressedByExplicitNone = persistedSuppression ?? false
         self.lastNotificationImportAt = userDefaults.object(forKey: UserDefaultsKeys.lastNotificationImportAt) as? Date
+        self.lastUpdateCheckAt = userDefaults.object(forKey: UserDefaultsKeys.lastUpdateCheckAt) as? Date
         let loadedDefaultEngine = self.summarizerConfig.defaultEngine
         if explicitSummarizerConfig == nil, let injectedSummarizer = environment?.summarizer {
             self.summarizerConfig = Self.reconciledConfig(
@@ -395,6 +400,9 @@ final class AppState {
             updateNotificationAccessStatus(using: environment.notificationReader)
             refreshEngineStatuses()
             refreshNotesIndex()
+            Task { @MainActor in
+                await self.checkForUpdatesIfNeeded(force: true, now: currentDate())
+            }
             return
         }
 
@@ -428,6 +436,10 @@ final class AppState {
         } catch {
             statusMessage = "Capture unavailable: \(error.localizedDescription)"
         }
+    }
+
+    var shouldShowUpdatePill: Bool {
+        updateOffer != nil
     }
 
     func selectDate(_ date: String) {
@@ -501,6 +513,69 @@ final class AppState {
 
     func closeSyncMemoryPanel() {
         isShowingSyncMemoryPanel = false
+    }
+
+    func openUpdateSheet() {
+        guard updateOffer != nil else { return }
+        isShowingUpdateSheet = true
+    }
+
+    func dismissUpdateSheet() {
+        isShowingUpdateSheet = false
+    }
+
+    func performUpdatePrimaryAction() {
+        guard let offer = updateOffer else { return }
+
+        switch offer.actionKind {
+        case .installInApp:
+            guard let environment else {
+                statusMessage = DirectAppUpdateError.notConfigured.localizedDescription
+                return
+            }
+
+            statusMessage = "Opening update download..."
+            Task { @MainActor [weak self] in
+                do {
+                    try await environment.directAppUpdater.startUpdate(for: offer)
+                    self?.isShowingUpdateSheet = false
+                } catch {
+                    self?.statusMessage = error.localizedDescription
+                }
+            }
+        case .openAppStore:
+            guard let url = offer.storeURL else {
+                statusMessage = "App Store link unavailable for this build."
+                return
+            }
+
+            if let environment {
+                environment.externalURLOpener(url)
+            } else {
+                NSWorkspace.shared.open(url)
+            }
+            isShowingUpdateSheet = false
+        case .unavailable:
+            statusMessage = "Automatic updates are unavailable for this build."
+        }
+    }
+
+    func checkForUpdatesIfNeeded(force: Bool = false, now: Date = Date()) async {
+        guard let environment else { return }
+        if force == false,
+           let lastUpdateCheckAt,
+           Calendar.current.isDate(lastUpdateCheckAt, inSameDayAs: now) {
+            return
+        }
+
+        do {
+            updateOffer = try await environment.updateService.fetchOffer()
+        } catch {
+            updateOffer = nil
+        }
+
+        lastUpdateCheckAt = now
+        userDefaults.set(now, forKey: UserDefaultsKeys.lastUpdateCheckAt)
     }
 
     func saveSyncMemoryConfig(_ config: SyncMemoryConfig) {
@@ -852,6 +927,7 @@ final class AppState {
         static let lastNotificationImportAt = "lastNotificationImportAt"
         static let lastNotificationImportDatabasePath = "lastNotificationImportDatabasePath"
         static let explicitlyDisabledSummarizerAutoSelection = "explicitlyDisabledSummarizerAutoSelection"
+        static let lastUpdateCheckAt = "lastUpdateCheckAt"
     }
 
     static func defaultVaultURL() throws -> URL {
@@ -2663,6 +2739,7 @@ extension AppState {
 
             let now = self.currentDate()
             Task { @MainActor in
+                await self.checkForUpdatesIfNeeded(force: false, now: now)
                 await self.runAutomation(now: now)
             }
         }
@@ -2680,6 +2757,7 @@ extension AppState {
 
         Task { @MainActor in
             let now = currentDate()
+            await checkForUpdatesIfNeeded(force: true, now: now)
             await runAutomation(now: now)
             await runNotificationCatchUp(now: now)
         }

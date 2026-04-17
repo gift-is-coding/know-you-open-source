@@ -123,6 +123,22 @@ flowchart LR
 - 暴露 `openSyncMemoryPanel()`、`closeSyncMemoryPanel()`、`syncMemoryNow()`
 - 在用户修改自动同步配置时注册或移除用户级 `LaunchAgent`
 - 通过 `SyncMemoryCoordinator` 把全部 `YYYY-MM-DD.md` 复制到外部记忆目录，并以同名覆盖方式做增量修正
+
+当前 `AppState` 还负责应用更新提醒编排：
+
+- 持有 `UpdateOffer`、`isShowingUpdateSheet`、`lastUpdateCheckAt`
+- 在启动时和长时间运行中的每日检查节奏上触发更新检查
+- 把 direct build 与 App Store build 的主动作分流为“打开官方下载链接”或“打开 App Store”
+- 保证更新胶囊只在存在真实 offer 时显示，并且关闭 sheet 后仍继续保留
+
+更新实现被拆成三个边界清晰的部件：
+
+- `UpdateChannelResolver`：根据 `KYUpdateChannel` 解析当前分发渠道
+- `UpdateService`：拉取远端 metadata、比较版本、生成统一的 `UpdateOffer`
+- `MainWindowView.toolbar`：通过 toolbar leading 区域把 SwiftUI 胶囊稳定挂到主窗口标题栏左上角
+
+当前默认行为是“如果构建元数据里配置了 update feed，就执行真实检查；否则安全退回 `NoopUpdateService`”。这让产品层已经具备双渠道 UI 和状态机；其中 direct 渠道当前会通过 `DirectAppUpdating` 默认实现打开远端 metadata 提供的官方下载链接，后续仍可继续桥接到 Sparkle 一类真正的自更新器。
+
 Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 - 作者联系入口
@@ -442,13 +458,23 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 - alias 解析会先做标准化精确匹配，再对 bundle-id 风格来源名做保守 fuzzy match，因此同一 app 的中文名、英文名和诸如 `com.tencent.xinWeChat` 这样的来源字符串都能复用同一品牌 asset
 - 中栏阅读区内支持“重生成当前选中日期”
 - 主界面不再依赖顶部 status banner 承载运行时状态
-- 主窗口右下角会显示只读 build badge；marketing version 仍来自 bundle，build number 与 git short SHA 由 Xcode build phase 写入构建产物
+- 主窗口右下角会显示只读 build badge；marketing version 仍来自 bundle，build number、build time 与 git short SHA 由 Xcode build phase 写入构建产物
+- 主窗口标题栏左上角通过 toolbar leading 区域显示更新胶囊，并且不会覆盖 traffic lights 的点击区域
+- 当存在 `UpdateOffer` 时，点击胶囊会打开统一的更新 sheet；同一套 UI 会按渠道切换主按钮文案和动作
 - 窗口右上角提供 `DiaryEngineSelectorButton`
 - 一级面板列出 `Claude / Codex / Gemini / Openclaw / API` 五个引擎及状态灯
 - 只有绿色引擎允许直接切为默认项
 - API 行会进入 `APIDetailSheet`，配置 `baseURL`、`model`、`token` 并执行 `Test Connection`
 
 需要注意的是，当前实现虽然在 `AppState` 中已经保存了从 `.md` 提取出来的 `selectedSourceNotesMarkdown`，但主阅读器仍然不在中栏重复显示 `Source Notes`；来源追溯继续主要通过右栏 source detail 完成。
+
+更新提醒 UI 由以下两个新视图承担：
+
+- [UpdatePillView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Updates/UpdatePillView.swift)：标题栏胶囊
+- [UpdateSheet.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Updates/UpdateSheet.swift)：更新详情 sheet
+
+它们共享同一套视觉壳，但主按钮文案和主动作来自 `UpdateOffer.actionKind`，因此 direct build 与 App Store build 的交互能保持一致外观、不同动作。
+当前胶囊文案固定为 `new updates`，版本号与发布时间放在更新 sheet 与右下角 build badge 中承载，而不是挤在左上角提示里。
 
 ### 9.3 键盘焦点模型
 

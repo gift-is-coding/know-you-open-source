@@ -12,6 +12,9 @@ final class AppEnvironment {
     let composer: DailyMarkdownComposer
     var summarizer: SummaryGenerating?
     let dailyAutomationPlanner: DailyAutomationPlanner
+    let updateService: any UpdateServing
+    let directAppUpdater: any DirectAppUpdating
+    let externalURLOpener: @MainActor @Sendable (URL) -> Void
     var refreshLogsDirectoryURL: URL {
         databaseURL.deletingLastPathComponent().appending(path: "RefreshLogs", directoryHint: .isDirectory)
     }
@@ -20,6 +23,9 @@ final class AppEnvironment {
         databasePath: String,
         vaultURL: URL,
         summarizer: SummaryGenerating? = nil,
+        updateService: any UpdateServing = AppEnvironment.makeDefaultUpdateService(),
+        directAppUpdater: (any DirectAppUpdating)? = nil,
+        externalURLOpener: @escaping @MainActor @Sendable (URL) -> Void = defaultExternalURLOpener,
         onClipboardCapture: ((ClipboardCaptureSnapshot) -> Void)? = nil
     ) throws {
         let databaseURL = URL(fileURLWithPath: databasePath)
@@ -34,6 +40,9 @@ final class AppEnvironment {
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
             ),
+            updateService: updateService,
+            directAppUpdater: directAppUpdater,
+            externalURLOpener: externalURLOpener,
             onClipboardCapture: onClipboardCapture
         )
     }
@@ -45,6 +54,9 @@ final class AppEnvironment {
         summarizer: SummaryGenerating?,
         notificationReader: NotificationDatabaseReading,
         dailyAutomationPlanner: DailyAutomationPlanner,
+        updateService: any UpdateServing = AppEnvironment.makeDefaultUpdateService(),
+        directAppUpdater: (any DirectAppUpdating)? = nil,
+        externalURLOpener: @escaping @MainActor @Sendable (URL) -> Void = defaultExternalURLOpener,
         onClipboardCapture: ((ClipboardCaptureSnapshot) -> Void)? = nil
     ) {
         let privacyFilter = PrivacyFilter()
@@ -56,6 +68,9 @@ final class AppEnvironment {
         self.composer = DailyMarkdownComposer()
         self.summarizer = summarizer
         self.dailyAutomationPlanner = dailyAutomationPlanner
+        self.updateService = updateService
+        self.externalURLOpener = externalURLOpener
+        self.directAppUpdater = directAppUpdater ?? ExternalLinkDirectAppUpdater(opener: externalURLOpener)
         self.clipboardWatcher = ClipboardWatcher(
             privacyFilter: privacyFilter,
             databaseWriter: databaseWriter,
@@ -137,6 +152,37 @@ final class AppEnvironment {
             .filter { $0.hasSuffix(".story.json") }
             .map { $0.replacingOccurrences(of: ".story.json", with: "") }
             .sorted(by: >)
+    }
+
+    private static func makeDefaultUpdateService(
+        bundle: Bundle = .main,
+        processEnvironment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> any UpdateServing {
+        let metadataURLString =
+            processEnvironment["KYUpdateMetadataURL"]
+            ?? (bundle.object(forInfoDictionaryKey: "KYUpdateMetadataURL") as? String)
+
+        guard let metadataURLString else {
+            return NoopUpdateService()
+        }
+
+        let trimmedMetadataURLString = metadataURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedMetadataURLString.isEmpty == false,
+              let metadataURL = URL(string: trimmedMetadataURLString) else {
+            return NoopUpdateService()
+        }
+
+        let currentVersion = bundle.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        let channel =
+            processEnvironment["KYUpdateChannel"]
+            ?? (bundle.object(forInfoDictionaryKey: "KYUpdateChannel") as? String)
+
+        return UpdateService(
+            session: .shared,
+            resolver: UpdateChannelResolver(buildChannelOverride: channel),
+            metadataURL: metadataURL,
+            currentVersion: currentVersion
+        )
     }
 }
 

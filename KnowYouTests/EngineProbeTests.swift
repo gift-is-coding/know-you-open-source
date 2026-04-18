@@ -300,8 +300,29 @@ final class EngineProbeTests: XCTestCase {
         XCTAssertEqual(StubURLProtocol.requestCount, 1)
     }
 
-    func testAPIProbeReturnsYellowWhenResponseContainsUnrelatedText() async {
-        StubURLProtocol.behavior = .success(statusCode: 200, body: Data(#"{"output_text":"I cannot help with that."}"#.utf8))
+    func testAPIProbeReturnsGreenWhenResponseContainsAnyNonEmptyText() async {
+        StubURLProtocol.behavior = .success(statusCode: 200, body: Data(#"{"output_text":"I understand."}"#.utf8))
+        let probe = EngineProbe(
+            session: StubURLProtocol.makeSession(),
+            processRunner: StubProcessRunner(
+                behavior: .success(ProcessExecutionResult(stdout: "unused", stderr: "", terminationStatus: 0, duration: 0))
+            )
+        )
+        var config = SummarizerConfig.default
+        config.defaultEngine = .openAI
+        config.apiBaseURL = "https://example.com/v1/responses"
+        config.apiModel = "gpt-4.1-mini"
+        config.apiToken = "token-test-123"
+
+        let result = await probe.probe(engine: .openAI, config: config, environment: [:])
+
+        XCTAssertEqual(result.state, .green)
+        XCTAssertEqual(result.detail, "API returned non-empty text.")
+        XCTAssertEqual(StubURLProtocol.requestCount, 1)
+    }
+
+    func testAPIProbeReturnsYellowWhenResponseContainsNoText() async {
+        StubURLProtocol.behavior = .success(statusCode: 200, body: Data(#"{"output_text":"   "}"#.utf8))
         let probe = EngineProbe(
             session: StubURLProtocol.makeSession(),
             processRunner: StubProcessRunner(
@@ -317,6 +338,7 @@ final class EngineProbeTests: XCTestCase {
         let result = await probe.probe(engine: .openAI, config: config, environment: [:])
 
         XCTAssertEqual(result.state, .yellow)
+        XCTAssertEqual(result.detail, "API response did not include any text.")
         XCTAssertEqual(StubURLProtocol.requestCount, 1)
     }
 }

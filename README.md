@@ -55,6 +55,29 @@ The harness prints the exact SQLite and Markdown follow-up commands and document
 
 For reproducibility, the harness relaunches the app and relies on launch-time clipboard bootstrap plus launch-time refresh to verify the real clipboard -> SQLite -> Markdown path on this Mac.
 
+## Release Signing
+
+Know You now ships through a dedicated Developer ID release path rather than the local debug signing flow.
+
+One-time notarization setup on a release machine:
+
+```bash
+xcrun notarytool store-credentials "know-you-notary" \
+  --apple-id "ouyang_danhua@outlook.com" \
+  --team-id "3DY726RPHL" \
+  --password "<app-specific-password>"
+```
+
+Release commands:
+
+```bash
+./scripts/build-release.sh
+./scripts/notarize-release.sh
+./scripts/verify-release.sh
+```
+
+See [`docs/release-signing.md`](docs/release-signing.md) for the full flow and artifact layout.
+
 ## Project Docs
 
 - [Architecture](docs/architecture.md)

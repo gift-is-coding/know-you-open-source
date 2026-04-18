@@ -97,6 +97,8 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - App Store 分发约束下的沙盒化方案
 - 双向外部知识库同步
 
+当前版本的对外分发方式是 Developer ID + notarization，不是 Mac App Store。
+
 ## 6. 功能需求
 
 ## 6.1 采集需求
@@ -258,6 +260,14 @@ onboarding 的配置约束为：
 - 每次手动或自动刷新都必须记录阶段耗时、attempt、超时和最终结果，便于排查性能与失败原因
 - 剪贴板采集必须继续作为后台实时能力存在，不能通过手动刷新补回历史缺失内容
 - 读取旧 story 或切换日期不得被动改写 `.story.json` 或 `.md`
+
+## 6.9 发布需求
+
+- 系统必须能产出一个使用 `Developer ID Application` 签名的 macOS release app
+- Release 构建必须启用 hardened runtime，满足 notarization 前提
+- 项目必须提供可复用脚本来完成 archive、压缩、notarize、staple、verify
+- Apple ID app-specific password 不得保存在仓库文件中，必须通过 keychain `notarytool` profile 管理
+- 发布验证必须至少包含 `codesign --verify --deep --strict --verbose=2`、`stapler validate`、`spctl --assess --type execute -vv`
 - `fullRecovery` 成功写盘前必须执行一次规范化，以保证新生成 `Details` 保持 paragraph-level workstream 结构
 
 ## 6.9 状态反馈需求

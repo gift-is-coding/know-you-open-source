@@ -26,6 +26,7 @@ Know You 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 3. 生成层：本地 fallback story 生成、可选云端/CLI 总结器、Markdown 组合
 4. 记忆同步层：Obsidian / OpenClaw 目标探测、文件复制、LaunchAgent 定时注册
 5. 界面层：五步 story onboarding、三栏主阅读器、设置页、菜单栏状态入口、About & Community 对外入口
+6. 分发层：Developer ID release archive、notarytool notarization、stapled zip 验证
 
 ```mermaid
 flowchart LR
@@ -52,7 +53,22 @@ flowchart LR
     R --> S[Obsidian Vault/Know You/Daily Memories]
     R --> T[OpenClaw Workspace/know-you-memory]
     F --> U[LaunchAgentManager]
+    V[build-release.sh] --> W[KnowYou.xcarchive]
+    W --> X[KnowYou.app zip]
+    X --> Y[notarytool submit]
+    Y --> Z[stapler / spctl verify]
 ```
+
+## 2.1 发布与分发
+
+当前项目已经补上一条独立于本地调试签名的外部分发路径：
+
+- Release 构建使用 `Developer ID Application`
+- Release 启用 hardened runtime
+- 分发脚本通过 `scripts/build-release.sh`、`scripts/notarize-release.sh`、`scripts/verify-release.sh` 串起 archive、压缩、notarize、staple、Gatekeeper 验证
+- Apple notarization 凭据通过本机 keychain 中的 `notarytool` profile 管理，而不是保存在仓库里
+
+这条链路的目标是让仓库能稳定产出可上传到下载页的 macOS release zip，同时不影响 Debug/测试阶段的日常签名配置。
 
 ## 3. 运行时入口
 

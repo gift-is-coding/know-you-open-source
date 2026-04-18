@@ -30,7 +30,7 @@
 
 ## macOS 发布准备
 
-- [ ] Developer ID 签名
+- [x] Developer ID 签名
 - [ ] notarization
 - [ ] 发布包验证
 - [ ] 首次安装说明

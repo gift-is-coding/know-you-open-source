@@ -1,6 +1,7 @@
 .superpowers/
 .derived-data/
 .worktrees/
+build/
 KnowYou/Config/Secrets.xcconfig
 KnowYou/Config/*.local.xcconfig
 KnowYou/Config/*.private.xcconfig

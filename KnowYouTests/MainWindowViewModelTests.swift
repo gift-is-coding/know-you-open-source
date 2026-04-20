@@ -182,6 +182,22 @@ private final class RecordingPromptSummarizer: SummaryGenerating, @unchecked Sen
     }
 }
 
+private struct StubUpdateService: UpdateServing {
+    let result: Result<UpdateOffer?, Error>
+
+    func fetchOffer() async throws -> UpdateOffer? {
+        try result.get()
+    }
+}
+
+private struct StubDirectAppUpdater: DirectAppUpdating {
+    let handler: @Sendable (UpdateOffer) async throws -> Void
+
+    func startUpdate(for offer: UpdateOffer) async throws {
+        try await handler(offer)
+    }
+}
+
 private final class MainWindowStubURLProtocol: URLProtocol {
     enum Behavior {
         case success(statusCode: Int, body: Data)
@@ -510,19 +526,227 @@ final class MainWindowViewModelTests: XCTestCase {
     private var engineDefaults: UserDefaults!
     private var engineKeychain: AppStateTestKeychainStore!
 
+    private func markOnboardingComplete(in defaults: UserDefaults) {
+        defaults.set(true, forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
+        defaults.set(OnboardingProgressState.complete.rawValue, forKey: AppState.UserDefaultsKeys.onboardingProgressState)
+        defaults.set(OnboardingBootstrapState.complete.rawValue, forKey: AppState.UserDefaultsKeys.onboardingBootstrapState)
+        defaults.removeObject(forKey: AppState.UserDefaultsKeys.onboardingBootstrapDayKeys)
+    }
+
     override func setUp() {
         super.setUp()
         engineDefaultsSuiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
         engineDefaults = UserDefaults(suiteName: engineDefaultsSuiteName)!
         engineKeychain = AppStateTestKeychainStore()
+        markOnboardingComplete(in: engineDefaults)
+        markOnboardingComplete(in: .standard)
     }
 
     override func tearDown() {
         MainWindowStubURLProtocol.reset()
+        UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
+        UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.onboardingProgressState)
+        UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.onboardingBootstrapState)
+        UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.onboardingBootstrapDayKeys)
         if let engineDefaultsSuiteName {
             engineDefaults.removePersistentDomain(forName: engineDefaultsSuiteName)
         }
         super.tearDown()
+    }
+
+    @MainActor
+    func test_checkForUpdates_setsOfferAndShowsPillWhenNewerVersionExists() throws {
+        let environment = try makeEngineEnvironment(updateService: StubUpdateService(result: .success(
+            UpdateOffer(
+                availableVersion: "1.4.0",
+                releaseSummary: "Update pill shipped",
+                publishedAt: nil,
+                actionKind: .installInApp,
+                storeURL: nil,
+                downloadURL: URL(string: "https://knowyou.example.com/download")
+            )
+        )))
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: UserDefaults(suiteName: UUID().uuidString)!,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let expectation = expectation(description: "update check")
+        Task { @MainActor in
+            await appState.checkForUpdatesIfNeeded(force: true)
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2.0)
+
+        XCTAssertEqual(appState.updateOffer?.availableVersion, "1.4.0")
+        XCTAssertTrue(appState.shouldShowUpdatePill)
+    }
+
+    @MainActor
+    func test_dismissingUpdateSheet_keepsPillVisible() {
+        let appState = AppState(bootstrapServices: false)
+        appState.updateOffer = UpdateOffer(
+            availableVersion: "1.4.0",
+            releaseSummary: "Update pill shipped",
+            publishedAt: nil,
+            actionKind: .installInApp,
+            storeURL: nil,
+            downloadURL: URL(string: "https://knowyou.example.com/download")
+        )
+        appState.isShowingUpdateSheet = true
+
+        appState.dismissUpdateSheet()
+
+        XCTAssertFalse(appState.isShowingUpdateSheet)
+        XCTAssertTrue(appState.shouldShowUpdatePill)
+    }
+
+    @MainActor
+    func test_checkForUpdates_skipsSecondNonForcedCheckOnSameDay() throws {
+        let environment = try makeEngineEnvironment(updateService: StubUpdateService(result: .success(
+            UpdateOffer(
+                availableVersion: "1.4.0",
+                releaseSummary: "Update pill shipped",
+                publishedAt: nil,
+                actionKind: .installInApp,
+                storeURL: nil,
+                downloadURL: URL(string: "https://knowyou.example.com/download")
+            )
+        )))
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: UserDefaults(suiteName: UUID().uuidString)!,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let date = Date(timeIntervalSince1970: 1_776_000_000)
+        let expectation = expectation(description: "same day checks")
+        Task { @MainActor in
+            await appState.checkForUpdatesIfNeeded(force: false, now: date)
+            let firstCheckAt = appState.lastUpdateCheckAt
+            await appState.checkForUpdatesIfNeeded(force: false, now: date.addingTimeInterval(60))
+            XCTAssertEqual(appState.lastUpdateCheckAt, firstCheckAt)
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2.0)
+    }
+
+    @MainActor
+    func test_openUpdateSheet_onlyOpensWhenOfferExists() {
+        let appState = AppState(bootstrapServices: false)
+
+        appState.openUpdateSheet()
+        XCTAssertFalse(appState.isShowingUpdateSheet)
+
+        appState.updateOffer = UpdateOffer(
+            availableVersion: "1.4.0",
+            releaseSummary: "Update pill shipped",
+            publishedAt: nil,
+            actionKind: .openAppStore,
+            storeURL: URL(string: "https://apps.apple.com/app/id123")
+        )
+
+        appState.openUpdateSheet()
+        XCTAssertTrue(appState.isShowingUpdateSheet)
+    }
+
+    @MainActor
+    func test_performUpdatePrimaryAction_marksProgressForDirectInstall() throws {
+        let updateStarted = expectation(description: "direct update started")
+        let environment = try makeEngineEnvironment(
+            directAppUpdater: StubDirectAppUpdater { offer in
+                XCTAssertEqual(offer.availableVersion, "1.4.0")
+                updateStarted.fulfill()
+            }
+        )
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: UserDefaults(suiteName: UUID().uuidString)!,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.updateOffer = UpdateOffer(
+            availableVersion: "1.4.0",
+            releaseSummary: "Update pill shipped",
+            publishedAt: nil,
+            actionKind: .installInApp,
+            storeURL: nil,
+            downloadURL: URL(string: "https://knowyou.example.com/download")
+        )
+
+        appState.performUpdatePrimaryAction()
+
+        wait(for: [updateStarted], timeout: 2.0)
+        XCTAssertEqual(appState.statusMessage, "Opening update download...")
+    }
+
+    @MainActor
+    func test_performUpdatePrimaryAction_usesInjectedExternalURLOpenerForAppStoreOffer() throws {
+        let openedStore = expectation(description: "store url opened")
+        let environment = try makeEngineEnvironment(
+            externalURLOpener: { url in
+                XCTAssertEqual(url.absoluteString, "https://apps.apple.com/app/id123")
+                openedStore.fulfill()
+            }
+        )
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: UserDefaults(suiteName: UUID().uuidString)!,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.updateOffer = UpdateOffer(
+            availableVersion: "1.4.0",
+            releaseSummary: "Update pill shipped",
+            publishedAt: nil,
+            actionKind: .openAppStore,
+            storeURL: URL(string: "https://apps.apple.com/app/id123"),
+            downloadURL: nil
+        )
+        appState.isShowingUpdateSheet = true
+
+        appState.performUpdatePrimaryAction()
+
+        wait(for: [openedStore], timeout: 2.0)
+        XCTAssertFalse(appState.isShowingUpdateSheet)
+    }
+
+    @MainActor
+    func test_performUpdatePrimaryAction_usesDefaultDirectDownloaderWhenConfigured() throws {
+        let openedDownload = expectation(description: "download url opened")
+        let environment = try makeEngineEnvironment(
+            externalURLOpener: { url in
+                XCTAssertEqual(url.absoluteString, "https://knowyou.example.com/download")
+                openedDownload.fulfill()
+            }
+        )
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: UserDefaults(suiteName: UUID().uuidString)!,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.updateOffer = UpdateOffer(
+            availableVersion: "1.4.0",
+            releaseSummary: "Update pill shipped",
+            publishedAt: nil,
+            actionKind: .installInApp,
+            storeURL: nil,
+            downloadURL: URL(string: "https://knowyou.example.com/download")
+        )
+
+        appState.performUpdatePrimaryAction()
+
+        wait(for: [openedDownload], timeout: 2.0)
+        XCTAssertFalse(appState.isShowingUpdateSheet)
     }
 
     func testSelectingDateLoadsMatchingMarkdownPath() {
@@ -551,7 +775,7 @@ final class MainWindowViewModelTests: XCTestCase {
 
     func testSelectingDateLoadsSourceNotesMarkdownFromSavedFile() throws {
         let environment = try makeReaderEnvironment()
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
 
         appState.selectDate("2026-04-08")
 
@@ -570,7 +794,7 @@ final class MainWindowViewModelTests: XCTestCase {
 
     func testSelectingDateFallsBackToGeneratedSourceNotesWhenMarkdownFileIsMissing() throws {
         let environment = try makeReaderEnvironment()
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
         let fileURL = environment.vaultURL.appending(path: "2026-04-08.md")
         try FileManager.default.removeItem(at: fileURL)
 
@@ -589,7 +813,7 @@ final class MainWindowViewModelTests: XCTestCase {
 
     func testSelectingDateFallsBackToGeneratedSourceNotesWhenSavedMarkdownHasNoSourceNotesSection() throws {
         let environment = try makeReaderEnvironment()
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
         let fileURL = environment.vaultURL.appending(path: "2026-04-08.md")
         try """
         # 2026-04-08
@@ -618,7 +842,7 @@ final class MainWindowViewModelTests: XCTestCase {
 
     func testSelectingChineseDateLoadsLocalizedSourceNotesMarkdown() throws {
         let environment = try makeChineseReaderEnvironment()
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
 
         appState.selectDate("2026-04-09")
 
@@ -635,7 +859,7 @@ final class MainWindowViewModelTests: XCTestCase {
 
     func testSelectingChineseDateFallsBackToLocalizedGeneratedSourceNotesWhenMarkdownFileIsMissing() throws {
         let environment = try makeChineseReaderEnvironment()
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
         let fileURL = environment.vaultURL.appending(path: "2026-04-09.md")
         try FileManager.default.removeItem(at: fileURL)
 
@@ -689,7 +913,9 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectedDate = nil
+        appState.selectedStory = nil
 
         await appState.generateDailyNote(for: "2026-04-07")
 
@@ -733,7 +959,8 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectedDate = nil
         let existingStory = makeModelStory(dayKey: dayKey, eventID: eventID)
         let existingMarkdown = "# Existing model story\nStill good."
         _ = try environment.writeDailyNote(dayKey: dayKey, markdown: existingMarkdown)
@@ -770,7 +997,7 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
 
         await appState.runAutomation(now: DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 7).date!)
 
@@ -820,7 +1047,7 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
 
         await appState.runAutomation(now: capturedAt)
 
@@ -865,7 +1092,7 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: calendar)
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
 
         await appState.runAutomation(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 7, hour: 12).date!)
 
@@ -903,7 +1130,7 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: calendar)
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
 
         await appState.runAutomation(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 7, hour: 12).date!)
 
@@ -1070,6 +1297,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         let appState = AppState(
             environment: environment,
+            bootstrapServices: false,
             summarizerConfig: config,
             makeSummarizer: { engine, _, _ in
                 guard engine == .codexCLI else { return nil }
@@ -1122,6 +1350,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         let appState = AppState(
             environment: environment,
+            bootstrapServices: false,
             userDefaults: engineDefaults,
             keychain: engineKeychain,
             keychainService: "MainWindowViewModelTests"
@@ -1175,6 +1404,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         let appState = AppState(
             environment: environment,
+            bootstrapServices: false,
             userDefaults: engineDefaults,
             keychain: engineKeychain,
             keychainService: "MainWindowViewModelTests"
@@ -1208,6 +1438,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         let appState = AppState(
             environment: environment,
+            bootstrapServices: false,
             userDefaults: engineDefaults,
             keychain: engineKeychain,
             keychainService: "MainWindowViewModelTests"
@@ -1301,6 +1532,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         let original = AppState(
             environment: environment,
+            bootstrapServices: false,
             currentDate: { initialNow },
             userDefaults: engineDefaults,
             keychain: engineKeychain,
@@ -1327,6 +1559,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         let relaunched = AppState(
             environment: relaunchedEnvironment,
+            bootstrapServices: false,
             currentDate: { resumedNow },
             userDefaults: engineDefaults,
             keychain: engineKeychain,
@@ -1367,6 +1600,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         let original = AppState(
             environment: originalEnvironment,
+            bootstrapServices: false,
             currentDate: { initialNow },
             userDefaults: engineDefaults,
             keychain: engineKeychain,
@@ -1399,6 +1633,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         let relaunched = AppState(
             environment: freshEnvironment,
+            bootstrapServices: false,
             currentDate: { resumedNow },
             userDefaults: engineDefaults,
             keychain: engineKeychain,
@@ -1436,7 +1671,9 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: calendar)
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectedDate = nil
+        appState.selectedStory = nil
 
         await appState.refreshSelectedDay(now: now)
 
@@ -1487,7 +1724,9 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: calendar)
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectedDate = nil
+        appState.selectedStory = nil
 
         await appState.refreshSelectedDay(now: now)
 
@@ -1512,7 +1751,8 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: calendar)
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectedDate = nil
         appState.selectDate("2026-04-08")
 
         await appState.refreshSelectedDay(
@@ -1552,7 +1792,8 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: calendar)
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectedDate = nil
         appState.selectDate(selectedDay)
 
         let runsBeforeRefresh = try writer.fetchRuns(runType: "daily-note").count
@@ -1588,7 +1829,9 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: calendar)
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectedDate = nil
+        appState.selectedStory = nil
 
         await appState.refreshSelectedDay(now: now)
 
@@ -1628,7 +1871,9 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectedDate = nil
+        appState.selectedStory = nil
 
         await appState.refreshSelectedDay(now: now)
 
@@ -1680,7 +1925,7 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
         appState.selectDate(historicalDay)
 
         await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 7).date!)
@@ -1701,7 +1946,7 @@ final class MainWindowViewModelTests: XCTestCase {
 
     func testReaderNavigationRestoresPerDayParagraphMemory() throws {
         let environment = try makeReaderEnvironment()
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
         appState.refreshNotesIndex()
 
         XCTAssertEqual(appState.readerFocus, .dateList)
@@ -1730,7 +1975,7 @@ final class MainWindowViewModelTests: XCTestCase {
 
     func testEscapeReturnsStoryFocusToDateList() throws {
         let environment = try makeReaderEnvironment()
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
         appState.refreshNotesIndex()
 
         appState.handleReaderMove(.right)
@@ -1962,7 +2207,7 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
 
         await appState.runAutomation(now: DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 7).date!)
 
@@ -2000,7 +2245,7 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: calendar)
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
 
         await appState.runAutomation(
             now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 10, hour: 12).date!
@@ -2041,7 +2286,9 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectedDate = nil
+        appState.selectedStory = nil
 
         await appState.refreshSelectedDay(now: now)
 
@@ -2080,7 +2327,9 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectedDate = nil
+        appState.selectedStory = nil
 
         await appState.refreshSelectedDay(now: now)
 
@@ -2290,6 +2539,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         let appState = AppState(
             environment: environment,
+            bootstrapServices: false,
             summarizerConfig: config,
             makeSummarizer: { engine, _, _ in
                 guard engine == .codexCLI else { return nil }
@@ -2431,6 +2681,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         let appState = AppState(
             environment: environment,
+            bootstrapServices: false,
             summarizerConfig: config,
             makeSummarizer: { engine, _, _ in
                 guard engine == .codexCLI else { return nil }
@@ -2496,7 +2747,9 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: calendar)
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectedDate = nil
+        appState.selectedStory = nil
 
         await appState.generateDailyNote(for: dayKey)
 
@@ -2612,6 +2865,7 @@ final class MainWindowViewModelTests: XCTestCase {
         config.defaultEngine = .codexCLI
         let appState = AppState(
             environment: environment,
+            bootstrapServices: false,
             summarizerConfig: config,
             makeSummarizer: { engine, _, _ in
                 let attemptEngine = engine
@@ -2776,6 +3030,7 @@ final class MainWindowViewModelTests: XCTestCase {
         config.defaultEngine = .codexCLI
         let appState = AppState(
             environment: environment,
+            bootstrapServices: false,
             summarizerConfig: config,
             makeSummarizer: { engine, _, _ in
                 let attemptEngine = engine
@@ -3249,6 +3504,7 @@ final class MainWindowViewModelTests: XCTestCase {
         config.defaultEngine = .codexCLI
         let appState = AppState(
             environment: environment,
+            bootstrapServices: false,
             summarizerConfig: config,
             makeSummarizer: { engine, _, _ in
                 let attemptEngine = engine
@@ -3747,7 +4003,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
     }
 
-    func testApplySummarizerConfigKeepsLegacyRequestedEnginePendingUntilVerified() throws {
+    func testApplySummarizerConfigPersistsRequestedYellowEngineAsDefaultChoice() throws {
         let executableURL = try makeStubExecutable(named: "codex")
         var config = SummarizerConfig.default
         config.defaultEngine = .codexCLI
@@ -3756,6 +4012,7 @@ final class MainWindowViewModelTests: XCTestCase {
         let environment = try makeEngineEnvironment()
         let appState = AppState(
             environment: environment,
+            bootstrapServices: false,
             userDefaults: engineDefaults,
             keychain: engineKeychain,
             keychainService: "MainWindowViewModelTests"
@@ -3763,9 +4020,12 @@ final class MainWindowViewModelTests: XCTestCase {
 
         appState.applySummarizerConfig(config)
 
-        XCTAssertEqual(appState.defaultEngine, .none)
-        XCTAssertEqual(appState.summarizerStatus.mode, DiaryEngine.none.displayName)
-        XCTAssertNil(appState.environment?.summarizer)
+        XCTAssertEqual(appState.defaultEngine, .codexCLI)
+        XCTAssertEqual(appState.summarizerStatus.mode, DiaryEngine.codexCLI.displayName)
+        XCTAssertTrue(appState.summarizerStatus.isConfigured)
+        let activeSummarizer = try XCTUnwrap(appState.environment?.summarizer as? CLISummarizer)
+        XCTAssertEqual(activeSummarizer.tool, .codex)
+        XCTAssertEqual(activeSummarizer.executablePath, executableURL.path)
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .yellow)
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.detail, "Executable found. Retest required.")
 
@@ -3774,7 +4034,7 @@ final class MainWindowViewModelTests: XCTestCase {
             keychain: engineKeychain,
             keychainService: "MainWindowViewModelTests"
         )
-        XCTAssertEqual(persistedConfig.defaultEngine, .none)
+        XCTAssertEqual(persistedConfig.defaultEngine, .codexCLI)
         XCTAssertEqual(persistedConfig.codexCLIPath, executableURL.path)
     }
 
@@ -3818,7 +4078,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
     }
 
-    func testOnlyGreenEngineCanBecomeDefault() {
+    func testYellowEngineCanBecomeDefaultChoiceWithoutBlockingGreenSelection() {
         var config = SummarizerConfig.default
         config.defaultEngine = .openAI
         config.apiBaseURL = "https://example.com/v1/responses"
@@ -3837,14 +4097,14 @@ final class MainWindowViewModelTests: XCTestCase {
         appState.engineStatuses[.geminiCLI] = EngineRuntimeStatus(state: .green, detail: "Smoke test succeeded.", lastVerifiedAt: nil)
 
         appState.selectDefaultEngine(.codexCLI)
-        XCTAssertEqual(appState.defaultEngine, .openAI)
+        XCTAssertEqual(appState.defaultEngine, .codexCLI)
         XCTAssertEqual(
             SummarizerConfig.load(
                 from: engineDefaults,
                 keychain: engineKeychain,
                 keychainService: "MainWindowViewModelTests"
             ).defaultEngine,
-            .openAI
+            .codexCLI
         )
 
         appState.selectDefaultEngine(.geminiCLI)
@@ -4348,6 +4608,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         let appState = AppState(
             environment: environment,
+            bootstrapServices: false,
             userDefaults: engineDefaults,
             keychain: engineKeychain,
             keychainService: "MainWindowViewModelTests"
@@ -4542,6 +4803,7 @@ final class MainWindowViewModelTests: XCTestCase {
         engineDefaults.set("Custom full recovery override", forKey: "summarizerGlobalDiaryPromptOverride")
         let appState = AppState(
             environment: environment,
+            bootstrapServices: false,
             userDefaults: engineDefaults,
             keychain: engineKeychain,
             keychainService: "MainWindowViewModelTests"
@@ -5022,6 +5284,66 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(relaunched.engineStatuses[.codexCLI]?.detail, "Executable found. Retest required.")
     }
 
+    func testApplySummarizerConfigPromotesYellowRequestedEngineToDefaultChoice() throws {
+        let executableURL = try makeStubExecutable(named: "codex")
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        config.codexCLIPath = executableURL.path
+
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        appState.applySummarizerConfig(config)
+
+        XCTAssertEqual(appState.defaultEngine, .codexCLI)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .yellow)
+        XCTAssertEqual(appState.summarizerStatus.mode, DiaryEngine.codexCLI.displayName)
+        XCTAssertTrue(appState.summarizerStatus.isConfigured)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .codexCLI
+        )
+    }
+
+    func testSelectDefaultEngineAllowsYellowEngineChoiceAndPersistsIt() throws {
+        let executableURL = try makeStubExecutable(named: "codex")
+        var config = SummarizerConfig.default
+        config.defaultEngine = .none
+        config.codexCLIPath = executableURL.path
+
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .yellow)
+
+        appState.selectDefaultEngine(.codexCLI)
+
+        XCTAssertEqual(appState.defaultEngine, .codexCLI)
+        XCTAssertEqual(appState.summarizerStatus.mode, DiaryEngine.codexCLI.displayName)
+        XCTAssertTrue(appState.summarizerStatus.isConfigured)
+        XCTAssertEqual(
+            SummarizerConfig.load(
+                from: engineDefaults,
+                keychain: engineKeychain,
+                keychainService: "MainWindowViewModelTests"
+            ).defaultEngine,
+            .codexCLI
+        )
+    }
+
     func testSelectStoryParagraphUpdatesVisibleSourceEvents() async throws {
         let writer = try DatabaseWriter.inMemory()
         let dayKey = "2026-04-07"
@@ -5385,7 +5707,7 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertTrue(olderMarkdown.contains("## Narrative"))
         XCTAssertTrue(olderMarkdown.contains("## Build review"))
 
-        XCTAssertEqual(appState.availableDates, [newerDayKey, olderDayKey])
+        XCTAssertEqual(appState.availableDates, [newerDayKey, olderDayKey, OnboardingDemoStory.demoDayKey])
         XCTAssertEqual(appState.selectedDate, newerDayKey)
     }
 
@@ -5500,7 +5822,11 @@ final class MainWindowViewModelTests: XCTestCase {
         )
     }
 
-    private func makeEngineEnvironment() throws -> AppEnvironment {
+    private func makeEngineEnvironment(
+        updateService: any UpdateServing = StubUpdateService(result: .success(nil)),
+        directAppUpdater: (any DirectAppUpdating)? = nil,
+        externalURLOpener: @escaping @MainActor @Sendable (URL) -> Void = { _ in }
+    ) throws -> AppEnvironment {
         let writer = try DatabaseWriter.inMemory()
         let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         return AppEnvironment(
@@ -5511,7 +5837,10 @@ final class MainWindowViewModelTests: XCTestCase {
             notificationReader: RecordingNotificationReader(),
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
-            )
+            ),
+            updateService: updateService,
+            directAppUpdater: directAppUpdater,
+            externalURLOpener: externalURLOpener
         )
     }
 

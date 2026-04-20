@@ -7,6 +7,7 @@ struct DailyMarkdownView: View {
     let dayKey: String?
     let refreshJob: DayRefreshJob?
     let refreshLogNotice: String?
+    let isGenerating: Bool
     let isActive: Bool
     let onSelectParagraph: (String) -> Void
     let onFocusStory: () -> Void
@@ -17,7 +18,8 @@ struct DailyMarkdownView: View {
     var body: some View {
         let presentation = DailyMarkdownPresentation(
             story: story,
-            selectedParagraphID: selectedParagraphID
+            selectedParagraphID: selectedParagraphID,
+            isGenerating: isGenerating
         )
         let refreshPresentation = DayRefreshProgressPresentation(refreshJob: refreshJob)
 
@@ -45,8 +47,8 @@ struct DailyMarkdownView: View {
                                         }
                                     }
                                     .buttonStyle(.plain)
-                                    .disabled(isRefreshing)
-                                    .help("Regenerate this day's journal")
+                                    .disabled(isRefreshing || dayKey == OnboardingDemoStory.demoDayKey)
+                                    .help(dayKey == OnboardingDemoStory.demoDayKey ? "Demo Day is read-only" : "Regenerate this day's journal")
 
                                     if refreshPresentation.showsSteps {
                                         VStack(alignment: .trailing, spacing: 4) {
@@ -138,7 +140,11 @@ struct DailyMarkdownView: View {
                     }
                 }
             } else {
-                ContentUnavailableView("No Story Yet", systemImage: "text.book.closed")
+                ContentUnavailableView(
+                    presentation.emptyStateTitle,
+                    systemImage: presentation.emptyStateSymbol,
+                    description: presentation.emptyStateMessage.map(Text.init)
+                )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -180,13 +186,16 @@ struct DailyMarkdownView: View {
 
     private var formattedDayKey: String {
         guard let dayKey else { return "" }
+        if dayKey == OnboardingDemoStory.demoDayKey {
+            return "Demo Day"
+        }
         let parser = DateFormatter()
         parser.dateFormat = "yyyy-MM-dd"
         parser.locale = Locale(identifier: "en_US_POSIX")
         guard let date = parser.date(from: dayKey) else { return dayKey }
 
         let monthDay = DateFormatter()
-        monthDay.dateFormat = "M月d日"
+        monthDay.dateFormat = "MMM d"
         let weekday = DateFormatter()
         weekday.dateFormat = "EEEE"
         weekday.locale = Locale(identifier: "en_US")
@@ -319,8 +328,11 @@ struct DailyMarkdownPresentation: Equatable {
     let scrollTargetParagraphID: String?
     let scrollRequest: ScrollRequest
     let storyHeading: String
+    let emptyStateTitle: String
+    let emptyStateMessage: String?
+    let emptyStateSymbol: String
 
-    init(story: DailyStory?, selectedParagraphID: String? = nil) {
+    init(story: DailyStory?, selectedParagraphID: String? = nil, isGenerating: Bool = false) {
         paragraphs = story?.sections.flatMap(\.paragraphs) ?? []
         self.selectedParagraphID = selectedParagraphID
         if let selectedParagraphID,
@@ -335,6 +347,15 @@ struct DailyMarkdownPresentation: Equatable {
             paragraphIDs: paragraphs.map(\.id)
         )
         storyHeading = Self.resolvedStoryHeading(for: story, paragraphs: paragraphs)
+        if isGenerating {
+            emptyStateTitle = "Generating your diary…"
+            emptyStateMessage = "Know You is building this day from your local context."
+            emptyStateSymbol = "arrow.triangle.2.circlepath"
+        } else {
+            emptyStateTitle = "No Story Yet"
+            emptyStateMessage = nil
+            emptyStateSymbol = "text.book.closed"
+        }
     }
 
     var showsEmptyState: Bool {

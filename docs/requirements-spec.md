@@ -61,6 +61,10 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 
 用户应能看到通知导入是否可用、日记引擎是否可用、最近一次刷新是否成功，而不是只看到“没有内容”。
 
+### 4.6 感知应用有新版本可用
+
+当应用存在新版本时，用户应能在主窗口左上标题栏看到一个明确但不打扰正文阅读的更新提醒，并在点击后理解当前版本、可用版本以及更新动作。
+
 ## 5. 功能范围
 
 ### 5.1 In Scope
@@ -75,9 +79,10 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 每日 Markdown 导出
 - story-first 三栏阅读器
 - 段落级 source link
-- 五步 onboarding 与 settings 配置
+- 真实阅读器上的 onboarding coachmarks 与 settings 配置
 - 左下角 `...` 二级菜单中的 `Sync Memory`
 - 顶部 diary engine selector
+- 左上标题栏更新提醒胶囊与更新 sheet
 - 可选 diary engine：
   - OpenAI API
   - Claude Code CLI
@@ -96,6 +101,8 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 主界面中的原始 Markdown 编辑模式
 - App Store 分发约束下的沙盒化方案
 - 双向外部知识库同步
+
+当前版本的对外分发方式是 Developer ID + notarization，不是 Mac App Store。
 
 ## 6. 功能需求
 
@@ -138,7 +145,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - story 中每个段落都必须保留来源事件 ID 列表
 - 系统必须为同一天生成 Markdown 文件
 - Markdown 必须包含 story 内容和 source notes
-- summarizer 不是首次完成 onboarding 与首次生成故事的前置依赖
+- summarizer 是首次完成 onboarding 与首次生成真实故事的前置依赖；用户必须先完成引擎配置
 - 当 summarizer 成功时，story 段落内容允许携带 Markdown 结构，而不是被限制为纯文本
 - 当前 diary prompt 必须把模型输出组织为以下一级标题：
   - `# 你今天做得很棒`
@@ -190,9 +197,27 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 已识别渠道的 logo 解析不能只依赖精确 app 名，需要同时兼容中文名、英文名和常见 bundle-id 风格名称
 - `Source Notes` 不在中间阅读区重复显示，来源追溯继续通过右侧 source detail 区完成
 - 不同日期允许并发刷新，但同一天已有刷新任务进行中时，该天刷新按钮必须禁用
-- 主窗口右下角必须持续显示一个只读的 build badge，格式为 `v<marketing-version> (<build-number>) · <git-short-sha>`；当没有 SHA 时退回到 `v<marketing-version> (<build-number>)`
+- 主窗口右下角必须持续显示一个只读的 build badge，格式为 `v<marketing-version> · <MM-dd HH:mm> (<build-number>) · <git-short-sha>`；当没有 build time 或 SHA 时必须安全退回，只省略缺失片段
+- 当检测到真实新版本时，主窗口左上标题栏必须显示一个更新胶囊，位置应紧邻 traffic lights 但不得遮挡系统关闭、最小化、缩放按钮的命中区域
+- 更新胶囊默认隐藏，只有存在 `UpdateOffer` 时才允许显示
+- 更新胶囊文案固定为 `new updates`
+- 用户点击更新胶囊后，系统必须打开更新 sheet，而不是直接开始更新
+- 用户关闭更新 sheet 而不更新时，更新胶囊必须继续保留
+- 更新 sheet 必须显示当前版本、可用版本和简短更新说明
+- direct build 的更新 sheet 主按钮必须表示下载或打开官网更新入口；App Store build 的主按钮必须表示前往 App Store
+- App Store build 不得伪装成可在应用内自行安装更新
 
-## 6.6 键盘与焦点需求
+## 6.6 更新检查与分发需求
+
+- 系统必须在应用启动时检查更新
+- 当应用持续运行时，系统必须至少每天再次检查一次更新
+- 更新检查失败不得打断主阅读器，也不得弹出侵入式错误
+- 系统必须支持通过构建元数据解析当前分发渠道，至少区分 `direct`、`appStore`、`unknown`
+- 如果当前构建未配置 update feed，系统必须安全退回为“无可用更新提醒”，而不是报错或显示伪状态
+- 更新提醒的可见行为必须在 direct build 和 App Store build 之间保持一致；两者差异只允许体现在主动作上
+- 更新胶囊必须在成功安装到该版本或更高版本后才消失；不得因为用户关闭 sheet 就消失
+
+## 6.7 键盘与焦点需求
 
 阅读器必须维护显式焦点模型，而不是完全依赖系统默认焦点。
 
@@ -209,7 +234,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 在 `storyParagraphs` 中，`Left` 或退出命令回到日期列表
 - 每个日期需要记住最近一次选中的段落
 
-## 6.7 配置需求
+## 6.8 配置需求
 
 用户必须能够配置：
 
@@ -219,7 +244,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 
 配置入口包括：
 
-- 首次 onboarding 中的故事化五步流程
+- 首次 onboarding 中的 Demo Day + coachmark 流程
 - 主窗口左下角 `...` 菜单中的 `Sync Memory`
 - 主窗口右上角 diary engine selector
 - Settings 页面中的次级状态入口
@@ -227,20 +252,26 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 
 onboarding 的配置约束为：
 
-- 首次 onboarding 必须采用五步 story flow：`intro`、`capture`、`safety`、`preview`、`permissions`
-- `intro` 步必须直接说明“内容以本地 Markdown 文件保存在当前 Mac 上”
-- `capture` 步必须用产品语言解释通知与剪贴板都是自动采集的
-- `safety` 步必须说明过滤发生在持久化之前，且本地文件也不是原始转储
-- `preview` 步必须先于权限申请出现，让用户先看到接近真实阅读器的 diary 结果
-- `permissions` 步必须解释每项权限与最终 story 质量的关系，而不是只展示系统术语
-- vault 目录选择必须保留在 onboarding 中，但不应作为第一屏主任务
-- diary engine 配置不得阻塞用户完成首次 onboarding；它应作为阅读器中的可选增强能力保留
+- 首次 onboarding 必须叠加在真实主阅读器之上，而不是跳到独立欢迎页
+- 首次 onboarding 的固定顺序必须为：`demoRead`、`demoClick`、`demoReference`、`privacy`、`permissions`、`enginePrompt`、`engineSetup`、`generating`
+- `demoRead` 必须先让用户阅读中栏里的 `Demo Day`
+- `demoClick` 必须要求用户点击正文段落，右侧 source detail 才进入下一步解释
+- `demoReference` 必须说明右侧 reference 会跟随阅读位置变化，而不是重复展示另一份正文
+- `privacy` 必须直接说明“内容以本地 `.md` 文件保存在当前 Mac 上、没有服务端”
+- `permissions` 只允许把 `Full Disk Access` 作为唯一硬 gate，并且必须解释通知与剪贴板上下文如何帮助 story 生成
+- `enginePrompt` 必须高亮真实产品里的引擎按钮，`engineSetup` 必须复用现有引擎配置模块，而不是造一套 onboarding 专用配置页
+- 引擎配置必须阻塞 onboarding 完成；未配置成功前不得进入真实生成流程
+- onboarding 完成后必须自动启动一次性过去 7 天 bootstrap，而不是要求用户手动刷新
+- `Demo Day` 在 onboarding 完成后不得消失，必须继续保留在左侧列表底部
 - 如果当前默认引擎为 `None` 且用户没有显式保持 `None`，主应用后续可以自动选择一个已验证绿色引擎；如果用户已明确选择某个非 `None` 引擎，或已明确保持 `None`，则不得被被动覆盖
 
 ## 6.8 自动化需求
 
 - 应用启动时必须立即执行一次自动刷新
 - 应用启动时还必须立即执行一次今天的通知补同步
+- 首次完成 onboarding 时，系统必须额外执行一次且仅一次“过去 7 天 bootstrap”
+- onboarding bootstrap 必须只覆盖今天及之前 6 个自然日，并跳过已有成功内容的日期
+- onboarding bootstrap 不得在后续正常启动时重复执行
 - 系统必须每 3 小时执行一次自动刷新
 - 系统必须每 30 秒执行一次今天的通知增量补同步
 - 自动刷新应先尝试导入通知，再生成内容
@@ -258,6 +289,14 @@ onboarding 的配置约束为：
 - 每次手动或自动刷新都必须记录阶段耗时、attempt、超时和最终结果，便于排查性能与失败原因
 - 剪贴板采集必须继续作为后台实时能力存在，不能通过手动刷新补回历史缺失内容
 - 读取旧 story 或切换日期不得被动改写 `.story.json` 或 `.md`
+
+## 6.9 发布需求
+
+- 系统必须能产出一个使用 `Developer ID Application` 签名的 macOS release app
+- Release 构建必须启用 hardened runtime，满足 notarization 前提
+- 项目必须提供可复用脚本来完成 archive、压缩、notarize、staple、verify
+- Apple ID app-specific password 不得保存在仓库文件中，必须通过 keychain `notarytool` profile 管理
+- 发布验证必须至少包含 `codesign --verify --deep --strict --verbose=2`、`stapler validate`、`spctl --assess --type execute -vv`
 - `fullRecovery` 成功写盘前必须执行一次规范化，以保证新生成 `Details` 保持 paragraph-level workstream 结构
 
 ## 6.9 状态反馈需求
@@ -372,6 +411,6 @@ Markdown 导出也应服务于这个目标：
 - 用户能在日期列表里看到已有日期
 - 用户选中某天后，能看到可阅读的 story
 - 用户手动刷新某天时，只会刷新该天，不会顺带刷新其他日期
-- 用户首次进入应用时，先看到 story-first onboarding，而不是配置项堆叠
-- 用户在看到 preview 之后才会被请求理解和开启关键权限
-- 用户即使没有配置 summarizer，也能完成 onboarding 并生成第一篇本地日记
+- 用户首次进入应用时，先看到真实阅读器里的 `Demo Day` 与 coachmarks，而不是配置项堆叠
+- 用户在理解 Demo Day 与右侧 reference 之后，才会被请求理解隐私、权限与引擎配置
+- 用户只有完成 `Full Disk Access + 引擎配置` 后，才会自动开始生成过去 7 天的真实日记

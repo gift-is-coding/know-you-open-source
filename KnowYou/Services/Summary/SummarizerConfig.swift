@@ -1,5 +1,7 @@
 import Foundation
 
+typealias SummarizerType = DiaryEngine
+
 struct SummarizerConfig {
     var defaultEngine: DiaryEngine
     var claudeCLIPath: String
@@ -145,12 +147,14 @@ struct SummarizerConfig {
     static func resolvedExecutablePath(
         configuredPath: String,
         commandName: String,
-        environment: [String: String]
+        environment: [String: String],
+        fallbackSearchDirectories: [String] = []
     ) -> String? {
         for candidate in candidateExecutablePaths(
             configuredPath: configuredPath,
             commandName: commandName,
-            environment: environment
+            environment: environment,
+            fallbackSearchDirectories: fallbackSearchDirectories
         ) {
             if FileManager.default.isExecutableFile(atPath: candidate) {
                 return candidate
@@ -163,7 +167,8 @@ struct SummarizerConfig {
     private static func candidateExecutablePaths(
         configuredPath: String,
         commandName: String,
-        environment: [String: String]
+        environment: [String: String],
+        fallbackSearchDirectories: [String] = []
     ) -> [String] {
         var candidates: [String] = []
         var seen: Set<String> = []
@@ -187,6 +192,10 @@ struct SummarizerConfig {
         }
 
         for directory in commonExecutableDirectories(environment: environment) {
+            append(URL(fileURLWithPath: directory).appendingPathComponent(commandName).path)
+        }
+
+        for directory in fallbackSearchDirectories {
             append(URL(fileURLWithPath: directory).appendingPathComponent(commandName).path)
         }
 

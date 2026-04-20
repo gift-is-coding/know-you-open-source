@@ -25,7 +25,8 @@ Know You 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 2. 存储与调度层：SQLite、run 记录、刷新日志、today-only 定时自动化
 3. 生成层：本地 fallback story 生成、可选云端/CLI 总结器、Markdown 组合
 4. 记忆同步层：Obsidian / OpenClaw 目标探测、文件复制、LaunchAgent 定时注册
-5. 界面层：五步 story onboarding、三栏主阅读器、设置页、菜单栏状态入口、About & Community 对外入口
+5. 界面层：真实三栏阅读器上的 onboarding coachmarks、设置页、菜单栏状态入口、About & Community 对外入口
+6. 分发层：Developer ID release archive、notarytool notarization、stapled zip 验证
 
 ```mermaid
 flowchart LR
@@ -52,7 +53,22 @@ flowchart LR
     R --> S[Obsidian Vault/Know You/Daily Memories]
     R --> T[OpenClaw Workspace/know-you-memory]
     F --> U[LaunchAgentManager]
+    V[build-release.sh] --> W[KnowYou.xcarchive]
+    W --> X[KnowYou.app zip]
+    X --> Y[notarytool submit]
+    Y --> Z[stapler / spctl verify]
 ```
+
+## 2.1 发布与分发
+
+当前项目已经补上一条独立于本地调试签名的外部分发路径：
+
+- Release 构建使用 `Developer ID Application`
+- Release 启用 hardened runtime
+- 分发脚本通过 `scripts/build-release.sh`、`scripts/notarize-release.sh`、`scripts/verify-release.sh` 串起 archive、压缩、notarize、staple、Gatekeeper 验证
+- Apple notarization 凭据通过本机 keychain 中的 `notarytool` profile 管理，而不是保存在仓库里
+
+这条链路的目标是让仓库能稳定产出可上传到下载页的 macOS release zip，同时不影响 Debug/测试阶段的日常签名配置。
 
 ## 3. 运行时入口
 
@@ -66,7 +82,7 @@ flowchart LR
 - 菜单栏入口
 - Settings 窗口
 
-如果用户尚未完成 onboarding，则先进入五步 story flow；否则直接进入主阅读器。
+如果用户尚未完成 onboarding，则仍然进入真实主阅读器，但会叠加 Demo Day + coachmark 引导；否则直接进入正常主阅读器。
 
 菜单栏中的 `Open Know You` 会显式调用 `openWindow(id: "main")` 并激活应用，因此主窗口既能由正常启动拉起，也能由菜单栏重新唤起。
 
@@ -80,7 +96,7 @@ flowchart LR
 - 维护 UI 状态与服务状态
 - 管理选中日期、选中 story、选中段落及其来源事件
 - 触发“按天刷新”、今日通知补同步与 today-only 自动刷新
-- 在 onboarding 完成时应用 vault 目录，并持久化完成状态
+- 持久化 onboarding 进度，并在完成后触发一次性过去 7 天 bootstrap
 
 `AppEnvironment` 本身则负责组装主要依赖，包括数据库、隐私过滤器、采集器、composer 与 summarizer，见 [AppEnvironment.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppEnvironment.swift)。
 
@@ -107,6 +123,22 @@ flowchart LR
 - 暴露 `openSyncMemoryPanel()`、`closeSyncMemoryPanel()`、`syncMemoryNow()`
 - 在用户修改自动同步配置时注册或移除用户级 `LaunchAgent`
 - 通过 `SyncMemoryCoordinator` 把全部 `YYYY-MM-DD.md` 复制到外部记忆目录，并以同名覆盖方式做增量修正
+
+当前 `AppState` 还负责应用更新提醒编排：
+
+- 持有 `UpdateOffer`、`isShowingUpdateSheet`、`lastUpdateCheckAt`
+- 在启动时和长时间运行中的每日检查节奏上触发更新检查
+- 把 direct build 与 App Store build 的主动作分流为“打开官方下载链接”或“打开 App Store”
+- 保证更新胶囊只在存在真实 offer 时显示，并且关闭 sheet 后仍继续保留
+
+更新实现被拆成三个边界清晰的部件：
+
+- `UpdateChannelResolver`：根据 `KYUpdateChannel` 解析当前分发渠道
+- `UpdateService`：拉取远端 metadata、比较版本、生成统一的 `UpdateOffer`
+- `MainWindowView.toolbar`：通过 toolbar leading 区域把 SwiftUI 胶囊稳定挂到主窗口标题栏左上角
+
+当前默认行为是“如果构建元数据里配置了 update feed，就执行真实检查；否则安全退回 `NoopUpdateService`”。这让产品层已经具备双渠道 UI 和状态机；其中 direct 渠道当前会通过 `DirectAppUpdating` 默认实现打开远端 metadata 提供的官方下载链接，后续仍可继续桥接到 Sparkle 一类真正的自更新器。
+
 Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 - 作者联系入口
@@ -173,7 +205,7 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 - `bearer`
 - `private_key`
 
-这意味着系统遵循“先过滤，后持久化”的边界，原始敏感文本不应进入 SQLite 或最终导出工件。这个边界也被 onboarding 的 `safety` 步显式解释给用户，而不是只留在实现内部。
+这意味着系统遵循“先过滤，后持久化”的边界，原始敏感文本不应进入 SQLite 或最终导出工件。这个边界也会在 onboarding 的隐私与权限说明中显式解释给用户，而不是只留在实现内部。
 
 当前完整的法律正文与社区正文并不内嵌在应用中，而是先由仓库根目录下的 Markdown 文档承载，再由 Settings 页提供外部打开入口。
 
@@ -372,32 +404,39 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 ### 9.1 Onboarding
 
-[OnboardingView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Onboarding/OnboardingView.swift) 当前是一个五步 story onboarding，由 [OnboardingContent.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Onboarding/OnboardingContent.swift) 提供静态叙事内容与 CTA。
+[OnboardingView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Onboarding/OnboardingView.swift) 当前把 onboarding 叠加在真实主阅读器之上，由 [OnboardingContent.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Onboarding/OnboardingContent.swift) 提供 coachmark 内容，由 [OnboardingDemoStory.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Onboarding/OnboardingDemoStory.swift) 提供 Demo Day 数据。
 
 步骤顺序固定为：
 
-1. `intro`
-2. `capture`
-3. `safety`
-4. `preview`
+1. `demoRead`
+2. `demoClick`
+3. `demoReference`
+4. `privacy`
 5. `permissions`
+6. `enginePrompt`
+7. `engineSetup`
+8. `generating`
 
 这套 flow 的架构要点是：
 
-- 用 `OnboardingStep` enum，而不是整数页码，管理顺序、前后导航与进度状态
-- `intro` 先给出“Markdown 保存在本机”的产品承诺
-- `capture` 用时间片段解释剪贴板与通知如何自动构成一天
-- `safety` 明确说明过滤发生在持久化前，且同步是可选增强
-- `preview` 在权限请求之前展示接近真实阅读器的 diary preview
-- `permissions` 最后解释各项权限的用户价值，并包含 vault 目录选择
+- onboarding 直接叠加在真实三栏阅读器上，而不是切到单独的欢迎页
+- 用 `OnboardingProgressState` enum，而不是整数页码，管理顺序、恢复与阻塞状态
+- `demoRead` 先让用户在中栏阅读 Demo Day
+- `demoClick` 要求用户点击正文段落，右侧 sources 随阅读位置联动
+- `demoReference` 解释段落与 reference 的追溯关系
+- `privacy` 用居中 coachmark 强调 `.md` 纯本地与“没有服务端”
+- `permissions` 只 gate `Full Disk Access`，并在同位置 coachmark 里解释通知与剪贴板上下文价值
+- `enginePrompt` 只负责高亮真实产品里的引擎按钮，`engineSetup` 则在现有引擎配置组件里完成默认引擎设置
+- `generating` 在完成 onboarding 后自动触发一次性过去 7 天 bootstrap，而不是要求用户手动点刷新
 
 最终完成动作只要求：
 
-- 应用当前 vault 目录
 - 设置 `hasCompletedOnboarding`
-- 退出 onboarding 进入主界面
+- 持久化 onboarding 当前步骤，支持退出后恢复
+- onboarding 完成后恢复真实列表，并自动补写过去 7 天缺失日记
+- `Demo Day` 不会消失，而是作为只读 demo 项保留在左侧列表底部
 
-summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞项。
+当前 onboarding 的阻塞顺序是：`Demo Day -> reference -> privacy -> Full Disk Access -> engine -> generating`。
 
 ### 9.2 主阅读器
 
@@ -426,13 +465,23 @@ summarizer 不再是 onboarding 的单独步骤，也不是首次完成的阻塞
 - alias 解析会先做标准化精确匹配，再对 bundle-id 风格来源名做保守 fuzzy match，因此同一 app 的中文名、英文名和诸如 `com.tencent.xinWeChat` 这样的来源字符串都能复用同一品牌 asset
 - 中栏阅读区内支持“重生成当前选中日期”
 - 主界面不再依赖顶部 status banner 承载运行时状态
-- 主窗口右下角会显示只读 build badge；marketing version 仍来自 bundle，build number 与 git short SHA 由 Xcode build phase 写入构建产物
+- 主窗口右下角会显示只读 build badge；marketing version 仍来自 bundle，build number、build time 与 git short SHA 由 Xcode build phase 写入构建产物
+- 主窗口标题栏左上角通过 toolbar leading 区域显示更新胶囊，并且不会覆盖 traffic lights 的点击区域
+- 当存在 `UpdateOffer` 时，点击胶囊会打开统一的更新 sheet；同一套 UI 会按渠道切换主按钮文案和动作
 - 窗口右上角提供 `DiaryEngineSelectorButton`
 - 一级面板列出 `Claude / Codex / Gemini / Openclaw / API` 五个引擎及状态灯
 - 只有绿色引擎允许直接切为默认项
 - API 行会进入 `APIDetailSheet`，配置 `baseURL`、`model`、`token` 并执行 `Test Connection`
 
 需要注意的是，当前实现虽然在 `AppState` 中已经保存了从 `.md` 提取出来的 `selectedSourceNotesMarkdown`，但主阅读器仍然不在中栏重复显示 `Source Notes`；来源追溯继续主要通过右栏 source detail 完成。
+
+更新提醒 UI 由以下两个新视图承担：
+
+- [UpdatePillView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Updates/UpdatePillView.swift)：标题栏胶囊
+- [UpdateSheet.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Updates/UpdateSheet.swift)：更新详情 sheet
+
+它们共享同一套视觉壳，但主按钮文案和主动作来自 `UpdateOffer.actionKind`，因此 direct build 与 App Store build 的交互能保持一致外观、不同动作。
+当前胶囊文案固定为 `new updates`，版本号与发布时间放在更新 sheet 与右下角 build badge 中承载，而不是挤在左上角提示里。
 
 ### 9.3 键盘焦点模型
 
@@ -542,13 +591,14 @@ sequenceDiagram
 
 ### 10.4 首次用户完成 onboarding
 
-1. 用户进入 `intro`，先看到本地 Markdown 承诺
-2. 用户经过 `capture` 与 `safety`，理解自动采集与过滤边界
-3. 用户在 `preview` 先看到 diary 结果
-4. 用户在 `permissions` 处理 vault 与 Full Disk Access
-5. `OnboardingView.finish()` 调用 `AppState.applyVaultURL(...)`
-6. `hasCompletedOnboarding` 被写入 `UserDefaults`
-7. 应用切回主阅读器，由自动化流程开始生成真实内容
+1. 用户首次进入真实主阅读器，默认选中 `Demo Day`
+2. `demoRead` / `demoClick` / `demoReference` 依次引导用户先读正文、再点段落、再理解右侧 reference
+3. `privacy` 先建立 “`.md` 纯本地、无服务端” 的信任边界
+4. `permissions` 只要求用户完成 `Full Disk Access`
+5. `enginePrompt` 高亮右上角真实引擎按钮，用户在 `engineSetup` 中完成默认引擎设置
+6. `completeOnboarding()` 写入 `hasCompletedOnboarding` 与 onboarding 进度状态
+7. 应用立即触发一次性过去 7 天 bootstrap，并把缺失日期先以占位形式插入左侧列表
+8. bootstrap 完成后恢复 steady-state 自动化；`Demo Day` 继续留在列表底部供用户回看
 
 ## 11. 当前架构约束
 
@@ -558,7 +608,7 @@ sequenceDiagram
 - 某些通知横幅即使出现过，也未必被 macOS 持久化
 - 当前原始事件来源只有两类：clipboard 与 notification
 - story 结构当前已经简化为单 section 的日记式输出，而不是多 section 报表
-- onboarding preview 使用静态叙事内容，不是从真实用户数据实时生成
+- onboarding 的 `Demo Day` 使用静态叙事内容，不是从真实用户数据实时生成
 - 当前 Xcode 工程对本地 Debug 构建使用手动代码签名，以减少重启后 TCC 权限丢失带来的验证噪音
 
 ## 12. 设计取向总结
@@ -570,6 +620,6 @@ sequenceDiagram
 - 用 story 作为主阅读对象
 - 用 source-linked detail 保留可追溯性
 - 用 Markdown 作为可移植导出格式
-- 用先预览、后权限的 onboarding 叙事降低首次使用摩擦
+- 用真实产品上的 Demo Day + coachmark 引导降低首次使用摩擦
 
 因此，这个项目现在的本质是“以故事阅读为中心、以原始来源可追溯为底座的本地日记系统”。

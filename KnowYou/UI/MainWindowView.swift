@@ -8,6 +8,19 @@ struct MainWindowView: View {
     @State private var isShowingAPIDetail = false
     @State private var apiConfigDraft = SummarizerConfig.load()
     @State private var isTestingAPIConnection = false
+    let showsOnboardingEngineButton: Bool
+    let onOpenEngineSetup: (() -> Void)?
+    let onStoryParagraphTap: ((String) -> Void)?
+
+    init(
+        showsOnboardingEngineButton: Bool = false,
+        onOpenEngineSetup: (() -> Void)? = nil,
+        onStoryParagraphTap: ((String) -> Void)? = nil
+    ) {
+        self.showsOnboardingEngineButton = showsOnboardingEngineButton
+        self.onOpenEngineSetup = onOpenEngineSetup
+        self.onStoryParagraphTap = onStoryParagraphTap
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -26,12 +39,14 @@ struct MainWindowView: View {
                 dayKey: appState.selectedDate,
                 refreshJob: selectedRefreshJob,
                 refreshLogNotice: appState.refreshLogNotice(for: appState.selectedDate),
+                isGenerating: appState.isGeneratingJournal(for: appState.selectedDate),
                 isActive: appState.readerFocus == .storyParagraphs,
                 onSelectParagraph: { paragraphID in
+                    appState.focusStoryParagraphs()
                     appState.selectStoryParagraph(paragraphID)
+                    onStoryParagraphTap?(paragraphID)
                 },
                 onFocusStory: {
-                    guard appState.readerFocus != .storyParagraphs else { return }
                     appState.focusStoryParagraphs()
                 },
                 onRefresh: {
@@ -40,6 +55,7 @@ struct MainWindowView: View {
                     }
                 }
             )
+            .onboardingCoachmarkTarget(.storyPanel)
         } detail: {
             StorySourceDetailView(
                 selectedParagraph: appState.selectedStoryParagraph,
@@ -47,6 +63,7 @@ struct MainWindowView: View {
                 allEvents: appState.selectedDayEvents
             )
             .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
+            .onboardingCoachmarkTarget(.sourcesPanel)
         }
         .frame(minWidth: 1240, minHeight: 720)
         .overlay(alignment: .bottomTrailing) {
@@ -61,12 +78,21 @@ struct MainWindowView: View {
                 .accessibilityIdentifier("build-version-badge")
         }
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                if let offer = appState.updateOffer {
+                    UpdatePillView(title: offer.pillTitle) {
+                        appState.openUpdateSheet()
+                    }
+                }
+            }
             ToolbarItemGroup(placement: .primaryAction) {
                 DiaryEngineSelectorButton(
                     title: currentEngineTitle,
                     state: currentEngineState,
-                    action: openEnginePanel
+                    emphasized: showsOnboardingEngineButton || !appState.summarizerStatus.isConfigured,
+                    action: openEngineSelector
                 )
+                .onboardingCoachmarkTarget(.engineButton)
                 .popover(isPresented: $isShowingEnginePanel, arrowEdge: .top) {
                     DiaryEnginePanel(
                         rows: engineRows,
@@ -90,6 +116,31 @@ struct MainWindowView: View {
                         }
                     )
                 }
+            }
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { appState.isShowingUpdateSheet },
+                set: { isPresented in
+                    if isPresented {
+                        appState.openUpdateSheet()
+                    } else {
+                        appState.dismissUpdateSheet()
+                    }
+                }
+            )
+        ) {
+            if let offer = appState.updateOffer {
+                UpdateSheet(
+                    currentVersion: AppBuildMetadata.current.marketingVersion,
+                    offer: offer,
+                    onPrimaryAction: {
+                        appState.performUpdatePrimaryAction()
+                    },
+                    onClose: {
+                        appState.dismissUpdateSheet()
+                    }
+                )
             }
         }
         .sheet(isPresented: $isShowingAPIDetail) {
@@ -233,6 +284,14 @@ struct MainWindowView: View {
 
     private func openEnginePanel() {
         isShowingEnginePanel = true
+    }
+
+    private func openEngineSelector() {
+        if let onOpenEngineSetup {
+            onOpenEngineSetup()
+        } else {
+            openEnginePanel()
+        }
     }
 
     private func openSyncMemoryPanel() {

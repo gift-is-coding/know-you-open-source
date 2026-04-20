@@ -116,11 +116,11 @@ struct EngineProbe: Sendable {
 
             let payload = try JSONDecoder().decode(ResponsesResponse.self, from: data)
             let outputText = payload.outputText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard normalizedAcknowledgement(from: outputText) != nil else {
+            guard !outputText.isEmpty else {
                 return makeResult(
                     engine: .openAI,
                     state: .yellow,
-                    detail: "API response did not include an expected acknowledgement.",
+                    detail: "API response did not include any text.",
                     verifiedAt: Date()
                 )
             }
@@ -128,7 +128,7 @@ struct EngineProbe: Sendable {
             return makeResult(
                 engine: .openAI,
                 state: .green,
-                detail: "API returned an expected acknowledgement.",
+                detail: "API returned non-empty text.",
                 verifiedAt: Date()
             )
         } catch {
@@ -138,24 +138,6 @@ struct EngineProbe: Sendable {
                 detail: "API request failed: \(error.localizedDescription)",
                 verifiedAt: Date()
             )
-        }
-    }
-
-    private func normalizedAcknowledgement(from raw: String) -> String? {
-        let normalized = raw
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: ".!?"))
-
-        guard !normalized.isEmpty else {
-            return nil
-        }
-
-        switch normalized {
-        case "ok", "okay":
-            return normalized
-        default:
-            return nil
         }
     }
 

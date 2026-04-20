@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import AppKit
 
 enum ReaderFocusZone: Hashable {
     case dateList
@@ -217,6 +218,200 @@ struct EngineRuntimeStatus: Equatable {
     var configurationSignature: String = ""
 }
 
+enum OnboardingBootstrapState: String, Codable, Equatable {
+    case idle
+    case pending
+    case inProgress
+    case complete
+}
+
+struct OnboardingReferenceAdvancePolicy: Equatable {
+    let requiredSelections: Int
+    let delaySeconds: TimeInterval
+    private(set) var firstSelectionAt: Date?
+    private(set) var validSelectionCount: Int
+
+    init(requiredSelections: Int = 2, delaySeconds: TimeInterval = 6, firstSelectionAt: Date? = nil, validSelectionCount: Int = 0) {
+        self.requiredSelections = requiredSelections
+        self.delaySeconds = delaySeconds
+        self.firstSelectionAt = firstSelectionAt
+        self.validSelectionCount = validSelectionCount
+    }
+
+    mutating func registerValidParagraphSelection(at date: Date) -> Bool {
+        if firstSelectionAt == nil {
+            firstSelectionAt = date
+        }
+        validSelectionCount += 1
+        return validSelectionCount >= requiredSelections
+    }
+
+    func shouldAdvanceReferenceStep(at date: Date) -> Bool {
+        guard let firstSelectionAt, validSelectionCount > 0 else {
+            return false
+        }
+        return date.timeIntervalSince(firstSelectionAt) >= delaySeconds
+    }
+
+    mutating func reset() {
+        firstSelectionAt = nil
+        validSelectionCount = 0
+    }
+}
+
+enum JournalListOrdering {
+    static func orderedDates(
+        noteDays: Set<String>,
+        placeholderDays: [String] = [],
+        includeDemoDay: Bool
+    ) -> [String] {
+        let allRealDays = noteDays
+            .union(placeholderDays)
+            .filter { $0 != OnboardingDemoStory.demoDayKey }
+            .sorted(by: >)
+
+        if includeDemoDay {
+            return allRealDays + [OnboardingDemoStory.demoDayKey]
+        }
+
+        return allRealDays
+    }
+}
+
+enum OnboardingProgressState: String, Codable, Equatable {
+    case demoReadPending
+    case demoClickPending
+    case demoReferencePending
+    case privacyPending
+    case permissionsPending
+    case enginePromptPending
+    case engineSetupPending
+    case firstGenerationInProgress
+    case complete
+
+    var currentStep: OnboardingStep? {
+        switch self {
+        case .demoReadPending:
+            return .demoRead
+        case .demoClickPending:
+            return .demoClick
+        case .demoReferencePending:
+            return .demoReference
+        case .privacyPending:
+            return .privacy
+        case .permissionsPending:
+            return .permissions
+        case .enginePromptPending:
+            return .enginePrompt
+        case .engineSetupPending:
+            return .engineSetup
+        case .firstGenerationInProgress:
+            return .generating
+        case .complete:
+            return nil
+        }
+    }
+
+    var isComplete: Bool {
+        self == .complete
+    }
+
+    static func pending(for step: OnboardingStep) -> OnboardingProgressState {
+        switch step {
+        case .demoRead:
+            return .demoReadPending
+        case .demoClick:
+            return .demoClickPending
+        case .demoReference:
+            return .demoReferencePending
+        case .privacy:
+            return .privacyPending
+        case .permissions:
+            return .permissionsPending
+        case .enginePrompt:
+            return .enginePromptPending
+        case .engineSetup:
+            return .engineSetupPending
+        case .generating:
+            return .firstGenerationInProgress
+        }
+    }
+}
+
+struct OnboardingProgress: Equatable {
+    var state: OnboardingProgressState
+
+    init(state: OnboardingProgressState = .demoReadPending) {
+        self.state = state
+    }
+
+    init(step: OnboardingStep) {
+        self.state = OnboardingProgressState.pending(for: step)
+    }
+
+    var currentStep: OnboardingStep? {
+        state.currentStep
+    }
+
+    var isComplete: Bool {
+        state.isComplete
+    }
+
+    func restored(
+        isFullDiskAccessReady: Bool,
+        isEngineReady: Bool
+    ) -> OnboardingProgress {
+        guard let currentStep else {
+            return self
+        }
+
+        switch currentStep {
+        case .demoRead, .demoClick, .demoReference, .privacy:
+            return self
+        case .permissions:
+            if !isFullDiskAccessReady {
+                return OnboardingProgress(state: .permissionsPending)
+            }
+            return OnboardingProgress(state: .enginePromptPending)
+        case .enginePrompt:
+            if !isFullDiskAccessReady {
+                return OnboardingProgress(state: .permissionsPending)
+            }
+            return OnboardingProgress(state: .enginePromptPending)
+        case .engineSetup:
+            if !isFullDiskAccessReady {
+                return OnboardingProgress(state: .permissionsPending)
+            }
+            if !isEngineReady {
+                return OnboardingProgress(state: .engineSetupPending)
+            }
+            return OnboardingProgress(state: .firstGenerationInProgress)
+        case .generating:
+            if !isFullDiskAccessReady {
+                return OnboardingProgress(state: .permissionsPending)
+            }
+            if !isEngineReady {
+                return OnboardingProgress(state: .enginePromptPending)
+            }
+            return OnboardingProgress(state: .firstGenerationInProgress)
+        }
+    }
+}
+
+private struct ReaderPresentationSnapshot {
+    let availableDates: [String]
+    let selectedDate: String?
+    let selectedMarkdownURL: URL?
+    let noteIndex: [String: URL]
+    let selectedStory: DailyStory?
+    let selectedStoryParagraphID: String?
+    let selectedStorySourceEvents: [EventRecord]
+    let selectedDayEvents: [EventRecord]
+    let selectedMarkdownText: String?
+    let selectedSourceNotesMarkdown: String?
+    let readerFocus: ReaderFocusZone
+}
+
 @MainActor
 @Observable
 final class AppState {
@@ -259,12 +454,21 @@ final class AppState {
     var selectedSourceNotesMarkdown: String?
     var refreshLogNoticesByDay: [String: String] = [:]
     var readerFocus: ReaderFocusZone = .dateList
+    var onboardingProgress: OnboardingProgress
+    var onboardingBootstrapState: OnboardingBootstrapState
+    var onboardingBootstrapDayKeys: [String]
+    var updateOffer: UpdateOffer?
+    var isShowingUpdateSheet = false
+    var lastUpdateCheckAt: Date?
     private var refreshJobsByDay: [String: DayRefreshJob] = [:]
     private(set) var environment: AppEnvironment?
     @ObservationIgnored private var automationTimer: Timer?
     @ObservationIgnored private var notificationCatchUpTimer: Timer?
+    @ObservationIgnored private var onboardingBootstrapTask: Task<Void, Never>?
     @ObservationIgnored private var paragraphSelectionByDay: [String: String] = [:]
     @ObservationIgnored private var refreshTasksByDay: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var liveReaderSnapshot: ReaderPresentationSnapshot?
+    @ObservationIgnored private var isPresentingOnboardingDemo = false
     @ObservationIgnored private let notificationSyncInterval: TimeInterval = 30
     @ObservationIgnored private let automationInterval: TimeInterval = 10_800
     @ObservationIgnored private let notificationOverlapBuffer: TimeInterval = 30
@@ -356,6 +560,7 @@ final class AppState {
         ) as? Bool
         self.autoSelectionSuppressedByExplicitNone = persistedSuppression ?? false
         self.lastNotificationImportAt = userDefaults.object(forKey: UserDefaultsKeys.lastNotificationImportAt) as? Date
+        self.lastUpdateCheckAt = userDefaults.object(forKey: UserDefaultsKeys.lastUpdateCheckAt) as? Date
         let loadedDefaultEngine = self.summarizerConfig.defaultEngine
         if explicitSummarizerConfig == nil, let injectedSummarizer = environment?.summarizer {
             self.summarizerConfig = Self.reconciledConfig(
@@ -374,6 +579,9 @@ final class AppState {
             environment: environment?.summarizer,
             engineStatuses: initialEngineStatuses
         )
+        onboardingProgress = Self.loadOnboardingProgress(from: userDefaults)
+        onboardingBootstrapState = Self.loadOnboardingBootstrapState(from: userDefaults)
+        onboardingBootstrapDayKeys = Self.loadOnboardingBootstrapDayKeys(from: userDefaults)
         if explicitSummarizerConfig == nil,
            environment?.summarizer == nil,
            self.summarizerConfig.defaultEngine != loadedDefaultEngine {
@@ -395,6 +603,19 @@ final class AppState {
             updateNotificationAccessStatus(using: environment.notificationReader)
             refreshEngineStatuses()
             refreshNotesIndex()
+            if bootstrapServices {
+                restoreOnboardingProgress(
+                    isFullDiskAccessReady: notificationStatus.isDatabaseAvailable,
+                    isEngineReady: summarizerStatus.isConfigured
+                )
+                if onboardingProgress.isComplete {
+                    startAutomation(runImmediately: onboardingBootstrapState == .complete || onboardingBootstrapState == .idle)
+                    resumeOnboardingBootstrapIfNeeded()
+                }
+                Task { @MainActor in
+                    await self.checkForUpdatesIfNeeded(force: true, now: currentDate())
+                }
+            }
             return
         }
 
@@ -424,13 +645,30 @@ final class AppState {
             refreshEngineStatuses()
             refreshNotesIndex()
             statusMessage = "Capture services ready"
-            startAutomation()
+            restoreOnboardingProgress(
+                isFullDiskAccessReady: notificationStatus.isDatabaseAvailable,
+                isEngineReady: summarizerStatus.isConfigured
+            )
+            if onboardingProgress.isComplete {
+                startAutomation(runImmediately: onboardingBootstrapState == .complete || onboardingBootstrapState == .idle)
+                resumeOnboardingBootstrapIfNeeded()
+            }
         } catch {
             statusMessage = "Capture unavailable: \(error.localizedDescription)"
         }
     }
 
+    var shouldShowUpdatePill: Bool {
+        updateOffer != nil
+    }
+
     func selectDate(_ date: String) {
+        if date == OnboardingDemoStory.demoDayKey {
+            readerFocus = .dateList
+            selectedDate = date
+            loadDemoDayPresentation()
+            return
+        }
         readerFocus = .dateList
         selectedDate = date
         selectedMarkdownURL = noteIndex[date]
@@ -443,6 +681,12 @@ final class AppState {
             paragraphSelectionByDay[selectedDate] = paragraphID
         }
         syncSelectedStorySources()
+    }
+
+    func clearOnboardingDemoStorySelection() {
+        guard isPresentingOnboardingDemo else { return }
+        selectedStoryParagraphID = nil
+        selectedStorySourceEvents = []
     }
 
     func selectAdjacentStoryParagraph(step: Int) {
@@ -501,6 +745,69 @@ final class AppState {
 
     func closeSyncMemoryPanel() {
         isShowingSyncMemoryPanel = false
+    }
+
+    func openUpdateSheet() {
+        guard updateOffer != nil else { return }
+        isShowingUpdateSheet = true
+    }
+
+    func dismissUpdateSheet() {
+        isShowingUpdateSheet = false
+    }
+
+    func performUpdatePrimaryAction() {
+        guard let offer = updateOffer else { return }
+
+        switch offer.actionKind {
+        case .installInApp:
+            guard let environment else {
+                statusMessage = DirectAppUpdateError.notConfigured.localizedDescription
+                return
+            }
+
+            statusMessage = "Opening update download..."
+            Task { @MainActor [weak self] in
+                do {
+                    try await environment.directAppUpdater.startUpdate(for: offer)
+                    self?.isShowingUpdateSheet = false
+                } catch {
+                    self?.statusMessage = error.localizedDescription
+                }
+            }
+        case .openAppStore:
+            guard let url = offer.storeURL else {
+                statusMessage = "App Store link unavailable for this build."
+                return
+            }
+
+            if let environment {
+                environment.externalURLOpener(url)
+            } else {
+                NSWorkspace.shared.open(url)
+            }
+            isShowingUpdateSheet = false
+        case .unavailable:
+            statusMessage = "Automatic updates are unavailable for this build."
+        }
+    }
+
+    func checkForUpdatesIfNeeded(force: Bool = false, now: Date = Date()) async {
+        guard let environment else { return }
+        if force == false,
+           let lastUpdateCheckAt,
+           Calendar.current.isDate(lastUpdateCheckAt, inSameDayAs: now) {
+            return
+        }
+
+        do {
+            updateOffer = try await environment.updateService.fetchOffer()
+        } catch {
+            updateOffer = nil
+        }
+
+        lastUpdateCheckAt = now
+        userDefaults.set(now, forKey: UserDefaultsKeys.lastUpdateCheckAt)
     }
 
     func saveSyncMemoryConfig(_ config: SyncMemoryConfig) {
@@ -616,10 +923,6 @@ final class AppState {
         }
 
         guard requestedEngine != defaultEngine else {
-            return
-        }
-
-        guard engineStatuses[requestedEngine]?.state == .green else {
             return
         }
 
@@ -773,11 +1076,6 @@ final class AppState {
     }
 
     func selectDefaultEngine(_ engine: DiaryEngine) {
-        guard engine == .none || engineStatuses[engine]?.state == .green else {
-            statusMessage = "\(engine.displayName) is not verified yet"
-            return
-        }
-
         defaultEngine = engine
         summarizerConfig.defaultEngine = engine
         setAutoSelectionSuppressedByExplicitNone(engine == .none)
@@ -799,7 +1097,7 @@ final class AppState {
             ? "Summarizer disabled"
             : requestedEngine == defaultEngine
                 ? "Summarizer settings updated for \(defaultEngine.displayName)"
-                : "Saved \(requestedEngine.displayName) settings; \(defaultEngine.displayName) remains active until verified"
+                : "Saved \(requestedEngine.displayName) settings; \(defaultEngine.displayName) remains active"
     }
 
     private func reconcileDefaultEngineAfterStatusChange() {
@@ -849,9 +1147,21 @@ final class AppState {
     enum UserDefaultsKeys {
         static let vaultPath = "vaultPath"
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
+        static let onboardingProgressState = "onboardingProgressState"
+        static let onboardingBootstrapState = "onboardingBootstrapState"
+        static let onboardingBootstrapDayKeys = "onboardingBootstrapDayKeys"
         static let lastNotificationImportAt = "lastNotificationImportAt"
         static let lastNotificationImportDatabasePath = "lastNotificationImportDatabasePath"
         static let explicitlyDisabledSummarizerAutoSelection = "explicitlyDisabledSummarizerAutoSelection"
+        static let lastUpdateCheckAt = "lastUpdateCheckAt"
+    }
+
+    var currentOnboardingStep: OnboardingStep? {
+        onboardingProgress.currentStep
+    }
+
+    var shouldShowOnboarding: Bool {
+        !onboardingProgress.isComplete
     }
 
     static func defaultVaultURL() throws -> URL {
@@ -878,6 +1188,157 @@ final class AppState {
         formatter.dateFormat = "HH:mm"
         return formatter
     }()
+
+    func resumeOnboardingStep(_ step: OnboardingStep) {
+        guard !onboardingProgress.isComplete else { return }
+        setOnboardingProgress(OnboardingProgress(step: step))
+    }
+
+    func restoreOnboardingProgress(
+        isFullDiskAccessReady: Bool,
+        isEngineReady: Bool,
+        hasVoiceTool _: Bool = false,
+        hasLaunchAtLogin _: Bool = false
+    ) {
+        guard !onboardingProgress.isComplete else { return }
+        setOnboardingProgress(
+            onboardingProgress.restored(
+                isFullDiskAccessReady: isFullDiskAccessReady,
+                isEngineReady: isEngineReady
+            )
+        )
+    }
+
+    func completeOnboarding() {
+        setOnboardingProgress(OnboardingProgress(state: .complete))
+        restoreLiveReaderPresentationAfterOnboarding()
+        queueOnboardingBootstrapIfNeeded()
+        if automationTimer == nil, environment != nil {
+            startAutomation(runImmediately: false)
+        }
+        resumeOnboardingBootstrapIfNeeded()
+    }
+
+    func markOnboardingBootstrapComplete() {
+        onboardingBootstrapState = .complete
+        onboardingBootstrapDayKeys = []
+        persistOnboardingBootstrapState()
+    }
+
+    private func setOnboardingProgress(_ progress: OnboardingProgress) {
+        guard onboardingProgress != progress else { return }
+        onboardingProgress = progress
+        persistOnboardingProgress()
+    }
+
+    private func persistOnboardingProgress() {
+        userDefaults.set(onboardingProgress.state.rawValue, forKey: UserDefaultsKeys.onboardingProgressState)
+        userDefaults.set(onboardingProgress.isComplete, forKey: UserDefaultsKeys.hasCompletedOnboarding)
+    }
+
+    private func persistOnboardingBootstrapState() {
+        userDefaults.set(onboardingBootstrapState.rawValue, forKey: UserDefaultsKeys.onboardingBootstrapState)
+        userDefaults.set(onboardingBootstrapDayKeys, forKey: UserDefaultsKeys.onboardingBootstrapDayKeys)
+    }
+
+    private static func loadOnboardingProgress(from userDefaults: UserDefaults) -> OnboardingProgress {
+        if let rawValue = userDefaults.string(forKey: UserDefaultsKeys.onboardingProgressState),
+           let state = OnboardingProgressState(rawValue: rawValue) {
+            return OnboardingProgress(state: state)
+        }
+
+        if let legacyValue = userDefaults.string(forKey: UserDefaultsKeys.onboardingProgressState) {
+            switch legacyValue {
+            case "demoPending":
+                return OnboardingProgress(state: .demoReadPending)
+            case "referencePending":
+                return OnboardingProgress(state: .demoReferencePending)
+            case "privacyPending":
+                return OnboardingProgress(state: .privacyPending)
+            case "permissionsPending":
+                return OnboardingProgress(state: .permissionsPending)
+            case "enginePending":
+                return OnboardingProgress(state: .enginePromptPending)
+            case "generatingPending":
+                return OnboardingProgress(state: .firstGenerationInProgress)
+            case "complete":
+                return OnboardingProgress(state: .complete)
+            default:
+                break
+            }
+        }
+
+        if userDefaults.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding) {
+            return OnboardingProgress(state: .complete)
+        }
+
+        return OnboardingProgress()
+    }
+
+    private static func loadOnboardingBootstrapState(from userDefaults: UserDefaults) -> OnboardingBootstrapState {
+        guard
+            let rawValue = userDefaults.string(forKey: UserDefaultsKeys.onboardingBootstrapState),
+            let state = OnboardingBootstrapState(rawValue: rawValue)
+        else {
+            return .idle
+        }
+
+        return state
+    }
+
+    private static func loadOnboardingBootstrapDayKeys(from userDefaults: UserDefaults) -> [String] {
+        guard let values = userDefaults.array(forKey: UserDefaultsKeys.onboardingBootstrapDayKeys) as? [String] else {
+            return []
+        }
+        return values
+    }
+
+    private static func onboardingBootstrapDays(now: Date) -> [String] {
+        let calendar = Calendar(identifier: .gregorian)
+        return (0..<7).compactMap { offset in
+            guard let date = calendar.date(byAdding: .day, value: -offset, to: now) else { return nil }
+            return ISO8601DayKey.format(date)
+        }
+    }
+
+    private func queueOnboardingBootstrapIfNeeded() {
+        guard onboardingBootstrapState != .complete else { return }
+
+        onboardingBootstrapState = .pending
+        onboardingBootstrapDayKeys = Self.onboardingBootstrapDays(now: currentDate())
+        persistOnboardingBootstrapState()
+        rebuildAvailableDates()
+    }
+
+    private func resumeOnboardingBootstrapIfNeeded() {
+        guard environment != nil else { return }
+        guard onboardingBootstrapState == .pending || onboardingBootstrapState == .inProgress else { return }
+        guard onboardingBootstrapTask == nil else { return }
+
+        if onboardingBootstrapDayKeys.isEmpty {
+            onboardingBootstrapDayKeys = Self.onboardingBootstrapDays(now: currentDate())
+            persistOnboardingBootstrapState()
+        }
+
+        onboardingBootstrapState = .inProgress
+        persistOnboardingBootstrapState()
+        rebuildAvailableDates()
+
+        onboardingBootstrapTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.onboardingBootstrapTask = nil }
+
+            for dayKey in self.onboardingBootstrapDayKeys {
+                if self.noteIndex[dayKey] != nil {
+                    continue
+                }
+                await self.generateDailyNote(for: dayKey)
+            }
+
+            self.markOnboardingBootstrapComplete()
+            self.rebuildAvailableDates()
+        }
+    }
 
     private static func bootstrapSyncMemoryConfigIfNeeded(
         startingFrom initialConfig: SyncMemoryConfig,
@@ -2456,6 +2917,21 @@ extension AppState {
     }
 
     func loadDayPresentation(for dayKey: String) {
+        if dayKey == OnboardingDemoStory.demoDayKey {
+            loadDemoDayPresentation()
+            return
+        }
+        if onboardingBootstrapDayKeys.contains(dayKey), noteIndex[dayKey] == nil {
+            selectedDate = dayKey
+            selectedStory = nil
+            selectedStoryParagraphID = nil
+            selectedStorySourceEvents = []
+            selectedDayEvents = []
+            selectedMarkdownURL = nil
+            selectedMarkdownText = nil
+            selectedSourceNotesMarkdown = nil
+            return
+        }
         guard let environment else {
             selectedStory = nil
             selectedStoryParagraphID = nil
@@ -2495,6 +2971,84 @@ extension AppState {
             paragraphSelectionByDay[dayKey] = selectedStoryParagraphID
         }
         syncSelectedStorySources()
+    }
+
+    func presentOnboardingDemoIfNeeded() {
+        guard shouldShowOnboarding else { return }
+
+        if !isPresentingOnboardingDemo {
+            liveReaderSnapshot = ReaderPresentationSnapshot(
+                availableDates: availableDates,
+                selectedDate: selectedDate,
+                selectedMarkdownURL: selectedMarkdownURL,
+                noteIndex: noteIndex,
+                selectedStory: selectedStory,
+                selectedStoryParagraphID: selectedStoryParagraphID,
+                selectedStorySourceEvents: selectedStorySourceEvents,
+                selectedDayEvents: selectedDayEvents,
+                selectedMarkdownText: selectedMarkdownText,
+                selectedSourceNotesMarkdown: selectedSourceNotesMarkdown,
+                readerFocus: readerFocus
+            )
+            isPresentingOnboardingDemo = true
+        }
+
+        availableDates = [OnboardingDemoStory.demoDayKey]
+        noteIndex = [:]
+        selectedDate = OnboardingDemoStory.demoDayKey
+        selectedMarkdownURL = nil
+        selectedStory = OnboardingDemoStory.demoStory
+        selectedDayEvents = OnboardingDemoStory.demoEvents
+        selectedMarkdownText = nil
+        selectedSourceNotesMarkdown = generatedSourceNotesMarkdown(from: OnboardingDemoStory.demoEvents)
+        if let selectedStoryParagraphID,
+           selectedStoryParagraphs.contains(where: { $0.id == selectedStoryParagraphID }) == false {
+            self.selectedStoryParagraphID = nil
+        }
+        selectedStorySourceEvents = []
+        readerFocus = .storyParagraphs
+        syncSelectedStorySources()
+    }
+
+    private func loadDemoDayPresentation() {
+        selectedMarkdownURL = nil
+        selectedDate = OnboardingDemoStory.demoDayKey
+        selectedStory = OnboardingDemoStory.demoStory
+        selectedDayEvents = OnboardingDemoStory.demoEvents
+        selectedMarkdownText = nil
+        selectedSourceNotesMarkdown = generatedSourceNotesMarkdown(from: OnboardingDemoStory.demoEvents)
+        if let selectedStoryParagraphID,
+           selectedStoryParagraphs.contains(where: { $0.id == selectedStoryParagraphID }) == false {
+            self.selectedStoryParagraphID = nil
+        }
+        if selectedStoryParagraphID == nil {
+            selectedStorySourceEvents = []
+        } else {
+            syncSelectedStorySources()
+        }
+    }
+
+    func restoreLiveReaderPresentationAfterOnboarding() {
+        isPresentingOnboardingDemo = false
+        if environment != nil {
+            refreshNotesIndex()
+            liveReaderSnapshot = nil
+            return
+        }
+
+        guard let liveReaderSnapshot else { return }
+        availableDates = liveReaderSnapshot.availableDates
+        selectedDate = liveReaderSnapshot.selectedDate
+        selectedMarkdownURL = liveReaderSnapshot.selectedMarkdownURL
+        noteIndex = liveReaderSnapshot.noteIndex
+        selectedStory = liveReaderSnapshot.selectedStory
+        selectedStoryParagraphID = liveReaderSnapshot.selectedStoryParagraphID
+        selectedStorySourceEvents = liveReaderSnapshot.selectedStorySourceEvents
+        selectedDayEvents = liveReaderSnapshot.selectedDayEvents
+        selectedMarkdownText = liveReaderSnapshot.selectedMarkdownText
+        selectedSourceNotesMarkdown = liveReaderSnapshot.selectedSourceNotesMarkdown
+        readerFocus = liveReaderSnapshot.readerFocus
+        self.liveReaderSnapshot = nil
     }
 
     func syncSelectedStorySources() {
@@ -2566,6 +3120,17 @@ extension AppState {
         return refreshLogNoticesByDay[dayKey]
     }
 
+    func isGeneratingJournal(for dayKey: String?) -> Bool {
+        guard let dayKey else { return false }
+        if refreshJobsByDay[dayKey]?.inFlight == true {
+            return noteIndex[dayKey] == nil
+        }
+        if onboardingBootstrapState == .pending || onboardingBootstrapState == .inProgress {
+            return onboardingBootstrapDayKeys.contains(dayKey) && noteIndex[dayKey] == nil
+        }
+        return false
+    }
+
     var summarizerSummary: String {
         let base = "Summarizer: \(summarizerStatus.mode)"
         if let lastError = summarizerStatus.lastError {
@@ -2629,16 +3194,23 @@ extension AppState {
             return
         }
 
-        noteIndex = notes
-        availableDates = notes.keys.sorted(by: >)
+        noteIndex = notes.filter { $0.key != OnboardingDemoStory.demoDayKey }
+        rebuildAvailableDates()
         if let selectedDate {
-            selectedMarkdownURL = noteIndex[selectedDate]
             loadDayPresentation(for: selectedDate)
         } else if let firstDate = availableDates.first {
             selectedDate = firstDate
-            selectedMarkdownURL = noteIndex[firstDate]
             loadDayPresentation(for: firstDate)
         }
+    }
+
+    private func rebuildAvailableDates() {
+        let includeDemoDay = onboardingProgress.isComplete || isPresentingOnboardingDemo
+        availableDates = JournalListOrdering.orderedDates(
+            noteDays: Set(noteIndex.keys),
+            placeholderDays: onboardingBootstrapState == .complete ? [] : onboardingBootstrapDayKeys,
+            includeDemoDay: includeDemoDay
+        )
     }
 
     func updateNotificationAccessStatus(using reader: any NotificationDatabaseReading) {
@@ -2652,7 +3224,7 @@ extension AppState {
         notificationStatus.availabilityMessage = accessStatus.message
     }
 
-    func startAutomation() {
+    func startAutomation(runImmediately: Bool = true) {
         automationTimer?.invalidate()
         notificationCatchUpTimer?.invalidate()
 
@@ -2663,6 +3235,7 @@ extension AppState {
 
             let now = self.currentDate()
             Task { @MainActor in
+                await self.checkForUpdatesIfNeeded(force: false, now: now)
                 await self.runAutomation(now: now)
             }
         }
@@ -2678,10 +3251,13 @@ extension AppState {
             }
         }
 
-        Task { @MainActor in
-            let now = currentDate()
-            await runAutomation(now: now)
-            await runNotificationCatchUp(now: now)
+        if runImmediately {
+            Task { @MainActor in
+                let now = currentDate()
+                await checkForUpdatesIfNeeded(force: true, now: now)
+                await runAutomation(now: now)
+                await runNotificationCatchUp(now: now)
+            }
         }
     }
 

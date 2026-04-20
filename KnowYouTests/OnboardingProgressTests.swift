@@ -1,6 +1,20 @@
 import XCTest
 @testable import KnowYou
 
+private struct AvailableNotificationReader: NotificationDatabaseReading {
+    func accessStatus() -> NotificationDatabaseAccessStatus {
+        NotificationDatabaseAccessStatus(state: .available, databaseURL: nil)
+    }
+
+    func fetchDeliveredNotifications(since _: Date) throws -> [NotificationSnapshot] {
+        []
+    }
+
+    func fetchDeliveredNotifications(from _: Date, upperBound _: NotificationFetchUpperBound?) throws -> [NotificationSnapshot] {
+        []
+    }
+}
+
 final class OnboardingProgressTests: XCTestCase {
     private var defaults: UserDefaults!
     private var suiteName: String!
@@ -167,5 +181,32 @@ final class OnboardingProgressTests: XCTestCase {
 
         XCTAssertEqual(relaunched.onboardingBootstrapState, OnboardingBootstrapState.complete)
         XCTAssertTrue(relaunched.onboardingBootstrapDayKeys.isEmpty)
+    }
+
+    @MainActor
+    func testCompletedOnboardingDoesNotReappearDuringBootstrappedLaunch() throws {
+        let firstLaunch = AppState(bootstrapServices: false, userDefaults: defaults)
+        firstLaunch.completeOnboarding()
+
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: try DatabaseWriter.inMemory(),
+            summarizer: nil,
+            notificationReader: AvailableNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+
+        let relaunched = AppState(
+            environment: environment,
+            bootstrapServices: true,
+            userDefaults: defaults
+        )
+
+        XCTAssertEqual(relaunched.onboardingProgress.state, .complete)
+        XCTAssertFalse(relaunched.shouldShowOnboarding)
+        XCTAssertNil(relaunched.currentOnboardingStep)
     }
 }

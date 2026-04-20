@@ -7,6 +7,7 @@ struct DateSidebarView: View {
     let onSelect: (String) -> Void
     let onOpenSyncMemory: () -> Void
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,7 +25,7 @@ struct DateSidebarView: View {
 
             Divider()
 
-            HStack {
+            HStack(spacing: 4) {
                 Menu {
                     Button("Sync Memory", action: onOpenSyncMemory)
                     Button("Settings") {
@@ -36,7 +37,36 @@ struct DateSidebarView: View {
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
-                .padding(12)
+                .padding(.leading, 12)
+                .padding(.vertical, 12)
+
+                Menu {
+                    Button {
+                        openURL(AppSupportMetadata.twitterURL)
+                    } label: {
+                        Label(AppSupportMetadata.twitterButtonTitle, systemImage: "bubble.left.and.text.bubble.right")
+                    }
+
+                    Button {
+                        openURL(AppSupportMetadata.emailURL)
+                    } label: {
+                        Label(AppSupportMetadata.emailButtonTitle, systemImage: "envelope")
+                    }
+
+                    if let discordURL = AppSupportMetadata.discordURL {
+                        Button {
+                            openURL(discordURL)
+                        } label: {
+                            Label(AppSupportMetadata.discordButtonTitle, systemImage: "person.3")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "bubble.left.and.text.bubble.right")
+                        .font(.title3)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .padding(.vertical, 12)
 
                 Spacer()
             }

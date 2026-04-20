@@ -4,6 +4,16 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 derived_data_path="$repo_root/.derived-data/dev"
 app_path="$derived_data_path/Build/Products/Debug/KnowYou.app"
+bundle_id="dev.knowyou.app"
+
+osascript -e "tell application id \"$bundle_id\" to quit" >/dev/null 2>&1 || true
+
+for _ in {1..20}; do
+  if ! pgrep -f '/KnowYou.app/Contents/MacOS/KnowYou' >/dev/null; then
+    break
+  fi
+  sleep 0.25
+done
 
 pkill -f '/KnowYou.app/Contents/MacOS/KnowYou' || true
 
@@ -26,7 +36,7 @@ if [[ ! -d "$app_path" ]]; then
   exit 1
 fi
 
-open -na "$app_path"
+open "$app_path"
 sleep 2
 
 echo "App path: $app_path"

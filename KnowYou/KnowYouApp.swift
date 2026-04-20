@@ -5,7 +5,6 @@ import AppKit
 struct KnowYouApp: App {
     private let launchMode: LaunchMode
     @State private var appState = AppState()
-    @State private var hasCompletedOnboarding = UserDefaults.standard.bool(forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
 
     init() {
         self.launchMode = CommandLine.arguments.contains("--sync-memory-now") ? .syncMemory : .interactive
@@ -17,14 +16,15 @@ struct KnowYouApp: App {
                 SyncMemoryLaunchView()
                     .environment(appState)
             } else {
-                if hasCompletedOnboarding {
+                if appState.shouldShowOnboarding {
+                    OnboardingView(
+                        onComplete: {},
+                        initialStep: appState.currentOnboardingStep ?? .demoRead
+                    )
+                    .environment(appState)
+                } else {
                     MainWindowView()
                         .environment(appState)
-                } else {
-                    OnboardingView {
-                        hasCompletedOnboarding = true
-                    }
-                    .environment(appState)
                 }
             }
         }

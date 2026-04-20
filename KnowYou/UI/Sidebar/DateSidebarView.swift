@@ -71,6 +71,9 @@ struct DateSidebarView: View {
     }()
 
     private func formattedDate(_ dateString: String) -> String {
+        if dateString == OnboardingDemoStory.demoDayKey {
+            return "Demo Day"
+        }
         guard let date = Self.dateParser.date(from: dateString) else { return dateString }
         return Self.dateDisplay.string(from: date)
     }

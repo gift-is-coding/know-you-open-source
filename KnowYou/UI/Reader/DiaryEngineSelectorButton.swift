@@ -3,7 +3,20 @@ import SwiftUI
 struct DiaryEngineSelectorButton: View {
     let title: String
     let state: EngineIndicatorState
+    let emphasized: Bool
     let action: () -> Void
+
+    init(
+        title: String,
+        state: EngineIndicatorState,
+        emphasized: Bool = false,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.state = state
+        self.emphasized = emphasized
+        self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
@@ -18,9 +31,25 @@ struct DiaryEngineSelectorButton: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(.regularMaterial, in: Capsule())
+            .background(backgroundStyle, in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(borderColor, lineWidth: emphasized ? 1.5 : 0)
+            )
+            .shadow(color: emphasized ? Color.accentColor.opacity(0.18) : .clear, radius: 10, x: 0, y: 4)
         }
         .buttonStyle(.plain)
+    }
+
+    private var backgroundStyle: some ShapeStyle {
+        if emphasized {
+            return AnyShapeStyle(Color.accentColor.opacity(0.12))
+        }
+        return AnyShapeStyle(.regularMaterial)
+    }
+
+    private var borderColor: Color {
+        emphasized ? .accentColor.opacity(0.85) : .clear
     }
 }
 

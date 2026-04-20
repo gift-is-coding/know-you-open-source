@@ -1,195 +1,324 @@
 import Foundation
 
 enum OnboardingStep: Int, CaseIterable {
-    case intro
-    case capture
-    case safety
-    case preview
+    case demoRead
+    case demoClick
+    case demoReference
+    case privacy
     case permissions
+    case enginePrompt
+    case engineSetup
+    case generating
 
     static let storyFlow: [OnboardingStep] = [
-        .intro,
-        .capture,
-        .safety,
-        .preview,
-        .permissions
+        .demoRead,
+        .demoClick,
+        .demoReference,
+        .privacy,
+        .permissions,
+        .enginePrompt,
+        .engineSetup,
+        .generating
     ]
 
     var next: OnboardingStep? {
-        switch self {
-        case .intro: .capture
-        case .capture: .safety
-        case .safety: .preview
-        case .preview: .permissions
-        case .permissions: nil
+        guard let index = Self.storyFlow.firstIndex(of: self), index + 1 < Self.storyFlow.count else {
+            return nil
         }
+
+        return Self.storyFlow[index + 1]
     }
 
     var previous: OnboardingStep? {
-        switch self {
-        case .intro: nil
-        case .capture: .intro
-        case .safety: .capture
-        case .preview: .safety
-        case .permissions: .preview
+        guard let index = Self.storyFlow.firstIndex(of: self), index > 0 else {
+            return nil
         }
+
+        return Self.storyFlow[index - 1]
     }
 
     var isFirst: Bool { previous == nil }
     var isLast: Bool { next == nil }
 }
 
-struct OnboardingPreviewEntry: Equatable {
-    let time: String
-    let paragraph: String
-    let sources: [String]
+enum OnboardingRequirement: String, Equatable, Hashable {
+    case fullDiskAccess
 }
 
-struct OnboardingPreview: Equatable {
-    let title: String
-    let entries: [OnboardingPreviewEntry]
+enum OnboardingEnhancementKind: Equatable {
+    case voiceInput
 }
 
-struct OnboardingValueRow: Equatable {
+enum OnboardingRecommendedBehavior: Equatable, Hashable {
+    case launchAtLogin
+
+    var isRecommendedDefault: Bool {
+        switch self {
+        case .launchAtLogin:
+            return true
+        }
+    }
+}
+
+enum OnboardingLifecycleAction: Equatable, Hashable {
+    case autoAdvanceToFirstGeneration
+}
+
+enum OnboardingStepProgression: Equatable {
+    case continueFlow
+    case automaticGeneration
+}
+
+enum OnboardingCoachmarkTarget: Equatable, Hashable {
+    case storyPanel
+    case sourcesPanel
+    case sharedCenterCard
+    case engineButton
+    case engineSheet
+}
+
+struct OnboardingHelperLink: Equatable, Identifiable {
     let title: String
     let detail: String
+    let url: URL
+    let iconURL: URL?
+
+    var id: URL { url }
 }
 
-struct OnboardingHelperLink: Equatable {
+struct OnboardingOptionalEnhancement: Equatable {
     let title: String
-    let url: URL
+    let detail: String
+    let enhancementKind: OnboardingEnhancementKind
+    let helperLinks: [OnboardingHelperLink]
 }
 
 struct OnboardingStepContent {
+    let iconName: String
     let title: String
     let body: String
-    let caption: String
-    let bullets: [String]
     let primaryCTA: String
-    let preview: OnboardingPreview?
-    let valueRows: [OnboardingValueRow]
+    let target: OnboardingCoachmarkTarget
+    let activationStepLabel: String?
+    let activationFollowupLabel: String?
     let helperLinks: [OnboardingHelperLink]
-    let settingsNudge: String?
+    let blockingGate: OnboardingRequirement?
+    let optionalEnhancement: OnboardingOptionalEnhancement?
+    let recommendedBehavior: OnboardingRecommendedBehavior?
+    let lifecycleAction: OnboardingLifecycleAction?
+    let progression: OnboardingStepProgression
+    let requiresParagraphSelection: Bool
+    let requiresEngineButtonTap: Bool
+    let requiresEngineConfiguration: Bool
+
+    var blocksProgress: Bool {
+        blockingGate != nil
+    }
+
+    var blockingRequirement: OnboardingRequirement? {
+        blockingGate
+    }
+
+    var autoStartsFirstGeneration: Bool {
+        progression == .automaticGeneration
+    }
+
+    var showsManualRefreshAction: Bool {
+        false
+    }
+
+    var showsContinueAction: Bool {
+        progression == .continueFlow
+    }
+
+    var usesSharedCenterCard: Bool {
+        target == .sharedCenterCard
+    }
 }
 
 enum OnboardingContent {
+    static let blockingGateStep: OnboardingStep = .permissions
+
+    private static let voiceLinks = [
+        OnboardingHelperLink(
+            title: "Typeless",
+            detail: "AI voice dictation for Mac that can add richer clipboard context. Optional, install later.",
+            url: URL(string: "https://www.typeless.com/downloads")!,
+            iconURL: URL(string: "https://www.typeless.com/favicon.ico")
+        ),
+        OnboardingHelperLink(
+            title: "Shandianshuo",
+            detail: "Local-first voice input for Mac. Optional, install later.",
+            url: URL(string: "https://shandianshuo.cn/")!,
+            iconURL: URL(string: "https://shandianshuo.cn/apple-touch-icon.png?v=3")
+        )
+    ]
+
     static func content(for step: OnboardingStep) -> OnboardingStepContent {
         switch step {
-        case .intro:
+        case .demoRead:
             return OnboardingStepContent(
-                title: "Meet Know You",
-                body: "A calm daily story, built from the moments already happening on your Mac.",
-                caption: "Stored as Markdown on this Mac first, so trust starts before setup does.",
-                bullets: [],
-                primaryCTA: "Show me the story",
-                preview: nil,
-                valueRows: [],
+                iconName: "book.closed.fill",
+                title: "Start with this demo day",
+                body: "Read the diary in the middle.",
+                primaryCTA: "Continue",
+                target: .storyPanel,
+                activationStepLabel: nil,
+                activationFollowupLabel: nil,
                 helperLinks: [],
-                settingsNudge: nil
+                blockingGate: nil,
+                optionalEnhancement: nil,
+                recommendedBehavior: nil,
+                lifecycleAction: nil,
+                progression: .continueFlow,
+                requiresParagraphSelection: false,
+                requiresEngineButtonTap: false,
+                requiresEngineConfiguration: false
             )
-        case .capture:
+
+        case .demoClick:
             return OnboardingStepContent(
-                title: "A day starts taking shape",
-                body: "From the first copied note to the last notification at night, Know You captures the signal around you automatically.",
-                caption: "Clipboard and notifications become a day you can actually revisit.",
-                bullets: [
-                    "The quick copy from a morning planning note",
-                    "The reminder that pulled you back into the afternoon",
-                    "The late tab, message, or snippet that closed the loop",
-                ],
-                primaryCTA: "How it stays private",
-                preview: nil,
-                valueRows: [],
+                iconName: "hand.tap.fill",
+                title: "Click any paragraph in the story",
+                body: "Click one paragraph in the middle.",
+                primaryCTA: "",
+                target: .storyPanel,
+                activationStepLabel: nil,
+                activationFollowupLabel: nil,
                 helperLinks: [],
-                settingsNudge: nil
+                blockingGate: nil,
+                optionalEnhancement: nil,
+                recommendedBehavior: nil,
+                lifecycleAction: nil,
+                progression: .continueFlow,
+                requiresParagraphSelection: true,
+                requiresEngineButtonTap: false,
+                requiresEngineConfiguration: false
             )
-        case .safety:
+
+        case .demoReference:
             return OnboardingStepContent(
-                title: "Private before it becomes a story",
-                body: "Before anything is saved, filtering keeps sensitive data out. Sensitive items should not be retained in local Markdown files or uploaded in cloud sync.",
-                caption: "You can now or later sync filtered Markdown files to Openclaw or Claude for better agent memory and context.",
-                bullets: [
-                    "Filtering happens before storage",
-                    "Capture stays automatic even while filtering protects the archive",
-                    "Sync is optional and improves agent memory and context when you want it",
-                ],
-                primaryCTA: "Show me a real preview",
-                preview: nil,
-                valueRows: [],
+                iconName: "link.circle.fill",
+                title: "The right side shows the source",
+                body: "These references come from notifications and your input.",
+                primaryCTA: "Continue",
+                target: .sourcesPanel,
+                activationStepLabel: nil,
+                activationFollowupLabel: nil,
                 helperLinks: [],
-                settingsNudge: nil
+                blockingGate: nil,
+                optionalEnhancement: nil,
+                recommendedBehavior: nil,
+                lifecycleAction: nil,
+                progression: .continueFlow,
+                requiresParagraphSelection: false,
+                requiresEngineButtonTap: false,
+                requiresEngineConfiguration: false
             )
-        case .preview:
+
+        case .privacy:
             return OnboardingStepContent(
-                title: "Preview a believable day",
-                body: "The preview reads like the app itself: a short diary arc from morning to night with the source apps nearby.",
-                caption: "Close to the real reader, not a detached marketing mock.",
-                bullets: [
-                    "See the diary before it lands in your archive",
-                    "Keep the nearby apps visible for confidence",
-                ],
-                primaryCTA: "Set up permissions",
-                preview: OnboardingPreview(
-                    title: "Friday, April 10",
-                    entries: [
-                        OnboardingPreviewEntry(
-                            time: "8:10 AM",
-                            paragraph: "The morning started quietly in Notes, then a copied outline and a Calendar nudge turned the first hour into a clear plan instead of a scramble.",
-                            sources: ["Notes", "Calendar", "Clipboard"]
-                        ),
-                        OnboardingPreviewEntry(
-                            time: "1:45 PM",
-                            paragraph: "By early afternoon, GitHub reviews, Slack replies, and one saved snippet kept the work moving even as the day kept changing shape.",
-                            sources: ["GitHub", "Slack", "Clipboard"]
-                        ),
-                        OnboardingPreviewEntry(
-                            time: "10:18 PM",
-                            paragraph: "At night, Safari tabs, Messages, and one last copied thought closed the loop, leaving a day that felt lived before it was ever written down.",
-                            sources: ["Safari", "Messages", "Clipboard"]
-                        ),
-                    ]
-                ),
-                valueRows: [],
+                iconName: "lock.shield.fill",
+                title: "Everything stays local as Markdown",
+                body: "Every file stays on this Mac as local Markdown. No Know You server.",
+                primaryCTA: "Continue",
+                target: .sharedCenterCard,
+                activationStepLabel: nil,
+                activationFollowupLabel: nil,
                 helperLinks: [],
-                settingsNudge: nil
+                blockingGate: nil,
+                optionalEnhancement: nil,
+                recommendedBehavior: nil,
+                lifecycleAction: nil,
+                progression: .continueFlow,
+                requiresParagraphSelection: false,
+                requiresEngineButtonTap: false,
+                requiresEngineConfiguration: false
             )
+
         case .permissions:
             return OnboardingStepContent(
-                title: "Turn on the signals that let Know You rebuild your day",
-                body: "Each permission fills in a specific part of the story. Know You explains the value first so local-reading access never feels abstract.",
-                caption: "Your files stay local as Markdown, and Settings is the place to revisit permissions or add an optional summarizer later.",
-                bullets: [
-                    "Clipboard capture is automatic",
-                    "Notifications are captured automatically after Full Disk Access is granted",
-                    "Sensitive details are filtered before anything is kept locally or synced",
-                ],
-                primaryCTA: "Start my first story",
-                preview: nil,
-                valueRows: [
-                    OnboardingValueRow(
-                        title: "Clipboard fills in what you were reading and writing",
-                        detail: "Copied text is captured automatically, so short notes, snippets, and pasted ideas can anchor the story without extra effort."
-                    ),
-                    OnboardingValueRow(
-                        title: "Notifications explain who reached you and when",
-                        detail: "Full Disk Access lets Know You read the local Notification Center store on this Mac so reminders and replies show up in the right place."
-                    ),
-                    OnboardingValueRow(
-                        title: "Voice tools can feed context through the clipboard",
-                        detail: "If you dictate into a clipboard-friendly helper, Know You can pick up that text automatically just like any other copied note."
-                    ),
-                ],
-                helperLinks: [
-                    OnboardingHelperLink(
-                        title: "Maccy clipboard helper",
-                        url: URL(string: "https://maccy.app/")!
-                    ),
-                    OnboardingHelperLink(
-                        title: "MacWhisper voice input helper",
-                        url: URL(string: "https://www.macwhisper.com/")!
-                    ),
-                ],
-                settingsNudge: "Summarizer setup is optional. Finish onboarding first, then open Settings whenever you want Claude, Codex, Gemini, or OpenAI help with story drafting."
+                iconName: "checkmark.shield.fill",
+                title: "1/2 Turn on permissions",
+                body: "Only two steps left.\n\nKnow You builds your diary from notifications and clipboard context. Turn on Full Disk Access to read your local Notification Center history.",
+                primaryCTA: "I turned it on",
+                target: .sharedCenterCard,
+                activationStepLabel: "1/2",
+                activationFollowupLabel: "2/2 Configure engine",
+                helperLinks: voiceLinks,
+                blockingGate: .fullDiskAccess,
+                optionalEnhancement: OnboardingOptionalEnhancement(
+                    title: "Optional: add richer context with voice input",
+                    detail: "Voice tools often copy dictated text into the clipboard, which gives Know You more context.",
+                    enhancementKind: .voiceInput,
+                    helperLinks: voiceLinks
+                ),
+                recommendedBehavior: nil,
+                lifecycleAction: nil,
+                progression: .continueFlow,
+                requiresParagraphSelection: false,
+                requiresEngineButtonTap: false,
+                requiresEngineConfiguration: false
+            )
+
+        case .enginePrompt:
+            return OnboardingStepContent(
+                iconName: "sparkles.rectangle.stack.fill",
+                title: "2/2 Configure engine",
+                body: "Click the highlighted button to choose your default engine.",
+                primaryCTA: "",
+                target: .engineButton,
+                activationStepLabel: "2/2",
+                activationFollowupLabel: nil,
+                helperLinks: [],
+                blockingGate: nil,
+                optionalEnhancement: nil,
+                recommendedBehavior: .launchAtLogin,
+                lifecycleAction: nil,
+                progression: .continueFlow,
+                requiresParagraphSelection: false,
+                requiresEngineButtonTap: true,
+                requiresEngineConfiguration: false
+            )
+
+        case .engineSetup:
+            return OnboardingStepContent(
+                iconName: "cpu.fill",
+                title: "Choose the engine you already use",
+                body: "Finish setup here. Your first real diary starts right after.",
+                primaryCTA: "Start my diary",
+                target: .engineSheet,
+                activationStepLabel: "2/2",
+                activationFollowupLabel: nil,
+                helperLinks: [],
+                blockingGate: nil,
+                optionalEnhancement: nil,
+                recommendedBehavior: .launchAtLogin,
+                lifecycleAction: nil,
+                progression: .continueFlow,
+                requiresParagraphSelection: false,
+                requiresEngineButtonTap: false,
+                requiresEngineConfiguration: true
+            )
+
+        case .generating:
+            return OnboardingStepContent(
+                iconName: "wand.and.stars.inverse",
+                title: "We’re generating your first real diary",
+                body: "Know You is importing your local context and writing your first diary.",
+                primaryCTA: "Generating",
+                target: .sharedCenterCard,
+                activationStepLabel: nil,
+                activationFollowupLabel: nil,
+                helperLinks: [],
+                blockingGate: nil,
+                optionalEnhancement: nil,
+                recommendedBehavior: nil,
+                lifecycleAction: .autoAdvanceToFirstGeneration,
+                progression: .automaticGeneration,
+                requiresParagraphSelection: false,
+                requiresEngineButtonTap: false,
+                requiresEngineConfiguration: false
             )
         }
     }

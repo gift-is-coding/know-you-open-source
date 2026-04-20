@@ -227,6 +227,22 @@ final class SummarizerConfigTests: XCTestCase {
         XCTAssertEqual(summarizer.executablePath, executableURL.path)
     }
 
+    func testResolvedExecutablePathFallsBackToCommonInstallDirectories() throws {
+        let executableURL = temporaryDirectoryURL.appendingPathComponent("codex")
+        let script = "#!/bin/sh\nprintf '{}'\n"
+        try script.write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+
+        let resolvedPath = SummarizerConfig.resolvedExecutablePath(
+            configuredPath: "/missing/codex",
+            commandName: "codex",
+            environment: ["PATH": ""],
+            fallbackSearchDirectories: [temporaryDirectoryURL.path]
+        )
+
+        XCTAssertEqual(resolvedPath, executableURL.path)
+    }
+
     func testMakeSummarizerFallsBackToNVMExecutableWhenPATHIsRestricted() throws {
         let homeURL = temporaryDirectoryURL.appendingPathComponent("home", isDirectory: true)
         let nvmBinURL = homeURL

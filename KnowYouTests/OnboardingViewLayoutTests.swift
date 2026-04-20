@@ -1,78 +1,65 @@
 import XCTest
-import SwiftUI
-import AppKit
 @testable import KnowYou
 
-private actor OnboardingProbeTracker {
-    private var started = false
-    private var continuation: CheckedContinuation<Void, Never>?
-
-    func markStarted() {
-        started = true
-        continuation?.resume()
-        continuation = nil
-    }
-
-    func waitUntilStarted() async {
-        guard !started else { return }
-        await withCheckedContinuation { continuation in
-            self.continuation = continuation
-        }
-    }
-}
-
-@MainActor
 final class OnboardingViewLayoutTests: XCTestCase {
-    func testPermissionsStepRendersInsideAScrollView() {
-        let appState = AppState(bootstrapServices: false)
-        let view = OnboardingView(onComplete: {}, initialStep: .permissions)
-            .environment(appState)
-        let hostingView = NSHostingView(rootView: view)
+    func testDemoReadStepUsesTheRealReaderChromePlan() {
+        let plan = makeRenderPlan(for: .demoRead)
 
-        hostingView.frame = NSRect(x: 0, y: 0, width: 640, height: 620)
-        hostingView.layoutSubtreeIfNeeded()
-
-        XCTAssertNotNil(findScrollView(in: hostingView), "Permissions onboarding should stay scrollable inside the fixed window height.")
+        XCTAssertTrue(plan.usesRealReaderChrome)
+        XCTAssertTrue(plan.keepsSourcesPanelVisible)
+        XCTAssertTrue(plan.showsEngineButton)
+        XCTAssertEqual(plan.highlightedTarget, .storyPanel)
+        XCTAssertEqual(plan.coachmarkTitle, "Start with this demo day")
     }
 
-    func testOnboardingStartsBackgroundEngineProbeOnAppear() async {
-        let tracker = OnboardingProbeTracker()
-        let appState = AppState(
-            bootstrapServices: false,
-            probeEngine: { engine, _, _ in
-                if engine == .claudeCLI {
-                    await tracker.markStarted()
-                }
-                return EngineProbeResult(
-                    engine: engine,
-                    state: .yellow,
-                    detail: "Probe finished.",
-                    verifiedAt: nil
-                )
-            }
-        )
-        let view = OnboardingView(onComplete: {}, initialStep: .permissions)
-            .environment(appState)
-        let hostingView = NSHostingView(rootView: view)
+    func testDemoClickStepKeepsTheUserInTheStoryColumn() {
+        let plan = makeRenderPlan(for: .demoClick)
 
-        hostingView.frame = NSRect(x: 0, y: 0, width: 640, height: 620)
-        hostingView.layoutSubtreeIfNeeded()
-
-        await tracker.waitUntilStarted()
-        XCTAssertTrue(appState.isRetestingEngines)
+        XCTAssertTrue(plan.usesRealReaderChrome)
+        XCTAssertTrue(plan.keepsSourcesPanelVisible)
+        XCTAssertEqual(plan.highlightedTarget, .storyPanel)
+        XCTAssertEqual(plan.coachmarkTitle, "Click any paragraph in the story")
     }
 
-    private func findScrollView(in view: NSView) -> NSScrollView? {
-        if let scrollView = view as? NSScrollView {
-            return scrollView
-        }
+    func testDemoReferenceStepMovesAttentionToTheRealSourcesPanel() {
+        let plan = makeRenderPlan(for: .demoReference)
 
-        for subview in view.subviews {
-            if let scrollView = findScrollView(in: subview) {
-                return scrollView
-            }
-        }
+        XCTAssertTrue(plan.usesRealReaderChrome)
+        XCTAssertTrue(plan.keepsSourcesPanelVisible)
+        XCTAssertEqual(plan.highlightedTarget, .sourcesPanel)
+        XCTAssertEqual(plan.coachmarkTitle, "The right side shows the source")
+    }
 
-        return nil
+    func testPermissionStepUsesTheTwoStepActivationCopy() {
+        let plan = makeRenderPlan(for: .permissions)
+
+        XCTAssertTrue(plan.usesRealReaderChrome)
+        XCTAssertEqual(plan.highlightedTarget, .sharedCenterCard)
+        XCTAssertEqual(plan.activationStepLabel, "1/2")
+        XCTAssertEqual(plan.activationFollowupLabel, "2/2 Configure engine")
+        XCTAssertTrue(plan.coachmarkBody.contains("Only two steps left"))
+    }
+
+    func testEnginePromptRendersARealConfigureEngineButton() {
+        let plan = makeRenderPlan(for: .enginePrompt)
+
+        XCTAssertTrue(plan.usesRealReaderChrome)
+        XCTAssertTrue(plan.showsEngineButton)
+        XCTAssertEqual(plan.highlightedTarget, .engineButton)
+        XCTAssertEqual(plan.coachmarkTitle, "2/2 Configure engine")
+    }
+
+    func testGeneratingStepStillRendersInsideTheRealReader() {
+        let plan = makeRenderPlan(for: .generating)
+
+        XCTAssertTrue(plan.usesRealReaderChrome)
+        XCTAssertTrue(plan.keepsSourcesPanelVisible)
+        XCTAssertTrue(plan.showsEngineButton)
+        XCTAssertEqual(plan.coachmarkTitle, "We’re generating your first real diary")
+        XCTAssertFalse(plan.coachmarkTitle.contains("Reader preview"))
+    }
+
+    private func makeRenderPlan(for step: OnboardingStep) -> OnboardingRenderPlan {
+        OnboardingRenderPlan(step: step, content: OnboardingContent.content(for: step))
     }
 }

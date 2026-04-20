@@ -79,7 +79,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 每日 Markdown 导出
 - story-first 三栏阅读器
 - 段落级 source link
-- 五步 onboarding 与 settings 配置
+- 真实阅读器上的 onboarding coachmarks 与 settings 配置
 - 左下角 `...` 二级菜单中的 `Sync Memory`
 - 顶部 diary engine selector
 - 左上标题栏更新提醒胶囊与更新 sheet
@@ -145,7 +145,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - story 中每个段落都必须保留来源事件 ID 列表
 - 系统必须为同一天生成 Markdown 文件
 - Markdown 必须包含 story 内容和 source notes
-- summarizer 不是首次完成 onboarding 与首次生成故事的前置依赖
+- summarizer 是首次完成 onboarding 与首次生成真实故事的前置依赖；用户必须先完成引擎配置
 - 当 summarizer 成功时，story 段落内容允许携带 Markdown 结构，而不是被限制为纯文本
 - 当前 diary prompt 必须把模型输出组织为以下一级标题：
   - `# 你今天做得很棒`
@@ -244,7 +244,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 
 配置入口包括：
 
-- 首次 onboarding 中的故事化五步流程
+- 首次 onboarding 中的 Demo Day + coachmark 流程
 - 主窗口左下角 `...` 菜单中的 `Sync Memory`
 - 主窗口右上角 diary engine selector
 - Settings 页面中的次级状态入口
@@ -252,20 +252,26 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 
 onboarding 的配置约束为：
 
-- 首次 onboarding 必须采用五步 story flow：`intro`、`capture`、`safety`、`preview`、`permissions`
-- `intro` 步必须直接说明“内容以本地 Markdown 文件保存在当前 Mac 上”
-- `capture` 步必须用产品语言解释通知与剪贴板都是自动采集的
-- `safety` 步必须说明过滤发生在持久化之前，且本地文件也不是原始转储
-- `preview` 步必须先于权限申请出现，让用户先看到接近真实阅读器的 diary 结果
-- `permissions` 步必须解释每项权限与最终 story 质量的关系，而不是只展示系统术语
-- vault 目录选择必须保留在 onboarding 中，但不应作为第一屏主任务
-- diary engine 配置不得阻塞用户完成首次 onboarding；它应作为阅读器中的可选增强能力保留
+- 首次 onboarding 必须叠加在真实主阅读器之上，而不是跳到独立欢迎页
+- 首次 onboarding 的固定顺序必须为：`demoRead`、`demoClick`、`demoReference`、`privacy`、`permissions`、`enginePrompt`、`engineSetup`、`generating`
+- `demoRead` 必须先让用户阅读中栏里的 `Demo Day`
+- `demoClick` 必须要求用户点击正文段落，右侧 source detail 才进入下一步解释
+- `demoReference` 必须说明右侧 reference 会跟随阅读位置变化，而不是重复展示另一份正文
+- `privacy` 必须直接说明“内容以本地 `.md` 文件保存在当前 Mac 上、没有服务端”
+- `permissions` 只允许把 `Full Disk Access` 作为唯一硬 gate，并且必须解释通知与剪贴板上下文如何帮助 story 生成
+- `enginePrompt` 必须高亮真实产品里的引擎按钮，`engineSetup` 必须复用现有引擎配置模块，而不是造一套 onboarding 专用配置页
+- 引擎配置必须阻塞 onboarding 完成；未配置成功前不得进入真实生成流程
+- onboarding 完成后必须自动启动一次性过去 7 天 bootstrap，而不是要求用户手动刷新
+- `Demo Day` 在 onboarding 完成后不得消失，必须继续保留在左侧列表底部
 - 如果当前默认引擎为 `None` 且用户没有显式保持 `None`，主应用后续可以自动选择一个已验证绿色引擎；如果用户已明确选择某个非 `None` 引擎，或已明确保持 `None`，则不得被被动覆盖
 
 ## 6.8 自动化需求
 
 - 应用启动时必须立即执行一次自动刷新
 - 应用启动时还必须立即执行一次今天的通知补同步
+- 首次完成 onboarding 时，系统必须额外执行一次且仅一次“过去 7 天 bootstrap”
+- onboarding bootstrap 必须只覆盖今天及之前 6 个自然日，并跳过已有成功内容的日期
+- onboarding bootstrap 不得在后续正常启动时重复执行
 - 系统必须每 3 小时执行一次自动刷新
 - 系统必须每 30 秒执行一次今天的通知增量补同步
 - 自动刷新应先尝试导入通知，再生成内容
@@ -405,6 +411,6 @@ Markdown 导出也应服务于这个目标：
 - 用户能在日期列表里看到已有日期
 - 用户选中某天后，能看到可阅读的 story
 - 用户手动刷新某天时，只会刷新该天，不会顺带刷新其他日期
-- 用户首次进入应用时，先看到 story-first onboarding，而不是配置项堆叠
-- 用户在看到 preview 之后才会被请求理解和开启关键权限
-- 用户即使没有配置 summarizer，也能完成 onboarding 并生成第一篇本地日记
+- 用户首次进入应用时，先看到真实阅读器里的 `Demo Day` 与 coachmarks，而不是配置项堆叠
+- 用户在理解 Demo Day 与右侧 reference 之后，才会被请求理解隐私、权限与引擎配置
+- 用户只有完成 `Full Disk Access + 引擎配置` 后，才会自动开始生成过去 7 天的真实日记

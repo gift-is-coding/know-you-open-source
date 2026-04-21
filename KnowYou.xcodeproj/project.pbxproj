@@ -736,7 +736,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Know You";
+				INFOPLIST_KEY_CFBundleDisplayName = "KnowYou";
 				INFOPLIST_KEY_KYUpdateChannel = direct;
 				INFOPLIST_KEY_KYUpdateMetadataURL = "http://127.0.0.1:8765/Support/update-feed/debug-update.json";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -768,7 +768,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Know You";
+				INFOPLIST_KEY_CFBundleDisplayName = "KnowYou";
 				INFOPLIST_KEY_KYUpdateChannel = direct;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

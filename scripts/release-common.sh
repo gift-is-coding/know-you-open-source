@@ -92,7 +92,7 @@ download_release_tag() {
 }
 
 download_release_title() {
-  printf 'Know You v%s (%s)\n' "$(marketing_version)" "$(release_repo_build_number)"
+  printf 'KnowYou v%s (%s)\n' "$(marketing_version)" "$(release_repo_build_number)"
 }
 
 download_asset_url() {
@@ -104,7 +104,7 @@ download_asset_url() {
 
 release_notes_body() {
   cat <<EOF
-Know You turns daily computer context into a story-first journal on macOS.
+KnowYou turns daily computer context into a story-first journal on macOS.
 
 Release:
 - Version: $(marketing_version)

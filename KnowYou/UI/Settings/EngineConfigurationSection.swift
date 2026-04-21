@@ -50,7 +50,7 @@ struct EngineConfigurationSection: View {
     private var configurationFields: some View {
         switch summarizerConfig.type {
         case .none:
-            Text("Choose the CLI or API you already use. Know You starts working once an engine is connected.")
+            Text("Choose the CLI or API you already use. KnowYou starts working once an engine is connected.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
@@ -77,7 +77,7 @@ struct EngineConfigurationSection: View {
         case .none:
             return "Select Claude Code, Codex, Gemini, or OpenAI to activate the writer."
         case .openAI:
-            return "The API key stays on this Mac and is used only when Know You asks the selected engine to shape the diary."
+            return "The API key stays on this Mac and is used only when KnowYou asks the selected engine to shape the diary."
         case .claudeCLI:
             return "Point this at the Claude Code executable already installed on this Mac."
         case .codexCLI:

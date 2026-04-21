@@ -109,7 +109,7 @@ struct SettingsView: View {
 
                 Section("About & Community") {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Know You")
+                        Text("KnowYou")
                             .font(.headline)
                         Text(AppSupportMetadata.productTagline)
                             .font(.callout)

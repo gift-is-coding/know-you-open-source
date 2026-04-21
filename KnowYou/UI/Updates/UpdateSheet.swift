@@ -11,7 +11,7 @@ struct UpdateSheet: View {
             Text("Update Available")
                 .font(.title2.weight(.semibold))
 
-            Text("Know You \(offer.pillTitle) is ready.")
+            Text("KnowYou \(offer.pillTitle) is ready.")
                 .font(.headline)
 
             Text(offer.actionDescription)

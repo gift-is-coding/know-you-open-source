@@ -349,7 +349,7 @@ struct DailyMarkdownPresentation: Equatable {
         storyHeading = Self.resolvedStoryHeading(for: story, paragraphs: paragraphs)
         if isGenerating {
             emptyStateTitle = "Generating your diary…"
-            emptyStateMessage = "Know You is building this day from your local context."
+            emptyStateMessage = "KnowYou is building this day from your local context."
             emptyStateSymbol = "arrow.triangle.2.circlepath"
         } else {
             emptyStateTitle = "No Story Yet"

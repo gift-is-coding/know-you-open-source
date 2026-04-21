@@ -1,8 +1,8 @@
-# Know You V1 Design
+# KnowYou V1 Design
 
 ## Overview
 
-Know You is a macOS product that automatically captures a user's daily computer context, filters sensitive information before persistence, and produces one Markdown memory document per day.
+KnowYou is a macOS product that automatically captures a user's daily computer context, filters sensitive information before persistence, and produces one Markdown memory document per day.
 
 V1 is a local-first macOS desktop product with:
 
@@ -44,7 +44,7 @@ Help a user reconstruct what happened on their computer each day by turning pass
 
 ## Core Product Shape
 
-Know You V1 has two runtime surfaces:
+KnowYou V1 has two runtime surfaces:
 
 1. A background service that captures events, filters them, stores them, and composes daily outputs
 2. A desktop reader that lets the user browse dates and read the resulting Markdown
@@ -87,7 +87,7 @@ Responsibilities:
 
 Notes:
 
-- Core clipboard history belongs to Know You itself
+- Core clipboard history belongs to KnowYou itself
 - Maccy or similar tools are examples, not platform dependencies
 
 ### 2. Notification Collector
@@ -258,7 +258,7 @@ Everything not matched by `drop` or `redact` remains eligible for normal storage
 If a day was missed because the app was closed, a job failed, or summarization was incomplete:
 
 - the next launch or next scheduled run detects the missing or incomplete day
-- Know You regenerates the day from available stored events
+- KnowYou regenerates the day from available stored events
 - the same Markdown file path is updated instead of creating duplicates
 
 ### Idempotency
@@ -422,4 +422,4 @@ These are intentionally deferred:
 
 ## Summary
 
-Know You V1 is a standalone macOS memory product, not a plugin. It captures clipboard and notification context, filters sensitive information before persistence, stores reliable daily event history locally, and produces one canonical Markdown memory document per day. The desktop UI is intentionally minimal: dates on the left, Markdown on the right.
+KnowYou V1 is a standalone macOS memory product, not a plugin. It captures clipboard and notification context, filters sensitive information before persistence, stores reliable daily event history locally, and produces one canonical Markdown memory document per day. The desktop UI is intentionally minimal: dates on the left, Markdown on the right.

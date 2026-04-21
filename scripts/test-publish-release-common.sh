@@ -39,7 +39,7 @@ assert_contains() {
 
 assert_eq "116" "$(release_repo_build_number)" "release_repo_build_number"
 assert_eq "v1.0.2-build116" "$(download_release_tag)" "download_release_tag"
-assert_eq "Know You v1.0.2 (116)" "$(download_release_title)" "download_release_title"
+assert_eq "KnowYou v1.0.2 (116)" "$(download_release_title)" "download_release_title"
 assert_eq "KnowYou-1.0.2-2-notarized.zip.sha256" "$(checksum_asset_name)" "checksum_asset_name"
 
 expected_url="https://github.com/gift-is-coding/know-you-downloads/releases/download/v1.0.2-build116/KnowYou-1.0.2-2-notarized.zip"

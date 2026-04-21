@@ -1,8 +1,8 @@
-# Know You Developer ID Release Signing Design
+# KnowYou Developer ID Release Signing Design
 
 ## Goal
 
-Fix the unfinished Apple ID verification and release-signing gap so Know You can be exported as a real outside-the-App-Store macOS build: signed with Developer ID, notarized by Apple, stapled, and locally verifiable before upload to the download channel.
+Fix the unfinished Apple ID verification and release-signing gap so KnowYou can be exported as a real outside-the-App-Store macOS build: signed with Developer ID, notarized by Apple, stapled, and locally verifiable before upload to the download channel.
 
 ## Current Problem
 

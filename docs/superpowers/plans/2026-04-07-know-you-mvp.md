@@ -1,4 +1,4 @@
-# Know You MVP Implementation Plan
+# KnowYou MVP Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
@@ -128,11 +128,11 @@ struct KnowYouApp: App {
     @State private var appState = AppState()
 
     var body: some Scene {
-        WindowGroup("Know You") {
+        WindowGroup("KnowYou") {
             MainWindowView()
                 .environment(appState)
         }
-        MenuBarExtra("Know You", systemImage: "book.closed") {
+        MenuBarExtra("KnowYou", systemImage: "book.closed") {
             SettingsLink()
             Divider()
             Text(appState.statusMessage ?? "Capturing context")
@@ -1124,9 +1124,9 @@ git commit -m "feat: ship two pane markdown reader"
 - [x] **Step 1: Add README setup instructions**
 
 ```md
-# Know You
+# KnowYou
 
-Know You is a macOS app that captures clipboard and notification context, filters sensitive content, and creates one Markdown note per day.
+KnowYou is a macOS app that captures clipboard and notification context, filters sensitive content, and creates one Markdown note per day.
 
 ## Local Development
 

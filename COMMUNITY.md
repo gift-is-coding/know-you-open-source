@@ -1,10 +1,10 @@
-# Know You Community
+# KnowYou Community
 
 最后更新：2026-04-11
 
 ## 1. 社区定位
 
-Know You Community 用来承接以下内容：
+KnowYou Community 用来承接以下内容：
 
 - 产品讨论
 - 使用体验分享
@@ -34,7 +34,7 @@ Know You Community 用来承接以下内容：
 
 ### `#welcome`
 
-用于介绍 Know You 是什么、社区做什么、怎么开始参与。
+用于介绍 KnowYou 是什么、社区做什么、怎么开始参与。
 
 ### `#announcements`
 
@@ -83,7 +83,7 @@ Know You Community 用来承接以下内容：
 
 可作为 Discord `#welcome` 首条消息的草稿：
 
-> 欢迎来到 Know You Community。这里适合讨论产品想法、反馈使用体验、分享你的日记工作流。如果内容涉及隐私、敏感工作上下文或不适合公开披露的信息，请直接发邮件联系我：cestlouiswu@gmail.com。
+> 欢迎来到 KnowYou Community。这里适合讨论产品想法、反馈使用体验、分享你的日记工作流。如果内容涉及隐私、敏感工作上下文或不适合公开披露的信息，请直接发邮件联系我：cestlouiswu@gmail.com。
 
 ## 7. 当前状态
 

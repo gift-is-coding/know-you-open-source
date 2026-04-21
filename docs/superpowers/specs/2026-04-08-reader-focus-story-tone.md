@@ -1,4 +1,4 @@
-# Know You Reader Focus and Story Tone Spec
+# KnowYou Reader Focus and Story Tone Spec
 
 ## Overview
 

@@ -2,7 +2,7 @@
 
 ## 概述
 
-这个功能会在主窗口左下角的 settings / `...` 入口下新增一个二级菜单项 `Sync Memory`，让 Know You 把每天生成的 Markdown 日记复制到两个外部记忆渠道：
+这个功能会在主窗口左下角的 settings / `...` 入口下新增一个二级菜单项 `Sync Memory`，让 KnowYou 把每天生成的 Markdown 日记复制到两个外部记忆渠道：
 
 - Obsidian
 - OpenClaw
@@ -16,13 +16,13 @@ V1 刻意收窄范围。它不是一个通用的 “AI 工具 rules 同步系统
 3. 首次确认或修改一次路径
 4. 点击 `Sync Now`，或者开启 `Auto Sync Daily`
 
-初始化完成后，Know You 应该能在用户登录后自动生效，并按每天固定时间处理后续复制。
+初始化完成后，KnowYou 应该能在用户登录后自动生效，并按每天固定时间处理后续复制。
 
 ## 问题
 
-Know You 已经能在本地生成每日 Markdown 日记，但依赖外部知识工具的用户，仍然需要手动把这些内容搬过去。这会打断“本地优先，但也能接入外部记忆系统”的产品叙事，让每日记忆采集显得不完整。
+KnowYou 已经能在本地生成每日 Markdown 日记，但依赖外部知识工具的用户，仍然需要手动把这些内容搬过去。这会打断“本地优先，但也能接入外部记忆系统”的产品叙事，让每日记忆采集显得不完整。
 
-当前产品缺的不是日记生成，而是缺少一个从 Know You 每日日记输出，平滑接到外部记忆系统的桥梁。
+当前产品缺的不是日记生成，而是缺少一个从 KnowYou 每日日记输出，平滑接到外部记忆系统的桥梁。
 
 ## 目标
 
@@ -51,11 +51,11 @@ V1 不包含以下内容：
 
 ### Obsidian
 
-Obsidian 天然适合作为目标，因为它本身就是用户选择的本地 Markdown vault。Know You 可以把日记复制进 vault 里的一个固定子目录，不需要依赖专有 API。
+Obsidian 天然适合作为目标，因为它本身就是用户选择的本地 Markdown vault。KnowYou 可以把日记复制进 vault 里的一个固定子目录，不需要依赖专有 API。
 
 ### OpenClaw
 
-OpenClaw 相关，是因为它本身有记忆机制。但 Know You 不应该接管或覆盖 OpenClaw 自己的 daily memory 文件。更合理的方式是：把 Know You 的日记复制到 OpenClaw workspace 里一个独立的 Know You 子目录，让 OpenClaw 把它当作额外 memory 读取和搜索。
+OpenClaw 相关，是因为它本身有记忆机制。但 KnowYou 不应该接管或覆盖 OpenClaw 自己的 daily memory 文件。更合理的方式是：把 KnowYou 的日记复制到 OpenClaw workspace 里一个独立的 KnowYou 子目录，让 OpenClaw 把它当作额外 memory 读取和搜索。
 
 ### 为什么不做 Claude Code
 
@@ -160,29 +160,29 @@ V1 只围绕 Obsidian 和 OpenClaw 做。由应用负责路径探测、文件复
 
 ### Obsidian
 
-Know You 应该先自动探测可能的 vault。即使探测到一个或多个候选 vault，V1 也仍然需要用户首次确认一次最终目标。
+KnowYou 应该先自动探测可能的 vault。即使探测到一个或多个候选 vault，V1 也仍然需要用户首次确认一次最终目标。
 
-配置完成后，Know You 会把同步文件写入所选 vault 中的固定子目录：
+配置完成后，KnowYou 会把同步文件写入所选 vault 中的固定子目录：
 
-`Know You/Daily Memories/`
+`KnowYou/Daily Memories/`
 
 这些同步文件应该保持为普通 Markdown，用户可以在 Finder 或 Obsidian 中直接查看。
 
 ### OpenClaw
 
-Know You 应该按照 OpenClaw 当前的默认 workspace 约定和兼容性 fallback 去自动探测 workspace。探测成功后，Know You 应该在其中创建并使用一个独立子目录：
+KnowYou 应该按照 OpenClaw 当前的默认 workspace 约定和兼容性 fallback 去自动探测 workspace。探测成功后，KnowYou 应该在其中创建并使用一个独立子目录：
 
 `<openclaw-workspace>/know-you-memory/`
 
-这个目录必须和 OpenClaw 自己的原生 daily memory 文件隔离。Know You 的职责是把额外记忆材料放到 OpenClaw 可读取的 workspace 里，而不是替换或覆盖 OpenClaw 的 daily-memory 机制。
+这个目录必须和 OpenClaw 自己的原生 daily memory 文件隔离。KnowYou 的职责是把额外记忆材料放到 OpenClaw 可读取的 workspace 里，而不是替换或覆盖 OpenClaw 的 daily-memory 机制。
 
 如果探测到的 workspace 不正确或不标准，用户仍然可以手动改选目录。
 
 ## 文件模型
 
-Know You 仍然是日记生成的唯一事实来源。
+KnowYou 仍然是日记生成的唯一事实来源。
 
-同步功能只是把 Know You 已有的每日 Markdown 输出复制到外部目标，而不是在 V1 里为每个渠道生成一套不同格式的内容。
+同步功能只是把 KnowYou 已有的每日 Markdown 输出复制到外部目标，而不是在 V1 里为每个渠道生成一套不同格式的内容。
 
 推荐的目标文件名：
 
@@ -198,7 +198,7 @@ Know You 仍然是日记生成的唯一事实来源。
 
 V1 应采取保守策略：
 
-- 只覆盖 Know You 自己写入目标目录的文件
+- 只覆盖 KnowYou 自己写入目标目录的文件
 - 不修改用户无关文件
 - 一个渠道失败时，不阻塞另一个渠道继续成功
 
@@ -211,13 +211,13 @@ V1 支持每天固定一个时间点的自动同步，优先通过用户级 Laun
 - 用户开启 `Auto Sync Daily`
 - 用户选择每天的一个固定时间
 - LaunchAgent 在用户登录后自动生效
-- Know You 每天到这个时间点执行一次同步
+- KnowYou 每天到这个时间点执行一次同步
 
 这里的语义应当明确为“用户登录后自动生效”，而不是“机器未登录时也会运行”。
 
 ## 复制范围
 
-V1 同步的是 Know You 已生成的每日日记文件，而不是任意历史导出，也不是整个 vault 内容。
+V1 同步的是 KnowYou 已生成的每日日记文件，而不是任意历史导出，也不是整个 vault 内容。
 
 第一版的规则调整为：
 
@@ -316,7 +316,7 @@ UI 测试或 view-model 测试应覆盖：
 
 - V1 渠道：只做 `Obsidian` 和 `OpenClaw`
 - Claude Code：不进入 V1
-- Obsidian 目标目录：固定为 `Know You/Daily Memories/`
+- Obsidian 目标目录：固定为 `KnowYou/Daily Memories/`
 - OpenClaw 目标目录：固定为探测到的 workspace 下的 `know-you-memory/`
 - OpenClaw 原生 memory 文件：不替换，不覆盖
 - 自动同步时机：每天固定一次

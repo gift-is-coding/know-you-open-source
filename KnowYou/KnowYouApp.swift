@@ -11,7 +11,7 @@ struct KnowYouApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Know You", id: "main") {
+        WindowGroup("KnowYou", id: "main") {
             if launchMode == .syncMemory {
                 SyncMemoryLaunchView()
                     .environment(appState)
@@ -29,7 +29,7 @@ struct KnowYouApp: App {
             }
         }
 
-        MenuBarExtra("Know You", systemImage: "book.closed") {
+        MenuBarExtra("KnowYou", systemImage: "book.closed") {
             MenuBarContentView()
                 .environment(appState)
         }
@@ -65,7 +65,7 @@ private struct MenuBarContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Know You")
+            Text("KnowYou")
                 .font(.headline)
             Text(appState.statusMessage ?? "Capturing context")
                 .font(.footnote)
@@ -78,7 +78,7 @@ private struct MenuBarContentView: View {
 
             Divider()
 
-            Button("Open Know You") {
+            Button("Open KnowYou") {
                 openWindow(id: "main")
                 NSApp.activate(ignoringOtherApps: true)
             }

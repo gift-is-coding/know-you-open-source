@@ -1,4 +1,4 @@
-# Know You Story-First Reader Spec
+# KnowYou Story-First Reader Spec
 
 ## Overview
 

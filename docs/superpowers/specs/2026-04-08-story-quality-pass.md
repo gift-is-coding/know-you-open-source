@@ -1,4 +1,4 @@
-# Know You Story Quality Pass Spec
+# KnowYou Story Quality Pass Spec
 
 ## Overview
 

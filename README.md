@@ -1,6 +1,6 @@
-# Know You
+# KnowYou
 
-Know You is a native macOS app that captures daily computer context and turns it into a story-first daily journal with source-linked evidence.
+KnowYou is a native macOS app that captures daily computer context and turns it into a story-first daily journal with source-linked evidence.
 
 The current project includes:
 
@@ -57,7 +57,7 @@ For reproducibility, the harness relaunches the app and relies on launch-time cl
 
 ## Release Signing
 
-Know You now ships through a dedicated Developer ID release path rather than the local debug signing flow.
+KnowYou now ships through a dedicated Developer ID release path rather than the local debug signing flow.
 
 One-time notarization setup on a release machine:
 
@@ -90,14 +90,14 @@ See [`docs/release-signing.md`](docs/release-signing.md) for the full flow and a
 
 ## Community
 
-Discord 是 Know You 当前规划的主社区形态，适合讨论产品想法、反馈体验、分享你的日记工作流。
+Discord 是 KnowYou 当前规划的主社区形态，适合讨论产品想法、反馈体验、分享你的日记工作流。
 
 - 社区说明与频道建议见 [COMMUNITY.md](COMMUNITY.md)
 - 当前社区链接：https://discord.gg/ZrqF5jwQ
 
 ## Privacy
 
-Know You 是本地优先的 macOS 应用。隐私边界、数据来源、过滤时机与第三方总结器说明见 [PRIVACY.md](PRIVACY.md)。
+KnowYou 是本地优先的 macOS 应用。隐私边界、数据来源、过滤时机与第三方总结器说明见 [PRIVACY.md](PRIVACY.md)。
 
 ## Support
 

@@ -237,8 +237,8 @@ struct OnboardingView: View {
                     statusRow(
                         title: "Full Disk Access",
                         detail: notificationsAvailable
-                            ? "Ready. Know You can read the local Notification Center store and rebuild who reached you and when."
-                            : "Turn this on in macOS so Know You can read the local Notification Center store and rebuild who reached you and when.",
+                            ? "Ready. KnowYou can read the local Notification Center store and rebuild who reached you and when."
+                            : "Turn this on in macOS so KnowYou can read the local Notification Center store and rebuild who reached you and when.",
                         ok: notificationsAvailable
                     )
 
@@ -342,7 +342,7 @@ struct OnboardingView: View {
 
             EngineConfigurationSection(
                 summarizerConfig: $summarizerConfig,
-                lead: "Reuse the CLI or API setup you already trust on this Mac. Once this looks good, Know You can start working right away.",
+                lead: "Reuse the CLI or API setup you already trust on this Mac. Once this looks good, KnowYou can start working right away.",
                 footnote: "Launching at login is recommended if you want the diary to keep updating in the background."
             )
 
@@ -573,7 +573,7 @@ struct OnboardingView: View {
         }
 
         guard notificationsAvailable else {
-            generationError = "Full Disk Access is still missing. Turn it on so Know You can rebuild your notification context."
+            generationError = "Full Disk Access is still missing. Turn it on so KnowYou can rebuild your notification context."
             generationStarted = false
             return
         }

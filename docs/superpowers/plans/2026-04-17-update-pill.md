@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 Know You 增加一个只在发现新版本时显示的左上角标题栏更新胶囊，点击后打开更新 sheet，并同时兼容官网直装版与 Mac App Store 版。
+**Goal:** 为 KnowYou 增加一个只在发现新版本时显示的左上角标题栏更新胶囊，点击后打开更新 sheet，并同时兼容官网直装版与 Mac App Store 版。
 
 **Architecture:** 本次实现分四层推进。先建立渠道解析、版本比较、更新 offer 归一化等纯逻辑层，并用单元测试锁定状态机；再把更新状态接入 `AppState` 和启动/每日检查调度；之后通过 AppKit title bar accessory bridge 把 SwiftUI 胶囊挂到主窗口 traffic lights 右侧，并补上更新 sheet；最后更新产品文档并做完整验证。整个实现保持“同一套 UI，按渠道切换动作”，避免把 Sparkle 或 App Store 逻辑散落到视图层。
 

@@ -1,15 +1,15 @@
 # Real-Machine Verification Harness
 
-This repository includes a real-machine shell harness for checking Know You on a real Mac with actual clipboard and local notification inputs.
+This repository includes a real-machine shell harness for checking KnowYou on a real Mac with actual clipboard and local notification inputs.
 
 ## What It Does
 
 The harness:
 
-- quits an already running Know You instance so launch-time automation starts from a clean state
+- quits an already running KnowYou instance so launch-time automation starts from a clean state
 - copies a unique clipboard sentinel with `pbcopy`
 - attempts a real local macOS notification with a unique sentinel via `osascript`
-- launches the latest Debug build of Know You if it can find one in DerivedData
+- launches the latest Debug build of KnowYou if it can find one in DerivedData
 - waits for launch-time clipboard bootstrap plus launch-time automation to refresh today
 - automatically checks SQLite and today's Markdown for the clipboard sentinel
 - reports whether the local Notification Center database is missing, readable, or blocked by Full Disk Access
@@ -37,15 +37,15 @@ On a machine where the app can be launched from DerivedData, the harness should 
 
 Notification persistence remains machine-dependent. The script reports whether a notification row appeared in SQLite, but that is not guaranteed on every macOS build.
 
-If the script reports `permission-denied` for the Notification Center database, the notification path is blocked before Know You can import anything. In that case:
+If the script reports `permission-denied` for the Notification Center database, the notification path is blocked before KnowYou can import anything. In that case:
 
-1. grant Full Disk Access to Know You or the terminal app running the harness
+1. grant Full Disk Access to KnowYou or the terminal app running the harness
 2. rerun the script
 3. only treat notification import as testable once the database is reported as `readable`
 
 ## Why The Ordering Matters
 
-Know You now bootstraps the current clipboard contents during app startup before the first automation refresh runs. The harness depends on that ordering:
+KnowYou now bootstraps the current clipboard contents during app startup before the first automation refresh runs. The harness depends on that ordering:
 
 1. quit any old app instance
 2. write the real clipboard sentinel

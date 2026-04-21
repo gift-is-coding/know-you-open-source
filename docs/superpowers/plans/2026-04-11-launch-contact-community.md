@@ -1,8 +1,8 @@
-# Know You 联系入口、社区与正式上线基础设施实现计划
+# KnowYou 联系入口、社区与正式上线基础设施实现计划
 
 > **给执行代理的说明：** 本计划默认在独立 worktree 中执行，按任务逐项勾选。除非用户明确要求英文，否则过程文档与说明统一使用中文。
 
-**目标：** 为 Know You 同时补齐应用内联系/社区入口、仓库对外法律与社区文档，以及正式上线前的基础清单。
+**目标：** 为 KnowYou 同时补齐应用内联系/社区入口、仓库对外法律与社区文档，以及正式上线前的基础清单。
 
 **架构：** 以现有 `SettingsView` 作为应用内承接点，新增一个静态但可点击的 `About & Community` 区域；以仓库 Markdown 文档作为当前法律与社区正文载体；通过文档常量与 UI 文案对齐，避免应用内外口径分裂。
 
@@ -178,7 +178,7 @@ static let discordDescription = "适合讨论产品想法、反馈体验、分�
 ```swift
 Section("About & Community") {
     VStack(alignment: .leading, spacing: 10) {
-        Text("Know You")
+        Text("KnowYou")
             .font(.headline)
         Text(AppSupportMetadata.productTagline)
             .font(.callout)
@@ -253,12 +253,12 @@ git commit -m "feat: add settings about and community section"
 
 ## Community
 
-Discord is the primary community for Know You users and enthusiasts.
+Discord is the primary community for KnowYou users and enthusiasts.
 The server structure, rules, and launch checklist live in `COMMUNITY.md`.
 
 ## Privacy
 
-Know You is local-first. Privacy boundaries and data flow are documented in `PRIVACY.md`.
+KnowYou is local-first. Privacy boundaries and data flow are documented in `PRIVACY.md`.
 
 ## Support
 
@@ -270,7 +270,7 @@ Use the community for product discussion and feature feedback.
 
 写入至少包含以下结构：
 ```md
-# Know You 隐私政策
+# KnowYou 隐私政策
 
 ## 我们收集什么
 ## 数据来源
@@ -291,7 +291,7 @@ Use the community for product discussion and feature feedback.
 
 写入至少包含以下结构：
 ```md
-# Know You 使用条款
+# KnowYou 使用条款
 
 ## 软件提供方式
 ## 用户责任
@@ -310,7 +310,7 @@ Copyright © 2026 Shanghai Two-Person Beiwu Software Co., Ltd. All rights reserv
 
 写入至少包含以下结构：
 ```md
-# Know You Community
+# KnowYou Community
 
 ## 社区定位
 ## Discord 频道建议
@@ -332,7 +332,7 @@ Copyright © 2026 Shanghai Two-Person Beiwu Software Co., Ltd. All rights reserv
 
 写入至少包含以下清单段落：
 ```md
-# Know You 正式上线检查清单
+# KnowYou 正式上线检查清单
 
 ## 法律与文档
 - [ ] 隐私政策

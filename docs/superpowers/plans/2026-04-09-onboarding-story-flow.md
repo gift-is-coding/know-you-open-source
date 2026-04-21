@@ -93,7 +93,7 @@ enum OnboardingContent {
         switch step {
         case .intro:
             return OnboardingStepContent(
-                title: "From the moment your day begins, Know You helps you remember it.",
+                title: "From the moment your day begins, KnowYou helps you remember it.",
                 body: "It turns scattered context into a readable diary you can revisit at night.",
                 caption: "Your information stays in Markdown files stored on your own Mac.",
                 bullets: [],
@@ -102,18 +102,18 @@ enum OnboardingContent {
         case .capture:
             return OnboardingStepContent(
                 title: "During the day, it quietly gathers the clues you leave behind.",
-                body: "Know You works automatically so you do not need to write a manual log.",
+                body: "KnowYou works automatically so you do not need to write a manual log.",
                 caption: "",
                 bullets: [
                     "Message notifications help reconstruct who reached you and when.",
                     "Clipboard activity gives context about what you were reading, writing, and comparing.",
-                    "Voice-input tools that land text in the clipboard give Know You richer context."
+                    "Voice-input tools that land text in the clipboard give KnowYou richer context."
                 ],
                 primaryCTA: "Show me the safety boundary"
             )
         case .safety:
             return OnboardingStepContent(
-                title: "Before anything becomes memory, Know You filters it.",
+                title: "Before anything becomes memory, KnowYou filters it.",
                 body: "Even local files are filtered so sensitive details are not retained blindly.",
                 caption: "",
                 bullets: [
@@ -126,14 +126,14 @@ enum OnboardingContent {
         case .preview:
             return OnboardingStepContent(
                 title: "By evening, your day becomes a story you can actually read.",
-                body: "Know You turns the signals into a diary from morning to night, with source context nearby when you need it.",
+                body: "KnowYou turns the signals into a diary from morning to night, with source context nearby when you need it.",
                 caption: "",
                 bullets: [],
                 primaryCTA: "What do you need from me?"
             )
         case .permissions:
             return OnboardingStepContent(
-                title: "Turn on the signals that let Know You rebuild your day.",
+                title: "Turn on the signals that let KnowYou rebuild your day.",
                 body: "Each permission exists to fill in a specific piece of the story, not to create a generic data grab.",
                 caption: "",
                 bullets: [],
@@ -256,7 +256,7 @@ private let previewStory = [
     "9:10 AM  You started the morning by outlining the work ahead and pulling together the documents you needed.",
     "11:40 AM  Notifications and copied snippets captured the back-and-forth that shaped the middle of the day.",
     "3:20 PM  As the afternoon narrowed into execution, the day gained a clear thread instead of scattered fragments.",
-    "9:05 PM  By the evening, Know You turned the raw context into a diary you could revisit and trace."
+    "9:05 PM  By the evening, KnowYou turned the raw context into a diary you could revisit and trace."
 ]
 
 private struct PreviewOnboardingStep: View {
@@ -379,8 +379,8 @@ Expected: FAIL on the new permission/helper assertions.
 ```swift
 case .permissions:
     return OnboardingStepContent(
-        title: "Turn on the signals that let Know You rebuild your day.",
-        body: "These permissions help Know You recover the moments that would otherwise disappear from the story.",
+        title: "Turn on the signals that let KnowYou rebuild your day.",
+        body: "These permissions help KnowYou recover the moments that would otherwise disappear from the story.",
         caption: "You can skip this for now and come back from Settings later.",
         bullets: [
             "Clipboard helps capture the context you actively touched during the day.",

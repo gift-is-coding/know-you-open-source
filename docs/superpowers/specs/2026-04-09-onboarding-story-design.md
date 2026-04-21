@@ -25,7 +25,7 @@ The flow remains a linear SwiftUI wizard so it fits the current app structure, b
 
 ## User Promise
 
-Know You quietly helps the user remember their day, keeps the source material in local Markdown files, filters sensitive content before it is stored or synced, and only asks for permissions after showing the value of enabling them.
+KnowYou quietly helps the user remember their day, keeps the source material in local Markdown files, filters sensitive content before it is stored or synced, and only asks for permissions after showing the value of enabling them.
 
 ## Narrative Direction
 
@@ -37,10 +37,10 @@ Tone:
 Narrative arc:
 
 1. A day begins.
-2. Know You notices the user's working context automatically.
-3. Know You explains the safety boundary around what it keeps.
-4. Know You shows the user what their finished day looks like.
-5. Know You asks for permissions as the final enabling step.
+2. KnowYou notices the user's working context automatically.
+3. KnowYou explains the safety boundary around what it keeps.
+4. KnowYou shows the user what their finished day looks like.
+5. KnowYou asks for permissions as the final enabling step.
 
 This flow should feel like a guided story, not a checklist of system settings.
 
@@ -67,7 +67,7 @@ Purpose:
 
 Content:
 
-- Hero title about Know You helping the user remember the day from the moment work begins.
+- Hero title about KnowYou helping the user remember the day from the moment work begins.
 - Supporting copy that says the product turns scattered context into a readable diary.
 - A small but clearly visible line under the hero:
   - "Your information stays in Markdown files stored on your own Mac."
@@ -96,7 +96,7 @@ Content blocks:
 - Clipboard context:
   - We automatically use clipboard activity to understand what the user was reading, writing, collecting, or comparing.
 - Voice input helper:
-  - Recommend installing a voice-to-text helper and explain that voice input often lands in the clipboard, which gives Know You better context.
+  - Recommend installing a voice-to-text helper and explain that voice input often lands in the clipboard, which gives KnowYou better context.
   - Provide outbound links or tappable icon treatments for suggested tools.
 
 Requirements:
@@ -171,7 +171,7 @@ Purpose:
 
 Content:
 
-- Explain that Know You needs relevant local-reading permissions to reconstruct the day reliably.
+- Explain that KnowYou needs relevant local-reading permissions to reconstruct the day reliably.
 - Explain the notification-related permission in terms of preserving important moments and conversations.
 - Explain that ongoing access allows the process to stay automatic instead of manual.
 - Reassure the user that they can defer and return later if needed.
@@ -222,7 +222,7 @@ Guidance:
 - Keep the frame compact enough for the existing macOS window, but allow more expressive layout inside each step.
 - Make the preview screen the visual high point.
 
-The design should still feel like Know You, not a separate microsite living inside the app.
+The design should still feel like KnowYou, not a separate microsite living inside the app.
 
 ## Interaction Rules
 

@@ -1,10 +1,10 @@
-# Know You 架构文档
+# KnowYou 架构文档
 
 本文档描述当前工作区对应的真实实现架构，目标是解释系统现在如何运行，而不是定义未来版本的设想。
 
 ## 1. 项目定位
 
-Know You 是一个原生 macOS 应用，用来被动采集用户当天的电脑上下文，并生成按天组织的日记材料。
+KnowYou 是一个原生 macOS 应用，用来被动采集用户当天的电脑上下文，并生成按天组织的日记材料。
 
 当前实现是一个本地优先、单机运行的桌面产品，核心能力包括：
 
@@ -50,7 +50,7 @@ flowchart LR
     F --> Q[OnboardingView]
     E --> P
     F --> R[SyncMemoryCoordinator]
-    R --> S[Obsidian Vault/Know You/Daily Memories]
+    R --> S[Obsidian Vault/KnowYou/Daily Memories]
     R --> T[OpenClaw Workspace/know-you-memory]
     F --> U[LaunchAgentManager]
     V[build-release.sh] --> W[KnowYou.xcarchive]
@@ -84,7 +84,7 @@ flowchart LR
 
 如果用户尚未完成 onboarding，则仍然进入真实主阅读器，但会叠加 Demo Day + coachmark 引导；否则直接进入正常主阅读器。
 
-菜单栏中的 `Open Know You` 会显式调用 `openWindow(id: "main")` 并激活应用，因此主窗口既能由正常启动拉起，也能由菜单栏重新唤起。
+菜单栏中的 `Open KnowYou` 会显式调用 `openWindow(id: "main")` 并激活应用，因此主窗口既能由正常启动拉起，也能由菜单栏重新唤起。
 
 ### 3.2 AppState 作为编排中心
 

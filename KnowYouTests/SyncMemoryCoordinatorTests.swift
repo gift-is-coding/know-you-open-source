@@ -5,7 +5,7 @@ final class SyncMemoryCoordinatorTests: XCTestCase {
     func testSyncDiariesCopiesAllMarkdownIntoObsidianAndOpenClawTargets() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let sourceVault = root.appendingPathComponent("source", isDirectory: true)
-        let obsidianTarget = root.appendingPathComponent("obsidian/Know You/Daily Memories", isDirectory: true)
+        let obsidianTarget = root.appendingPathComponent("obsidian/KnowYou/Daily Memories", isDirectory: true)
         let openClawTarget = root.appendingPathComponent("openclaw/know-you-memory", isDirectory: true)
 
         try FileManager.default.createDirectory(at: sourceVault, withIntermediateDirectories: true)
@@ -41,7 +41,7 @@ final class SyncMemoryCoordinatorTests: XCTestCase {
     func testSyncDiariesOverwritesPreviouslySyncedFileWithSameName() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let sourceVault = root.appendingPathComponent("source", isDirectory: true)
-        let obsidianTarget = root.appendingPathComponent("obsidian/Know You/Daily Memories", isDirectory: true)
+        let obsidianTarget = root.appendingPathComponent("obsidian/KnowYou/Daily Memories", isDirectory: true)
         try FileManager.default.createDirectory(at: sourceVault, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: obsidianTarget, withIntermediateDirectories: true)
         try "# Fresh".write(

@@ -1,4 +1,4 @@
-# Know You Release Signing
+# KnowYou Release Signing
 
 This document is the canonical release path for outside-the-App-Store macOS builds.
 

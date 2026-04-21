@@ -197,7 +197,7 @@ enum OnboardingDemoStory {
             text: """
             ## Mid-afternoon: explain privacy in plain English
 
-            After the product value and the evidence were clear, the trust step needed to get much simpler. I cut away anything that sounded like implementation commentary and kept only the part a real person actually needs to know: every file stays local as Markdown, there is no Know You server, and nothing leaves the Mac unless I explicitly send it to the model I chose. The page became shorter, but the promise became stronger.
+            After the product value and the evidence were clear, the trust step needed to get much simpler. I cut away anything that sounded like implementation commentary and kept only the part a real person actually needs to know: every file stays local as Markdown, there is no KnowYou server, and nothing leaves the Mac unless I explicitly send it to the model I chose. The page became shorter, but the promise became stronger.
             """,
             eventSeeds: [
                 DemoEventSeed(sourceType: .notification, sourceApp: "Slack", text: "Privacy card needs to be shorter and much more visual."),
@@ -221,7 +221,7 @@ enum OnboardingDemoStory {
             text: """
             ## Late afternoon: ask for permission with a real reason
 
-            The permission step got better once I stopped treating it like a checklist and started treating it like a cause-and-effect explanation. Know You rebuilds the day from notifications and clipboard context. Full Disk Access is the real gate because it unlocks the local Notification Center history. Voice input tools are helpful because they often push dictated text through the clipboard, which makes the diary smarter, but that stays optional. Once that logic was explicit, the step felt much less like begging for access and much more like explaining why the diary can only be as good as the context it is allowed to see.
+            The permission step got better once I stopped treating it like a checklist and started treating it like a cause-and-effect explanation. KnowYou rebuilds the day from notifications and clipboard context. Full Disk Access is the real gate because it unlocks the local Notification Center history. Voice input tools are helpful because they often push dictated text through the clipboard, which makes the diary smarter, but that stays optional. Once that logic was explicit, the step felt much less like begging for access and much more like explaining why the diary can only be as good as the context it is allowed to see.
             """,
             eventSeeds: [
                 DemoEventSeed(sourceType: .notification, sourceApp: "Mail", text: "Please explain why we need Full Disk Access in plain words."),
@@ -258,7 +258,7 @@ enum OnboardingDemoStory {
                 DemoEventSeed(sourceType: .clipboard, sourceApp: "Messages", text: "make the user click the real configure button"),
                 DemoEventSeed(sourceType: .clipboard, sourceApp: "Notion", text: "keep engine form in the real module, not in the popover"),
                 DemoEventSeed(sourceType: .clipboard, sourceApp: "Typeless", text: "The flow should always make the last required click feel obvious."),
-                DemoEventSeed(sourceType: .clipboard, sourceApp: "Mail", text: "explain that Know You reuses the engine the user already has"),
+                DemoEventSeed(sourceType: .clipboard, sourceApp: "Mail", text: "explain that KnowYou reuses the engine the user already has"),
                 DemoEventSeed(sourceType: .clipboard, sourceApp: "Calendar", text: "Wrap up engine-state fix before dinner.")
             ]
         ),

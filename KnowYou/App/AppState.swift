@@ -1361,7 +1361,7 @@ final class AppState {
 
             if let vault = (configuredVaults + detector.detectObsidianVaults(searchRoots: searchRoots)).first {
                 config.obsidian.resolvedPath = vault
-                    .appendingPathComponent("Know You", isDirectory: true)
+                    .appendingPathComponent("KnowYou", isDirectory: true)
                     .appendingPathComponent("Daily Memories", isDirectory: true)
                     .path
                 config.obsidian.isEnabled = true

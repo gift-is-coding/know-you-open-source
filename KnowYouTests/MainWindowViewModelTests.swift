@@ -5777,7 +5777,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         appState.syncMemoryConfig.obsidian.isEnabled = true
         appState.syncMemoryConfig.obsidian.resolvedPath = root
-            .appendingPathComponent("Obsidian/Know You/Daily Memories", isDirectory: true)
+            .appendingPathComponent("Obsidian/KnowYou/Daily Memories", isDirectory: true)
             .path
         appState.syncMemoryConfig.openClaw.isEnabled = true
         appState.syncMemoryConfig.openClaw.resolvedPath = root
@@ -5786,7 +5786,7 @@ final class MainWindowViewModelTests: XCTestCase {
 
         appState.syncMemoryNow()
         XCTAssertTrue(FileManager.default.fileExists(
-            atPath: root.appendingPathComponent("Obsidian/Know You/Daily Memories/2026-04-14.md").path
+            atPath: root.appendingPathComponent("Obsidian/KnowYou/Daily Memories/2026-04-14.md").path
         ))
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: root.appendingPathComponent("OpenClaw/know-you-memory/2026-04-14.md").path

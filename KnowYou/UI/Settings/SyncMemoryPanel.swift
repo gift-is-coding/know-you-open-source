@@ -9,7 +9,7 @@ struct SyncMemoryPanelChannelRow: Equatable {
 struct SyncMemoryPanelPresentation: Equatable {
     let channelRows: [SyncMemoryPanelChannelRow]
     let isAutoSyncDailyEnabled: Bool
-    let autoSyncDescription = "When enabled, Know You syncs all daily notes to connected memory targets."
+    let autoSyncDescription = "When enabled, KnowYou syncs all daily notes to connected memory targets."
     let statusMessage: String?
 
     init(obsidianPath: String?, openClawPath: String?, isAutoSyncDailyEnabled: Bool, statusMessage: String? = nil) {

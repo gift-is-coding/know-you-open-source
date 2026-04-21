@@ -7,7 +7,7 @@ enum LaunchAgentManagerError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingExecutablePath:
-            return "Unable to resolve the Know You executable path."
+            return "Unable to resolve the KnowYou executable path."
         case .commandFailed(let description):
             return description
         }

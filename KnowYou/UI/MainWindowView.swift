@@ -333,7 +333,7 @@ struct MainWindowView: View {
             switch channel {
             case .obsidian:
                 resolvedPath = url
-                    .appendingPathComponent("Know You", isDirectory: true)
+                    .appendingPathComponent("KnowYou", isDirectory: true)
                     .appendingPathComponent("Daily Memories", isDirectory: true)
                     .path
             case .openClaw:

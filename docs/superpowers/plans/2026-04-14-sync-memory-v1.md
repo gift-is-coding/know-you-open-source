@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在 Know You 中新增位于左下角 settings / `...` 二级菜单下的 `Sync Memory` 功能，支持将最新每日日记同步到 Obsidian 和 OpenClaw，并通过用户级 LaunchAgent 在用户登录后每天固定时间自动执行同步。
+**Goal:** 在 KnowYou 中新增位于左下角 settings / `...` 二级菜单下的 `Sync Memory` 功能，支持将最新每日日记同步到 Obsidian 和 OpenClaw，并通过用户级 LaunchAgent 在用户登录后每天固定时间自动执行同步。
 
 **Architecture:** 这一版把 Sync Memory 设计成独立于日记生成和 diary engine 的子系统。数据从现有 vault 中最新的 `YYYY-MM-DD.md` 读取，经过路径探测和渠道配置后，由 `SyncMemoryCoordinator` 执行复制，再由 `LaunchAgentManager` 负责每天固定时间调度。UI 入口挂在左侧日期栏底部的 settings / `...` 菜单中，并通过 `AppState` 暴露状态、操作和最近结果。
 
@@ -297,7 +297,7 @@ final class SyncMemoryCoordinatorTests: XCTestCase {
     func testSyncLatestDiaryCopiesMarkdownIntoObsidianAndOpenClawTargets() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let sourceVault = root.appendingPathComponent("source", isDirectory: true)
-        let obsidianTarget = root.appendingPathComponent("obsidian/Know You/Daily Memories", isDirectory: true)
+        let obsidianTarget = root.appendingPathComponent("obsidian/KnowYou/Daily Memories", isDirectory: true)
         let openClawTarget = root.appendingPathComponent("openclaw/know-you-memory", isDirectory: true)
 
         try FileManager.default.createDirectory(at: sourceVault, withIntermediateDirectories: true)
@@ -714,7 +714,7 @@ func testSyncNowCopiesLatestDiaryIntoConfiguredDestinations() throws {
     let appState = AppState(environment: environment)
 
     appState.syncMemoryConfig.obsidian.isEnabled = true
-    appState.syncMemoryConfig.obsidian.resolvedPath = root.appendingPathComponent("Obsidian/Know You/Daily Memories").path
+    appState.syncMemoryConfig.obsidian.resolvedPath = root.appendingPathComponent("Obsidian/KnowYou/Daily Memories").path
 
     XCTAssertNoThrow(try appState.syncMemoryNow())
 }

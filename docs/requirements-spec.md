@@ -1,10 +1,10 @@
-# Know You 当前需求规格
+# KnowYou 当前需求规格
 
 本文档描述当前项目已经实现并正在维护的产品规格，重点是统一“这个产品现在是什么、提供什么、不提供什么”。
 
 ## 1. 产品目标
 
-Know You 的目标是把用户每天电脑上的零散上下文转成一份可阅读、可追溯、按天组织的日记材料。
+KnowYou 的目标是把用户每天电脑上的零散上下文转成一份可阅读、可追溯、按天组织的日记材料。
 
 当前版本强调三件事：
 
@@ -14,7 +14,7 @@ Know You 的目标是把用户每天电脑上的零散上下文转成一份可�
 
 ## 2. 当前产品定义
 
-Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsidian 插件，也不是多端同步产品。
+KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsidian 插件，也不是多端同步产品。
 
 当前项目包含三类用户可见产物：
 
@@ -165,10 +165,10 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 增量 payload 的 `sourceEventIDs` 至少必须属于当天已知事件集合；replacement section 出现非法引用时整次增量 attempt 必须失败，`详情` 追加块出现非法引用时仅丢弃对应 block
 - 增量失败时，不得覆盖已有 `.story.json` 或 `.md`
 - 系统必须支持把全部每日日记复制到 Obsidian 和 OpenClaw
-- Obsidian 目标目录固定为 `<vault>/Know You/Daily Memories/`
+- Obsidian 目标目录固定为 `<vault>/KnowYou/Daily Memories/`
 - OpenClaw 目标目录固定为 `<workspace>/know-you-memory/`
 - 系统不得覆盖 OpenClaw 原生 daily memory 文件
-- 同步时必须覆盖 Know You 在目标目录中已有的同名日记文件，但不得删除目标目录中的其他历史文件
+- 同步时必须覆盖 KnowYou 在目标目录中已有的同名日记文件，但不得删除目标目录中的其他历史文件
 - 用户必须能手动触发 `Sync Memory`
 - 用户必须能开启 `Auto Sync Daily`
 - 当启用 `Auto Sync Daily` 时，系统必须安装用户级 `LaunchAgent`，在用户登录后按固定时间执行同步

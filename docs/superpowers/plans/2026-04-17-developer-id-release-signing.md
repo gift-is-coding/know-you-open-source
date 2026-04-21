@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a repeatable Developer ID release pipeline for Know You, bind Apple notarization credentials on this Mac, and produce one notarized distributable build.
+**Goal:** Add a repeatable Developer ID release pipeline for KnowYou, bind Apple notarization credentials on this Mac, and produce one notarized distributable build.
 
 **Architecture:** Keep debug signing untouched, move release packaging into shell scripts, and make the app target's Release configuration notarization-ready with hardened runtime. The final path is `archive -> zip -> notarize -> staple -> verify`.
 

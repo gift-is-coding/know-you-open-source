@@ -14,7 +14,7 @@ final class SyncMemoryPanelTests: XCTestCase {
         XCTAssertEqual(presentation.channelRows.map(\.detail), ["Not connected", "Not connected"])
         XCTAssertEqual(
             presentation.autoSyncDescription,
-            "When enabled, Know You syncs all daily notes to connected memory targets."
+            "When enabled, KnowYou syncs all daily notes to connected memory targets."
         )
     }
 

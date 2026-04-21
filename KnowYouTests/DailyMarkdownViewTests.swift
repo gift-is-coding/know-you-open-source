@@ -320,7 +320,7 @@ final class DailyMarkdownViewTests: XCTestCase {
 
         第一段内容。
 
-        ## Know You 产品与定位
+        ## KnowYou 产品与定位
 
         第二段内容。
         """
@@ -361,6 +361,6 @@ final class DailyMarkdownViewTests: XCTestCase {
             return XCTFail("Expected third heading")
         }
         XCTAssertEqual(thirdLevel, 2)
-        XCTAssertEqual(thirdHeading.plainText, "Know You 产品与定位")
+        XCTAssertEqual(thirdHeading.plainText, "KnowYou 产品与定位")
     }
 }

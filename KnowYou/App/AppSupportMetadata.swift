@@ -92,13 +92,13 @@ struct AppSupportDocument: Identifiable {
         buttonTitle: "Privacy Policy",
         title: "Privacy Policy",
         body: """
-        Know You is a local-first macOS application.
+        KnowYou is a local-first macOS application.
 
         We currently process data from this Mac's system clipboard, the local Notification Center database, and related metadata such as source apps, capture timestamps, and day keys.
 
         Privacy filtering happens before content is persisted. That means obviously sensitive content should not be written verbatim into local SQLite storage, and local Markdown output is not intended to be an unfiltered dump of raw context.
 
-        By default, Know You stores runtime data locally on this Mac, including:
+        By default, KnowYou stores runtime data locally on this Mac, including:
         - ~/Library/Application Support/KnowYou/events.sqlite
         - ~/Library/Application Support/KnowYou/Vault
 
@@ -115,13 +115,13 @@ struct AppSupportDocument: Identifiable {
         buttonTitle: "Terms of Use",
         title: "Terms of Use",
         body: """
-        Know You is provided on an "as is" basis, without express or implied warranties.
+        KnowYou is provided on an "as is" basis, without express or implied warranties.
 
-        You are responsible for deciding whether Know You is appropriate for your device, work environment, and data context. You are also responsible for reviewing locally stored content, protecting your devices and accounts, and deciding whether to enable any third-party summarizers.
+        You are responsible for deciding whether KnowYou is appropriate for your device, work environment, and data context. You are also responsible for reviewing locally stored content, protecting your devices and accounts, and deciding whether to enable any third-party summarizers.
 
         If you configure and use third-party summarizers or related external tools, your relationship with those services is governed by their own terms and privacy policies.
 
-        You may not use Know You for unlawful purposes or to violate the privacy, intellectual property, or other legitimate rights of others.
+        You may not use KnowYou for unlawful purposes or to violate the privacy, intellectual property, or other legitimate rights of others.
 
         Copyright © 2026 Shanghai Erren Beiwu Software Co., Ltd. All rights reserved.
         """
@@ -132,7 +132,7 @@ struct AppSupportDocument: Identifiable {
         buttonTitle: "Community Guide",
         title: "Community Guide",
         body: """
-        Discord is the primary community space for Know You. It is the right place to discuss product ideas, share feedback, and compare journaling workflows.
+        Discord is the primary community space for KnowYou. It is the right place to discuss product ideas, share feedback, and compare journaling workflows.
 
         Current invite link:
         https://discord.gg/ZrqF5jwQ

@@ -49,7 +49,7 @@ fi
 printf '%s' "$CLIPBOARD_SENTINEL" | pbcopy
 
 if osascript <<OSA
-display notification "$(escape_applescript "$NOTIFICATION_SENTINEL")" with title "Know You verification" subtitle "$(escape_applescript "$DAY_KEY")"
+display notification "$(escape_applescript "$NOTIFICATION_SENTINEL")" with title "KnowYou verification" subtitle "$(escape_applescript "$DAY_KEY")"
 OSA
 then
   NOTIFICATION_STATUS="requested"
@@ -92,7 +92,7 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
   sleep 2
 done
 
-printf '\nKnow You real-machine verification\n'
+printf '\nKnowYou real-machine verification\n'
 printf -- '---------------------------------\n'
 printf 'Verification ID: %s\n' "$VERIFY_ID"
 printf 'Clipboard sentinel copied via pbcopy: %s\n' "$CLIPBOARD_SENTINEL"
@@ -119,7 +119,7 @@ printf '  Notification in SQLite: %s\n' "${NOTIFICATION_SQL:-missing}"
 if [[ "$NOTIFICATION_DB_ACCESS" == "permission-denied" ]]; then
   printf '\nNotification diagnosis\n'
   printf '  The Notification Center database exists but this process cannot read it.\n'
-  printf '  Grant Full Disk Access to Know You or to the terminal app running this script, then rerun.\n'
+  printf '  Grant Full Disk Access to KnowYou or to the terminal app running this script, then rerun.\n'
 fi
 
 printf '\nFollow-up SQLite check\n'

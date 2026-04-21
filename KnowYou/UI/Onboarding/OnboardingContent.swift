@@ -220,7 +220,7 @@ enum OnboardingContent {
             return OnboardingStepContent(
                 iconName: "lock.shield.fill",
                 title: "Everything stays local as Markdown",
-                body: "Every file stays on this Mac as local Markdown. No Know You server.",
+                body: "Every file stays on this Mac as local Markdown. No KnowYou server.",
                 primaryCTA: "Continue",
                 target: .sharedCenterCard,
                 activationStepLabel: nil,
@@ -240,7 +240,7 @@ enum OnboardingContent {
             return OnboardingStepContent(
                 iconName: "checkmark.shield.fill",
                 title: "1/2 Turn on permissions",
-                body: "Only two steps left.\n\nKnow You builds your diary from notifications and clipboard context. Turn on Full Disk Access to read your local Notification Center history.",
+                body: "Only two steps left.\n\nKnowYou builds your diary from notifications and clipboard context. Turn on Full Disk Access to read your local Notification Center history.",
                 primaryCTA: "I turned it on",
                 target: .sharedCenterCard,
                 activationStepLabel: "1/2",
@@ -249,7 +249,7 @@ enum OnboardingContent {
                 blockingGate: .fullDiskAccess,
                 optionalEnhancement: OnboardingOptionalEnhancement(
                     title: "Optional: add richer context with voice input",
-                    detail: "Voice tools often copy dictated text into the clipboard, which gives Know You more context.",
+                    detail: "Voice tools often copy dictated text into the clipboard, which gives KnowYou more context.",
                     enhancementKind: .voiceInput,
                     helperLinks: voiceLinks
                 ),
@@ -305,7 +305,7 @@ enum OnboardingContent {
             return OnboardingStepContent(
                 iconName: "wand.and.stars.inverse",
                 title: "We’re generating your first real diary",
-                body: "Know You is importing your local context and writing your first diary.",
+                body: "KnowYou is importing your local context and writing your first diary.",
                 primaryCTA: "Generating",
                 target: .sharedCenterCard,
                 activationStepLabel: nil,

@@ -307,7 +307,7 @@ private extension DayRefreshStage {
         case .preparingStory:
             return "Prepare journal"
         case .generatingStory:
-            return "Generate journal"
+            return "Generate journal (may take minutes, come back later)"
         case .writingFiles:
             return "Write files"
         case .completed, .failed:

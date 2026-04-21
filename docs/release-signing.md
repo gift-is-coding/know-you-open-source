@@ -21,6 +21,16 @@ xcrun notarytool history --keychain-profile "know-you-notary"
 
 ## Release Flow
 
+For the normal public release path, run the single publish script:
+
+```bash
+./scripts/publish-release.sh
+```
+
+It will build the Release archive, notarize it, verify the stapled app, upload the notarized zip plus `.sha256` to `gift-is-coding/know-you-downloads`, and update that repo's download landing page metadata.
+
+If you need to run the steps manually, use the lower-level scripts below:
+
 1. Build the release archive and the first distributable zip:
 
 ```bash

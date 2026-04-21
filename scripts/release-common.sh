@@ -11,6 +11,7 @@ app_path="${KNOWYOU_APP_PATH:-$release_dir/KnowYou.app}"
 notary_profile="${KNOWYOU_NOTARY_PROFILE:-know-you-notary}"
 developer_team="${KNOWYOU_DEVELOPER_TEAM:-3DY726RPHL}"
 developer_id_identity="${KNOWYOU_DEVELOPER_ID_IDENTITY:-Developer ID Application: danhu ouyang (3DY726RPHL)}"
+download_repo="${KNOWYOU_DOWNLOAD_REPO:-gift-is-coding/know-you-downloads}"
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -43,6 +44,33 @@ build_number() {
   build_setting "CURRENT_PROJECT_VERSION"
 }
 
+release_repo_build_number() {
+  if [[ -n "${KNOWYOU_RELEASE_REPO_BUILD_NUMBER:-}" ]]; then
+    printf '%s\n' "$KNOWYOU_RELEASE_REPO_BUILD_NUMBER"
+    return
+  fi
+
+  git -C "$repo_root" rev-list --count HEAD
+}
+
+release_repo_commit() {
+  if [[ -n "${KNOWYOU_RELEASE_REPO_COMMIT:-}" ]]; then
+    printf '%s\n' "$KNOWYOU_RELEASE_REPO_COMMIT"
+    return
+  fi
+
+  git -C "$repo_root" rev-parse --short HEAD
+}
+
+release_date() {
+  if [[ -n "${KNOWYOU_RELEASE_DATE:-}" ]]; then
+    printf '%s\n' "$KNOWYOU_RELEASE_DATE"
+    return
+  fi
+
+  date '+%Y-%m-%d'
+}
+
 artifact_basename() {
   printf 'KnowYou-%s-%s\n' "$(marketing_version)" "$(build_number)"
 }
@@ -53,6 +81,119 @@ release_zip_path() {
 
 notarized_zip_path() {
   printf '%s/%s-notarized.zip\n' "$release_dir" "$(artifact_basename)"
+}
+
+checksum_asset_name() {
+  printf '%s.sha256\n' "$(basename "$(notarized_zip_path)")"
+}
+
+download_release_tag() {
+  printf 'v%s-build%s\n' "$(marketing_version)" "$(release_repo_build_number)"
+}
+
+download_release_title() {
+  printf 'Know You v%s (%s)\n' "$(marketing_version)" "$(release_repo_build_number)"
+}
+
+download_asset_url() {
+  printf 'https://github.com/%s/releases/download/%s/%s\n' \
+    "$download_repo" \
+    "$(download_release_tag)" \
+    "$(basename "$(notarized_zip_path)")"
+}
+
+release_notes_body() {
+  cat <<EOF
+Know You turns daily computer context into a story-first journal on macOS.
+
+Release:
+- Version: $(marketing_version)
+- Build: $(release_repo_build_number)
+- Commit: $(release_repo_commit)
+- Artifact: $(basename "$(notarized_zip_path)")
+- Notarization: Accepted on $(release_date)
+
+Install:
+- Download the zip asset below.
+- Unzip and move \`KnowYou.app\` to \`/Applications\`.
+- Launch the app and complete the macOS permission prompts for clipboard and notifications.
+
+Verification:
+- \`codesign --verify --deep --strict --verbose=2\` passed.
+- \`xcrun stapler validate\` passed.
+- \`spctl --assess --type execute -vv\` accepted the app as \`Notarized Developer ID\`.
+EOF
+}
+
+update_download_index_html() {
+  local index_path="$1"
+  local artifact_size_label="$2"
+  local checksum_value="$3"
+
+  python3 - <<'PY' \
+    "$index_path" \
+    "$(download_asset_url)" \
+    "https://github.com/$download_repo/releases/tag/$(download_release_tag)" \
+    "$(marketing_version) ($(release_repo_build_number))" \
+    "$(release_repo_commit)" \
+    "$artifact_size_label" \
+    "$checksum_value"
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+download_url = sys.argv[2]
+release_notes_url = sys.argv[3]
+version_label = sys.argv[4]
+commit_sha = sys.argv[5]
+artifact_size = sys.argv[6]
+checksum = sys.argv[7]
+
+text = path.read_text(encoding="utf-8")
+
+patterns = [
+    (
+        r'(<a class="btn btn-primary" href=")[^"]+(">Download for macOS</a>)',
+        rf'\g<1>{download_url}\g<2>',
+    ),
+    (
+        r'(<a class="btn btn-secondary" href=")[^"]+(">Release notes</a>)',
+        rf'\g<1>{release_notes_url}\g<2>',
+    ),
+    (
+        r'(<div class="metric-label">Version</div>\s*<div class="metric-value">)([^<]+)(</div>)',
+        rf'\g<1>{version_label}\g<3>',
+    ),
+    (
+        r'(<div class="metric-label">Commit</div>\s*<div class="metric-value"><code>)([^<]+)(</code></div>)',
+        rf'\g<1>{commit_sha}\g<3>',
+    ),
+    (
+        r'(<div class="metric-label">Artifact</div>\s*<div class="metric-value">)([^<]+)(</div>)',
+        rf'\g<1>{artifact_size}\g<3>',
+    ),
+    (
+        r'(<div class="metric-label">SHA-256</div>\s*<div class="metric-value"><code>)([^<]+)(</code></div>)',
+        rf'\g<1>{checksum}\g<3>',
+    ),
+    (
+        r'(<div class="notice">\s*)(.*?)(\s*</div>)',
+        (
+            r'\1This build is signed with Developer ID, notarized by Apple, and stapled. '
+            r'Gatekeeper verification passed before release.\3'
+        ),
+    ),
+]
+
+for pattern, replacement in patterns:
+    updated_text, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+    if count != 1:
+        raise SystemExit(f"Failed to update pattern: {pattern}")
+    text = updated_text
+
+path.write_text(text, encoding="utf-8")
+PY
 }
 
 ensure_file_exists() {

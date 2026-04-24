@@ -12,6 +12,9 @@ struct DailyMarkdownView: View {
     let onSelectParagraph: (String) -> Void
     let onFocusStory: () -> Void
     let onRefresh: () -> Void
+    let onTodayFullRefresh: () -> Void
+    let canFullRefresh: Bool
+    let fullRefreshMenuTitle: String
 
     @State private var hoveredParagraphID: String?
 
@@ -35,20 +38,39 @@ struct DailyMarkdownView: View {
                                     .foregroundStyle(.secondary)
                                 Spacer()
                                 VStack(alignment: .trailing, spacing: 6) {
-                                    Button {
-                                        onRefresh()
-                                    } label: {
-                                        if isRefreshing {
-                                            ProgressView()
-                                                .controlSize(.small)
-                                        } else {
-                                            Image(systemName: "arrow.clockwise")
+                                    HStack(spacing: 6) {
+                                        Button {
+                                            onRefresh()
+                                        } label: {
+                                            if isRefreshing {
+                                                ProgressView()
+                                                    .controlSize(.small)
+                                            } else {
+                                                Image(systemName: "arrow.clockwise")
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(isRefreshing || dayKey == OnboardingDemoStory.demoDayKey)
+                                        .help(dayKey == OnboardingDemoStory.demoDayKey ? "Demo Day is read-only" : "Regenerate this day's journal")
+
+                                        Menu {
+                                            Button(fullRefreshMenuTitle) {
+                                                onTodayFullRefresh()
+                                            }
+                                            .disabled(isRefreshing || !canFullRefresh)
+                                        } label: {
+                                            Image(systemName: "chevron.down")
+                                                .font(.caption2.weight(.semibold))
                                                 .foregroundStyle(.secondary)
                                         }
+                                        .menuStyle(.borderlessButton)
+                                        .menuIndicator(.hidden)
+                                        .fixedSize()
+                                        .help(canFullRefresh
+                                            ? "Run a full refresh in 50-event batches"
+                                            : "Full refresh is unavailable for Demo Day")
                                     }
-                                    .buttonStyle(.plain)
-                                    .disabled(isRefreshing || dayKey == OnboardingDemoStory.demoDayKey)
-                                    .help(dayKey == OnboardingDemoStory.demoDayKey ? "Demo Day is read-only" : "Regenerate this day's journal")
 
                                     if refreshPresentation.showsSteps {
                                         VStack(alignment: .trailing, spacing: 4) {
@@ -349,7 +371,7 @@ struct DailyMarkdownPresentation: Equatable {
         storyHeading = Self.resolvedStoryHeading(for: story, paragraphs: paragraphs)
         if isGenerating {
             emptyStateTitle = "Generating your diary…"
-            emptyStateMessage = "Know You is building this day from your local context."
+            emptyStateMessage = "KnowYou is building this day from your local context. Come back 2 minutes later."
             emptyStateSymbol = "arrow.triangle.2.circlepath"
         } else {
             emptyStateTitle = "No Story Yet"

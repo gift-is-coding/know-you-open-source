@@ -53,7 +53,16 @@ struct MainWindowView: View {
                     Task { @MainActor in
                         await appState.refreshSelectedDay()
                     }
-                }
+                },
+                onTodayFullRefresh: {
+                    Task { @MainActor in
+                        await appState.refreshSelectedDayFullRecovery()
+                    }
+                },
+                canFullRefresh: appState.selectedDate != nil && appState.selectedDate != OnboardingDemoStory.demoDayKey,
+                fullRefreshMenuTitle: appState.selectedDate == ISO8601DayKey.format(Date())
+                    ? "Full Refresh Today (Overwriting)"
+                    : "Full Refresh (Overwriting)"
             )
             .onboardingCoachmarkTarget(.storyPanel)
         } detail: {
@@ -66,6 +75,15 @@ struct MainWindowView: View {
             .onboardingCoachmarkTarget(.sourcesPanel)
         }
         .frame(minWidth: 1240, minHeight: 720)
+        .overlay(alignment: .top) {
+            if let notice = appState.onboardingBootstrapNotice {
+                OnboardingBootstrapNoticeView(
+                    presentation: OnboardingBootstrapNoticePresentation(notice: notice),
+                    onDismiss: appState.dismissOnboardingBootstrapNotice
+                )
+                .padding(.top, 16)
+            }
+        }
         .overlay(alignment: .bottomTrailing) {
             Text(AppBuildMetadata.current.badgeText)
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
@@ -348,5 +366,59 @@ struct MainWindowView: View {
     private func openSyncMemoryFolder(at path: String?) {
         guard let path, path.isEmpty == false else { return }
         NSWorkspace.shared.open(URL(fileURLWithPath: path, isDirectory: true))
+    }
+}
+
+struct OnboardingBootstrapNoticePresentation: Equatable {
+    let title: String
+    let message: String
+
+    init(notice: OnboardingBootstrapNotice) {
+        title = "First entries are generating"
+        message = notice.message
+    }
+}
+
+private struct OnboardingBootstrapNoticeView: View {
+    let presentation: OnboardingBootstrapNoticePresentation
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "sparkles")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 28, height: 28)
+                .background(Color.accentColor.opacity(0.12), in: Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(presentation.title)
+                    .font(.headline)
+                Text(presentation.message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+                    .background(Color.primary.opacity(0.06), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss generation notice")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.regularMaterial, in: Capsule(style: .continuous))
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.16), radius: 20, x: 0, y: 12)
+        .padding(.horizontal, 20)
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .zIndex(1)
     }
 }

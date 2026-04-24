@@ -104,6 +104,8 @@ final class OnboardingContentTests: XCTestCase {
         XCTAssertFalse(generating.showsContinueAction)
         XCTAssertEqual(generating.lifecycleAction, .autoAdvanceToFirstGeneration)
         XCTAssertEqual(generating.progression, .automaticGeneration)
+        XCTAssertEqual(generating.title, "We’re generating today and yesterday")
+        XCTAssertTrue(generating.body.contains("first two entries"))
     }
 
     func testDemoStoryCarriesRealStoryAndReferenceData() {

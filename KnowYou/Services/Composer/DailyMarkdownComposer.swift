@@ -6,6 +6,7 @@ struct DailyMarkdownComposer {
     ]
     private static let englishSourceNotesHeading = "## Source Notes"
     private static let chineseSourceNotesHeading = "## 线索来源"
+    private static let promptEventTextLimit = 100
 
     func compose(dayKey: String, events: [EventRecord], story: DailyStory) -> String {
         let language = dominantNarrativeLanguage(for: events)
@@ -72,16 +73,7 @@ struct DailyMarkdownComposer {
         let language = dominantNarrativeLanguage(for: events)
         let journalHeadings = journalHeadings(for: language)
         let forbiddenHeading = language == .chinese ? "# 今日节奏" : "# Today's Rhythm"
-        let eventLines: String = events.enumerated().map { _, event -> String in
-            let eventID = event.id.uuidString
-            return """
-            - id: \(eventID)
-              time: \(Self.timeFormatter.string(from: event.capturedAt))
-              app: \(event.sourceApp)
-              source: \(event.sourceType.rawValue)
-              text: \(event.displayText)
-            """
-        }.joined(separator: "\n")
+        let eventLines = promptEventLines(for: events)
 
         return """
         You are turning one day of raw computer context into a first-person diary entry written by the person who lived that day.
@@ -249,15 +241,7 @@ struct DailyMarkdownComposer {
         let encouragementAnchorIDs = blocks.encouragement.sourceEventIDs.map(\.uuidString).sorted().joined(separator: ", ")
         let summaryAnchorIDs = blocks.summary.sourceEventIDs.map(\.uuidString).sorted().joined(separator: ", ")
         let todoAnchorIDs = blocks.todo.sourceEventIDs.map(\.uuidString).sorted().joined(separator: ", ")
-        let eventLines: String = newEvents.map { event -> String in
-            """
-            - id: \(event.id.uuidString)
-              time: \(Self.timeFormatter.string(from: event.capturedAt))
-              app: \(event.sourceApp)
-              source: \(event.sourceType.rawValue)
-              text: \(event.displayText)
-            """
-        }.joined(separator: "\n")
+        let eventLines = promptEventLines(for: newEvents)
 
         return """
         You are updating an existing diary entry with new source events from the same day.
@@ -330,6 +314,18 @@ struct DailyMarkdownComposer {
                 todo: "# 待办事项"
             )
         }
+    }
+
+    private func promptEventLines(for events: [EventRecord]) -> String {
+        events.map { event in
+            """
+            - id: \(event.id.uuidString)
+              time: \(Self.timeFormatter.string(from: event.capturedAt))
+              app: \(event.sourceApp)
+              source: \(event.sourceType.rawValue)
+              text: \(event.promptDisplayText(limit: Self.promptEventTextLimit))
+            """
+        }.joined(separator: "\n")
     }
 
     private static func previewSeedData(for language: NarrativeLanguage) -> (dayKey: String, events: [EventRecord]) {
@@ -1309,6 +1305,11 @@ private extension EventRecord {
         guard !trimmed.isEmpty else { return "recorded an empty item." }
         let preview = String(trimmed.prefix(180))
         return preview.hasSuffix(".") ? preview : "\(preview)."
+    }
+
+    func promptDisplayText(limit: Int) -> String {
+        guard limit > 0 else { return "" }
+        return String(displayText.prefix(limit))
     }
 
     var storySnippet: String {

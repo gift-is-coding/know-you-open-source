@@ -157,6 +157,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - `详情` 中的每个事务线程都应成为独立的 story paragraph，并各自保留自己的 `sourceEventIDs`
 - 当前产品不对 `详情` 段落数量设置硬性上限，分段质量主要由 prompt 约束“合理分段、避免碎片化”
 - 当前产品不向用户暴露 raw diary prompt 编辑能力；prompt 变更只通过内置 canonical prompt、代码和测试管理
+- 所有 full-story 与 incremental summarizer prompt 都必须在 prompt 组装阶段对单条事件文本做统一裁剪；当前上限为 100 个 Swift 字符，且不改变事件顺序、不改变原始存储内容
 - 历史 `.story.json` 如果仍把多个 `详情` 子线程合并在同一个 paragraph 中，加载时必须拆分并回写为新的 paragraph 结构
 - 当某天已有 `provenance.generationMode == .model` 的成功 story 时，增量更新只能消费尚未写入该 story 的新事件
 - 增量更新给模型的输入必须包含 `existingStory + 新事件`，不得把当天 `allEvents` 全量重新回传给模型
@@ -261,7 +262,8 @@ onboarding 的配置约束为：
 - `permissions` 只允许把 `Full Disk Access` 作为唯一硬 gate，并且必须解释通知与剪贴板上下文如何帮助 story 生成
 - `enginePrompt` 必须高亮真实产品里的引擎按钮，`engineSetup` 必须复用现有引擎配置模块，而不是造一套 onboarding 专用配置页
 - 引擎配置必须阻塞 onboarding 完成；未配置成功前不得进入真实生成流程
-- onboarding 完成后必须自动启动一次性过去 7 天 bootstrap，而不是要求用户手动刷新
+- onboarding 完成后必须自动启动一次性今天+昨天 bootstrap，而不是要求用户手动刷新
+- onboarding 完成后必须给出一个非阻塞提醒，告知用户今天和昨天正在生成，并建议约 2 分钟后回来查看
 - `Demo Day` 在 onboarding 完成后不得消失，必须继续保留在左侧列表底部
 - 如果当前默认引擎为 `None` 且用户没有显式保持 `None`，主应用后续可以自动选择一个已验证绿色引擎；如果用户已明确选择某个非 `None` 引擎，或已明确保持 `None`，则不得被被动覆盖
 
@@ -269,9 +271,19 @@ onboarding 的配置约束为：
 
 - 应用启动时必须立即执行一次自动刷新
 - 应用启动时还必须立即执行一次今天的通知补同步
-- 首次完成 onboarding 时，系统必须额外执行一次且仅一次“过去 7 天 bootstrap”
-- onboarding bootstrap 必须只覆盖今天及之前 6 个自然日，并跳过已有成功内容的日期
+- 首次完成 onboarding 时，系统必须额外执行一次且仅一次“今天+昨天 bootstrap”
+- onboarding bootstrap 必须只覆盖今天与昨天两个自然日，并跳过已有成功内容的日期
+- onboarding bootstrap 应按顺序先生成今天，再生成昨天；若今天失败，仍应继续尝试昨天
+- onboarding bootstrap 在单日事件数超过 `50` 条时，必须启用分批生成：首批 `50` 条走 full recovery，剩余事件按最多 `50` 条一批顺序走 incremental append
+- onboarding bootstrap 的分批失败不得回滚已成功块落盘的部分内容，但也不得把该日期记为 bootstrap 全部成功
 - onboarding bootstrap 不得在后续正常启动时重复执行
+- 正式 reader 的刷新按钮旁必须提供一个下拉入口，并且只显示一个小三角菜单指示器
+- 该下拉入口必须允许用户对当前选中的真实日期执行全量刷新，不得把历史日期错误禁用；`Demo Day` 仍应保持只读
+- 当选中日期是今天时，菜单文案应为 `Full Refresh Today (Overwriting)`；其他真实日期可显示通用全量刷新文案
+- 全量刷新必须忽略已有成功模型 story，始终强制走 full recovery 覆盖路径
+- 全量刷新在单日事件数超过 `50` 条时，必须沿用与 onboarding bootstrap 相同的分批策略：首批 `50` 条走 full recovery，剩余事件按最多 `50` 条一批顺序走 incremental append
+- 普通增量刷新在已有成功模型 story 且新增事件数超过 `50` 条时，必须按时间顺序每批最多 `50` 条串行 incremental append；每个成功块都要立即落盘，后续块失败时不得回滚已成功内容
+- refresh log 与 UI 状态文案必须显示分批计划和当前 chunk 进度，例如 `chunk 2/8` 与该批事件数，避免用户误以为刷新无响应
 - 系统必须每 3 小时执行一次自动刷新
 - 系统必须每 30 秒执行一次今天的通知增量补同步
 - 自动刷新应先尝试导入通知，再生成内容

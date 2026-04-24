@@ -122,6 +122,139 @@ private final class RecordingIncrementalSummarizer: SummaryGenerating, Increment
     }
 }
 
+private struct OnboardingBootstrapChunkInvocation: Equatable {
+    enum Kind: String, Equatable {
+        case fullRecovery
+        case incrementalAppend
+    }
+
+    var dayKey: String
+    var kind: Kind
+    var eventIDs: [UUID]
+}
+
+private actor OnboardingBootstrapChunkRecorder {
+    private var invocations: [OnboardingBootstrapChunkInvocation] = []
+    private var incrementalChunkCounts: [String: Int] = [:]
+
+    func record(dayKey: String, kind: OnboardingBootstrapChunkInvocation.Kind, eventIDs: [UUID]) -> Int {
+        invocations.append(
+            OnboardingBootstrapChunkInvocation(
+                dayKey: dayKey,
+                kind: kind,
+                eventIDs: eventIDs
+            )
+        )
+        guard kind == .incrementalAppend else {
+            return 0
+        }
+
+        let nextCount = incrementalChunkCounts[dayKey, default: 0] + 1
+        incrementalChunkCounts[dayKey] = nextCount
+        return nextCount
+    }
+
+    func snapshot() -> [OnboardingBootstrapChunkInvocation] {
+        invocations
+    }
+}
+
+private final class RecordingOnboardingBootstrapSummarizer: IncrementalSummaryGenerating, @unchecked Sendable {
+    let recorder = OnboardingBootstrapChunkRecorder()
+    var failingIncrementalChunkByDay: [String: Int] = [:]
+
+    func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
+        let eventIDs = Self.extractEventIDs(from: markdown)
+        _ = await recorder.record(dayKey: dayKey, kind: .fullRecovery, eventIDs: eventIDs)
+        return Self.fullRecoveryResponse(dayKey: dayKey, eventIDs: eventIDs)
+    }
+
+    func summarizeIncremental(
+        dayKey: String,
+        markdown: String,
+        context: SummaryInvocationContext
+    ) async throws -> String {
+        let eventIDs = Self.extractIncrementalEventIDs(from: markdown)
+        let chunkNumber = await recorder.record(dayKey: dayKey, kind: .incrementalAppend, eventIDs: eventIDs)
+        if failingIncrementalChunkByDay[dayKey] == chunkNumber {
+            throw URLError(.timedOut)
+        }
+        return Self.incrementalResponse(dayKey: dayKey, eventIDs: eventIDs, chunkNumber: chunkNumber)
+    }
+
+    private static func extractEventIDs(from markdown: String) -> [UUID] {
+        extractUUIDs(from: markdown)
+    }
+
+    private static func extractIncrementalEventIDs(from markdown: String) -> [UUID] {
+        guard let range = markdown.range(of: "New events to append from:\n") else {
+            return extractUUIDs(from: markdown)
+        }
+        return extractUUIDs(from: String(markdown[range.upperBound...]))
+    }
+
+    private static func extractUUIDs(from text: String) -> [UUID] {
+        guard let regex = try? NSRegularExpression(
+            pattern: #"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"#
+        ) else {
+            return []
+        }
+
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        var orderedIDs: [UUID] = []
+        var seen: Set<UUID> = []
+        for match in regex.matches(in: text, range: range) {
+            guard let matchRange = Range(match.range, in: text),
+                  let uuid = UUID(uuidString: String(text[matchRange])),
+                  seen.insert(uuid).inserted else {
+                continue
+            }
+            orderedIDs.append(uuid)
+        }
+        return orderedIDs
+    }
+
+    private static func fullRecoveryResponse(dayKey: String, eventIDs: [UUID]) -> String {
+        let idList = eventIDs.map(\.uuidString)
+        return """
+        {
+          "sections": [{
+            "id": "daily-journal",
+            "paragraphs": [
+              { "text": "# You did a good job today\\n\\nClosed \(eventIDs.count) onboarding event(s).", "sourceEventIDs": \(jsonArray(idList)) },
+              { "text": "# Summary\\n- Bootstrapped \(dayKey) from the first chunk", "sourceEventIDs": \(jsonArray(idList)) },
+              { "text": "# Details\\n\\n## Chunk 1\\n\\nProcessed \(eventIDs.count) event(s).", "sourceEventIDs": \(jsonArray(idList)) },
+              { "text": "# To-do\\n- [ ] Check the next chunk", "sourceEventIDs": \(jsonArray(idList)) }
+            ]
+          }]
+        }
+        """
+    }
+
+    private static func incrementalResponse(dayKey: String, eventIDs: [UUID], chunkNumber: Int) -> String {
+        let idList = eventIDs.map(\.uuidString)
+        return """
+        {
+          "encouragementToReplace": { "text": "Closed chunk \(chunkNumber + 1) for \(dayKey).", "sourceEventIDs": \(jsonArray(idList)) },
+          "summaryBulletsToReplace": [
+            { "text": "- Appended \(eventIDs.count) onboarding event(s)", "sourceEventIDs": \(jsonArray(idList)) }
+          ],
+          "detailBlocksToAppend": [
+            { "text": "## Chunk \(chunkNumber + 1)\\n\\nProcessed \(eventIDs.count) event(s).", "sourceEventIDs": \(jsonArray(idList)) }
+          ],
+          "todoItemsToReplace": [
+            { "text": "- [ ] Review the next chunk", "sourceEventIDs": \(jsonArray(idList)) }
+          ]
+        }
+        """
+    }
+
+    private static func jsonArray(_ values: [String]) -> String {
+        let body = values.map { "\"\($0)\"" }.joined(separator: ", ")
+        return "[\(body)]"
+    }
+}
+
 private actor EngineAttemptRecorder {
     private var attempts: [DiaryEngine] = []
 
@@ -466,9 +599,29 @@ private func makeBlockingRefreshEnvironment() throws -> (AppEnvironment, Refresh
 @MainActor
 private final class RefreshStageRecorder {
     private(set) var stages: [DayRefreshStage] = []
+    private(set) var jobs: [DayRefreshJob] = []
 
     func record(_ job: DayRefreshJob) {
+        jobs.append(job)
         stages.append(job.stage)
+    }
+}
+
+private final class ThreadSafeDayKeyCapture: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+
+    func setValue(_ value: [String]) {
+        lock.lock()
+        storage = value
+        lock.unlock()
+    }
+
+    var value: [String] {
+        lock.lock()
+        let current = storage
+        lock.unlock()
+        return current
     }
 }
 
@@ -3468,6 +3621,400 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertNotNil(appState.dayRefreshStatus.lastError)
     }
 
+    func testRefreshSelectedDayFullRecoveryChunksTodayAndOverwritesExistingModelStory() async throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        let dayKey = "2026-04-11"
+        let writer = try DatabaseWriter.inMemory()
+
+        for index in 0..<205 {
+            try writer.insert(
+                EventRecord(
+                    id: UUID(),
+                    sourceType: .clipboard,
+                    sourceApp: "Notes",
+                    capturedAt: now.addingTimeInterval(TimeInterval(index)),
+                    dayKey: dayKey,
+                    text: "today-full-refresh \(index)",
+                    auditText: nil,
+                    privacyAction: .keep,
+                    contentHash: "today-full-refresh-\(index)"
+                )
+            )
+        }
+
+        let supportURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
+        let vaultURL = supportURL.appending(path: "Vault", directoryHint: .isDirectory)
+        let summarizer = RecordingOnboardingBootstrapSummarizer()
+        let environment = AppEnvironment(
+            databaseURL: supportURL.appending(path: "events.sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: summarizer,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+
+        let existingStory = DailyStory(
+            dayKey: dayKey,
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_000),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: "# Existing\n\nKeep the existing story for overwrite coverage.",
+                            sourceEventIDs: []
+                        )
+                    ]
+                )
+            ],
+            provenance: StoryProvenance(
+                generationMode: .model,
+                engineKind: "codexCLI",
+                engineLabel: "Codex (CLI)",
+                model: nil,
+                pipelineVersion: "diary-story-v1",
+                curatedEventCount: 0
+            )
+        )
+        let originalMarkdown = environment.composer.compose(
+            dayKey: dayKey,
+            events: try writer.fetchEvents(dayKey: dayKey),
+            story: existingStory
+        )
+        try writeStoryDay(dayKey: dayKey, markdown: originalMarkdown, story: existingStory, environment: environment)
+
+        let recorder = RefreshStageRecorder()
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            onRefreshStageChange: recorder.record,
+            currentDate: { now }
+        )
+        appState.selectDate(dayKey)
+
+        await appState.refreshSelectedDayFullRecovery(now: now)
+
+        let preparingJob = try XCTUnwrap(recorder.jobs.first(where: { $0.stage == .preparingStory }))
+        XCTAssertTrue(recorder.stages.contains(.loadingEvents))
+        XCTAssertTrue(preparingJob.completedStages.contains(.loadingEvents))
+
+        let invocations = await summarizer.recorder.snapshot()
+        XCTAssertEqual(
+            invocations.map(\.kind),
+            [.fullRecovery, .incrementalAppend, .incrementalAppend, .incrementalAppend, .incrementalAppend]
+        )
+        XCTAssertEqual(invocations.map { $0.eventIDs.count }, [50, 50, 50, 50, 5])
+        XCTAssertTrue(invocations.allSatisfy { $0.eventIDs.count <= 50 })
+
+        let persistedStory = try XCTUnwrap(environment.loadDailyStory(dayKey: dayKey))
+        XCTAssertEqual(environment.composer.usedSourceEventIDs(in: persistedStory).count, 205)
+
+        let logFiles = try FileManager.default.contentsOfDirectory(
+            at: environment.refreshLogsDirectoryURL,
+            includingPropertiesForKeys: nil
+        )
+        let logURL = try XCTUnwrap(logFiles.first(where: { $0.lastPathComponent.contains("__\(dayKey)__") }))
+        let logContents = try String(contentsOf: logURL, encoding: .utf8)
+        XCTAssertTrue(logContents.contains("\"mode\" : \"fullRecovery\""))
+        XCTAssertTrue(logContents.contains("Chunked full refresh into 5 batch(es)"))
+    }
+
+    func testRefreshSelectedDayIncrementalChunksLargeManualUpdate() async throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        let dayKey = "2026-04-11"
+        let writer = try DatabaseWriter.inMemory()
+        let existingEventID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: existingEventID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: now.addingTimeInterval(-1),
+                dayKey: dayKey,
+                text: "existing event",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "existing-event"
+            )
+        )
+        for index in 0..<133 {
+            try writer.insert(
+                EventRecord(
+                    id: UUID(),
+                    sourceType: .clipboard,
+                    sourceApp: "Notes",
+                    capturedAt: now.addingTimeInterval(TimeInterval(index)),
+                    dayKey: dayKey,
+                    text: "manual-incremental-chunk \(index)",
+                    auditText: nil,
+                    privacyAction: .keep,
+                    contentHash: "manual-incremental-chunk-\(index)"
+                )
+            )
+        }
+
+        let summarizer = RecordingOnboardingBootstrapSummarizer()
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: summarizer,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let existingStory = DailyStory(
+            dayKey: dayKey,
+            generatedAt: now,
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-encouragement",
+                            text: "# You did a good job today\n\nAlready written.",
+                            sourceEventIDs: [existingEventID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-summary",
+                            text: "# Summary\n\n- Existing summary.",
+                            sourceEventIDs: [existingEventID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-details-0",
+                            text: "# Details\n\n## Existing\n\nAlready written.",
+                            sourceEventIDs: [existingEventID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-todo",
+                            text: "# To-do\n\n- [ ] Existing task",
+                            sourceEventIDs: [existingEventID]
+                        )
+                    ]
+                )
+            ],
+            provenance: StoryProvenance(
+                generationMode: .model,
+                engineKind: "codexCLI",
+                engineLabel: "Codex (CLI)",
+                model: nil,
+                pipelineVersion: "diary-story-v1",
+                curatedEventCount: 1
+            )
+        )
+        let originalMarkdown = environment.composer.compose(
+            dayKey: dayKey,
+            events: try writer.fetchEvents(dayKey: dayKey),
+            story: existingStory
+        )
+        try writeStoryDay(dayKey: dayKey, markdown: originalMarkdown, story: existingStory, environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false, currentDate: { now })
+        appState.selectDate(dayKey)
+
+        await appState.refreshSelectedDay(now: now)
+
+        let invocations = await summarizer.recorder.snapshot()
+        XCTAssertEqual(invocations.map(\.kind), [.incrementalAppend, .incrementalAppend, .incrementalAppend])
+        XCTAssertEqual(invocations.map { $0.eventIDs.count }, [50, 50, 33])
+        XCTAssertTrue(invocations.allSatisfy { $0.eventIDs.count <= 50 })
+
+        let persistedStory = try XCTUnwrap(environment.loadDailyStory(dayKey: dayKey))
+        XCTAssertEqual(environment.composer.usedSourceEventIDs(in: persistedStory).count, 134)
+
+        let refreshLogs = try FileManager.default.contentsOfDirectory(
+            at: environment.refreshLogsDirectoryURL,
+            includingPropertiesForKeys: nil
+        )
+        let logURL = try XCTUnwrap(
+            refreshLogs
+                .filter { $0.lastPathComponent.contains("__\(dayKey)__") }
+                .max(by: {
+                    let leftDate = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                    let rightDate = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                    return leftDate < rightDate
+                })
+        )
+        let logContents = try String(contentsOf: logURL, encoding: .utf8)
+        XCTAssertTrue(logContents.contains("Chunked incremental update into 3 batch(es)"), logContents)
+        XCTAssertTrue(logContents.contains("chunk 1\\/3 loaded 50 event(s)"), logContents)
+        XCTAssertTrue(logContents.contains("50\\/133 new event(s) appended"), logContents)
+    }
+
+    func testRefreshSelectedDayIncrementalKeepsPartialStoryWhenLaterChunkFails() async throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        let dayKey = "2026-04-11"
+        let writer = try DatabaseWriter.inMemory()
+        let existingEventID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: existingEventID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: now.addingTimeInterval(-1),
+                dayKey: dayKey,
+                text: "existing event",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "existing-partial-event"
+            )
+        )
+        for index in 0..<133 {
+            try writer.insert(
+                EventRecord(
+                    id: UUID(),
+                    sourceType: .clipboard,
+                    sourceApp: "Notes",
+                    capturedAt: now.addingTimeInterval(TimeInterval(index)),
+                    dayKey: dayKey,
+                    text: "manual-incremental-partial \(index)",
+                    auditText: nil,
+                    privacyAction: .keep,
+                    contentHash: "manual-incremental-partial-\(index)"
+                )
+            )
+        }
+
+        let summarizer = RecordingOnboardingBootstrapSummarizer()
+        summarizer.failingIncrementalChunkByDay = [dayKey: 2]
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: summarizer,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let existingStory = DailyStory(
+            dayKey: dayKey,
+            generatedAt: now,
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-encouragement",
+                            text: "# You did a good job today\n\nAlready written.",
+                            sourceEventIDs: [existingEventID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-summary",
+                            text: "# Summary\n\n- Existing summary.",
+                            sourceEventIDs: [existingEventID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-details-0",
+                            text: "# Details\n\n## Existing\n\nAlready written.",
+                            sourceEventIDs: [existingEventID]
+                        ),
+                        DailyStoryParagraph(
+                            id: "daily-journal-todo",
+                            text: "# To-do\n\n- [ ] Existing task",
+                            sourceEventIDs: [existingEventID]
+                        )
+                    ]
+                )
+            ],
+            provenance: StoryProvenance(
+                generationMode: .model,
+                engineKind: "codexCLI",
+                engineLabel: "Codex (CLI)",
+                model: nil,
+                pipelineVersion: "diary-story-v1",
+                curatedEventCount: 1
+            )
+        )
+        let originalMarkdown = environment.composer.compose(
+            dayKey: dayKey,
+            events: try writer.fetchEvents(dayKey: dayKey),
+            story: existingStory
+        )
+        try writeStoryDay(dayKey: dayKey, markdown: originalMarkdown, story: existingStory, environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false, currentDate: { now })
+        appState.selectDate(dayKey)
+
+        await appState.refreshSelectedDay(now: now)
+
+        let persistedStory = try XCTUnwrap(environment.loadDailyStory(dayKey: dayKey))
+        XCTAssertEqual(environment.composer.usedSourceEventIDs(in: persistedStory).count, 51)
+        XCTAssertEqual(appState.refreshJob(for: dayKey)?.stage, .failed)
+        XCTAssertTrue(appState.dayRefreshStatus.lastError?.contains("chunk 2/3") == true)
+
+        let refreshLogs = try FileManager.default.contentsOfDirectory(
+            at: environment.refreshLogsDirectoryURL,
+            includingPropertiesForKeys: nil
+        )
+        let logURL = try XCTUnwrap(
+            refreshLogs
+                .filter { $0.lastPathComponent.contains("__\(dayKey)__") }
+                .max(by: {
+                    let leftDate = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                    let rightDate = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                    return leftDate < rightDate
+                })
+        )
+        let logContents = try String(contentsOf: logURL, encoding: .utf8)
+        XCTAssertTrue(logContents.contains("Incremental update failed during chunk 2\\/3"), logContents)
+    }
+
+    func testRefreshSelectedDayFullRecoveryAlsoRunsForHistoricalSelectedDay() async throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        let dayKey = "2026-04-10"
+        let writer = try DatabaseWriter.inMemory()
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: now.addingTimeInterval(-86_400),
+                dayKey: dayKey,
+                text: "yesterday should not full refresh from the today menu",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "yesterday-force-refresh-guard"
+            )
+        )
+
+        let summarizer = RecordingOnboardingBootstrapSummarizer()
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: summarizer,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            currentDate: { now }
+        )
+        appState.selectDate(dayKey)
+
+        await appState.refreshSelectedDayFullRecovery(now: now)
+
+        let invocations = await summarizer.recorder.snapshot()
+        XCTAssertEqual(invocations.map(\.kind), [.fullRecovery])
+        XCTAssertEqual(invocations.first?.dayKey, dayKey)
+        XCTAssertEqual(try environment.loadDailyStory(dayKey: dayKey)?.dayKey, dayKey)
+    }
+
     func testRefreshSelectedDayFallsBackToParallelGreenEnginesAfterDefaultFailureAndCancelsLosers() async throws {
         let writer = try DatabaseWriter.inMemory()
         let calendar = Calendar(identifier: .gregorian)
@@ -3761,6 +4308,485 @@ final class MainWindowViewModelTests: XCTestCase {
         await gate.release(dayKey: "2026-04-09")
         await gate.release(dayKey: "2026-04-10")
         _ = await (refreshNine, refreshTen)
+    }
+
+    func testCompletingOnboardingStartsTodayThenYesterdayBootstrapSerially() async throws {
+        let (environment, gate) = try makeBlockingRefreshEnvironment()
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            currentDate: { now },
+            userDefaults: defaults,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        appState.completeOnboarding()
+
+        await gate.waitUntilStarted(dayKey: "2026-04-11")
+        await Task.yield()
+
+        let todayStartedBeforeRelease = await gate.startCount(for: "2026-04-11")
+        let yesterdayStartedBeforeRelease = await gate.startCount(for: "2026-04-10")
+        XCTAssertEqual(todayStartedBeforeRelease, 1)
+        XCTAssertEqual(yesterdayStartedBeforeRelease, 0, "Expected yesterday to wait until today's refresh finishes")
+        XCTAssertEqual(Array(appState.availableDates.prefix(3)), ["2026-04-11", "2026-04-10", OnboardingDemoStory.demoDayKey])
+        XCTAssertEqual(appState.onboardingBootstrapNotice?.message, "KnowYou is generating today and yesterday from your local context. Come back 2 minutes later.")
+
+        await gate.release(dayKey: "2026-04-11")
+        await gate.waitUntilStarted(dayKey: "2026-04-10")
+        let yesterdayStartedAfterRelease = await gate.startCount(for: "2026-04-10")
+        XCTAssertEqual(yesterdayStartedAfterRelease, 1)
+
+        await gate.release(dayKey: "2026-04-10")
+        let completed = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
+            appState.onboardingBootstrapState == .complete
+        }
+        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after both serial refreshes were released")
+    }
+
+    func testCompletingOnboardingSkipsBootstrapDaysThatAlreadyExist() async throws {
+        let (environment, gate) = try makeBlockingRefreshEnvironment()
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
+        try "# Existing".write(
+            to: environment.vaultURL.appending(path: "2026-04-10.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            currentDate: { now },
+            userDefaults: defaults,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.refreshNotesIndex()
+
+        appState.completeOnboarding()
+        await gate.waitUntilStarted(dayKey: "2026-04-11")
+        await Task.yield()
+
+        let todayStarted = await gate.startCount(for: "2026-04-11")
+        let yesterdayStarted = await gate.startCount(for: "2026-04-10")
+        XCTAssertEqual(todayStarted, 1)
+        XCTAssertEqual(yesterdayStarted, 0)
+
+        await gate.release(dayKey: "2026-04-11")
+        let completed = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
+            appState.onboardingBootstrapState == .complete
+        }
+        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after refreshing the missing day")
+    }
+
+    func testCompletingOnboardingSendsCompletionNotificationAfterBootstrapSucceeds() async throws {
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        let writer = try DatabaseWriter.inMemory()
+        let todayID = UUID()
+        let yesterdayID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: todayID,
+                sourceType: .clipboard,
+                sourceApp: "Terminal",
+                capturedAt: now,
+                dayKey: "2026-04-11",
+                text: "Wrapped the onboarding polish.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "onboarding-bootstrap-notification-today"
+            )
+        )
+        try writer.insert(
+            EventRecord(
+                id: yesterdayID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: now.addingTimeInterval(-86_400),
+                dayKey: "2026-04-10",
+                text: "Outlined the onboarding journey.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "onboarding-bootstrap-notification-yesterday"
+            )
+        )
+        let summarizer = HandlerIncrementalSummarizer(
+            summarizeHandler: { dayKey, _, _ in
+                let sourceID = switch dayKey {
+                case "2026-04-11": todayID
+                case "2026-04-10": yesterdayID
+                default: UUID()
+                }
+                return """
+                {
+                  "sections": [{
+                    "id": "daily-journal",
+                    "paragraphs": [{
+                      "text": "# Details\\n\\n## \(dayKey)\\n\\nClosed the onboarding bootstrap loop.",
+                      "sourceEventIDs": ["\(sourceID.uuidString)"]
+                    }]
+                  }]
+                }
+                """
+            },
+            summarizeIncrementalHandler: { _, _, _ in
+                XCTFail("Incremental summarize should not be used for onboarding bootstrap")
+                return ""
+            }
+        )
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: summarizer,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let notifiedDayKeys = ThreadSafeDayKeyCapture()
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            notifyOnboardingBootstrapCompletion: { dayKeys in
+                notifiedDayKeys.setValue(dayKeys)
+            },
+            currentDate: { now },
+            userDefaults: defaults,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        appState.completeOnboarding()
+
+        let completed = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
+            appState.onboardingBootstrapState == .complete
+        }
+        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after both successful serial refreshes")
+        XCTAssertEqual(notifiedDayKeys.value.sorted(by: >), ["2026-04-11", "2026-04-10"])
+    }
+
+    func testCompletingOnboardingContinuesToYesterdayAfterTodayFails() async throws {
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        let writer = try DatabaseWriter.inMemory()
+        let yesterdayID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Terminal",
+                capturedAt: now,
+                dayKey: "2026-04-11",
+                text: "Today's note should fail.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "onboarding-bootstrap-failure-today"
+            )
+        )
+        try writer.insert(
+            EventRecord(
+                id: yesterdayID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: now.addingTimeInterval(-86_400),
+                dayKey: "2026-04-10",
+                text: "Yesterday should still succeed.",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "onboarding-bootstrap-failure-yesterday"
+            )
+        )
+
+        let summarizer = HandlerSummarizer { dayKey, _, _ in
+            if dayKey == "2026-04-11" {
+                throw URLError(.cannotConnectToHost)
+            }
+
+            return """
+            {
+                  "sections": [{
+                    "id": "daily-journal",
+                    "paragraphs": [{
+                      "text": "# Details\\n\\nRecovered \(dayKey).",
+                      "sourceEventIDs": ["\(yesterdayID.uuidString)"]
+                    }]
+                  }]
+                }
+            """
+        }
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: summarizer,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            currentDate: { now },
+            userDefaults: defaults,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        appState.completeOnboarding()
+
+        let completed = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
+            appState.onboardingBootstrapState == .complete
+        }
+        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish even when today's generation fails")
+        XCTAssertNil(appState.noteIndex["2026-04-11"])
+        XCTAssertNotNil(appState.noteIndex["2026-04-10"], "Expected onboarding bootstrap to keep going and generate yesterday")
+    }
+
+    func testCompletingOnboardingChunksBootstrapDaysAboveFiftyEvents() async throws {
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        let writer = try DatabaseWriter.inMemory()
+        func insertEvents(count: Int, dayKey: String, baseDate: Date, contentPrefix: String) throws {
+            for index in 0..<count {
+                try writer.insert(
+                    EventRecord(
+                        id: UUID(),
+                        sourceType: .clipboard,
+                        sourceApp: "Notes",
+                        capturedAt: baseDate.addingTimeInterval(TimeInterval(index)),
+                        dayKey: dayKey,
+                        text: "\(contentPrefix) \(index)",
+                        auditText: nil,
+                        privacyAction: .keep,
+                        contentHash: "\(contentPrefix)-\(index)"
+                    )
+                )
+            }
+        }
+        try insertEvents(count: 205, dayKey: "2026-04-11", baseDate: now, contentPrefix: "today-chunk")
+        try insertEvents(count: 120, dayKey: "2026-04-10", baseDate: now.addingTimeInterval(-86_400), contentPrefix: "yesterday-chunk")
+
+        let summarizer = RecordingOnboardingBootstrapSummarizer()
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: summarizer,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let notifiedDayKeys = ThreadSafeDayKeyCapture()
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            notifyOnboardingBootstrapCompletion: { dayKeys in
+                notifiedDayKeys.setValue(dayKeys)
+            },
+            currentDate: { now },
+            userDefaults: defaults,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        appState.completeOnboarding()
+
+        let completed = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
+            appState.onboardingBootstrapState == .complete
+        }
+        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after chunked generation")
+
+        let invocations = await summarizer.recorder.snapshot()
+        XCTAssertEqual(
+            invocations.map(\.dayKey),
+            [
+                "2026-04-11", "2026-04-11", "2026-04-11", "2026-04-11", "2026-04-11",
+                "2026-04-10", "2026-04-10", "2026-04-10"
+            ]
+        )
+        XCTAssertEqual(
+            invocations.map(\.kind),
+            [
+                .fullRecovery, .incrementalAppend, .incrementalAppend, .incrementalAppend, .incrementalAppend,
+                .fullRecovery, .incrementalAppend, .incrementalAppend
+            ]
+        )
+        XCTAssertEqual(invocations.map { $0.eventIDs.count }, [50, 50, 50, 50, 5, 50, 50, 20])
+        XCTAssertTrue(invocations.allSatisfy { $0.eventIDs.count <= 50 })
+        XCTAssertEqual(notifiedDayKeys.value.sorted(by: >), ["2026-04-11", "2026-04-10"])
+
+        let refreshLogs = try FileManager.default.contentsOfDirectory(
+            at: environment.refreshLogsDirectoryURL,
+            includingPropertiesForKeys: nil
+        )
+        let todayLogURL = try XCTUnwrap(
+            refreshLogs
+                .filter { $0.lastPathComponent.contains("__2026-04-11__") }
+                .max(by: {
+                    let leftDate = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                    let rightDate = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                    return leftDate < rightDate
+                })
+        )
+        let todayLog = try String(contentsOf: todayLogURL, encoding: .utf8)
+        XCTAssertTrue(todayLog.contains("Chunked onboarding bootstrap into 5 batch(es)"))
+        XCTAssertTrue(todayLog.contains("chunk 1\\/5 loaded 50 event(s); 50\\/205 cumulative"))
+    }
+
+    func testCompletingOnboardingKeepsPartialStoryWhenLaterChunkFailsAndContinuesToYesterday() async throws {
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        let writer = try DatabaseWriter.inMemory()
+        func insertEvents(count: Int, dayKey: String, baseDate: Date, contentPrefix: String) throws {
+            for index in 0..<count {
+                try writer.insert(
+                    EventRecord(
+                        id: UUID(),
+                        sourceType: .clipboard,
+                        sourceApp: "Notes",
+                        capturedAt: baseDate.addingTimeInterval(TimeInterval(index)),
+                        dayKey: dayKey,
+                        text: "\(contentPrefix) \(index)",
+                        auditText: nil,
+                        privacyAction: .keep,
+                        contentHash: "\(contentPrefix)-\(index)"
+                    )
+                )
+            }
+        }
+        try insertEvents(count: 150, dayKey: "2026-04-11", baseDate: now, contentPrefix: "today-partial")
+        try insertEvents(count: 2, dayKey: "2026-04-10", baseDate: now.addingTimeInterval(-86_400), contentPrefix: "yesterday-success")
+
+        let summarizer = RecordingOnboardingBootstrapSummarizer()
+        summarizer.failingIncrementalChunkByDay = ["2026-04-11": 1]
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: summarizer,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let notifiedDayKeys = ThreadSafeDayKeyCapture()
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            notifyOnboardingBootstrapCompletion: { dayKeys in
+                notifiedDayKeys.setValue(dayKeys)
+            },
+            currentDate: { now },
+            userDefaults: defaults,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        appState.completeOnboarding()
+
+        let completed = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
+            appState.onboardingBootstrapState == .complete
+        }
+        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish even when a later chunk fails")
+        XCTAssertNotNil(appState.noteIndex["2026-04-11"], "Expected the first chunk to leave a partial story behind")
+        XCTAssertNotNil(appState.noteIndex["2026-04-10"], "Expected onboarding bootstrap to continue to yesterday")
+        XCTAssertEqual(notifiedDayKeys.value, [])
+
+        let partialStory = try XCTUnwrap(environment.loadDailyStory(dayKey: "2026-04-11"))
+        XCTAssertEqual(environment.composer.usedSourceEventIDs(in: partialStory).count, 50)
+
+        let invocations = await summarizer.recorder.snapshot()
+        XCTAssertEqual(invocations.map(\.dayKey), ["2026-04-11", "2026-04-11", "2026-04-10"])
+        XCTAssertEqual(invocations.map(\.kind), [.fullRecovery, .incrementalAppend, .fullRecovery])
+    }
+
+    func testCompletingOnboardingDoesNotChunkDaysAtFiftyEventsOrFewer() async throws {
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        let writer = try DatabaseWriter.inMemory()
+        for index in 0..<50 {
+            try writer.insert(
+                EventRecord(
+                    id: UUID(),
+                    sourceType: .clipboard,
+                    sourceApp: "Notes",
+                    capturedAt: now.addingTimeInterval(TimeInterval(index)),
+                    dayKey: "2026-04-11",
+                    text: "exact-threshold \(index)",
+                    auditText: nil,
+                    privacyAction: .keep,
+                    contentHash: "exact-threshold-\(index)"
+                )
+            )
+        }
+        try writer.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: now.addingTimeInterval(-86_400),
+                dayKey: "2026-04-10",
+                text: "small yesterday",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "small-yesterday"
+            )
+        )
+
+        let summarizer = RecordingOnboardingBootstrapSummarizer()
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: summarizer,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            currentDate: { now },
+            userDefaults: defaults,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        appState.completeOnboarding()
+
+        let completed = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
+            appState.onboardingBootstrapState == .complete
+        }
+        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish without chunking at the threshold")
+
+        let invocations = await summarizer.recorder.snapshot()
+        XCTAssertEqual(invocations.map(\.kind), [.fullRecovery, .fullRecovery])
+        XCTAssertEqual(invocations.first?.eventIDs.count, 50)
+        XCTAssertFalse(invocations.contains(where: { $0.kind == .incrementalAppend }))
     }
 
     func testRefreshSelectedDayFor20260409CompletesWithVisibleTerminalState() async throws {
@@ -4735,6 +5761,55 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(story.provenance?.generationMode, .model)
         XCTAssertEqual(story.provenance?.engineKind, DiaryEngine.none.rawValue)
         XCTAssertNil(engineDefaults.string(forKey: "summarizerGlobalDiaryPromptOverride"))
+    }
+
+    func testGenerateStoryPromptTruncatesLongEventTextBeforeSummarizerCall() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let dayKey = "2026-04-21"
+        let eventID = UUID()
+        let longText = String(repeating: "C", count: 160)
+        let expectedText = String(repeating: "C", count: 100)
+        try writer.insert(
+            EventRecord(
+                id: eventID,
+                sourceType: .notification,
+                sourceApp: "com.openai.codex",
+                capturedAt: Date(timeIntervalSince1970: 1_776_729_600),
+                dayKey: dayKey,
+                text: longText,
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "prompt-budget-integration"
+            )
+        )
+
+        let response = """
+        {"sections":[{"id":"daily-journal","paragraphs":[{"text":"# Summary\\n- Trimmed the prompt budget","sourceEventIDs":["\(eventID.uuidString)"]}]}]}
+        """
+        let summarizer = RecordingPromptSummarizer(response: response)
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: summarizer,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        let events = try writer.fetchEvents(dayKey: dayKey)
+
+        _ = await appState.generateStory(dayKey: dayKey, events: events, environment: environment)
+
+        XCTAssertEqual(summarizer.capturedMarkdown, environment.composer.storyPrompt(dayKey: dayKey, events: events))
+        XCTAssertTrue(summarizer.capturedMarkdown?.contains("text: \(expectedText)") == true)
+        XCTAssertFalse(summarizer.capturedMarkdown?.contains("text: \(longText)") == true)
     }
 
     func testRefreshSelectedDayFullRecoveryIgnoresLegacyPromptOverrideAndNormalizesBeforePersisting() async throws {

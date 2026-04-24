@@ -96,7 +96,7 @@ flowchart LR
 - 维护 UI 状态与服务状态
 - 管理选中日期、选中 story、选中段落及其来源事件
 - 触发“按天刷新”、今日通知补同步与 today-only 自动刷新
-- 持久化 onboarding 进度，并在完成后触发一次性过去 7 天 bootstrap
+- 持久化 onboarding 进度，并在完成后触发一次性今天+昨天 bootstrap
 
 `AppEnvironment` 本身则负责组装主要依赖，包括数据库、隐私过滤器、采集器、composer 与 summarizer，见 [AppEnvironment.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppEnvironment.swift)。
 
@@ -323,6 +323,8 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 - structured story 解析
 - Markdown 组合
 
+当前 prompt 组装还承担一层轻量 prompt budget：full-story 与 incremental 两条路径都会在这里对单条事件文本做统一裁剪，当前上限为 100 个 Swift 字符。该裁剪只影响送给 summarizer 的 prompt，不会改写数据库中的原始事件，也不会影响 source notes / fallback / UI 查看原文能力。
+
 当前实现下，story 只有一个 section：
 
 - `daily-journal`
@@ -427,13 +429,21 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - `privacy` 用居中 coachmark 强调 `.md` 纯本地与“没有服务端”
 - `permissions` 只 gate `Full Disk Access`，并在同位置 coachmark 里解释通知与剪贴板上下文价值
 - `enginePrompt` 只负责高亮真实产品里的引擎按钮，`engineSetup` 则在现有引擎配置组件里完成默认引擎设置
-- `generating` 在完成 onboarding 后自动触发一次性过去 7 天 bootstrap，而不是要求用户手动点刷新
+- `generating` 在完成 onboarding 后自动触发一次性今天+昨天 bootstrap，而不是要求用户手动点刷新
+- bootstrap 启动时主窗口会显示一个非阻塞轻提醒，告知用户两天内容正在生成、约 2 分钟后可回来查看
+- onboarding bootstrap 仍复用同一套 refresh pipeline，但当冷启动 full recovery 单日事件数超过 `50` 条时，会改为分批：首批 `50` 条先写出初始 story，后续块再逐块 incremental append
+- 正式 reader 的刷新按钮右侧会显示一个小三角下拉菜单；通过隐藏系统 menu indicator，界面上只保留一个三角，不会出现双三角
+- 下拉菜单对当前选中的真实日期都可用，因此历史日期也能主动触发 full refresh；`Demo Day` 仍保持只读
+- 当选中日期是今天时，菜单项文案为 `Full Refresh Today (Overwriting)`；触发后会强制走 full recovery，即使当前已经有成功的模型 story，也不会走普通 incremental mode 判断
+- 当任意选中日期的 full recovery 事件数超过 `50` 条时，该动作与 onboarding bootstrap 共用同一套分批 full refresh helper：首批 `50` 条写出基线 story，后续批次逐块 incremental append 到同一篇 story
+- 普通 manual incremental refresh 与 automation incremental refresh 继续走同一条增量链路；如果一次累计的新事件超过 `50` 条，则在 AppState 内按时间顺序拆成最多 `50` 条一批，串行调用 incremental append，并在每个成功块后立即持久化 story / Markdown
+- 分批刷新不会改变 refresh log schema，只在 `stages.detail` 中记录 `chunk X/Y loaded ...`、`appended ...` 与失败 chunk；主窗口状态文案同步显示当前 chunk，便于判断刷新仍在推进
 
 最终完成动作只要求：
 
 - 设置 `hasCompletedOnboarding`
 - 持久化 onboarding 当前步骤，支持退出后恢复
-- onboarding 完成后恢复真实列表，并自动补写过去 7 天缺失日记
+- onboarding 完成后恢复真实列表，并自动补写今天与昨天缺失日记
 - `Demo Day` 不会消失，而是作为只读 demo 项保留在左侧列表底部
 
 当前 onboarding 的阻塞顺序是：`Demo Day -> reference -> privacy -> Full Disk Access -> engine -> generating`。
@@ -597,7 +607,9 @@ sequenceDiagram
 4. `permissions` 只要求用户完成 `Full Disk Access`
 5. `enginePrompt` 高亮右上角真实引擎按钮，用户在 `engineSetup` 中完成默认引擎设置
 6. `completeOnboarding()` 写入 `hasCompletedOnboarding` 与 onboarding 进度状态
-7. 应用立即触发一次性过去 7 天 bootstrap，并把缺失日期先以占位形式插入左侧列表
+7. 应用立即触发一次性今天+昨天 bootstrap，并把缺失日期先以占位形式插入左侧列表，同时显示一个非阻塞提醒
+   生成顺序固定为今天后昨天；若今天失败，仍继续尝试昨天
+   若某一天在 bootstrap 开始时事件数超过 `50` 条，则该日内部改为按 `50` 条一批串行生成，并在 refresh log 中记录 chunk 进度
 8. bootstrap 完成后恢复 steady-state 自动化；`Demo Day` 继续留在列表底部供用户回看
 
 ## 11. 当前架构约束

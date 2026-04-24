@@ -533,12 +533,19 @@ struct CLISummarizer: SummaryGenerating {
 
     private func failureDetail(for result: ProcessExecutionResult) -> String {
         let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawDetail: String
         if !stderr.isEmpty {
-            return stderr
+            rawDetail = stderr
+        } else {
+            rawDetail = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        let stdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        return stdout
+        guard tool == .codex, result.terminationStatus != 0 else {
+            return rawDetail
+        }
+
+        let hint = "If this is a Codex CLI compatibility or model error, try again after upgrading Codex CLI or checking ~/.codex/config.toml."
+        return rawDetail.isEmpty ? hint : "\(rawDetail)\n\(hint)"
     }
 
     private func validatedOutput(from raw: String, expectation: Expectation) -> String? {

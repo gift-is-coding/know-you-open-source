@@ -285,7 +285,7 @@ enum OnboardingContent {
             return OnboardingStepContent(
                 iconName: "cpu.fill",
                 title: "Choose the engine you already use",
-                body: "Finish setup here. Your first real diary starts right after.",
+                body: "Finish setup here. Today and yesterday start generating right after.",
                 primaryCTA: "Start my diary",
                 target: .engineSheet,
                 activationStepLabel: "2/2",
@@ -304,8 +304,8 @@ enum OnboardingContent {
         case .generating:
             return OnboardingStepContent(
                 iconName: "wand.and.stars.inverse",
-                title: "We’re generating your first real diary",
-                body: "KnowYou is importing your local context and writing your first diary.",
+                title: "We’re generating today and yesterday",
+                body: "KnowYou is importing your local context and writing your first two entries.",
                 primaryCTA: "Generating",
                 target: .sharedCenterCard,
                 activationStepLabel: nil,

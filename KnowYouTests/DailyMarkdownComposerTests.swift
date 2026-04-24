@@ -284,6 +284,52 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertFalse(prompt.contains("GRDB.SQL.Element"), prompt)
     }
 
+    func testStoryPromptTruncatesLongEventTextToPromptBudget() {
+        let composer = DailyMarkdownComposer()
+        let longText = String(repeating: "A", count: 140)
+        let expectedText = String(repeating: "A", count: 100)
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .notification,
+                sourceApp: "com.openai.codex",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: "2026-04-11",
+                text: longText,
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "prompt-truncate-story"
+            )
+        ]
+
+        let prompt = composer.storyPrompt(dayKey: "2026-04-11", events: events)
+
+        XCTAssertTrue(prompt.contains("text: \(expectedText)"), prompt)
+        XCTAssertFalse(prompt.contains("text: \(longText)"), prompt)
+    }
+
+    func testStoryPromptKeepsShortEventTextUnchanged() {
+        let composer = DailyMarkdownComposer()
+        let text = "Short event text stays intact."
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: Date(timeIntervalSince1970: 1_775_000_000),
+                dayKey: "2026-04-11",
+                text: text,
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "prompt-short-story"
+            )
+        ]
+
+        let prompt = composer.storyPrompt(dayKey: "2026-04-11", events: events)
+
+        XCTAssertTrue(prompt.contains("text: \(text)"), prompt)
+    }
+
     func testComposerAddsLightweightMarkdownStructure() {
         let composer = DailyMarkdownComposer()
         let paragraph = DailyStoryParagraph(
@@ -543,6 +589,52 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("rewrite \"# To-do\" as the current full to-do state"), prompt)
         XCTAssertFalse(prompt.contains("all events"), prompt)
         XCTAssertFalse(prompt.contains("# 你今天做得很棒"), prompt)
+    }
+
+    func testIncrementalPromptTruncatesLongNewEventTextToPromptBudget() {
+        let composer = DailyMarkdownComposer()
+        let oldID = UUID()
+        let newID = UUID()
+        let longText = String(repeating: "B", count: 125)
+        let expectedText = String(repeating: "B", count: 100)
+        let existingStory = DailyStory(
+            dayKey: "2026-04-12",
+            generatedAt: Date(timeIntervalSince1970: 1_775_000_100),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: "# Summary\n- Closed the loop",
+                            sourceEventIDs: [oldID]
+                        )
+                    ]
+                )
+            ]
+        )
+        let newEvent = EventRecord(
+            id: newID,
+            sourceType: .notification,
+            sourceApp: "Mail",
+            capturedAt: Date(timeIntervalSince1970: 1_775_000_300),
+            dayKey: "2026-04-12",
+            text: longText,
+            auditText: nil,
+            privacyAction: .keep,
+            contentHash: "incremental-truncate"
+        )
+
+        let prompt = composer.incrementalPrompt(
+            dayKey: "2026-04-12",
+            existingStory: existingStory,
+            newEvents: [newEvent],
+            allEvents: []
+        )
+
+        XCTAssertTrue(prompt.contains("text: \(expectedText)"), prompt)
+        XCTAssertFalse(prompt.contains("text: \(longText)"), prompt)
     }
 
     func testStoryPromptRequestsReasonableDetailsParagraphSplits() {

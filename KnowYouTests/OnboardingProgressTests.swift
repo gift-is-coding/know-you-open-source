@@ -144,7 +144,7 @@ final class OnboardingProgressTests: XCTestCase {
     }
 
     @MainActor
-    func testCompletingOnboardingQueuesOneTimeSevenDayBootstrap() {
+    func testCompletingOnboardingQueuesOneTimeTwoDayBootstrap() {
         let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 20, hour: 9).date!
         let appState = AppState(
             bootstrapServices: false,
@@ -157,7 +157,19 @@ final class OnboardingProgressTests: XCTestCase {
         XCTAssertEqual(appState.onboardingBootstrapState, OnboardingBootstrapState.pending)
         XCTAssertEqual(
             appState.onboardingBootstrapDayKeys,
-            ["2026-04-20", "2026-04-19", "2026-04-18", "2026-04-17", "2026-04-16", "2026-04-15", "2026-04-14"]
+            ["2026-04-20", "2026-04-19"]
+        )
+    }
+
+    @MainActor
+    func testCompletingOnboardingShowsALightweightBootstrapNotice() {
+        let appState = AppState(bootstrapServices: false, userDefaults: defaults)
+
+        appState.completeOnboarding()
+
+        XCTAssertEqual(
+            appState.onboardingBootstrapNotice?.message,
+            "KnowYou is generating today and yesterday from your local context. Come back 2 minutes later."
         )
     }
 

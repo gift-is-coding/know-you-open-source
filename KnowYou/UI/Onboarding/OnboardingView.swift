@@ -54,7 +54,7 @@ struct OnboardingView: View {
     @State private var summarizerConfig = SummarizerConfig.load()
     @State private var isEngineSheetPresented = false
     @State private var generationStarted = false
-    @State private var generationMessage = "Starting your last 7 days..."
+    @State private var generationMessage = "Starting today and yesterday..."
     @State private var generationError: String?
     @State private var referenceAdvancePolicy = OnboardingReferenceAdvancePolicy()
     @State private var referenceAdvanceTask: Task<Void, Never>?
@@ -563,7 +563,7 @@ struct OnboardingView: View {
 
         generationStarted = true
         generationError = nil
-        generationMessage = "Starting your last 7 days..."
+        generationMessage = "Starting today and yesterday..."
 
         persistEngineConfiguration()
 
@@ -584,7 +584,7 @@ struct OnboardingView: View {
             return
         }
 
-        generationMessage = "Preparing your history…"
+        generationMessage = "Preparing today and yesterday…"
         try? await Task.sleep(nanoseconds: 500_000_000)
 
         guard step == .generating else { return }

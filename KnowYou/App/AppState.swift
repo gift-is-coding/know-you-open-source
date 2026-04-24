@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import AppKit
+import UserNotifications
 
 enum ReaderFocusZone: Hashable {
     case dateList
@@ -98,9 +99,90 @@ struct DayRefreshGenerationResult: Equatable {
     var summary: String
 }
 
+struct OnboardingBootstrapNotice: Equatable, Identifiable {
+    let id = UUID()
+    var message: String
+}
+
 enum DayRefreshMode: Equatable {
     case fullRecovery
     case incrementalUpdate
+}
+
+enum ChunkedFullRefreshContext {
+    case onboardingBootstrap
+    case selectedDayOverwrite
+    case incrementalUpdate
+
+    var logLabel: String {
+        switch self {
+        case .onboardingBootstrap:
+            return "onboarding bootstrap"
+        case .selectedDayOverwrite:
+            return "full refresh"
+        case .incrementalUpdate:
+            return "incremental update"
+        }
+    }
+
+    var resultSummary: String {
+        switch self {
+        case .onboardingBootstrap:
+            return "chunked onboarding bootstrap"
+        case .selectedDayOverwrite:
+            return "chunked full refresh"
+        case .incrementalUpdate:
+            return "chunked incremental append"
+        }
+    }
+
+    var missingStoryError: String {
+        switch self {
+        case .onboardingBootstrap:
+            return "Chunked onboarding bootstrap could not load the current story"
+        case .selectedDayOverwrite:
+            return "Chunked full refresh could not load the current story"
+        case .incrementalUpdate:
+            return "Chunked incremental update could not load the current story"
+        }
+    }
+
+    func completionStatusMessage(for dayKey: String, now: Date) -> String {
+        switch self {
+        case .onboardingBootstrap:
+            return dayKey == ISO8601DayKey.format(now)
+                ? "Refreshed today with chunked onboarding bootstrap"
+                : "Refreshed \(dayKey) with chunked onboarding bootstrap"
+        case .selectedDayOverwrite:
+            return dayKey == ISO8601DayKey.format(now)
+                ? "Refreshed today with chunked full refresh"
+                : "Refreshed \(dayKey) with chunked full refresh"
+        case .incrementalUpdate:
+            return dayKey == ISO8601DayKey.format(now)
+                ? "Updated today with chunked incremental refresh"
+                : "Updated \(dayKey) with chunked incremental refresh"
+        }
+    }
+
+    func chunkFailureError(for chunkLabel: String, persistedChunkCount: Int? = nil) -> String {
+        switch self {
+        case .onboardingBootstrap:
+            if let persistedChunkCount {
+                return "Onboarding bootstrap failed during \(chunkLabel) after persisting \(persistedChunkCount) chunk(s)"
+            }
+            return "Onboarding bootstrap failed during \(chunkLabel)"
+        case .selectedDayOverwrite:
+            if let persistedChunkCount {
+                return "Full refresh failed during \(chunkLabel) after persisting \(persistedChunkCount) chunk(s)"
+            }
+            return "Full refresh failed during \(chunkLabel)"
+        case .incrementalUpdate:
+            if let persistedChunkCount {
+                return "Incremental update failed during \(chunkLabel) after persisting \(persistedChunkCount) chunk(s)"
+            }
+            return "Incremental update failed during \(chunkLabel)"
+        }
+    }
 }
 
 enum RefreshModeResolutionError: LocalizedError {
@@ -457,6 +539,7 @@ final class AppState {
     var onboardingProgress: OnboardingProgress
     var onboardingBootstrapState: OnboardingBootstrapState
     var onboardingBootstrapDayKeys: [String]
+    var onboardingBootstrapNotice: OnboardingBootstrapNotice?
     var updateOffer: UpdateOffer?
     var isShowingUpdateSheet = false
     var lastUpdateCheckAt: Date?
@@ -465,14 +548,16 @@ final class AppState {
     @ObservationIgnored private var automationTimer: Timer?
     @ObservationIgnored private var notificationCatchUpTimer: Timer?
     @ObservationIgnored private var onboardingBootstrapTask: Task<Void, Never>?
+    @ObservationIgnored private var onboardingBootstrapNoticeDismissTask: Task<Void, Never>?
     @ObservationIgnored private var paragraphSelectionByDay: [String: String] = [:]
-    @ObservationIgnored private var refreshTasksByDay: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var refreshTasksByDay: [String: Task<Bool, Never>] = [:]
     @ObservationIgnored private var liveReaderSnapshot: ReaderPresentationSnapshot?
     @ObservationIgnored private var isPresentingOnboardingDemo = false
     @ObservationIgnored private let notificationSyncInterval: TimeInterval = 30
     @ObservationIgnored private let automationInterval: TimeInterval = 10_800
     @ObservationIgnored private let notificationOverlapBuffer: TimeInterval = 30
     @ObservationIgnored private let maxConcurrentRefreshes = 2
+    @ObservationIgnored private let refreshEventBatchSize = 50
     @ObservationIgnored private let userDefaults: UserDefaults
     @ObservationIgnored private let keychain: KeychainStoring
     @ObservationIgnored private let keychainService: String
@@ -481,6 +566,7 @@ final class AppState {
     @ObservationIgnored private let probeEngine: @Sendable (DiaryEngine, SummarizerConfig, [String: String]) async -> EngineProbeResult
     @ObservationIgnored private let makeSummarizer: SummarizerFactory
     @ObservationIgnored private let onRefreshStageChange: RefreshStageChangeHandler?
+    @ObservationIgnored private let notifyOnboardingBootstrapCompletion: @MainActor @Sendable ([String]) -> Void
     @ObservationIgnored private let launchAgentManager: LaunchAgentManager
     @ObservationIgnored private var summarizerConfig: SummarizerConfig
     @ObservationIgnored private var autoSelectionSuppressedByExplicitNone: Bool
@@ -529,6 +615,11 @@ final class AppState {
             config.makeSummarizer(for: engine, environment: environment)
         },
         onRefreshStageChange: RefreshStageChangeHandler? = nil,
+        notifyOnboardingBootstrapCompletion: @escaping @MainActor @Sendable ([String]) -> Void = { dayKeys in
+            Task {
+                await AppState.deliverOnboardingBootstrapCompletionNotification(for: dayKeys)
+            }
+        },
         processEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         currentDate: @escaping @Sendable () -> Date = Date.init,
         userDefaults: UserDefaults = .standard,
@@ -545,6 +636,7 @@ final class AppState {
         self.probeEngine = probeEngine
         self.makeSummarizer = makeSummarizer
         self.onRefreshStageChange = onRefreshStageChange
+        self.notifyOnboardingBootstrapCompletion = notifyOnboardingBootstrapCompletion
         self.launchAgentManager = launchAgentManager
         self.summarizerConfig = summarizerConfig ?? SummarizerConfig.load(
             from: userDefaults,
@@ -582,6 +674,7 @@ final class AppState {
         onboardingProgress = Self.loadOnboardingProgress(from: userDefaults)
         onboardingBootstrapState = Self.loadOnboardingBootstrapState(from: userDefaults)
         onboardingBootstrapDayKeys = Self.loadOnboardingBootstrapDayKeys(from: userDefaults)
+        onboardingBootstrapNotice = nil
         if explicitSummarizerConfig == nil,
            environment?.summarizer == nil,
            self.summarizerConfig.defaultEngine != loadedDefaultEngine {
@@ -717,6 +810,30 @@ final class AppState {
             selectDate(targetDay)
         }
         await refreshDay(targetDay, now: now, environment: environment)
+    }
+
+    func refreshSelectedDayFullRecovery(now: Date = Date()) async {
+        guard let environment else {
+            statusMessage = "Capture unavailable"
+            return
+        }
+
+        let targetDay = selectedDate ?? ISO8601DayKey.format(now)
+        if selectedDate == nil {
+            selectDate(targetDay)
+        }
+        guard targetDay != OnboardingDemoStory.demoDayKey else {
+            statusMessage = "Demo Day is read-only"
+            return
+        }
+
+        await refreshDay(
+            targetDay,
+            now: now,
+            environment: environment,
+            forcedMode: .fullRecovery,
+            chunkedFullRefreshContext: .selectedDayOverwrite
+        )
     }
 
     func generateDailyNote(for dayKey: String) async {
@@ -1222,7 +1339,14 @@ final class AppState {
     func markOnboardingBootstrapComplete() {
         onboardingBootstrapState = .complete
         onboardingBootstrapDayKeys = []
+        dismissOnboardingBootstrapNotice()
         persistOnboardingBootstrapState()
+    }
+
+    func dismissOnboardingBootstrapNotice() {
+        onboardingBootstrapNoticeDismissTask?.cancel()
+        onboardingBootstrapNoticeDismissTask = nil
+        onboardingBootstrapNotice = nil
     }
 
     private func setOnboardingProgress(_ progress: OnboardingProgress) {
@@ -1295,7 +1419,7 @@ final class AppState {
 
     private static func onboardingBootstrapDays(now: Date) -> [String] {
         let calendar = Calendar(identifier: .gregorian)
-        return (0..<7).compactMap { offset in
+        return (0..<2).compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: -offset, to: now) else { return nil }
             return ISO8601DayKey.format(date)
         }
@@ -1308,6 +1432,7 @@ final class AppState {
         onboardingBootstrapDayKeys = Self.onboardingBootstrapDays(now: currentDate())
         persistOnboardingBootstrapState()
         rebuildAvailableDates()
+        showOnboardingBootstrapNotice()
     }
 
     private func resumeOnboardingBootstrapIfNeeded() {
@@ -1328,15 +1453,23 @@ final class AppState {
             guard let self else { return }
             defer { self.onboardingBootstrapTask = nil }
 
-            for dayKey in self.onboardingBootstrapDayKeys {
-                if self.noteIndex[dayKey] != nil {
-                    continue
+            var completedDayKeys = self.onboardingBootstrapDayKeys.filter { self.noteIndex[$0] != nil }
+            for dayKey in self.onboardingBootstrapDayKeys where completedDayKeys.contains(dayKey) == false {
+                let didComplete = await self.generateOnboardingBootstrapNote(for: dayKey)
+                if didComplete {
+                    completedDayKeys.append(dayKey)
                 }
-                await self.generateDailyNote(for: dayKey)
             }
+
+            let shouldNotifyCompletion =
+                completedDayKeys.isEmpty == false
+                && completedDayKeys.count == self.onboardingBootstrapDayKeys.count
 
             self.markOnboardingBootstrapComplete()
             self.rebuildAvailableDates()
+            if shouldNotifyCompletion {
+                self.notifyOnboardingBootstrapCompletion(completedDayKeys)
+            }
         }
     }
 
@@ -1558,7 +1691,9 @@ extension AppState {
         _ dayKey: String,
         now: Date,
         environment: AppEnvironment,
-        trigger: RefreshTrigger = .manual
+        trigger: RefreshTrigger = .manual,
+        forcedMode: DayRefreshMode? = nil,
+        chunkedFullRefreshContext: ChunkedFullRefreshContext? = nil
     ) async {
         guard refreshTasksByDay[dayKey] == nil else {
             return
@@ -1570,18 +1705,27 @@ extension AppState {
 
         transitionRefreshJob(for: dayKey, stage: .syncingNotifications)
         let task = Task { @MainActor in
-            await performRefreshDay(dayKey, now: now, environment: environment, trigger: trigger)
+            await performRefreshDay(
+                dayKey,
+                now: now,
+                environment: environment,
+                trigger: trigger,
+                forcedMode: forcedMode,
+                chunkedFullRefreshContext: chunkedFullRefreshContext
+            )
         }
         refreshTasksByDay[dayKey] = task
-        await task.value
+        _ = await task.value
     }
 
     private func performRefreshDay(
         _ dayKey: String,
         now: Date,
         environment: AppEnvironment,
-        trigger: RefreshTrigger
-    ) async {
+        trigger: RefreshTrigger,
+        forcedMode: DayRefreshMode?,
+        chunkedFullRefreshContext: ChunkedFullRefreshContext?
+    ) async -> Bool {
         defer {
             refreshTasksByDay.removeValue(forKey: dayKey)
         }
@@ -1608,53 +1752,73 @@ extension AppState {
             )
         )
         let mode: DayRefreshMode
-        do {
-            mode = try refreshMode(for: dayKey, environment: environment)
-        } catch {
-            dayRefreshStatus.lastRequestedDay = dayKey
-            dayRefreshStatus.lastRefreshedAt = Date()
-            dayRefreshStatus.lastError = error.localizedDescription
-            statusMessage = "Daily note failed: \(error.localizedDescription)"
-            refreshLog.record.finishedAt = Date()
-            refreshLog.record.totalDurationSeconds = refreshLog.record.finishedAt?.timeIntervalSince(refreshStartedAt)
-            refreshLog.record.finalStatus = "failed"
-            refreshLog.record.finalSummary = error.localizedDescription
-            persistRefreshLog(refreshLog.record, environment: environment)
-            transitionRefreshJob(
-                for: dayKey,
-                stage: .failed,
-                detail: "Failed · \(error.localizedDescription)",
-                error: error.localizedDescription
-            )
-            return
+        if let forcedMode {
+            mode = forcedMode
+        } else {
+            do {
+                mode = try refreshMode(for: dayKey, environment: environment)
+            } catch {
+                dayRefreshStatus.lastRequestedDay = dayKey
+                dayRefreshStatus.lastRefreshedAt = Date()
+                dayRefreshStatus.lastError = error.localizedDescription
+                statusMessage = "Daily note failed: \(error.localizedDescription)"
+                refreshLog.record.finishedAt = Date()
+                refreshLog.record.totalDurationSeconds = refreshLog.record.finishedAt?.timeIntervalSince(refreshStartedAt)
+                refreshLog.record.finalStatus = "failed"
+                refreshLog.record.finalSummary = error.localizedDescription
+                persistRefreshLog(refreshLog.record, environment: environment)
+                transitionRefreshJob(
+                    for: dayKey,
+                    stage: .failed,
+                    detail: "Failed · \(error.localizedDescription)",
+                    error: error.localizedDescription
+                )
+                return false
+            }
         }
         refreshLog.record.mode = mode == .fullRecovery ? "fullRecovery" : "incrementalUpdate"
         let noteResult: DayRefreshGenerationResult
-        switch mode {
-        case .fullRecovery:
-            noteResult = await refreshDayWithRetry(
+        if let chunkedFullRefreshContext,
+           mode == .fullRecovery,
+           let chunkedResult = await performChunkedFullRefreshIfNeeded(
                 dayKey: dayKey,
-                recordsRun: true,
                 now: now,
                 environment: environment,
                 trigger: trigger,
+                context: chunkedFullRefreshContext,
                 refreshLog: refreshLog,
                 onStageChange: { [weak self] stage, detail in
                     self?.transitionRefreshJob(for: dayKey, stage: stage, detail: detail)
                 }
-            )
-        case .incrementalUpdate:
-            noteResult = await incrementallyRefreshDay(
-                dayKey: dayKey,
-                recordsRun: true,
-                now: now,
-                environment: environment,
-                trigger: trigger,
-                refreshLog: refreshLog,
-                onStageChange: { [weak self] stage, detail in
-                    self?.transitionRefreshJob(for: dayKey, stage: stage, detail: detail)
-                }
-            )
+           ) {
+            noteResult = chunkedResult
+        } else {
+            switch mode {
+            case .fullRecovery:
+                noteResult = await refreshDayWithRetry(
+                    dayKey: dayKey,
+                    recordsRun: true,
+                    now: now,
+                    environment: environment,
+                    trigger: trigger,
+                    refreshLog: refreshLog,
+                    onStageChange: { [weak self] stage, detail in
+                        self?.transitionRefreshJob(for: dayKey, stage: stage, detail: detail)
+                    }
+                )
+            case .incrementalUpdate:
+                noteResult = await incrementallyRefreshDay(
+                    dayKey: dayKey,
+                    recordsRun: true,
+                    now: now,
+                    environment: environment,
+                    trigger: trigger,
+                    refreshLog: refreshLog,
+                    onStageChange: { [weak self] stage, detail in
+                        self?.transitionRefreshJob(for: dayKey, stage: stage, detail: detail)
+                    }
+                )
+            }
         }
         guard noteResult.stage == .completed else {
             refreshLog.record.finishedAt = Date()
@@ -1668,7 +1832,7 @@ extension AppState {
                 detail: "Failed · \(dayRefreshStatus.lastRequestedDay == dayKey ? (dayRefreshStatus.lastError ?? "Unknown error") : "Unknown error")",
                 error: dayRefreshStatus.lastRequestedDay == dayKey ? dayRefreshStatus.lastError : nil
             )
-            return
+            return false
         }
 
         let completionDetail: String
@@ -1699,6 +1863,500 @@ extension AppState {
         refreshLog.record.finalSummary = completionDetail
         persistRefreshLog(refreshLog.record, environment: environment)
         transitionRefreshJob(for: dayKey, stage: .completed, detail: completionDetail)
+        return true
+    }
+
+    private func generateOnboardingBootstrapNote(for dayKey: String) async -> Bool {
+        guard let environment else {
+            statusMessage = "Capture unavailable"
+            return false
+        }
+        if noteIndex[dayKey] != nil {
+            return true
+        }
+        guard refreshTasksByDay[dayKey] == nil else {
+            return false
+        }
+        guard refreshTasksByDay.count < maxConcurrentRefreshes else {
+            statusMessage = "Two refreshes are already running"
+            return false
+        }
+
+        transitionRefreshJob(for: dayKey, stage: .syncingNotifications)
+        let task = Task { @MainActor in
+            await performRefreshDay(
+                dayKey,
+                now: currentDate(),
+                environment: environment,
+                trigger: .manual,
+                forcedMode: nil,
+                chunkedFullRefreshContext: .onboardingBootstrap
+            )
+        }
+        refreshTasksByDay[dayKey] = task
+        return await task.value
+    }
+
+    private func performChunkedFullRefreshIfNeeded(
+        dayKey: String,
+        now: Date,
+        environment: AppEnvironment,
+        trigger: RefreshTrigger,
+        context: ChunkedFullRefreshContext,
+        refreshLog: RefreshLogBuffer,
+        onStageChange: ((DayRefreshStage, String?) -> Void)?
+    ) async -> DayRefreshGenerationResult? {
+        let allEvents = (try? environment.databaseWriter.fetchEvents(dayKey: dayKey))?
+            .sorted { $0.capturedAt < $1.capturedAt } ?? []
+        guard allEvents.count > refreshEventBatchSize else {
+            return nil
+        }
+        onStageChange?(.loadingEvents, "Loaded \(allEvents.count) event(s)")
+
+        let chunkedResult = await refreshDayInChunks(
+            dayKey: dayKey,
+            allEvents: allEvents,
+            now: now,
+            environment: environment,
+            trigger: trigger,
+            context: context,
+            refreshLog: refreshLog,
+            onStageChange: onStageChange
+        )
+        return chunkedResult
+    }
+
+    private func refreshDayInChunks(
+        dayKey: String,
+        allEvents: [EventRecord],
+        now: Date,
+        environment: AppEnvironment,
+        trigger: RefreshTrigger,
+        context: ChunkedFullRefreshContext,
+        refreshLog: RefreshLogBuffer,
+        onStageChange: ((DayRefreshStage, String?) -> Void)?
+    ) async -> DayRefreshGenerationResult {
+        let attempts = refreshAttempts(trigger: trigger, using: environment)
+        guard !attempts.isEmpty else {
+            return failFullRecoveryWithoutVerifiedEngine(dayKey: dayKey)
+        }
+
+        let runID = try? environment.databaseWriter.startRun(runType: "daily-note", dayKey: dayKey)
+        let chunks = stride(from: 0, to: allEvents.count, by: refreshEventBatchSize).map { startIndex in
+            Array(allEvents[startIndex..<min(startIndex + refreshEventBatchSize, allEvents.count)])
+        }
+        refreshLog.record.totalEventCount = allEvents.count
+        refreshLog.record.stages.append(
+            RefreshLogStageRecord(
+                name: "chunkingPlan",
+                durationSeconds: 0,
+                detail: "Chunked \(context.logLabel) into \(chunks.count) batch(es) of up to \(refreshEventBatchSize) event(s)"
+            )
+        )
+
+        let invocationContext = summaryInvocationContext(for: trigger)
+        var cumulativeEvents: [EventRecord] = []
+        var existingStory: DailyStory?
+        var latestFileURL: URL?
+
+        do {
+            for (index, chunk) in chunks.enumerated() {
+                cumulativeEvents.append(contentsOf: chunk)
+                let chunkNumber = index + 1
+                let chunkLabel = "chunk \(chunkNumber)/\(chunks.count)"
+                let cumulativeCount = cumulativeEvents.count
+
+                refreshLog.record.newEventCount = chunk.count
+                refreshLog.record.stages.append(
+                    RefreshLogStageRecord(
+                        name: "loadingEvents",
+                        durationSeconds: 0,
+                        detail: "\(chunkLabel) loaded \(chunk.count) event(s); \(cumulativeCount)/\(allEvents.count) cumulative"
+                    )
+                )
+
+                let detailPrefix = index == 0
+                    ? "Preparing \(chunkLabel) from \(chunk.count) event(s)..."
+                    : "Appending \(chunkLabel) with \(chunk.count) event(s); \(cumulativeCount)/\(allEvents.count) cumulative..."
+                onStageChange?(.preparingStory, detailPrefix)
+
+                let result: DayRefreshGenerationResult
+                if index == 0 {
+                    result = try await runChunkedFullRefreshFullChunk(
+                        dayKey: dayKey,
+                        chunkLabel: chunkLabel,
+                        chunkIndex: chunkNumber,
+                        chunkCount: chunks.count,
+                        events: cumulativeEvents,
+                        now: now,
+                        environment: environment,
+                        attempts: attempts,
+                        trigger: trigger,
+                        context: context,
+                        invocationContext: invocationContext,
+                        refreshLog: refreshLog,
+                        onStageChange: onStageChange,
+                        persistedStory: &existingStory,
+                        latestFileURL: &latestFileURL
+                    )
+                } else {
+                    guard let currentStory = existingStory else {
+                        if let runID {
+                            try? environment.databaseWriter.finishRun(id: runID, status: "failed")
+                        }
+                        dayRefreshStatus.lastRequestedDay = dayKey
+                        dayRefreshStatus.lastRefreshedAt = Date()
+                        dayRefreshStatus.lastError = context.missingStoryError
+                        statusMessage = "Daily note failed: \(context.missingStoryError)"
+                        return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
+                    }
+
+                    result = try await runChunkedFullRefreshIncrementalChunk(
+                        dayKey: dayKey,
+                        chunkLabel: chunkLabel,
+                        chunkIndex: chunkNumber,
+                        chunkCount: chunks.count,
+                        existingStory: currentStory,
+                        newEvents: chunk,
+                        cumulativeEvents: cumulativeEvents,
+                        now: now,
+                        environment: environment,
+                        attempts: attempts,
+                        trigger: trigger,
+                        context: context,
+                        invocationContext: invocationContext,
+                        refreshLog: refreshLog,
+                        onStageChange: onStageChange,
+                        persistedStory: &existingStory,
+                        latestFileURL: &latestFileURL
+                    )
+                }
+
+                guard result.stage == .completed else {
+                    if let runID {
+                        try? environment.databaseWriter.finishRun(id: runID, status: "failed")
+                    }
+                    return result
+                }
+            }
+
+            if let runID {
+                try environment.databaseWriter.finishRun(id: runID, status: "succeeded")
+            }
+
+            guard let story = existingStory, let fileURL = latestFileURL else {
+                dayRefreshStatus.lastRequestedDay = dayKey
+                dayRefreshStatus.lastRefreshedAt = Date()
+                dayRefreshStatus.lastError = "Chunked \(context.logLabel) produced no story"
+                statusMessage = "Daily note failed: Chunked \(context.logLabel) produced no story"
+                return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
+            }
+
+            finalizeSuccessfulRefresh(
+                dayKey: dayKey,
+                story: story,
+                events: cumulativeEvents,
+                fileURL: fileURL,
+                detail: "Completed \(context.logLabel) in \(chunks.count) chunk(s) for \(dayKey)"
+            )
+            if let storyPath = storyURL(for: dayKey, environment: environment) {
+                refreshLog.record.storyJSONPath = storyPath.path
+            }
+            refreshLog.record.markdownPath = fileURL.path
+            refreshLog.record.wroteMarkdown = true
+            refreshLog.record.wroteStoryJSON = true
+            statusMessage = context.completionStatusMessage(for: dayKey, now: now)
+            return DayRefreshGenerationResult(stage: .completed, summary: context.resultSummary)
+        } catch {
+            if let runID {
+                try? environment.databaseWriter.finishRun(id: runID, status: "failed")
+            }
+            dayRefreshStatus.lastRequestedDay = dayKey
+            dayRefreshStatus.lastRefreshedAt = Date()
+            dayRefreshStatus.lastError = error.localizedDescription
+            statusMessage = "Daily note failed: \(error.localizedDescription)"
+            return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
+        }
+    }
+
+    private func runChunkedFullRefreshFullChunk(
+        dayKey: String,
+        chunkLabel: String,
+        chunkIndex: Int,
+        chunkCount: Int,
+        events: [EventRecord],
+        now: Date,
+        environment: AppEnvironment,
+        attempts: [RefreshSummarizerAttempt],
+        trigger: RefreshTrigger,
+        context: ChunkedFullRefreshContext,
+        invocationContext: SummaryInvocationContext,
+        refreshLog: RefreshLogBuffer,
+        onStageChange: ((DayRefreshStage, String?) -> Void)?,
+        persistedStory: inout DailyStory?,
+        latestFileURL: inout URL?
+    ) async throws -> DayRefreshGenerationResult {
+        let prompt = environment.composer.storyPrompt(dayKey: dayKey, events: events)
+        if trigger == .manual, let primaryAttempt = attempts.first {
+            onStageChange?(.generatingStory, "Calling \(primaryAttempt.label) for \(chunkLabel)...")
+            if let story = validateFullRecoveryResult(
+                await runAttempt(
+                    primaryAttempt,
+                    dayKey: dayKey,
+                    prompt: prompt,
+                    context: invocationContext
+                ),
+                dayKey: dayKey,
+                events: events,
+                environment: environment,
+                trigger: trigger,
+                refreshLog: refreshLog
+            ) {
+                let fileURL = try persistChunkedFullRefreshChunk(
+                    dayKey: dayKey,
+                    chunkLabel: chunkLabel,
+                    chunkIndex: chunkIndex,
+                    chunkCount: chunkCount,
+                    story: story,
+                    events: events,
+                    environment: environment,
+                    context: context,
+                    refreshLog: refreshLog,
+                    onStageChange: onStageChange
+                )
+                persistedStory = story
+                latestFileURL = fileURL
+                return DayRefreshGenerationResult(stage: .completed, summary: chunkLabel)
+            }
+        }
+
+        let fallbackAttempts = trigger == .manual ? Array(attempts.dropFirst()) : attempts
+        if !fallbackAttempts.isEmpty {
+            let attemptDetail: String
+            if trigger == .manual, !Array(attempts.dropFirst()).isEmpty {
+                attemptDetail = "Default engine failed for \(chunkLabel). Trying \(fallbackAttempts.map(\.label).joined(separator: ", ")) in parallel..."
+            } else {
+                attemptDetail = "Calling \(fallbackAttempts[0].label) for \(chunkLabel)..."
+            }
+            onStageChange?(.generatingStory, attemptDetail)
+
+            let results = trigger == .manual
+                ? await runParallelAttempts(
+                    fallbackAttempts,
+                    dayKey: dayKey,
+                    prompt: prompt,
+                    context: invocationContext
+                )
+                : [await runAttempt(
+                    fallbackAttempts[0],
+                    dayKey: dayKey,
+                    prompt: prompt,
+                    context: invocationContext
+                )]
+
+            for result in results {
+                guard let story = validateFullRecoveryResult(
+                    result,
+                    dayKey: dayKey,
+                    events: events,
+                    environment: environment,
+                    trigger: trigger,
+                    refreshLog: refreshLog
+                ) else {
+                    continue
+                }
+                let fileURL = try persistChunkedFullRefreshChunk(
+                    dayKey: dayKey,
+                    chunkLabel: chunkLabel,
+                    chunkIndex: chunkIndex,
+                    chunkCount: chunkCount,
+                    story: story,
+                    events: events,
+                    environment: environment,
+                    context: context,
+                    refreshLog: refreshLog,
+                    onStageChange: onStageChange
+                )
+                persistedStory = story
+                latestFileURL = fileURL
+                return DayRefreshGenerationResult(stage: .completed, summary: chunkLabel)
+            }
+        }
+
+        dayRefreshStatus.lastRequestedDay = dayKey
+        dayRefreshStatus.lastRefreshedAt = Date()
+        dayRefreshStatus.lastError = context.chunkFailureError(for: chunkLabel)
+        statusMessage = "Daily note failed: \(context.chunkFailureError(for: chunkLabel))"
+        return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
+    }
+
+    private func runChunkedFullRefreshIncrementalChunk(
+        dayKey: String,
+        chunkLabel: String,
+        chunkIndex: Int,
+        chunkCount: Int,
+        existingStory: DailyStory,
+        newEvents: [EventRecord],
+        cumulativeEvents: [EventRecord],
+        now: Date,
+        environment: AppEnvironment,
+        attempts: [RefreshSummarizerAttempt],
+        trigger: RefreshTrigger,
+        context: ChunkedFullRefreshContext,
+        invocationContext: SummaryInvocationContext,
+        refreshLog: RefreshLogBuffer,
+        onStageChange: ((DayRefreshStage, String?) -> Void)?,
+        persistedStory: inout DailyStory?,
+        latestFileURL: inout URL?
+    ) async throws -> DayRefreshGenerationResult {
+        let prompt = environment.composer.incrementalPrompt(
+            dayKey: dayKey,
+            existingStory: existingStory,
+            newEvents: newEvents,
+            allEvents: cumulativeEvents
+        )
+
+        if trigger == .manual, let primaryAttempt = attempts.first {
+            onStageChange?(.generatingStory, "Appending \(chunkLabel) with \(primaryAttempt.label)...")
+            if let mergedStory = validateIncrementalResult(
+                await runIncrementalAttempt(
+                    primaryAttempt,
+                    dayKey: dayKey,
+                    prompt: prompt,
+                    context: invocationContext
+                ),
+                dayKey: dayKey,
+                existingStory: existingStory,
+                events: cumulativeEvents,
+                newEvents: newEvents,
+                environment: environment,
+                trigger: trigger,
+                refreshLog: refreshLog
+            ) {
+                let fileURL = try persistChunkedFullRefreshChunk(
+                    dayKey: dayKey,
+                    chunkLabel: chunkLabel,
+                    chunkIndex: chunkIndex,
+                    chunkCount: chunkCount,
+                    story: mergedStory,
+                    events: cumulativeEvents,
+                    environment: environment,
+                    context: context,
+                    refreshLog: refreshLog,
+                    onStageChange: onStageChange
+                )
+                persistedStory = mergedStory
+                latestFileURL = fileURL
+                return DayRefreshGenerationResult(stage: .completed, summary: chunkLabel)
+            }
+        }
+
+        let fallbackAttempts = trigger == .manual ? Array(attempts.dropFirst()) : attempts
+        if !fallbackAttempts.isEmpty {
+            let attemptDetail: String
+            if trigger == .manual, !Array(attempts.dropFirst()).isEmpty {
+                attemptDetail = "Default engine failed for \(chunkLabel). Trying \(fallbackAttempts.map(\.label).joined(separator: ", ")) in parallel..."
+            } else {
+                attemptDetail = "Appending \(chunkLabel) with \(fallbackAttempts[0].label)..."
+            }
+            onStageChange?(.generatingStory, attemptDetail)
+
+            let mergedStory = trigger == .manual
+                ? await firstValidParallelIncrementalStory(
+                    fallbackAttempts,
+                    dayKey: dayKey,
+                    existingStory: existingStory,
+                    events: cumulativeEvents,
+                    newEvents: newEvents,
+                    prompt: prompt,
+                    context: invocationContext,
+                    environment: environment,
+                    trigger: trigger,
+                    refreshLog: refreshLog
+                )
+                : validateIncrementalResult(
+                    await runIncrementalAttempt(
+                        fallbackAttempts[0],
+                        dayKey: dayKey,
+                        prompt: prompt,
+                        context: invocationContext
+                    ),
+                    dayKey: dayKey,
+                    existingStory: existingStory,
+                    events: cumulativeEvents,
+                    newEvents: newEvents,
+                    environment: environment,
+                    trigger: trigger,
+                    refreshLog: refreshLog
+                )
+
+            if let mergedStory {
+                let fileURL = try persistChunkedFullRefreshChunk(
+                    dayKey: dayKey,
+                    chunkLabel: chunkLabel,
+                    chunkIndex: chunkIndex,
+                    chunkCount: chunkCount,
+                    story: mergedStory,
+                    events: cumulativeEvents,
+                    environment: environment,
+                    context: context,
+                    refreshLog: refreshLog,
+                    onStageChange: onStageChange
+                )
+                persistedStory = mergedStory
+                latestFileURL = fileURL
+                return DayRefreshGenerationResult(stage: .completed, summary: chunkLabel)
+            }
+        }
+
+        dayRefreshStatus.lastRequestedDay = dayKey
+        dayRefreshStatus.lastRefreshedAt = Date()
+        let failureError = context.chunkFailureError(
+            for: chunkLabel,
+            persistedChunkCount: chunkIndex - 1
+        )
+        refreshLog.record.stages.append(
+            RefreshLogStageRecord(
+                name: "generatingStory",
+                durationSeconds: 0,
+                detail: failureError
+            )
+        )
+        dayRefreshStatus.lastError = failureError
+        statusMessage = "Daily note failed: \(failureError)"
+        return DayRefreshGenerationResult(stage: .failed, summary: failureError)
+    }
+
+    private func persistChunkedFullRefreshChunk(
+        dayKey: String,
+        chunkLabel: String,
+        chunkIndex: Int,
+        chunkCount: Int,
+        story: DailyStory,
+        events: [EventRecord],
+        environment: AppEnvironment,
+        context: ChunkedFullRefreshContext,
+        refreshLog: RefreshLogBuffer,
+        onStageChange: ((DayRefreshStage, String?) -> Void)?
+    ) throws -> URL {
+        let writeStartedAt = Date()
+        onStageChange?(.writingFiles, "Writing \(chunkLabel) for \(dayKey)...")
+        let fileURL = try persistArtifacts(dayKey: dayKey, story: story, events: events, environment: environment)
+        refreshLog.record.stages.append(
+            RefreshLogStageRecord(
+                name: "writingFiles",
+                durationSeconds: Date().timeIntervalSince(writeStartedAt),
+                detail: "Persisted \(chunkLabel) (\(events.count) cumulative event(s))"
+            )
+        )
+        finalizeSuccessfulRefresh(
+            dayKey: dayKey,
+            story: story,
+            events: events,
+            fileURL: fileURL,
+            detail: "Persisted \(chunkLabel) of \(chunkCount) for \(dayKey) during \(context.logLabel)"
+        )
+        return fileURL
     }
 
     func syncNotifications(
@@ -1843,6 +2501,22 @@ extension AppState {
                 dayRefreshStatus.lastError = "No verified engine available for incremental update"
                 statusMessage = "Daily note failed: No verified engine available for incremental update"
                 return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
+            }
+
+            if newEvents.count > refreshEventBatchSize {
+                return try await refreshIncrementalDayInChunks(
+                    dayKey: dayKey,
+                    existingStory: existingStory,
+                    events: events,
+                    newEvents: newEvents,
+                    runID: runID,
+                    now: now,
+                    environment: environment,
+                    attempts: attempts,
+                    trigger: trigger,
+                    refreshLog: refreshLog,
+                    onStageChange: onStageChange
+                )
             }
 
             let prompt = environment.composer.incrementalPrompt(
@@ -1994,6 +2668,116 @@ extension AppState {
             statusMessage = "Daily note failed: \(error.localizedDescription)"
             return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
         }
+    }
+
+    private func refreshIncrementalDayInChunks(
+        dayKey: String,
+        existingStory: DailyStory,
+        events: [EventRecord],
+        newEvents: [EventRecord],
+        runID: UUID?,
+        now: Date,
+        environment: AppEnvironment,
+        attempts: [RefreshSummarizerAttempt],
+        trigger: RefreshTrigger,
+        refreshLog: RefreshLogBuffer?,
+        onStageChange: ((DayRefreshStage, String?) -> Void)?
+    ) async throws -> DayRefreshGenerationResult {
+        let chunks = stride(from: 0, to: newEvents.count, by: refreshEventBatchSize).map { startIndex in
+            Array(newEvents[startIndex..<min(startIndex + refreshEventBatchSize, newEvents.count)])
+        }
+        refreshLog?.record.stages.append(
+            RefreshLogStageRecord(
+                name: "chunkingPlan",
+                durationSeconds: 0,
+                detail: "Chunked incremental update into \(chunks.count) batch(es) of up to \(refreshEventBatchSize) event(s)"
+            )
+        )
+
+        let newEventIDs = Set(newEvents.map(\.id))
+        var cumulativeEvents = events
+            .filter { !newEventIDs.contains($0.id) }
+            .sorted { $0.capturedAt < $1.capturedAt }
+        var currentStory = existingStory
+        var latestFileURL: URL?
+        let context = ChunkedFullRefreshContext.incrementalUpdate
+        let invocationContext = summaryInvocationContext(for: trigger)
+
+        for (index, chunk) in chunks.enumerated() {
+            cumulativeEvents.append(contentsOf: chunk)
+            let chunkNumber = index + 1
+            let chunkLabel = "chunk \(chunkNumber)/\(chunks.count)"
+            refreshLog?.record.stages.append(
+                RefreshLogStageRecord(
+                    name: "loadingEvents",
+                    durationSeconds: 0,
+                    detail: "\(chunkLabel) loaded \(chunk.count) event(s); \(cumulativeEvents.count)/\(events.count) cumulative, \(min(chunkNumber * refreshEventBatchSize, newEvents.count))/\(newEvents.count) new event(s) appended"
+                )
+            )
+            refreshLog?.record.newEventCount = newEvents.count
+            onStageChange?(
+                .preparingStory,
+                "Appending \(chunkLabel) with \(chunk.count) event(s); \(min(chunkNumber * refreshEventBatchSize, newEvents.count))/\(newEvents.count) new event(s)..."
+            )
+
+            var persistedStory: DailyStory?
+            var persistedFileURL: URL?
+            let result = try await runChunkedFullRefreshIncrementalChunk(
+                dayKey: dayKey,
+                chunkLabel: chunkLabel,
+                chunkIndex: chunkNumber,
+                chunkCount: chunks.count,
+                existingStory: currentStory,
+                newEvents: chunk,
+                cumulativeEvents: cumulativeEvents,
+                now: now,
+                environment: environment,
+                attempts: attempts,
+                trigger: trigger,
+                context: context,
+                invocationContext: invocationContext,
+                refreshLog: refreshLog ?? RefreshLogBuffer(record: RefreshLogRecord(dayKey: dayKey, trigger: trigger, mode: "incrementalUpdate", startedAt: Date())),
+                onStageChange: onStageChange,
+                persistedStory: &persistedStory,
+                latestFileURL: &persistedFileURL
+            )
+
+            guard result.stage == .completed, let persistedStory, let persistedFileURL else {
+                if let runID {
+                    try? environment.databaseWriter.finishRun(id: runID, status: "failed")
+                }
+                return result
+            }
+            currentStory = persistedStory
+            latestFileURL = persistedFileURL
+        }
+
+        if let runID {
+            try environment.databaseWriter.finishRun(id: runID, status: "succeeded")
+        }
+        guard let latestFileURL else {
+            dayRefreshStatus.lastRequestedDay = dayKey
+            dayRefreshStatus.lastRefreshedAt = Date()
+            dayRefreshStatus.lastError = "Chunked incremental update produced no story"
+            statusMessage = "Daily note failed: Chunked incremental update produced no story"
+            return DayRefreshGenerationResult(stage: .failed, summary: "Failed")
+        }
+
+        finalizeSuccessfulRefresh(
+            dayKey: dayKey,
+            story: currentStory,
+            events: cumulativeEvents,
+            fileURL: latestFileURL,
+            detail: "Completed incremental update in \(chunks.count) chunk(s) for \(dayKey)"
+        )
+        if let storyPath = storyURL(for: dayKey, environment: environment) {
+            refreshLog?.record.storyJSONPath = storyPath.path
+        }
+        refreshLog?.record.markdownPath = latestFileURL.path
+        refreshLog?.record.wroteMarkdown = true
+        refreshLog?.record.wroteStoryJSON = true
+        statusMessage = context.completionStatusMessage(for: dayKey, now: now)
+        return DayRefreshGenerationResult(stage: .completed, summary: context.resultSummary)
     }
 
     private func refreshDayWithRetry(
@@ -3659,6 +4443,51 @@ extension AppState {
         }
 
         return persistedEngine
+    }
+
+    private func showOnboardingBootstrapNotice() {
+        let notice = OnboardingBootstrapNotice(
+            message: "KnowYou is generating today and yesterday from your local context. Come back 2 minutes later."
+        )
+        onboardingBootstrapNotice = notice
+        onboardingBootstrapNoticeDismissTask?.cancel()
+        onboardingBootstrapNoticeDismissTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self, self.onboardingBootstrapNotice?.id == notice.id else { return }
+                self.onboardingBootstrapNoticeDismissTask = nil
+                self.onboardingBootstrapNotice = nil
+            }
+        }
+    }
+
+    private static func deliverOnboardingBootstrapCompletionNotification(for dayKeys: [String]) async {
+        let center = UNUserNotificationCenter.current()
+        let authorizationGranted: Bool
+
+        do {
+            authorizationGranted = try await center.requestAuthorization(options: [.alert, .sound])
+        } catch {
+            return
+        }
+
+        guard authorizationGranted else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "KnowYou entries are ready"
+        content.body = dayKeys.count == 2
+            ? "Today and yesterday are ready in KnowYou."
+            : "Your new KnowYou entry is ready."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "onboarding-bootstrap-complete",
+            content: content,
+            trigger: nil
+        )
+
+        try? await center.add(request)
     }
 }
 

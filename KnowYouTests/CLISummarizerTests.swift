@@ -149,6 +149,7 @@ final class CLISummarizerTests: XCTestCase {
         XCTAssertEqual(firstParagraph["sourceEventIDs"] as? [String], ["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"])
         let arguments = try XCTUnwrap(stub.invocations.first?.arguments)
         XCTAssertEqual(arguments.prefix(3).map { $0 }, ["exec", "--skip-git-repo-check", "--ephemeral"])
+        XCTAssertFalse(arguments.contains("-m"))
         XCTAssertTrue(arguments.contains("--output-schema"))
         XCTAssertTrue(arguments.contains("-o"))
         XCTAssertEqual(arguments.last, prompt)
@@ -181,6 +182,31 @@ final class CLISummarizerTests: XCTestCase {
         let sections = try XCTUnwrap(object["sections"] as? [[String: Any]])
         let firstSection = try XCTUnwrap(sections.first)
         XCTAssertEqual(firstSection["id"] as? String, "daily-journal")
+    }
+
+    func testCodexNonZeroExitSuggestsCheckingCLIAndConfig() async {
+        let stub = StubProcessRunner(
+            behaviors: [
+                .success(
+                    ProcessExecutionResult(
+                        stdout: "",
+                        stderr: "error: unknown model gpt-5.5",
+                        terminationStatus: 1,
+                        duration: 0
+                    )
+                )
+            ]
+        )
+        let summarizer = CLISummarizer(tool: .codex, executablePath: "/usr/local/bin/codex", runner: stub)
+
+        await XCTAssertThrowsErrorAsync(
+            try await summarizer.summarize(dayKey: "2026-04-07", markdown: "prompt")
+        ) { error in
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("unknown model gpt-5.5"), message)
+            XCTAssertTrue(message.contains("upgrading Codex CLI"), message)
+            XCTAssertTrue(message.contains("~/.codex/config.toml"), message)
+        }
     }
 
     func testCodexSummarizeRepairsInvalidPrimaryOutput() async throws {

@@ -2,6 +2,44 @@ import XCTest
 @testable import KnowYou
 
 final class DailyMarkdownViewTests: XCTestCase {
+    func testDateSidebarPresentationGroupsDatesByEnglishMonth() {
+        let presentation = DateSidebarPresentation(
+            dates: ["2026-04-24", "2026-04-23", "2026-03-31", "demo-day"],
+            selectedDate: nil,
+            today: makeDate(year: 2026, month: 4, day: 24),
+            calendar: gregorianCalendar
+        )
+
+        XCTAssertEqual(presentation.sections.map(\.title), ["April 2026", "March 2026", nil])
+        XCTAssertEqual(presentation.sections[0].items.map(\.id), ["2026-04-24", "2026-04-23"])
+        XCTAssertEqual(presentation.sections[1].items.map(\.id), ["2026-03-31"])
+        XCTAssertEqual(presentation.sections[2].items.map(\.id), ["demo-day"])
+    }
+
+    func testDateSidebarPresentationOpensCurrentMonthAndCollapsesOlderMonths() {
+        let presentation = DateSidebarPresentation(
+            dates: ["2026-04-24", "2026-03-31"],
+            selectedDate: nil,
+            today: makeDate(year: 2026, month: 4, day: 24),
+            calendar: gregorianCalendar
+        )
+
+        XCTAssertTrue(presentation.sections[0].isExpandedByDefault)
+        XCTAssertFalse(presentation.sections[1].isExpandedByDefault)
+    }
+
+    func testDateSidebarPresentationOpensSelectedOlderMonth() {
+        let presentation = DateSidebarPresentation(
+            dates: ["2026-04-24", "2026-03-31"],
+            selectedDate: "2026-03-31",
+            today: makeDate(year: 2026, month: 4, day: 24),
+            calendar: gregorianCalendar
+        )
+
+        XCTAssertTrue(presentation.sections[0].isExpandedByDefault)
+        XCTAssertTrue(presentation.sections[1].isExpandedByDefault)
+    }
+
     func testRefreshProgressPresentationMarksCompletedAndCurrentSteps() {
         let job = DayRefreshJob(
             dayKey: "2026-04-09",
@@ -362,5 +400,21 @@ final class DailyMarkdownViewTests: XCTestCase {
         }
         XCTAssertEqual(thirdLevel, 2)
         XCTAssertEqual(thirdHeading.plainText, "KnowYou 产品与定位")
+    }
+
+    private var gregorianCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+
+    private func makeDate(year: Int, month: Int, day: Int) -> Date {
+        DateComponents(
+            calendar: gregorianCalendar,
+            timeZone: TimeZone(secondsFromGMT: 0),
+            year: year,
+            month: month,
+            day: day
+        ).date!
     }
 }

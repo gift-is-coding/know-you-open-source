@@ -4,27 +4,37 @@ import AppKit
 @main
 struct KnowYouApp: App {
     private let launchMode: LaunchMode
-    @State private var appState = AppState()
+    private let shouldEnsureDefaultLaunchAtLogin: Bool
+    @State private var appState: AppState
 
     init() {
         self.launchMode = CommandLine.arguments.contains("--sync-memory-now") ? .syncMemory : .interactive
+        self.shouldEnsureDefaultLaunchAtLogin = launchMode == .interactive && Self.isRunningUnderXCTest == false
+        _appState = State(initialValue: AppState())
     }
 
     var body: some Scene {
         WindowGroup("KnowYou", id: "main") {
-            if launchMode == .syncMemory {
-                SyncMemoryLaunchView()
-                    .environment(appState)
-            } else {
-                if appState.shouldShowOnboarding {
-                    OnboardingView(
-                        onComplete: {},
-                        initialStep: appState.currentOnboardingStep ?? .demoRead
-                    )
-                    .environment(appState)
-                } else {
-                    MainWindowView()
+            Group {
+                if launchMode == .syncMemory {
+                    SyncMemoryLaunchView()
                         .environment(appState)
+                } else {
+                    if appState.shouldShowOnboarding {
+                        OnboardingView(
+                            onComplete: {},
+                            initialStep: appState.currentOnboardingStep ?? .demoRead
+                        )
+                        .environment(appState)
+                    } else {
+                        MainWindowView()
+                            .environment(appState)
+                    }
+                }
+            }
+            .task {
+                if shouldEnsureDefaultLaunchAtLogin {
+                    appState.ensureDefaultLaunchAtLogin()
                 }
             }
         }
@@ -38,6 +48,13 @@ struct KnowYouApp: App {
             SettingsView()
                 .environment(appState)
         }
+    }
+
+    private static var isRunningUnderXCTest: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || CommandLine.arguments.contains { argument in
+                argument.contains(".xctest") || argument.contains("xctestconfiguration")
+            }
     }
 }
 

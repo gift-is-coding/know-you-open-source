@@ -82,6 +82,8 @@ flowchart LR
 - 菜单栏入口
 - Settings 窗口
 
+正常交互式启动时，`KnowYouApp` 会调用 `AppState.ensureDefaultLaunchAtLogin()`。该方法通过 `SMAppService.mainApp` 尝试把主应用注册为 macOS 登录项，并用 `launchAtLoginDefaultRegistrationAttempted` 避免在用户关闭后反复自动打开。
+
 如果用户尚未完成 onboarding，则仍然进入真实主阅读器，但会叠加 Demo Day + coachmark 引导；否则直接进入正常主阅读器。
 
 菜单栏中的 `Open KnowYou` 会显式调用 `openWindow(id: "main")` 并激活应用，因此主窗口既能由正常启动拉起，也能由菜单栏重新唤起。
@@ -93,6 +95,7 @@ flowchart LR
 - 创建并持有 `AppEnvironment`
 - 启动剪贴板监听
 - 启动 launch-time automation、30 秒通知补同步与 3 小时定时自动化
+- 管理主应用的 `Launch at Login` 默认注册与 Settings 开关
 - 维护 UI 状态与服务状态
 - 管理选中日期、选中 story、选中段落及其来源事件
 - 触发“按天刷新”、今日通知补同步与 today-only 自动刷新

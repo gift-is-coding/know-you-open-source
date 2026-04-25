@@ -2,6 +2,27 @@ import Foundation
 import Observation
 import AppKit
 import UserNotifications
+import ServiceManagement
+
+protocol LoginItemManaging: AnyObject {
+    var isRegistered: Bool { get }
+    func register() throws
+    func unregister() throws
+}
+
+final class MainAppLoginItemManager: LoginItemManaging {
+    var isRegistered: Bool {
+        SMAppService.mainApp.status == .enabled
+    }
+
+    func register() throws {
+        try SMAppService.mainApp.register()
+    }
+
+    func unregister() throws {
+        try SMAppService.mainApp.unregister()
+    }
+}
 
 enum ReaderFocusZone: Hashable {
     case dateList
@@ -543,6 +564,8 @@ final class AppState {
     var updateOffer: UpdateOffer?
     var isShowingUpdateSheet = false
     var lastUpdateCheckAt: Date?
+    var launchAtLoginEnabled = false
+    var launchAtLoginStatusMessage: String?
     private var refreshJobsByDay: [String: DayRefreshJob] = [:]
     private(set) var environment: AppEnvironment?
     @ObservationIgnored private var automationTimer: Timer?
@@ -568,6 +591,7 @@ final class AppState {
     @ObservationIgnored private let onRefreshStageChange: RefreshStageChangeHandler?
     @ObservationIgnored private let notifyOnboardingBootstrapCompletion: @MainActor @Sendable ([String]) -> Void
     @ObservationIgnored private let launchAgentManager: LaunchAgentManager
+    @ObservationIgnored private let loginItemManager: any LoginItemManaging
     @ObservationIgnored private var summarizerConfig: SummarizerConfig
     @ObservationIgnored private var autoSelectionSuppressedByExplicitNone: Bool
 
@@ -625,7 +649,8 @@ final class AppState {
         userDefaults: UserDefaults = .standard,
         keychain: KeychainStoring = KeychainHelper.shared,
         keychainService: String = KeychainHelper.service,
-        launchAgentManager: LaunchAgentManager = LaunchAgentManager()
+        launchAgentManager: LaunchAgentManager = LaunchAgentManager(),
+        loginItemManager: any LoginItemManaging = MainAppLoginItemManager()
     ) {
         let explicitSummarizerConfig = summarizerConfig
         self.userDefaults = userDefaults
@@ -638,6 +663,7 @@ final class AppState {
         self.onRefreshStageChange = onRefreshStageChange
         self.notifyOnboardingBootstrapCompletion = notifyOnboardingBootstrapCompletion
         self.launchAgentManager = launchAgentManager
+        self.loginItemManager = loginItemManager
         self.summarizerConfig = summarizerConfig ?? SummarizerConfig.load(
             from: userDefaults,
             keychain: keychain,
@@ -925,6 +951,39 @@ final class AppState {
 
         lastUpdateCheckAt = now
         userDefaults.set(now, forKey: UserDefaultsKeys.lastUpdateCheckAt)
+    }
+
+    func ensureDefaultLaunchAtLogin() {
+        guard userDefaults.bool(forKey: UserDefaultsKeys.launchAtLoginDefaultRegistrationAttempted) == false else {
+            launchAtLoginEnabled = loginItemManager.isRegistered
+            return
+        }
+
+        userDefaults.set(true, forKey: UserDefaultsKeys.launchAtLoginDefaultRegistrationAttempted)
+        do {
+            try loginItemManager.register()
+            launchAtLoginEnabled = loginItemManager.isRegistered
+            launchAtLoginStatusMessage = nil
+        } catch {
+            launchAtLoginEnabled = loginItemManager.isRegistered
+            launchAtLoginStatusMessage = "Launch at Login setup failed: \(error.localizedDescription)"
+        }
+    }
+
+    func setLaunchAtLoginEnabled(_ isEnabled: Bool) {
+        userDefaults.set(true, forKey: UserDefaultsKeys.launchAtLoginDefaultRegistrationAttempted)
+        do {
+            if isEnabled {
+                try loginItemManager.register()
+            } else {
+                try loginItemManager.unregister()
+            }
+            launchAtLoginEnabled = loginItemManager.isRegistered
+            launchAtLoginStatusMessage = isEnabled ? "Launch at Login enabled" : "Launch at Login disabled"
+        } catch {
+            launchAtLoginEnabled = loginItemManager.isRegistered
+            launchAtLoginStatusMessage = "Launch at Login setup failed: \(error.localizedDescription)"
+        }
     }
 
     func saveSyncMemoryConfig(_ config: SyncMemoryConfig) {
@@ -1271,6 +1330,7 @@ final class AppState {
         static let lastNotificationImportDatabasePath = "lastNotificationImportDatabasePath"
         static let explicitlyDisabledSummarizerAutoSelection = "explicitlyDisabledSummarizerAutoSelection"
         static let lastUpdateCheckAt = "lastUpdateCheckAt"
+        static let launchAtLoginDefaultRegistrationAttempted = "launchAtLoginDefaultRegistrationAttempted"
     }
 
     var currentOnboardingStep: OnboardingStep? {

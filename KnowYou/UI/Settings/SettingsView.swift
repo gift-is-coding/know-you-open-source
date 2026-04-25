@@ -100,6 +100,21 @@ struct SettingsView: View {
                 }
 
                 Section("Automation") {
+                    Toggle(
+                        "Launch at Login",
+                        isOn: Binding(
+                            get: { appState.launchAtLoginEnabled },
+                            set: { appState.setLaunchAtLoginEnabled($0) }
+                        )
+                    )
+                    Text("KnowYou registers this automatically the first time you open the app.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let launchAtLoginStatusMessage = appState.launchAtLoginStatusMessage {
+                        Text(launchAtLoginStatusMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     Text("Runs on launch and every 15 minutes")
                         .foregroundStyle(.secondary)
                     Text("Open Sync Memory from the sidebar ellipsis menu in the main window.")

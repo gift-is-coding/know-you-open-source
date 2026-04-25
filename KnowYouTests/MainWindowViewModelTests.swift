@@ -673,6 +673,42 @@ private func makeIsolatedCLIProcessEnvironment() throws -> ([String: String], UR
     )
 }
 
+private final class RecordingLoginItemManager: LoginItemManaging {
+    var isRegistered: Bool
+    var registerCallCount = 0
+    var unregisterCallCount = 0
+    var registerError: Error?
+    var unregisterError: Error?
+
+    init(isRegistered: Bool = false) {
+        self.isRegistered = isRegistered
+    }
+
+    func register() throws {
+        registerCallCount += 1
+        if let registerError {
+            throw registerError
+        }
+        isRegistered = true
+    }
+
+    func unregister() throws {
+        unregisterCallCount += 1
+        if let unregisterError {
+            throw unregisterError
+        }
+        isRegistered = false
+    }
+}
+
+private enum RecordingLoginItemError: LocalizedError {
+    case denied
+
+    var errorDescription: String? {
+        "Login item change denied"
+    }
+}
+
 @MainActor
 final class MainWindowViewModelTests: XCTestCase {
     private var engineDefaultsSuiteName: String!
@@ -701,10 +737,83 @@ final class MainWindowViewModelTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.onboardingProgressState)
         UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.onboardingBootstrapState)
         UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.onboardingBootstrapDayKeys)
+        UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.launchAtLoginDefaultRegistrationAttempted)
         if let engineDefaultsSuiteName {
             engineDefaults.removePersistentDomain(forName: engineDefaultsSuiteName)
         }
         super.tearDown()
+    }
+
+    func testDefaultLaunchAtLoginRegistersOnce() {
+        let loginItemManager = RecordingLoginItemManager(isRegistered: false)
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests",
+            loginItemManager: loginItemManager
+        )
+
+        appState.ensureDefaultLaunchAtLogin()
+        appState.ensureDefaultLaunchAtLogin()
+
+        XCTAssertEqual(loginItemManager.registerCallCount, 1)
+        XCTAssertEqual(loginItemManager.unregisterCallCount, 0)
+        XCTAssertTrue(appState.launchAtLoginEnabled)
+        XCTAssertTrue(engineDefaults.bool(forKey: AppState.UserDefaultsKeys.launchAtLoginDefaultRegistrationAttempted))
+    }
+
+    func testDefaultLaunchAtLoginDoesNotReenableAfterOptOut() {
+        engineDefaults.set(true, forKey: AppState.UserDefaultsKeys.launchAtLoginDefaultRegistrationAttempted)
+        let loginItemManager = RecordingLoginItemManager(isRegistered: false)
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests",
+            loginItemManager: loginItemManager
+        )
+
+        appState.ensureDefaultLaunchAtLogin()
+
+        XCTAssertEqual(loginItemManager.registerCallCount, 0)
+        XCTAssertFalse(appState.launchAtLoginEnabled)
+    }
+
+    func testSettingLaunchAtLoginDisabledUnregistersLoginItem() {
+        let loginItemManager = RecordingLoginItemManager(isRegistered: true)
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests",
+            loginItemManager: loginItemManager
+        )
+
+        appState.setLaunchAtLoginEnabled(false)
+
+        XCTAssertEqual(loginItemManager.unregisterCallCount, 1)
+        XCTAssertFalse(appState.launchAtLoginEnabled)
+        XCTAssertEqual(appState.launchAtLoginStatusMessage, "Launch at Login disabled")
+        XCTAssertTrue(engineDefaults.bool(forKey: AppState.UserDefaultsKeys.launchAtLoginDefaultRegistrationAttempted))
+    }
+
+    func testLaunchAtLoginEnableFailureRollsBackToggle() {
+        let loginItemManager = RecordingLoginItemManager(isRegistered: false)
+        loginItemManager.registerError = RecordingLoginItemError.denied
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests",
+            loginItemManager: loginItemManager
+        )
+
+        appState.setLaunchAtLoginEnabled(true)
+
+        XCTAssertEqual(loginItemManager.registerCallCount, 1)
+        XCTAssertFalse(appState.launchAtLoginEnabled)
+        XCTAssertEqual(appState.launchAtLoginStatusMessage, "Launch at Login setup failed: Login item change denied")
     }
 
     @MainActor

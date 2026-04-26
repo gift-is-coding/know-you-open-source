@@ -149,6 +149,25 @@ struct OnboardingView: View {
         appState.notificationStatus.isDatabaseAvailable || appState.environment?.notificationReader.isAvailable == true
     }
 
+    private var reminderAuthorizationStatus: ReminderAuthorizationStatus {
+        appState.endOfDayReminderConfig.authorizationStatus
+    }
+
+    private var reminderNotificationsReady: Bool {
+        reminderAuthorizationStatus == .authorized
+    }
+
+    private var reminderNotificationDetail: String {
+        switch reminderAuthorizationStatus {
+        case .authorized:
+            return "Ready. Know You can send your 8:30 PM daily review reminder."
+        case .denied:
+            return "Optional. Notifications are currently off in macOS. Used for the 8:30 PM daily review reminder."
+        case .notDetermined:
+            return "Optional. Used for the 8:30 PM daily review reminder."
+        }
+    }
+
     private var isEngineConfigured: Bool {
         summarizerConfig.makeSummarizer() != nil
     }
@@ -242,6 +261,31 @@ struct OnboardingView: View {
                         ok: notificationsAvailable
                     )
 
+                    statusRow(
+                        title: "Notifications",
+                        detail: reminderNotificationDetail,
+                        ok: reminderNotificationsReady
+                    )
+
+                    HStack(spacing: 12) {
+                        if reminderAuthorizationStatus == .authorized {
+                            Label("Notifications On", systemImage: "checkmark.circle.fill")
+                                .font(.callout.weight(.semibold))
+                                .foregroundStyle(.green)
+                        } else {
+                            Button(reminderAuthorizationStatus == .denied ? "Open Notification Settings" : "Enable Notifications") {
+                                if reminderAuthorizationStatus == .denied {
+                                    openNotificationSettings()
+                                } else {
+                                    Task { @MainActor in
+                                        await appState.requestDailyReviewReminderAuthorization()
+                                    }
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+
                     if let optionalEnhancement = currentContent.optionalEnhancement {
                         Text(optionalEnhancement.title)
                             .font(.headline)
@@ -257,6 +301,7 @@ struct OnboardingView: View {
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             if step == .generating {
@@ -436,6 +481,7 @@ struct OnboardingView: View {
             }
         }
         .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
@@ -598,5 +644,15 @@ struct OnboardingView: View {
         }
 
         NSWorkspace.shared.open(url)
+    }
+
+    private func openNotificationSettings() {
+        if let deepLink = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
+            if NSWorkspace.shared.open(deepLink) {
+                return
+            }
+        }
+
+        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
     }
 }

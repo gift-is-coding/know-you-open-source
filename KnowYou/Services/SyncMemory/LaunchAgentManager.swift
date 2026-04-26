@@ -44,8 +44,19 @@ struct LaunchAgentManager {
             .appendingPathComponent("\(label).plist")
     }
 
-    func renderPlist(executablePath: String, hour: Int, minute: Int) -> String {
-        """
+    func renderPlist(
+        executablePath: String,
+        hour: Int,
+        minute: Int,
+        launchArgument: String,
+        runAtLoad: Bool = true
+    ) -> String {
+        let runAtLoadBlock = runAtLoad ? """
+            <key>RunAtLoad</key>
+            <true/>
+        """ : ""
+
+        return """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
@@ -55,7 +66,7 @@ struct LaunchAgentManager {
             <key>ProgramArguments</key>
             <array>
                 <string>\(executablePath)</string>
-                <string>--sync-memory-now</string>
+                <string>\(launchArgument)</string>
             </array>
             <key>StartCalendarInterval</key>
             <dict>
@@ -64,8 +75,7 @@ struct LaunchAgentManager {
                 <key>Minute</key>
                 <integer>\(minute)</integer>
             </dict>
-            <key>RunAtLoad</key>
-            <true/>
+        \(runAtLoadBlock)
         </dict>
         </plist>
         """
@@ -77,11 +87,51 @@ struct LaunchAgentManager {
         minute: Int,
         isEnabled: Bool
     ) throws {
+        try registration(
+            executablePath: executablePath,
+            hour: hour,
+            minute: minute,
+            isEnabled: isEnabled,
+            launchArgument: "--sync-memory-now",
+            runAtLoad: true
+        )
+    }
+
+    func endOfDayReminderRegistration(
+        executablePath: String?,
+        hour: Int,
+        minute: Int,
+        isEnabled: Bool
+    ) throws {
+        try registration(
+            executablePath: executablePath,
+            hour: hour,
+            minute: minute,
+            isEnabled: isEnabled,
+            launchArgument: "--end-of-day-reminder-now",
+            runAtLoad: false
+        )
+    }
+
+    private func registration(
+        executablePath: String?,
+        hour: Int,
+        minute: Int,
+        isEnabled: Bool,
+        launchArgument: String,
+        runAtLoad: Bool
+    ) throws {
         if isEnabled {
             guard let executablePath, executablePath.isEmpty == false else {
                 throw LaunchAgentManagerError.missingExecutablePath
             }
-            _ = try installOrUpdate(executablePath: executablePath, hour: hour, minute: minute)
+            _ = try installOrUpdate(
+                executablePath: executablePath,
+                hour: hour,
+                minute: minute,
+                launchArgument: launchArgument,
+                runAtLoad: runAtLoad
+            )
         } else {
             try remove()
         }
@@ -92,6 +142,8 @@ struct LaunchAgentManager {
         executablePath: String,
         hour: Int,
         minute: Int,
+        launchArgument: String = "--sync-memory-now",
+        runAtLoad: Bool = true,
         plistURL: URL? = nil
     ) throws -> URL {
         let plistURL = plistURL ?? defaultPlistURL()
@@ -99,7 +151,13 @@ struct LaunchAgentManager {
             at: plistURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try renderPlist(executablePath: executablePath, hour: hour, minute: minute)
+        try renderPlist(
+            executablePath: executablePath,
+            hour: hour,
+            minute: minute,
+            launchArgument: launchArgument,
+            runAtLoad: runAtLoad
+        )
             .write(to: plistURL, atomically: true, encoding: .utf8)
 
         try? runLaunchctl(arguments: ["bootout", launchctlDomain, plistURL.path])

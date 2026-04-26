@@ -25,8 +25,9 @@ KnowYou 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 2. 存储与调度层：SQLite、run 记录、刷新日志、today-only 定时自动化
 3. 生成层：本地 fallback story 生成、可选云端/CLI 总结器、Markdown 组合
 4. 记忆同步层：Obsidian / OpenClaw 目标探测、文件复制、LaunchAgent 定时注册
-5. 界面层：真实三栏阅读器上的 onboarding coachmarks、设置页、菜单栏状态入口、About & Community 对外入口
-6. 分发层：Developer ID release archive、notarytool notarization、stapled zip 验证
+5. 提醒层：晚间回顾 planner、本地通知权限与调度
+6. 界面层：真实三栏阅读器上的 onboarding coachmarks、设置页、菜单栏状态入口、About & Community 对外入口
+7. 分发层：Developer ID release archive、notarytool notarization、stapled zip 验证
 
 ```mermaid
 flowchart LR
@@ -126,6 +127,25 @@ flowchart LR
 - 暴露 `openSyncMemoryPanel()`、`closeSyncMemoryPanel()`、`syncMemoryNow()`
 - 在用户修改自动同步配置时注册或移除用户级 `LaunchAgent`
 - 通过 `SyncMemoryCoordinator` 把全部 `YYYY-MM-DD.md` 复制到外部记忆目录，并以同名覆盖方式做增量修正
+
+当前 `AppState` 也负责晚间回顾提醒配置与通知后的前台路由：
+
+- 持有并持久化 `EndOfDayReminderConfig`
+- 持有 `[dayKey: DayReviewState]`，记录当天提醒是否已经发出
+- 在 onboarding、settings 和应用启动恢复时同步通知授权状态
+- 在用户启用或关闭 reminder 时安装或移除 reminder 专用用户级 `LaunchAgent`
+- 在用户点击提醒通知后把 app 路由到今天，并按通知动作决定是阅读还是立即生成
+
+晚间提醒实现目前被拆成三个边界清晰的部件：
+
+- `LaunchAgentManager`：注册 reminder 专用 `LaunchAgent`，每天本地时区 `20:30` 启动 `KnowYou --end-of-day-reminder-now`
+- `EndOfDayReminderRunner`：headless 后台执行器，读取今天 diary 是否存在，并决定发送 `review` 还是 `generate` 通知
+- `EndOfDayReminderService`：通知权限查询、权限请求、稳定 request id、本地通知增删，以及提醒 payload 的 `dayKey + action`
+
+通知权限入口目前分布在两个 UI 表面：
+
+- `OnboardingView` 的 `permissions` 步骤会并列展示 Full Disk Access 与 Notifications，并把通知用途明确说明为 `8:30 PM daily review reminder`
+- `SettingsView` 继续显示 reminder 开关、通知权限状态和测试入口；用户拒绝通知权限后，也通过这里跳转到 Notification Settings
 
 当前 `AppState` 还负责应用更新提醒编排：
 

@@ -240,7 +240,7 @@ enum OnboardingContent {
             return OnboardingStepContent(
                 iconName: "checkmark.shield.fill",
                 title: "1/2 Turn on permissions",
-                body: "Only two steps left.\n\nKnow You builds your diary from notifications and clipboard context. Turn on Full Disk Access to read your local Notification Center history.",
+                body: "Only two steps left.\n\nKnow You rebuilds your diary from notifications and clipboard context. Turn on Full Disk Access to read local history. Notifications are only used for the 8:30 PM daily review reminder.",
                 primaryCTA: "I turned it on",
                 target: .sharedCenterCard,
                 activationStepLabel: "1/2",

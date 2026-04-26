@@ -100,11 +100,62 @@ struct SettingsView: View {
                 }
 
                 Section("Automation") {
-                    Text("Runs on launch and every 15 minutes")
-                        .foregroundStyle(.secondary)
-                    Text("Open Sync Memory from the sidebar ellipsis menu in the main window.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 10) {
+                        SettingsSectionBlurb("Runs on launch and every 15 minutes.")
+                        SettingsSectionNote("Open Sync Memory from the sidebar ellipsis menu in the main window.")
+                    }
+                }
+
+                Section("Evening Review Reminder") {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Toggle(
+                            "Evening review reminder",
+                            isOn: Binding(
+                                get: { appState.endOfDayReminderConfig.isEnabled },
+                                set: { isEnabled in
+                                    Task { @MainActor in
+                                        await appState.setEndOfDayReminderEnabled(isEnabled)
+                                    }
+                                }
+                            )
+                        )
+
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            SettingsMetaLabel("Status")
+                            SettingsSectionBlurb(appState.endOfDayReminderStatusSummary)
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            SettingsMetaLabel("Schedule")
+                            SettingsSectionBlurb("KnowYou checks in at 8:30 PM in your local time, even if the app was not open during the day.")
+                            SettingsSectionNote("If today's diary exists, the notification says “Come review today's diary.” If not, it says “Come generate today's diary.”")
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            SettingsMetaLabel("Testing")
+                            SettingsSectionNote("Use this to verify the real Know You notification style, icon, and permission flow right now.")
+                            HStack(spacing: 10) {
+                                Button("Send Test Reminder Now") {
+                                    Task { @MainActor in
+                                        await appState.sendTestEndOfDayReminderNow()
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+
+                                if appState.endOfDayReminderConfig.authorizationStatus == .denied {
+                                    Button("Open System Settings") {
+                                        openNotificationSettings()
+                                    }
+                                }
+                            }
+
+                            if let testStatus = appState.endOfDayReminderTestStatusMessage {
+                                SettingsSectionNote(testStatus)
+                            }
+                        }
+                    }
                 }
 
                 Section("About & Community") {
@@ -219,6 +270,15 @@ struct SettingsView: View {
     private func open(_ url: URL) {
         NSWorkspace.shared.open(url)
     }
+
+    private func openNotificationSettings() {
+        if let deepLink = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
+            if NSWorkspace.shared.open(deepLink) {
+                return
+            }
+        }
+        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
+    }
 }
 
 private struct AppSupportDocumentSheet: View {
@@ -245,6 +305,51 @@ private struct AppSupportDocumentSheet: View {
         }
         .padding(20)
         .frame(minWidth: 520, minHeight: 420)
+    }
+}
+
+private struct SettingsMetaLabel: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text.uppercased())
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(.tertiary)
+    }
+}
+
+private struct SettingsSectionBlurb: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private struct SettingsSectionNote: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

@@ -83,6 +83,7 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 左下角 `...` 二级菜单中的 `Sync Memory`
 - 顶部 diary engine selector
 - 左上标题栏更新提醒胶囊与更新 sheet
+- 晚间回顾本地通知提醒
 - 可选 diary engine：
   - OpenAI API
   - Claude Code CLI
@@ -172,6 +173,21 @@ Know You 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obs
 - 用户必须能手动触发 `Sync Memory`
 - 用户必须能开启 `Auto Sync Daily`
 - 当启用 `Auto Sync Daily` 时，系统必须安装用户级 `LaunchAgent`，在用户登录后按固定时间执行同步
+- 系统必须支持一个可开启/关闭的 `Evening review reminder`
+- 当 `Evening review reminder` 开启且系统通知权限允许时，产品必须安装一个用户级后台提醒任务，而不是依赖当天前台 app 是否开过
+- 晚间提醒必须使用用户本地时区，在每天固定 `20:30` 运行后台判断
+- 如果当天 diary 已存在，系统必须发送英文通知 `Come review today's diary.`
+- 如果当天 diary 尚不存在，系统必须发送英文通知 `Come generate today's diary.`
+- 后台提醒任务不得在后台静默生成 diary；无 diary 的情况下只能发送 `generate` 类型通知
+- 同一天最多只允许成功发出一次晚间提醒
+- 点击 `review` 通知时，系统必须唤起 KnowYou 并路由到今天的 diary 内容
+- 点击 `generate` 通知时，系统必须唤起 KnowYou、定位到今天，并立即开始生成今天的 diary
+- 通知点击路由必须优先复用现有主窗口；仅在没有主窗口时才允许新开窗口
+- 设置页必须显示晚间提醒开关、通知权限状态、测试入口和简短规则说明
+- onboarding 的 `permissions` 步骤必须同时解释 Full Disk Access 与 Notifications，其中通知说明必须明确它用于 `8:30 PM` 晚间回顾提醒
+- 通知权限不得阻塞 onboarding 完成；Full Disk Access 仍是该步骤唯一硬阻塞条件
+- onboarding 中的通知授权入口在 `notDetermined` 时必须触发系统通知权限请求，在 `denied` 时必须引导打开 Notification Settings
+- onboarding 之后不再要求主窗口额外显示 reminder 权限 CTA；后续补授权路径以 Settings 为主
 
 ## 6.5 阅读器需求
 

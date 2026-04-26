@@ -2373,7 +2373,7 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: calendar)
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
         appState.selectDate(dayKey)
 
         await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11).date!)
@@ -3218,6 +3218,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         let appState = AppState(
             environment: environment,
+            bootstrapServices: false,
             summarizerConfig: config,
             makeSummarizer: { engine, _, _ in
                 guard engine == .codexCLI else { return nil }
@@ -3584,7 +3585,7 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: calendar)
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
         appState.selectDate(dayKey)
 
         await appState.refreshSelectedDay(now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 12).date!)
@@ -5400,9 +5401,10 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
             )
         )
-        let appState = AppState(environment: environment)
+        let appState = AppState(environment: environment, bootstrapServices: false)
 
         await appState.generateDailyNote(for: dayKey)
+        appState.selectDate(dayKey)
 
         let paragraphIDs = appState.selectedStory?.sections.flatMap(\.paragraphs).map(\.id) ?? []
         XCTAssertGreaterThanOrEqual(paragraphIDs.count, 2)

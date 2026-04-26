@@ -72,6 +72,8 @@ final class OnboardingContentTests: XCTestCase {
         XCTAssertEqual(content.activationFollowupLabel, "2/2 Configure engine")
         XCTAssertTrue(content.body.contains("Only two steps left"))
         XCTAssertTrue(content.body.contains("Full Disk Access"))
+        XCTAssertTrue(content.body.contains("8:30 PM"))
+        XCTAssertTrue(content.body.contains("daily review reminder"))
         XCTAssertTrue(content.body.localizedCaseInsensitiveContains("clipboard"))
         XCTAssertTrue(content.blocksProgress)
         XCTAssertEqual(content.optionalEnhancement?.helperLinks.count, 2)

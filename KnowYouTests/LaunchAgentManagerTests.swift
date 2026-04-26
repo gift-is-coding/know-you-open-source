@@ -8,7 +8,8 @@ final class LaunchAgentManagerTests: XCTestCase {
         let plist = manager.renderPlist(
             executablePath: "/Applications/KnowYou.app/Contents/MacOS/KnowYou",
             hour: 21,
-            minute: 15
+            minute: 15,
+            launchArgument: "--sync-memory-now"
         )
 
         XCTAssertTrue(plist.contains("<key>Label</key>"))
@@ -18,6 +19,25 @@ final class LaunchAgentManagerTests: XCTestCase {
         XCTAssertTrue(plist.contains("<key>Minute</key>"))
         XCTAssertTrue(plist.contains("<integer>15</integer>"))
         XCTAssertTrue(plist.contains("/Applications/KnowYou.app/Contents/MacOS/KnowYou"))
+    }
+
+    func testReminderPlistUsesReminderArgumentAndCanSkipRunAtLoad() {
+        let manager = LaunchAgentManager(
+            fileManager: .default,
+            label: "dev.knowyou.end-of-day-reminder"
+        )
+
+        let plist = manager.renderPlist(
+            executablePath: "/Applications/KnowYou.app/Contents/MacOS/KnowYou",
+            hour: 20,
+            minute: 30,
+            launchArgument: "--end-of-day-reminder-now",
+            runAtLoad: false
+        )
+
+        XCTAssertTrue(plist.contains("dev.knowyou.end-of-day-reminder"))
+        XCTAssertTrue(plist.contains("--end-of-day-reminder-now"))
+        XCTAssertFalse(plist.contains("<key>RunAtLoad</key>"))
     }
 
     func testInstallOrUpdateWritesPlistAndBootstrapsAgent() throws {

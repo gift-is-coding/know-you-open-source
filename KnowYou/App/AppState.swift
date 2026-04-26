@@ -2,6 +2,10 @@ import Foundation
 import Observation
 import AppKit
 
+extension Notification.Name {
+    static let endOfDayReminderOpened = Notification.Name("KnowYou.endOfDayReminderOpened")
+}
+
 enum ReaderFocusZone: Hashable {
     case dateList
     case storyParagraphs
@@ -431,6 +435,7 @@ final class AppState {
     var selectedMarkdownURL: URL?
     var noteIndex: [String: URL] = [:]
     var statusMessage: String?
+    var endOfDayReminderTestStatusMessage: String?
     var syncMemoryStatusMessage: String?
     var isShowingSyncMemoryPanel = false
     var lastAutomationRunAt: Date?
@@ -441,6 +446,7 @@ final class AppState {
     var notificationStatus = NotificationImportStatus()
     var dayRefreshStatus = DayRefreshStatus()
     var syncMemoryConfig: SyncMemoryConfig
+    var endOfDayReminderConfig: EndOfDayReminderConfig
     var engineStatuses: [DiaryEngine: EngineRuntimeStatus]
     var defaultEngine: DiaryEngine
     var isRetestingEngines = false
@@ -482,8 +488,12 @@ final class AppState {
     @ObservationIgnored private let makeSummarizer: SummarizerFactory
     @ObservationIgnored private let onRefreshStageChange: RefreshStageChangeHandler?
     @ObservationIgnored private let launchAgentManager: LaunchAgentManager
+    @ObservationIgnored private let endOfDayReminderLaunchAgentManager: LaunchAgentManager
+    @ObservationIgnored private let endOfDayReminderPlanner: EndOfDayReminderPlanner
+    @ObservationIgnored private let endOfDayReminderService: EndOfDayReminderService
     @ObservationIgnored private var summarizerConfig: SummarizerConfig
     @ObservationIgnored private var autoSelectionSuppressedByExplicitNone: Bool
+    @ObservationIgnored private var dayReviewStates: [String: DayReviewState]
 
     var summarizerStatus: SummarizerRuntimeStatus {
         get {
@@ -534,7 +544,12 @@ final class AppState {
         userDefaults: UserDefaults = .standard,
         keychain: KeychainStoring = KeychainHelper.shared,
         keychainService: String = KeychainHelper.service,
-        launchAgentManager: LaunchAgentManager = LaunchAgentManager()
+        launchAgentManager: LaunchAgentManager = LaunchAgentManager(),
+        endOfDayReminderLaunchAgentManager: LaunchAgentManager = LaunchAgentManager(
+            label: "dev.knowyou.end-of-day-reminder"
+        ),
+        endOfDayReminderPlanner: EndOfDayReminderPlanner = EndOfDayReminderPlanner(),
+        endOfDayReminderService: EndOfDayReminderService = EndOfDayReminderService()
     ) {
         let explicitSummarizerConfig = summarizerConfig
         self.userDefaults = userDefaults
@@ -546,6 +561,9 @@ final class AppState {
         self.makeSummarizer = makeSummarizer
         self.onRefreshStageChange = onRefreshStageChange
         self.launchAgentManager = launchAgentManager
+        self.endOfDayReminderLaunchAgentManager = endOfDayReminderLaunchAgentManager
+        self.endOfDayReminderPlanner = endOfDayReminderPlanner
+        self.endOfDayReminderService = endOfDayReminderService
         self.summarizerConfig = summarizerConfig ?? SummarizerConfig.load(
             from: userDefaults,
             keychain: keychain,
@@ -555,6 +573,8 @@ final class AppState {
             startingFrom: SyncMemoryConfig.load(from: userDefaults),
             userDefaults: userDefaults
         )
+        self.endOfDayReminderConfig = EndOfDayReminderConfig.load(from: userDefaults)
+        self.dayReviewStates = Self.loadDayReviewStates(from: userDefaults)
         let persistedSuppression = userDefaults.object(
             forKey: UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection
         ) as? Bool
@@ -604,6 +624,7 @@ final class AppState {
             refreshEngineStatuses()
             refreshNotesIndex()
             if bootstrapServices {
+                queueEndOfDayReminderBootstrap()
                 restoreOnboardingProgress(
                     isFullDiskAccessReady: notificationStatus.isDatabaseAvailable,
                     isEngineReady: summarizerStatus.isConfigured
@@ -645,6 +666,7 @@ final class AppState {
             refreshEngineStatuses()
             refreshNotesIndex()
             statusMessage = "Capture services ready"
+            queueEndOfDayReminderBootstrap()
             restoreOnboardingProgress(
                 isFullDiskAccessReady: notificationStatus.isDatabaseAvailable,
                 isEngineReady: summarizerStatus.isConfigured
@@ -662,6 +684,10 @@ final class AppState {
         updateOffer != nil
     }
 
+    var endOfDayReminderStatusSummary: String {
+        endOfDayReminderConfig.authorizationStatus.settingsSummary
+    }
+
     func selectDate(_ date: String) {
         if date == OnboardingDemoStory.demoDayKey {
             readerFocus = .dateList
@@ -673,6 +699,22 @@ final class AppState {
         selectedDate = date
         selectedMarkdownURL = noteIndex[date]
         loadDayPresentation(for: date)
+    }
+
+    func openDayFromEndOfDayReminder(_ dayKey: String, action: EndOfDayReminderAction = .review) {
+        guard shouldShowOnboarding == false else { return }
+        refreshNotesIndex()
+        selectDate(dayKey)
+        readerFocus = .dateList
+        switch action {
+        case .review:
+            statusMessage = "Opened \(dayKey) from evening review reminder"
+        case .generate:
+            statusMessage = "Generating \(dayKey) from evening review reminder"
+            Task { @MainActor [weak self] in
+                await self?.generateDailyNote(for: dayKey)
+            }
+        }
     }
 
     func selectStoryParagraph(_ paragraphID: String) {
@@ -954,6 +996,86 @@ final class AppState {
         } else if notificationStatus.lastError == "Notification Center database not accessible" {
             notificationStatus.lastError = nil
         }
+        Task { @MainActor [weak self] in
+            await self?.refreshEndOfDayReminderAuthorizationStatus()
+        }
+    }
+
+    func setEndOfDayReminderEnabled(_ isEnabled: Bool) async {
+        endOfDayReminderConfig.isEnabled = isEnabled
+        if isEnabled {
+            let status = await endOfDayReminderService.requestAuthorization()
+            endOfDayReminderConfig.authorizationStatus = status
+            if status == .authorized {
+                statusMessage = "Evening review reminder enabled"
+            } else {
+                statusMessage = "Evening review reminder is blocked until notifications are allowed"
+            }
+        } else {
+            statusMessage = "Evening review reminder disabled"
+            let today = ISO8601DayKey.format(currentDate())
+            await endOfDayReminderService.cancelReminder(for: today)
+            clearPendingReminder(for: today)
+        }
+        persistEndOfDayReminderConfig()
+        syncEndOfDayReminderRegistration()
+    }
+
+    func refreshEndOfDayReminderAuthorizationStatus() async {
+        let status = await endOfDayReminderService.authorizationStatus()
+        guard endOfDayReminderConfig.authorizationStatus != status else { return }
+        endOfDayReminderConfig.authorizationStatus = status
+        persistEndOfDayReminderConfig()
+        syncEndOfDayReminderRegistration()
+    }
+
+    func requestDailyReviewReminderAuthorization() async {
+        let status = await endOfDayReminderService.requestAuthorization()
+        endOfDayReminderConfig.authorizationStatus = status
+
+        if status == .authorized {
+            endOfDayReminderConfig.isEnabled = true
+            statusMessage = "Daily review reminder enabled"
+        } else {
+            statusMessage = "Daily review reminder is blocked until notifications are allowed"
+        }
+
+        persistEndOfDayReminderConfig()
+        syncEndOfDayReminderRegistration()
+    }
+
+    func sendTestEndOfDayReminderNow() async {
+        let status = await endOfDayReminderService.requestAuthorization()
+        endOfDayReminderConfig.authorizationStatus = status
+        persistEndOfDayReminderConfig()
+
+        guard status == .authorized else {
+            statusMessage = "Evening review reminder is blocked until notifications are allowed"
+            endOfDayReminderTestStatusMessage = "Notifications are blocked by macOS. Enable Know You in System Settings > Notifications."
+            return
+        }
+
+        do {
+            await endOfDayReminderService.cancelTestReminder()
+            try await endOfDayReminderService.scheduleTestReminder(
+                at: currentDate().addingTimeInterval(1),
+                dayKey: ISO8601DayKey.format(currentDate())
+            )
+            statusMessage = "Sent a test evening review reminder"
+            endOfDayReminderTestStatusMessage = "Test reminder sent. It should appear in about a second."
+        } catch {
+            statusMessage = "Evening review reminder unavailable: \(error.localizedDescription)"
+            endOfDayReminderTestStatusMessage = "Unable to send the test reminder: \(error.localizedDescription)"
+        }
+    }
+
+    func dayReviewState(for dayKey: String) -> DayReviewState? {
+        dayReviewStates[dayKey]
+    }
+
+    func setPersistedDayReviewState(_ state: DayReviewState) {
+        dayReviewStates[state.dayKey] = state
+        persistDayReviewStates()
     }
 
     func refreshEngineStatuses() {
@@ -1154,6 +1276,17 @@ final class AppState {
         static let lastNotificationImportDatabasePath = "lastNotificationImportDatabasePath"
         static let explicitlyDisabledSummarizerAutoSelection = "explicitlyDisabledSummarizerAutoSelection"
         static let lastUpdateCheckAt = "lastUpdateCheckAt"
+        static let dayReviewStates = "dayReviewStates"
+    }
+
+    private static func loadDayReviewStates(from userDefaults: UserDefaults) -> [String: DayReviewState] {
+        guard
+            let data = userDefaults.data(forKey: UserDefaultsKeys.dayReviewStates),
+            let decoded = try? JSONDecoder().decode([String: DayReviewState].self, from: data)
+        else {
+            return [:]
+        }
+        return decoded
     }
 
     var currentOnboardingStep: OnboardingStep? {
@@ -1217,6 +1350,7 @@ final class AppState {
             startAutomation(runImmediately: false)
         }
         resumeOnboardingBootstrapIfNeeded()
+        syncEndOfDayReminderRegistration()
     }
 
     func markOnboardingBootstrapComplete() {
@@ -1883,7 +2017,7 @@ extension AppState {
                     if let runID {
                         try environment.databaseWriter.finishRun(id: runID, status: "succeeded")
                     }
-                    finalizeSuccessfulRefresh(
+                    await finalizeSuccessfulRefresh(
                         dayKey: dayKey,
                         story: mergedStory,
                         events: events,
@@ -1956,7 +2090,7 @@ extension AppState {
                     if let runID {
                         try environment.databaseWriter.finishRun(id: runID, status: "succeeded")
                     }
-                    finalizeSuccessfulRefresh(
+                    await finalizeSuccessfulRefresh(
                         dayKey: dayKey,
                         story: mergedStory,
                         events: events,
@@ -2056,7 +2190,7 @@ extension AppState {
                     if let runID {
                         try environment.databaseWriter.finishRun(id: runID, status: "succeeded")
                     }
-                    finalizeSuccessfulRefresh(
+                    await finalizeSuccessfulRefresh(
                         dayKey: dayKey,
                         story: story,
                         events: events,
@@ -2126,7 +2260,7 @@ extension AppState {
                     if let runID {
                         try environment.databaseWriter.finishRun(id: runID, status: "succeeded")
                     }
-                    finalizeSuccessfulRefresh(
+                    await finalizeSuccessfulRefresh(
                         dayKey: dayKey,
                         story: story,
                         events: events,
@@ -2808,7 +2942,7 @@ extension AppState {
         events: [EventRecord],
         fileURL: URL,
         detail: String
-    ) {
+    ) async {
         noteIndex[dayKey] = fileURL
         availableDates = noteIndex.keys.sorted(by: >)
         if selectedDate == dayKey || selectedDate == nil {
@@ -2821,6 +2955,7 @@ extension AppState {
         dayRefreshStatus.lastRefreshedAt = Date()
         dayRefreshStatus.lastError = nil
         dayRefreshStatus.detail = detail
+        await reevaluateEndOfDayReminder(for: dayKey, now: currentDate(), story: story, events: events)
     }
 
     private func persistRefreshLog(_ refreshLog: RefreshLogRecord, environment: AppEnvironment) {
@@ -2943,7 +3078,8 @@ extension AppState {
         }
 
         let events = (try? environment.databaseWriter.fetchEvents(dayKey: dayKey)) ?? []
-        let story = (try? environment.loadDailyStory(dayKey: dayKey)) ?? environment.composer.fallbackStory(dayKey: dayKey, events: events)
+        let loadedStory = (try? environment.loadDailyStory(dayKey: dayKey)) ?? nil
+        let story = loadedStory ?? environment.composer.fallbackStory(dayKey: dayKey, events: events)
         updateSelectedPresentation(dayKey: dayKey, story: story, events: events)
     }
 
@@ -3357,6 +3493,121 @@ extension AppState {
             return "model returned successfully"
         }
         return "local fallback"
+    }
+
+    private func queueEndOfDayReminderBootstrap() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.refreshEndOfDayReminderAuthorizationStatus()
+            self.syncEndOfDayReminderRegistration()
+        }
+    }
+
+    private func syncEndOfDayReminderRegistration() {
+        let isEnabled =
+            onboardingProgress.isComplete &&
+            endOfDayReminderConfig.isEnabled &&
+            endOfDayReminderConfig.authorizationStatus == .authorized
+
+        do {
+            try endOfDayReminderLaunchAgentManager.endOfDayReminderRegistration(
+                executablePath: Bundle.main.executableURL?.path,
+                hour: endOfDayReminderConfig.reminderHour,
+                minute: endOfDayReminderConfig.reminderMinute,
+                isEnabled: isEnabled
+            )
+        } catch {
+            statusMessage = "Evening review reminder setup failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func persistEndOfDayReminderConfig() {
+        endOfDayReminderConfig.save(to: userDefaults)
+    }
+
+    private func persistDayReviewStates() {
+        let data = try? JSONEncoder().encode(dayReviewStates)
+        userDefaults.set(data, forKey: UserDefaultsKeys.dayReviewStates)
+        userDefaults.synchronize()
+    }
+
+    private func normalizedDayReviewState(for dayKey: String, now: Date) -> DayReviewState {
+        var state = dayReviewStates[dayKey] ?? DayReviewState(dayKey: dayKey)
+        if let scheduledAt = state.lastReminderScheduledAt,
+           state.lastReminderDeliveredAt == nil,
+           scheduledAt <= now {
+            state.lastReminderDeliveredAt = scheduledAt
+        }
+        return state
+    }
+
+    private func updateDayReviewState(_ state: DayReviewState) {
+        dayReviewStates[state.dayKey] = state
+        persistDayReviewStates()
+    }
+
+    private func clearPendingReminder(for dayKey: String) {
+        var state = dayReviewStates[dayKey] ?? DayReviewState(dayKey: dayKey)
+        state.lastReminderScheduledAt = nil
+        updateDayReviewState(state)
+    }
+
+    private func reevaluateTodayEndOfDayReminder(now: Date) async {
+        await reevaluateEndOfDayReminder(for: ISO8601DayKey.format(now), now: now)
+    }
+
+    private func reevaluateEndOfDayReminder(
+        for dayKey: String,
+        now: Date,
+        story: DailyStory? = nil,
+        events: [EventRecord]? = nil
+    ) async {
+        guard dayKey == ISO8601DayKey.format(now) else { return }
+        guard let environment else { return }
+
+        var state = normalizedDayReviewState(for: dayKey, now: now)
+        let persistedStory = story ?? ((try? environment.loadDailyStory(dayKey: dayKey)) ?? nil)
+        updateDayReviewState(state)
+
+        let decision = endOfDayReminderPlanner.plan(
+            context: EndOfDayReminderPlanContext(
+                dayKey: dayKey,
+                now: now,
+                config: endOfDayReminderConfig,
+                hasStory: persistedStory != nil,
+                lastReminderScheduledAt: state.lastReminderScheduledAt,
+                lastReminderDeliveredAt: state.lastReminderDeliveredAt,
+                lastRefreshTriggeredAt: state.lastRefreshTriggeredAt
+            )
+        )
+
+        switch decision {
+        case .noOp:
+            return
+        case .cancelPending:
+            if state.lastReminderScheduledAt != nil {
+                await endOfDayReminderService.cancelReminder(for: dayKey)
+            }
+            clearPendingReminder(for: dayKey)
+        case .triggerRefresh:
+            state.lastRefreshTriggeredAt = now
+            updateDayReviewState(state)
+            await generateDailyNote(for: dayKey)
+        case .scheduleNotification(let fireDate):
+            if state.lastReminderScheduledAt != nil {
+                await endOfDayReminderService.cancelReminder(for: dayKey)
+            }
+            let previousScheduledAt = state.lastReminderScheduledAt
+            state.lastReminderScheduledAt = fireDate
+            updateDayReviewState(state)
+            do {
+                try await endOfDayReminderService.scheduleReminder(for: dayKey, at: fireDate)
+            } catch {
+                state.lastReminderScheduledAt = previousScheduledAt
+                updateDayReviewState(state)
+                statusMessage = "Evening review reminder unavailable: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func extractSourceNotesMarkdown(from markdown: String) -> String? {

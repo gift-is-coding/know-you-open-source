@@ -5,257 +5,38 @@ struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var vaultPath: String = UserDefaults.standard.string(forKey: AppState.UserDefaultsKeys.vaultPath) ?? ""
     @State private var presentedDocument: AppSupportDocument?
+    @State private var selectedTab: Tab = .general
+
+    private enum Tab: Hashable {
+        case general
+        case services
+        case engines
+        case about
+    }
 
     var body: some View {
-        ScrollView {
-            Form {
-                Section("Status") {
-                    Text(appState.statusMessage ?? "Idle")
-                    Text(appState.automationStatusText)
-                        .foregroundStyle(.secondary)
-                    ForEach(appState.statusDetails, id: \.self) { detail in
-                        Text(detail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+        TabView(selection: $selectedTab) {
+            GeneralTab(
+                vaultPath: $vaultPath,
+                chooseVaultFolder: chooseVaultFolder,
+                openNotificationSettings: openNotificationSettings
+            )
+            .tabItem { Label("General", systemImage: "gearshape") }
+            .tag(Tab.general)
 
-                Section("Services") {
-                    StatusRow(
-                        label: "Clipboard capture",
-                        detail: appState.clipboardServiceDetail,
-                        ok: appState.clipboardStatus.isActive
-                    )
-                    StatusRow(
-                        label: "Local storage",
-                        detail: appState.environment?.vaultURL.path ?? "Unavailable",
-                        ok: appState.environment != nil
-                    )
-                    StatusRow(
-                        label: "Notification import",
-                        detail: appState.notificationStatus.availabilityMessage
-                            .map { "\($0) \(appState.notificationServiceDetail)" }
-                            ?? appState.notificationServiceDetail,
-                        ok: appState.notificationStatus.isDatabaseAvailable
-                    )
-                    StatusRow(
-                        label: "Diary engine",
-                        detail: appState.defaultEngine == .none
-                            ? "No verified default engine selected"
-                            : "\(appState.defaultEngine.displayName) active",
-                        ok: appState.defaultEngine != .none
-                    )
+            ServicesTab(openFullDiskAccess: openFullDiskAccess)
+                .tabItem { Label("Services", systemImage: "bolt.horizontal.circle") }
+                .tag(Tab.services)
 
-                    HStack {
-                        Button("Re-check Services") {
-                            appState.refreshServiceStatuses()
-                        }
-                        Button("Open Full Disk Access") {
-                            openFullDiskAccess()
-                        }
-                    }
-                }
+            EnginesTab()
+                .tabItem { Label("Engines", systemImage: "brain") }
+                .tag(Tab.engines)
 
-                Section("Vault Folder") {
-                    HStack {
-                        Text(vaultPath.isEmpty ? (try? AppState.defaultVaultURL().path) ?? "Default" : vaultPath)
-                            .foregroundStyle(.secondary)
-                            .font(.system(.body, design: .monospaced))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer()
-                        Button("Choose…") {
-                            chooseVaultFolder()
-                        }
-                    }
-                }
-
-                Section("Diary Engine") {
-                    Text("Manage diary engines from the top-right selector in the main window. This page is now a secondary reference view.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-
-                    Text("Clipboard capture, notifications, and local note generation keep working even if you leave the default engine disabled.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    ForEach(DiaryEngine.allCases.filter { $0 != .none }, id: \.self) { engine in
-                        let status = appState.engineStatuses[engine] ?? EngineRuntimeStatus()
-                        HStack(alignment: .top, spacing: 10) {
-                            EngineIndicatorLight(state: status.state)
-                                .padding(.top, 4)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(engine.displayName)
-                                    .fontWeight(appState.defaultEngine == engine ? .semibold : .regular)
-                                Text(status.detail)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-
-                    Button("Refresh Engine States") {
-                        appState.refreshEngineStatuses()
-                    }
-                }
-
-                Section("Automation") {
-                    Toggle(
-                        "Launch at Login",
-                        isOn: Binding(
-                            get: { appState.launchAtLoginEnabled },
-                            set: { appState.setLaunchAtLoginEnabled($0) }
-                        )
-                    )
-                    Text("KnowYou registers this automatically the first time you open the app.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let launchAtLoginStatusMessage = appState.launchAtLoginStatusMessage {
-                        Text(launchAtLoginStatusMessage)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Text("Runs on launch and every 15 minutes")
-                        .foregroundStyle(.secondary)
-                    Text("Open Sync Memory from the sidebar ellipsis menu in the main window.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Section("Evening Review Reminder") {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Toggle(
-                            "Evening review reminder",
-                            isOn: Binding(
-                                get: { appState.endOfDayReminderConfig.isEnabled },
-                                set: { isEnabled in
-                                    Task { @MainActor in
-                                        await appState.setEndOfDayReminderEnabled(isEnabled)
-                                    }
-                                }
-                            )
-                        )
-
-                        Divider()
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            SettingsMetaLabel("Status")
-                            SettingsSectionBlurb(appState.endOfDayReminderStatusSummary)
-                        }
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            SettingsMetaLabel("Schedule")
-                            SettingsSectionBlurb("KnowYou checks in at 8:30 PM in your local time, even if the app was not open during the day.")
-                            SettingsSectionNote("If today's diary exists, the notification says “Come review today's diary.” If not, it says “Come generate today's diary.”")
-                        }
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            SettingsMetaLabel("Testing")
-                            SettingsSectionNote("Use this to verify the real KnowYou notification style, icon, and permission flow right now.")
-                            HStack(spacing: 10) {
-                                Button("Send Test Reminder Now") {
-                                    Task { @MainActor in
-                                        await appState.sendTestEndOfDayReminderNow()
-                                    }
-                                }
-                                .buttonStyle(.borderedProminent)
-
-                                if appState.endOfDayReminderConfig.authorizationStatus == .denied {
-                                    Button("Open System Settings") {
-                                        openNotificationSettings()
-                                    }
-                                }
-                            }
-
-                            if let testStatus = appState.endOfDayReminderTestStatusMessage {
-                                SettingsSectionNote(testStatus)
-                            }
-                        }
-                    }
-                }
-
-                Section("About & Community") {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("KnowYou")
-                            .font(.headline)
-                        Text(AppSupportMetadata.productTagline)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Contact")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                            HStack(spacing: 10) {
-                                Button {
-                                    open(AppSupportMetadata.twitterURL)
-                                } label: {
-                                    Label(AppSupportMetadata.twitterButtonTitle, systemImage: "bubble.left.and.text.bubble.right")
-                                }
-
-                                Button {
-                                    open(AppSupportMetadata.emailURL)
-                                } label: {
-                                    Label(AppSupportMetadata.emailButtonTitle, systemImage: "envelope")
-                                }
-
-                                if let discordURL = AppSupportMetadata.discordURL {
-                                    Button {
-                                        open(discordURL)
-                                    } label: {
-                                        Label(AppSupportMetadata.discordButtonTitle, systemImage: "person.3")
-                                    }
-                                }
-                            }
-                            .labelStyle(.titleAndIcon)
-                        }
-
-                        Text(AppSupportMetadata.discordDescription)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        Divider()
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Policies & Docs")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 10) {
-                                    Button(AppSupportDocument.privacy.buttonTitle) {
-                                        presentedDocument = .privacy
-                                    }
-                                    Button(AppSupportDocument.terms.buttonTitle) {
-                                        presentedDocument = .terms
-                                    }
-                                    Button(AppSupportDocument.community.buttonTitle) {
-                                        presentedDocument = .community
-                                    }
-                                    Button(AppSupportDocument.launchChecklist.buttonTitle) {
-                                        presentedDocument = .launchChecklist
-                                    }
-                                }
-                            }
-                        }
-
-                        Text(AppSupportMetadata.supportDescription)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        Divider()
-
-                        Text(AppSupportMetadata.copyrightLine)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                    }
-                    .padding(.vertical, 6)
-                }
-            }
+            AboutTab(presentedDocument: $presentedDocument, openURL: open)
+                .tabItem { Label("About", systemImage: "info.circle") }
+                .tag(Tab.about)
         }
-        .padding()
-        .scrollIndicators(.visible)
-        .frame(width: 540, height: 760)
+        .frame(width: 560, height: 560)
         .onAppear {
             appState.refreshServiceStatuses()
         }
@@ -288,12 +69,367 @@ struct SettingsView: View {
     }
 
     private func openNotificationSettings() {
-        if let deepLink = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
-            if NSWorkspace.shared.open(deepLink) {
-                return
-            }
+        if let deepLink = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension"),
+           NSWorkspace.shared.open(deepLink) {
+            return
         }
         NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
+    }
+}
+
+private struct GeneralTab: View {
+    @Environment(AppState.self) private var appState
+    @Binding var vaultPath: String
+    let chooseVaultFolder: () -> Void
+    let openNotificationSettings: () -> Void
+
+    var body: some View {
+        SettingsScrollContainer {
+            SettingsCard(title: "Status", icon: "waveform") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(appState.statusMessage ?? "Idle")
+                        .font(.body)
+                    Text(appState.automationStatusText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if !appState.statusDetails.isEmpty {
+                        Divider().padding(.vertical, 2)
+                        ForEach(appState.statusDetails, id: \.self) { detail in
+                            Text(detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            SettingsCard(title: "Vault Folder", icon: "folder") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(vaultPath.isEmpty ? (try? AppState.defaultVaultURL().path) ?? "Default" : vaultPath)
+                        .font(.system(.callout, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+
+                    HStack {
+                        Spacer()
+                        Button("Choose Folder…", action: chooseVaultFolder)
+                    }
+                }
+            }
+
+            SettingsCard(title: "Automation", icon: "clock.arrow.circlepath") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Runs on launch and every 15 minutes", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                        .font(.callout)
+                    Text("Open Sync Memory from the sidebar ellipsis menu in the main window.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            SettingsCard(title: "Daily Review Reminder", icon: "bell.badge") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle(
+                        "Enable 8:30 PM reminder",
+                        isOn: Binding(
+                            get: { appState.endOfDayReminderConfig.isEnabled },
+                            set: { isEnabled in
+                                Task { @MainActor in
+                                    await appState.setEndOfDayReminderEnabled(isEnabled)
+                                }
+                            }
+                        )
+                    )
+
+                    Text(appState.endOfDayReminderStatusSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Text("KnowYou sends a daily reminder at 8:30 PM in your local time.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if appState.endOfDayReminderConfig.authorizationStatus == .denied {
+                        HStack {
+                            Button {
+                                openNotificationSettings()
+                            } label: {
+                                Label("Open Notification Settings", systemImage: "bell.slash")
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct ServicesTab: View {
+    @Environment(AppState.self) private var appState
+    let openFullDiskAccess: () -> Void
+
+    var body: some View {
+        SettingsScrollContainer {
+            SettingsCard(title: "Service Health", icon: "bolt.horizontal.circle") {
+                VStack(spacing: 10) {
+                    StatusRow(
+                        label: "Clipboard capture",
+                        detail: appState.clipboardServiceDetail,
+                        ok: appState.clipboardStatus.isActive
+                    )
+                    Divider()
+                    StatusRow(
+                        label: "Local storage",
+                        detail: appState.environment?.vaultURL.path ?? "Unavailable",
+                        ok: appState.environment != nil
+                    )
+                    Divider()
+                    StatusRow(
+                        label: "Notification import",
+                        detail: appState.notificationStatus.availabilityMessage
+                            .map { "\($0) \(appState.notificationServiceDetail)" }
+                            ?? appState.notificationServiceDetail,
+                        ok: appState.notificationStatus.isDatabaseAvailable
+                    )
+                    Divider()
+                    StatusRow(
+                        label: "Diary engine",
+                        detail: appState.defaultEngine == .none
+                            ? "No verified default engine selected"
+                            : "\(appState.defaultEngine.displayName) active",
+                        ok: appState.defaultEngine != .none
+                    )
+                }
+            }
+
+            SettingsCard(title: "Actions", icon: "wrench.and.screwdriver") {
+                HStack {
+                    Button {
+                        appState.refreshServiceStatuses()
+                    } label: {
+                        Label("Re-check Services", systemImage: "arrow.clockwise")
+                    }
+
+                    Button {
+                        openFullDiskAccess()
+                    } label: {
+                        Label("Full Disk Access…", systemImage: "lock.shield")
+                    }
+
+                    Spacer()
+                }
+            }
+        }
+    }
+}
+
+private struct EnginesTab: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        SettingsScrollContainer {
+            SettingsCard(title: "Diary Engines", icon: "brain") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Manage diary engines from the top-right selector in the main window. This view is a read-only reference.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Text("Clipboard capture, notifications, and local note generation keep working even if you leave the default engine disabled.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            SettingsCard(title: "Engine States", icon: "circle.hexagongrid") {
+                VStack(spacing: 0) {
+                    let engines = DiaryEngine.allCases.filter { $0 != .none }
+                    ForEach(Array(engines.enumerated()), id: \.element) { index, engine in
+                        let status = appState.engineStatuses[engine] ?? EngineRuntimeStatus()
+                        HStack(alignment: .center, spacing: 12) {
+                            EngineIndicatorLight(state: status.state)
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(engine.displayName)
+                                        .fontWeight(appState.defaultEngine == engine ? .semibold : .regular)
+                                    if appState.defaultEngine == engine {
+                                        Text("DEFAULT")
+                                            .font(.caption2)
+                                            .fontWeight(.bold)
+                                            .foregroundStyle(.tint)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 1)
+                                            .background(Color.accentColor.opacity(0.15), in: Capsule())
+                                    }
+                                }
+                                Text(status.detail)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 8)
+
+                        if index < engines.count - 1 {
+                            Divider()
+                        }
+                    }
+
+                    HStack {
+                        Spacer()
+                        Button {
+                            appState.refreshEngineStatuses()
+                        } label: {
+                            Label("Refresh", systemImage: "arrow.clockwise")
+                        }
+                    }
+                    .padding(.top, 10)
+                }
+            }
+        }
+    }
+}
+
+private struct AboutTab: View {
+    @Binding var presentedDocument: AppSupportDocument?
+    let openURL: (URL) -> Void
+
+    var body: some View {
+        SettingsScrollContainer {
+            VStack(spacing: 8) {
+                Image(systemName: "book.closed.fill")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.tint)
+                Text("KnowYou")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                Text(AppSupportMetadata.productTagline)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+
+            SettingsCard(title: "Contact", icon: "person.2") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        Button {
+                            openURL(AppSupportMetadata.twitterURL)
+                        } label: {
+                            Label(AppSupportMetadata.twitterButtonTitle, systemImage: "bubble.left.and.text.bubble.right")
+                        }
+
+                        Button {
+                            openURL(AppSupportMetadata.emailURL)
+                        } label: {
+                            Label(AppSupportMetadata.emailButtonTitle, systemImage: "envelope")
+                        }
+
+                        if let discordURL = AppSupportMetadata.discordURL {
+                            Button {
+                                openURL(discordURL)
+                            } label: {
+                                Label(AppSupportMetadata.discordButtonTitle, systemImage: "person.3")
+                            }
+                        }
+                    }
+                    .labelStyle(.titleAndIcon)
+
+                    Text(AppSupportMetadata.discordDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            SettingsCard(title: "Policies & Docs", icon: "doc.text") {
+                VStack(alignment: .leading, spacing: 10) {
+                    FlowButtons(documents: [.privacy, .terms, .community, .launchChecklist]) { document in
+                        presentedDocument = document
+                    }
+                    Text(AppSupportMetadata.supportDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text(AppSupportMetadata.copyrightLine)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 4)
+        }
+    }
+}
+
+private struct SettingsScrollContainer<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                content
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private struct SettingsCard<Content: View>: View {
+    let title: String
+    let icon: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .foregroundStyle(.secondary)
+                    .font(.callout)
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+            }
+
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(Color.secondary.opacity(0.15), lineWidth: 1)
+                )
+        }
+    }
+}
+
+private struct FlowButtons: View {
+    let documents: [AppSupportDocument]
+    let action: (AppSupportDocument) -> Void
+
+    var body: some View {
+        let columns = [GridItem(.adaptive(minimum: 140), spacing: 8)]
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            ForEach(documents) { document in
+                Button(document.buttonTitle) {
+                    action(document)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
     }
 }
 
@@ -324,61 +460,17 @@ private struct AppSupportDocumentSheet: View {
     }
 }
 
-private struct SettingsMetaLabel: View {
-    let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
-
-    var body: some View {
-        Text(text.uppercased())
-            .font(.caption)
-            .fontWeight(.semibold)
-            .foregroundStyle(.tertiary)
-    }
-}
-
-private struct SettingsSectionBlurb: View {
-    let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
-
-    var body: some View {
-        Text(text)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-private struct SettingsSectionNote: View {
-    let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
-
-    var body: some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
 private struct StatusRow: View {
     let label: String
     let detail: String
     let ok: Bool
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                 .foregroundStyle(ok ? .green : .orange)
-                .frame(width: 16)
+                .font(.title3)
+                .frame(width: 20)
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
                     .fontWeight(.medium)
@@ -386,7 +478,9 @@ private struct StatusRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            Spacer()
         }
     }
 }

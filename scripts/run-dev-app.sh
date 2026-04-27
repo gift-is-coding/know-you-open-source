@@ -5,6 +5,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 derived_data_path="$repo_root/.derived-data/dev"
 app_path="$derived_data_path/Build/Products/Debug/KnowYou.app"
 bundle_id="dev.knowyou.app"
+build_metadata_path="$app_path/Contents/Resources/BuildMetadata.json"
+expected_git_sha="$(git -C "$repo_root" rev-parse --short HEAD)"
 
 osascript -e "tell application id \"$bundle_id\" to quit" >/dev/null 2>&1 || true
 
@@ -36,8 +38,28 @@ if [[ ! -d "$app_path" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$build_metadata_path" ]]; then
+  echo "Build metadata not found: $build_metadata_path" >&2
+  exit 1
+fi
+
+actual_git_sha="$(plutil -extract gitShortSHA raw -expect string "$build_metadata_path" 2>/dev/null || true)"
+
+if [[ -z "$actual_git_sha" ]]; then
+  echo "Unable to read gitShortSHA from: $build_metadata_path" >&2
+  exit 1
+fi
+
+if [[ "$actual_git_sha" != "$expected_git_sha" ]]; then
+  echo "Refusing to open stale build." >&2
+  echo "Expected HEAD: $expected_git_sha" >&2
+  echo "Built app SHA: $actual_git_sha" >&2
+  exit 1
+fi
+
 open "$app_path"
 sleep 2
 
 echo "App path: $app_path"
+echo "Verified gitShortSHA: $actual_git_sha"
 ps -Ao pid=,command= | rg '/KnowYou.app/Contents/MacOS/KnowYou' || true

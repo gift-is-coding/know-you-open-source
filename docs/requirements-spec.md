@@ -87,6 +87,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 晚间回顾本地通知提醒
 - 可选 diary engine：
   - OpenAI API
+  - Codex Auth
   - Claude Code CLI
   - Codex CLI
   - Gemini CLI
@@ -258,7 +259,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 
 - vault 目录
 - diary engine 默认项
-- 对应的 API token 或 CLI 路径
+- 对应的 API token、CLI 路径，或 Codex Auth 本地登录状态
 
 配置入口包括：
 
@@ -338,7 +339,7 @@ onboarding 的配置约束为：
 - 剪贴板服务状态
 - 通知导入可用性
 - 当前默认 diary engine
-- 五个 diary engine 的灰/黄/绿状态
+- 六个 diary engine 的灰/黄/绿状态
 - 最近一次刷新结果
 - 当前选中日期的刷新阶段与错误详情
 - 自动化运行概览

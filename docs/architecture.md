@@ -366,15 +366,17 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 - `SummaryGenerating`
 
-当前有两类实现：
+当前有三类实现：
 
 - `CloudSummarizer`
 - `CLISummarizer`
+- `CodexDirectSummarizer`
 
 配置入口定义在 [SummarizerConfig.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Summary/SummarizerConfig.swift)，支持：
 
 - `None`
 - `OpenAI API`
+- `Codex Auth`
 - `Claude Code (CLI)`
 - `Codex (CLI)`
 - `Gemini (CLI)`
@@ -385,10 +387,12 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - API token 存 Keychain
 - `defaultEngine`、CLI 路径、`apiBaseURL`、`apiModel` 存 UserDefaults
 - `CloudSummarizer` 走 OpenAI-compatible Responses API，不再依赖启动时读取 `OPENAI_API_KEY`
+- `CodexDirectSummarizer` 复用 Codex CLI 的本地登录状态：优先读取 macOS Keychain 中 service=`Codex Auth`、account=`cli|sha256(CODEX_HOME).prefix(16)` 的记录，找不到时回退到 `<CODEX_HOME或~/.codex>/auth.json`
+- `CodexDirectSummarizer` 会用 refresh token 通过 `https://auth.openai.com/oauth/token` 刷新 access token，并以 `chatgpt-account-id`、`originator: pi`、`OpenAI-Beta: responses=experimental` 等 header 直连 `https://chatgpt.com/backend-api/codex/responses`
 - `CloudSummarizer` 已兼容 OpenAI Responses API 的两类文本返回形式：
   - 顶层 `output_text`
   - `output[].content[].text`
-- `EngineProbe` 会对 CLI/API 引擎做最小 smoke test，并产出灰/黄/绿三色状态
+- `EngineProbe` 会对 CLI/API/Codex Auth 引擎做最小 smoke test，并产出灰/黄/绿三色状态
 - 若持久化的默认引擎在重启时无法证明仍可用，`AppState` 会把活动默认引擎归一到 `.none`，避免未验证引擎被直接重新激活
 - 状态刷新后的自动改选只会发生在当前默认值已经是 `.none` 的情况下；明确选中的非 `None` 引擎不会被被动覆盖
 
@@ -502,7 +506,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - 主窗口标题栏左上角通过 toolbar leading 区域显示更新胶囊，并且不会覆盖 traffic lights 的点击区域
 - 当存在 `UpdateOffer` 时，点击胶囊会打开统一的更新 sheet；同一套 UI 会按渠道切换主按钮文案和动作
 - 窗口右上角提供 `DiaryEngineSelectorButton`
-- 一级面板列出 `Claude / Codex / Gemini / Openclaw / API` 五个引擎及状态灯
+- 一级面板列出 `Claude / Codex Auth / Codex CLI / Gemini / Openclaw / API` 六个引擎及状态灯
 - 只有绿色引擎允许直接切为默认项
 - API 行会进入 `APIDetailSheet`，配置 `baseURL`、`model`、`token` 并执行 `Test Connection`
 

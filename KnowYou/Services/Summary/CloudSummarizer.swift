@@ -109,12 +109,16 @@ struct ResponsesResponse: Decodable {
         let directOutputText = try container.decodeIfPresent(String.self, forKey: .outputText)
         let output = try container.decodeIfPresent([ResponseOutputItem].self, forKey: .output)
         self.output = output
-        self.outputText = directOutputText ?? output?
-            .filter { $0.type == "message" }
-            .flatMap(\.content)
-            .filter { $0.type == "output_text" }
-            .map(\.text)
-            .joined(separator: "\n")
+        if let directOutputText {
+            self.outputText = directOutputText
+        } else {
+            let textParts = output?
+                .filter { $0.type == "message" }
+                .flatMap { item in item.content ?? [] }
+                .filter { $0.type == "output_text" }
+                .compactMap { $0.text }
+            self.outputText = textParts?.joined(separator: "\n")
+        }
     }
 
     enum CodingKeys: String, CodingKey {
@@ -125,10 +129,10 @@ struct ResponsesResponse: Decodable {
 
 struct ResponseOutputItem: Decodable {
     let type: String
-    let content: [ResponseOutputContent]
+    let content: [ResponseOutputContent]?
 }
 
 struct ResponseOutputContent: Decodable {
     let type: String
-    let text: String
+    let text: String?
 }

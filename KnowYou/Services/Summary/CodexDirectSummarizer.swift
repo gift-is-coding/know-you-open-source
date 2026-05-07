@@ -127,6 +127,8 @@ struct CodexDirectSummarizer: IncrementalSummaryGenerating {
 
     private func parseResponse(_ data: Data) throws -> String {
         let body = String(decoding: data, as: UTF8.self)
+        var sawSSEPayload = false
+        var deltaParts: [String] = []
         for event in body.components(separatedBy: "\n\n") {
             let payload = event
                 .split(separator: "\n")
@@ -143,10 +145,22 @@ struct CodexDirectSummarizer: IncrementalSummaryGenerating {
                 continue
             }
 
-            let eventText = try parseEventPayload(Data(payload.utf8))
-            if !eventText.isEmpty {
-                return eventText
+            sawSSEPayload = true
+            let parsedEvent = try parseEventPayload(Data(payload.utf8))
+            if parsedEvent.isFinal, !parsedEvent.text.isEmpty {
+                return parsedEvent.text
             }
+            if !parsedEvent.text.isEmpty {
+                deltaParts.append(parsedEvent.text)
+            }
+        }
+
+        let deltaText = deltaParts.joined().trimmingCharacters(in: .whitespacesAndNewlines)
+        if !deltaText.isEmpty {
+            return deltaText
+        }
+        if sawSSEPayload {
+            throw CodexDirectSummarizerError.emptyResponse
         }
 
         let direct = try JSONDecoder().decode(ResponsesResponse.self, from: data)
@@ -156,7 +170,7 @@ struct CodexDirectSummarizer: IncrementalSummaryGenerating {
         return text
     }
 
-    private func parseEventPayload(_ data: Data) throws -> String {
+    private func parseEventPayload(_ data: Data) throws -> ParsedCodexResponseEvent {
         let event: CodexResponseEvent
         do {
             event = try JSONDecoder().decode(CodexResponseEvent.self, from: data)
@@ -168,9 +182,23 @@ struct CodexDirectSummarizer: IncrementalSummaryGenerating {
             throw CodexDirectSummarizerError.requestFailed
         }
 
-        let text = event.response?.outputText ?? event.outputText
-        return text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if let text = event.response?.outputText ?? event.outputText {
+            return ParsedCodexResponseEvent(
+                text: text.trimmingCharacters(in: .whitespacesAndNewlines),
+                isFinal: true
+            )
+        }
+
+        return ParsedCodexResponseEvent(
+            text: event.delta ?? "",
+            isFinal: false
+        )
     }
+}
+
+private struct ParsedCodexResponseEvent {
+    let text: String
+    let isFinal: Bool
 }
 
 private struct CodexResponsesRequest: Encodable {
@@ -216,10 +244,20 @@ private struct CodexResponseEvent: Decodable {
     let type: String?
     let response: ResponsesResponse?
     let outputText: String?
+    let delta: String?
 
     enum CodingKeys: String, CodingKey {
         case type
         case response
         case outputText = "output_text"
+        case delta
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decodeIfPresent(String.self, forKey: .type)
+        response = try? container.decodeIfPresent(ResponsesResponse.self, forKey: .response)
+        outputText = try container.decodeIfPresent(String.self, forKey: .outputText)
+        delta = try container.decodeIfPresent(String.self, forKey: .delta)
     }
 }

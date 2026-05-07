@@ -104,6 +104,64 @@ final class CodexDirectSummarizerTests: XCTestCase {
         XCTAssertEqual(firstMessage["content"] as? String, "Incremental markdown")
     }
 
+    func testCompletedSSEEventIgnoresReasoningOutputItemsWithoutContent() async throws {
+        CodexDirectStubURLProtocol.response = .success(
+            statusCode: 200,
+            body: Data("""
+            data: {"type":"response.completed","response":{"output":[{"type":"reasoning","summary":[]},{"type":"message","content":[{"type":"output_text","text":"OK from real shape"}]}]}}
+
+            """.utf8)
+        )
+        let summarizer = CodexDirectSummarizer(
+            credentialProvider: StubCodexCredentialProvider(
+                credential: CodexOAuthCredential(
+                    accessToken: "access-token",
+                    refreshToken: "refresh-token",
+                    expiresAt: Date(timeIntervalSince1970: 2_000_000_000),
+                    accountID: "account-id",
+                    source: .authFile(path: "/tmp/auth.json")
+                )
+            ),
+            session: CodexDirectStubURLProtocol.makeSession()
+        )
+
+        let result = try await summarizer.smokeTest()
+
+        XCTAssertEqual(result, "OK from real shape")
+    }
+
+    func testSSEDeltaEventsAreAccumulatedWhenCompletedEventHasNoText() async throws {
+        CodexDirectStubURLProtocol.response = .success(
+            statusCode: 200,
+            body: Data("""
+            data: {"type":"response.created","response":{"id":"resp_123","status":"in_progress"}}
+
+            data: {"type":"response.output_text.delta","delta":"O"}
+
+            data: {"type":"response.output_text.delta","delta":"K"}
+
+            data: [DONE]
+
+            """.utf8)
+        )
+        let summarizer = CodexDirectSummarizer(
+            credentialProvider: StubCodexCredentialProvider(
+                credential: CodexOAuthCredential(
+                    accessToken: "access-token",
+                    refreshToken: "refresh-token",
+                    expiresAt: Date(timeIntervalSince1970: 2_000_000_000),
+                    accountID: "account-id",
+                    source: .authFile(path: "/tmp/auth.json")
+                )
+            ),
+            session: CodexDirectStubURLProtocol.makeSession()
+        )
+
+        let result = try await summarizer.smokeTest()
+
+        XCTAssertEqual(result, "OK")
+    }
+
     func testHTTPErrorDescriptionDoesNotExposeTokenValues() async throws {
         CodexDirectStubURLProtocol.response = .success(
             statusCode: 401,

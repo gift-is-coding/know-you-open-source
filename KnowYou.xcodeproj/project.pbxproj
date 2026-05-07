@@ -83,6 +83,7 @@
 		B20000010000000000000006 /* CodexOAuthRefresher.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000006 /* CodexOAuthRefresher.swift */; };
 		B20000010000000000000007 /* CodexDirectSummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000007 /* CodexDirectSummarizerTests.swift */; };
 		B20000010000000000000008 /* CodexDirectSummarizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000008 /* CodexDirectSummarizer.swift */; };
+		B20000010000000000000009 /* CloudSummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000009 /* CloudSummarizerTests.swift */; };
 		A1000001000000000000004D /* AppUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004D /* AppUpdate.swift */; };
 		A1000001000000000000004E /* UpdateChannelResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004E /* UpdateChannelResolver.swift */; };
 		A1000001000000000000004F /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004F /* UpdateService.swift */; };
@@ -183,6 +184,7 @@
 		B20001010000000000000006 /* CodexOAuthRefresher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexOAuthRefresher.swift; sourceTree = "<group>"; };
 		B20001010000000000000007 /* CodexDirectSummarizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexDirectSummarizerTests.swift; sourceTree = "<group>"; };
 		B20001010000000000000008 /* CodexDirectSummarizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexDirectSummarizer.swift; sourceTree = "<group>"; };
+		B20001010000000000000009 /* CloudSummarizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSummarizerTests.swift; sourceTree = "<group>"; };
 		A1000101000000000000004D /* AppUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdate.swift; sourceTree = "<group>"; };
 		A1000101000000000000004E /* UpdateChannelResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChannelResolver.swift; sourceTree = "<group>"; };
 		A1000101000000000000004F /* UpdateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateService.swift; sourceTree = "<group>"; };
@@ -317,6 +319,7 @@
 				A10001010000000000000021 /* DailyAutomationPlannerTests.swift */,
 				A10001010000000000000022 /* NotificationDatabaseReaderTests.swift */,
 					A10001010000000000000026 /* CLISummarizerTests.swift */,
+				B20001010000000000000009 /* CloudSummarizerTests.swift */,
 				A10001010000000000000027 /* SummarizerConfigTests.swift */,
 				A10001010000000000000032 /* EngineProbeTests.swift */,
 				B20001010000000000000001 /* CodexJWTTests.swift */,
@@ -718,6 +721,7 @@
 				A1000001000000000000001F /* DailyAutomationPlannerTests.swift in Sources */,
 				A10000010000000000000020 /* NotificationDatabaseReaderTests.swift in Sources */,
 				A10000010000000000000024 /* CLISummarizerTests.swift in Sources */,
+				B20000010000000000000009 /* CloudSummarizerTests.swift in Sources */,
 				A10000010000000000000025 /* SummarizerConfigTests.swift in Sources */,
 				A10000010000000000000032 /* EngineProbeTests.swift in Sources */,
 				B20000010000000000000001 /* CodexJWTTests.swift in Sources */,

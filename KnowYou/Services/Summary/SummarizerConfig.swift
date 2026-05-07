@@ -121,6 +121,12 @@ struct SummarizerConfig {
                 return nil
             }
             return CloudSummarizer(apiKey: key, apiURL: url, model: trimmedModel)
+        case .codexAuth:
+            let store = CodexAuthStore(environment: environment)
+            let refresher = CodexOAuthRefresher()
+            return CodexDirectSummarizer(
+                credentialProvider: CodexCredentialProvider(store: store, refresher: refresher)
+            )
         case .claudeCLI:
             guard let path = Self.resolvedExecutablePath(configuredPath: claudeCLIPath, commandName: "claude", environment: environment) else {
                 return nil

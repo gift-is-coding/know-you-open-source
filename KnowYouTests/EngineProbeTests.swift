@@ -85,8 +85,18 @@ private final class StubURLProtocol: URLProtocol {
 }
 
 final class EngineProbeTests: XCTestCase {
+    private var temporaryDirectoryURL: URL!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        temporaryDirectoryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: temporaryDirectoryURL, withIntermediateDirectories: true)
+    }
+
     override func tearDown() {
         StubURLProtocol.reset()
+        try? FileManager.default.removeItem(at: temporaryDirectoryURL)
         super.tearDown()
     }
 
@@ -340,5 +350,77 @@ final class EngineProbeTests: XCTestCase {
         XCTAssertEqual(result.state, .yellow)
         XCTAssertEqual(result.detail, "API response did not include any text.")
         XCTAssertEqual(StubURLProtocol.requestCount, 1)
+    }
+
+    func testCodexAuthProbeReturnsGrayWhenCredentialsAreMissing() async {
+        let probe = EngineProbe(
+            session: StubURLProtocol.makeSession(),
+            processRunner: StubProcessRunner(
+                behavior: .success(ProcessExecutionResult(stdout: "unused", stderr: "", terminationStatus: 0, duration: 0))
+            )
+        )
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexAuth
+
+        let result = await probe.probe(
+            engine: .codexAuth,
+            config: config,
+            environment: ["CODEX_HOME": temporaryDirectoryURL.path]
+        )
+
+        XCTAssertEqual(result.state, .gray)
+        XCTAssertEqual(result.detail, "Codex Auth credentials not found. Sign in with Codex CLI.")
+        XCTAssertEqual(StubURLProtocol.requestCount, 0)
+    }
+
+    func testCodexAuthProbeReturnsGreenWhenBackendReturnsText() async throws {
+        try writeCodexAuthFile()
+        StubURLProtocol.behavior = .success(
+            statusCode: 200,
+            body: Data("""
+            data: {"type":"response.completed","response":{"output_text":"OK"}}
+
+            """.utf8)
+        )
+        let runner = StubProcessRunner(
+            behavior: .success(ProcessExecutionResult(stdout: "unused", stderr: "", terminationStatus: 0, duration: 0))
+        )
+        let probe = EngineProbe(session: StubURLProtocol.makeSession(), processRunner: runner)
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexAuth
+
+        let result = await probe.probe(
+            engine: .codexAuth,
+            config: config,
+            environment: ["CODEX_HOME": temporaryDirectoryURL.path]
+        )
+
+        XCTAssertEqual(result.state, .green)
+        XCTAssertEqual(result.detail, "Codex Auth returned non-empty text.")
+        XCTAssertEqual(StubURLProtocol.requestCount, 1)
+        XCTAssertEqual(runner.invocations.count, 0)
+        let request = try XCTUnwrap(StubURLProtocol.lastRequest)
+        XCTAssertEqual(request.url, URL(string: "https://chatgpt.com/backend-api/codex/responses"))
+        XCTAssertEqual(request.value(forHTTPHeaderField: "chatgpt-account-id"), "account-id")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "originator"), "pi")
+    }
+
+    private func writeCodexAuthFile() throws {
+        let authFileURL = temporaryDirectoryURL.appendingPathComponent("auth.json")
+        let accessToken = makeJWT(payload: [
+            "exp": 2_000_000_000,
+            "https://api.openai.com/auth": [
+                "chatgpt_account_id": "account-id"
+            ]
+        ])
+        try """
+        {
+          "auth_mode": "chatgpt",
+          "tokens": {
+            "access_token": "\(accessToken)",
+            "refresh_token": "refresh-token"
+          }
+        }
+        """.write(to: authFileURL, atomically: true, encoding: .utf8)
     }
 }

@@ -527,6 +527,7 @@ final class AppState {
 
     private static let autoSelectionPriority: [DiaryEngine] = [
         .claudeCLI,
+        .codexAuth,
         .codexCLI,
         .geminiCLI,
         .openclawCLI,
@@ -4607,6 +4608,21 @@ extension AppState {
                 lastVerifiedAt: nil,
                 configurationSignature: signature
             )
+        case .codexAuth:
+            if config.makeSummarizer(for: engine, environment: environment) == nil {
+                return EngineRuntimeStatus(
+                    state: .gray,
+                    detail: "Codex Auth is unavailable.",
+                    lastVerifiedAt: nil,
+                    configurationSignature: signature
+                )
+            }
+            return EngineRuntimeStatus(
+                state: .yellow,
+                detail: "Codex Auth not tested. Retest required.",
+                lastVerifiedAt: nil,
+                configurationSignature: signature
+            )
         case .claudeCLI, .codexCLI, .geminiCLI, .openclawCLI:
             guard config.makeSummarizer(for: engine, environment: environment) != nil else {
                 return EngineRuntimeStatus(
@@ -4639,6 +4655,8 @@ extension AppState {
                 config.apiModel.trimmingCharacters(in: .whitespacesAndNewlines),
                 config.apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
             ].joined(separator: "|")
+        case .codexAuth:
+            return "codexAuth|\((environment["CODEX_HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "~/.codex")"
         case .claudeCLI:
             return "claude|\(SummarizerConfig.resolvedExecutablePath(configuredPath: config.claudeCLIPath, commandName: "claude", environment: environment) ?? "")"
         case .codexCLI:
@@ -4687,6 +4705,8 @@ extension AppState {
         switch summarizer {
         case is CloudSummarizer:
             return .openAI
+        case is CodexDirectSummarizer:
+            return .codexAuth
         case let summarizer as CLISummarizer:
             switch summarizer.tool {
             case .claude:
@@ -4715,6 +4735,8 @@ extension AppState {
             reconciled.apiBaseURL = summarizer.apiURL.absoluteString
             reconciled.apiModel = summarizer.model
             reconciled.apiToken = summarizer.apiKey
+        case is CodexDirectSummarizer:
+            reconciled.defaultEngine = .codexAuth
         case let summarizer as CLISummarizer:
             switch summarizer.tool {
             case .claude:

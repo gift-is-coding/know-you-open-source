@@ -187,6 +187,13 @@ final class SummarizerConfigTests: XCTestCase {
         XCTAssertNil(config.makeSummarizer())
     }
 
+    func testMakeSummarizerReturnsCodexDirectSummarizerForCodexAuth() throws {
+        var config = SummarizerConfig.load(from: defaults)
+        config.type = .codexAuth
+
+        XCTAssertNotNil(config.makeSummarizer() as? CodexDirectSummarizer)
+    }
+
     func testMakeSummarizerReturnsCLISummarizerForClaudeCLI() {
         // Use the test binary itself as a stand-in executable that is guaranteed to exist
         var config = SummarizerConfig.load(from: defaults)

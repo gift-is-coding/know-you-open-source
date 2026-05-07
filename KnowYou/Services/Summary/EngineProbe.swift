@@ -28,6 +28,8 @@ struct EngineProbe: Sendable {
             return makeResult(engine: engine, state: .gray, detail: "No engine selected.", verifiedAt: nil)
         case .openAI:
             return await probeAPI(config: engineConfig)
+        case .codexAuth:
+            return await probeCodexAuth(environment: environment)
         case .claudeCLI, .codexCLI, .geminiCLI, .openclawCLI:
             return await probeCLI(engine: engine, config: engineConfig, environment: environment)
         }
@@ -141,6 +143,39 @@ struct EngineProbe: Sendable {
         }
     }
 
+    private func probeCodexAuth(environment: [String: String]) async -> EngineProbeResult {
+        let store = CodexAuthStore(environment: environment)
+        let refresher = CodexOAuthRefresher(session: session)
+        let summarizer = CodexDirectSummarizer(
+            credentialProvider: CodexCredentialProvider(store: store, refresher: refresher),
+            session: session
+        )
+
+        do {
+            _ = try await summarizer.smokeTest()
+            return makeResult(
+                engine: .codexAuth,
+                state: .green,
+                detail: "Codex Auth returned non-empty text.",
+                verifiedAt: Date()
+            )
+        } catch CodexAuthStoreError.credentialNotFound {
+            return makeResult(
+                engine: .codexAuth,
+                state: .gray,
+                detail: "Codex Auth credentials not found. Sign in with Codex CLI.",
+                verifiedAt: nil
+            )
+        } catch {
+            return makeResult(
+                engine: .codexAuth,
+                state: .yellow,
+                detail: "Codex Auth request failed: \(error.localizedDescription)",
+                verifiedAt: Date()
+            )
+        }
+    }
+
     private func makeResult(
         engine: DiaryEngine,
         state: EngineIndicatorState,
@@ -183,7 +218,7 @@ struct EngineProbe: Sendable {
             return .gemini
         case .openclawCLI:
             return .openclaw
-        case .none, .openAI:
+        case .none, .openAI, .codexAuth:
             return nil
         }
     }
@@ -198,7 +233,7 @@ struct EngineProbe: Sendable {
             return "gemini"
         case .openclawCLI:
             return "openclaw"
-        case .none, .openAI:
+        case .none, .openAI, .codexAuth:
             return ""
         }
     }
@@ -213,7 +248,7 @@ struct EngineProbe: Sendable {
             return config.geminiCLIPath
         case .openclawCLI:
             return config.openclawCLIPath
-        case .none, .openAI:
+        case .none, .openAI, .codexAuth:
             return ""
         }
     }

@@ -25,6 +25,7 @@ struct EngineConfigurationSection: View {
             Picker("Engine", selection: $summarizerConfig.type) {
                 Text("Choose an engine").tag(SummarizerType.none)
                 Text(SummarizerType.claudeCLI.displayName).tag(SummarizerType.claudeCLI)
+                Text(SummarizerType.codexAuth.displayName).tag(SummarizerType.codexAuth)
                 Text(SummarizerType.codexCLI.displayName).tag(SummarizerType.codexCLI)
                 Text(SummarizerType.geminiCLI.displayName).tag(SummarizerType.geminiCLI)
                 Text(SummarizerType.openclawCLI.displayName).tag(SummarizerType.openclawCLI)
@@ -58,6 +59,11 @@ struct EngineConfigurationSection: View {
             SecureField("OpenAI API Key", text: $summarizerConfig.openAIKey)
                 .textFieldStyle(.roundedBorder)
 
+        case .codexAuth:
+            Text("Uses the existing Codex CLI login from ~/.codex or CODEX_HOME.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
         case .claudeCLI:
             executablePathField("claude executable path", text: $summarizerConfig.claudeCLIPath)
 
@@ -78,6 +84,8 @@ struct EngineConfigurationSection: View {
             return "Select Claude Code, Codex, Gemini, or OpenAI to activate the writer."
         case .openAI:
             return "The API key stays on this Mac and is used only when KnowYou asks the selected engine to shape the diary."
+        case .codexAuth:
+            return "Sign in once with Codex CLI; KnowYou reuses that local login and refreshes it without shelling out to codex exec."
         case .claudeCLI:
             return "Point this at the Claude Code executable already installed on this Mac."
         case .codexCLI:

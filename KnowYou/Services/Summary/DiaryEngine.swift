@@ -3,6 +3,7 @@ import Foundation
 enum DiaryEngine: String, CaseIterable, Codable, Sendable {
     case none
     case openAI
+    case codexAuth
     case claudeCLI
     case codexCLI
     case geminiCLI
@@ -12,6 +13,7 @@ enum DiaryEngine: String, CaseIterable, Codable, Sendable {
         switch self {
         case .none: return "None"
         case .openAI: return "OpenAI API"
+        case .codexAuth: return "Codex Auth"
         case .claudeCLI: return "Claude Code (CLI)"
         case .codexCLI: return "Codex (CLI)"
         case .geminiCLI: return "Gemini (CLI)"
@@ -25,6 +27,8 @@ enum DiaryEngine: String, CaseIterable, Codable, Sendable {
             return "No summarizer selected."
         case .openAI:
             return "Use an OpenAI-compatible API endpoint."
+        case .codexAuth:
+            return "Use the Codex CLI login directly through Codex Auth."
         case .claudeCLI:
             return "Use the local Claude Code CLI."
         case .codexCLI:

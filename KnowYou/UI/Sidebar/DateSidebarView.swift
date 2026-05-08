@@ -4,7 +4,9 @@ struct DateSidebarView: View {
     let dates: [String]
     let selectedDate: String?
     let isActive: Bool
+    let isKnowledgeOntologySelected: Bool
     let onSelect: (String) -> Void
+    let onOpenKnowledgeOntology: () -> Void
     let onOpenSyncMemory: () -> Void
     @State private var expandedSectionIDs: Set<String> = []
     @Environment(\.openSettings) private var openSettings
@@ -12,6 +14,23 @@ struct DateSidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            Button(action: onOpenKnowledgeOntology) {
+                Label("知识本体", systemImage: "point.3.connected.trianglepath.dotted")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(isKnowledgeOntologySelected ? Color.accentColor.opacity(0.16) : Color.clear)
+                    )
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(isKnowledgeOntologySelected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+            .padding(.horizontal, 8)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+
             List(selection: activeBinding) {
                 ForEach(presentation.sections) { section in
                     if let title = section.title {

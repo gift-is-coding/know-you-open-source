@@ -639,7 +639,33 @@ sequenceDiagram
    若某一天在 bootstrap 开始时事件数超过 `50` 条，则该日内部改为按 `50` 条一批串行生成，并在 refresh log 中记录 chunk 进度
 8. bootstrap 完成后恢复 steady-state 自动化；`Demo Day` 继续留在列表底部供用户回看
 
-## 11. 当前架构约束
+## 11. 知识本体子系统
+
+当前新增的知识本体能力采用“KnowYou 宿主 + llm_wiki 子系统 + 最薄适配层”的结构。
+
+新增边界：
+
+- [KnowledgeOntologyProjectExporter.swift](/Users/wutianfu/Documents/code/know-you-knowledge-ontology/KnowYou/Services/KnowledgeOntology/KnowledgeOntologyProjectExporter.swift) 负责创建 llm_wiki 兼容项目结构，并把 KnowYou 的 `YYYY-MM-DD.md` 导出到 `raw/sources/knowyou-diary-YYYY-MM-DD.md`
+- [KnowledgeOntologyLauncher.swift](/Users/wutianfu/Documents/code/know-you-knowledge-ontology/KnowYou/Services/KnowledgeOntology/KnowledgeOntologyLauncher.swift) 负责选择 bundled helper 或开发源码目录
+- [KnowledgeOntologyPanel.swift](/Users/wutianfu/Documents/code/know-you-knowledge-ontology/KnowYou/UI/KnowledgeOntology/KnowledgeOntologyPanel.swift) 是主窗口内的黑色宿主页
+- `ThirdParty/llm_wiki` 保留原项目的 React / Tauri / Rust 功能，避免重写图谱、搜索、review、deep research 等复杂界面
+
+数据流如下：
+
+```mermaid
+flowchart LR
+    A[KnowYou Vault YYYY-MM-DD.md] --> B[KnowledgeOntologyProjectExporter]
+    B --> C[KnowledgeOntology/KnowYouContext/raw/sources]
+    C --> D[llm_wiki Sources / Review / Graph / Search]
+    E[DateSidebar 知识本体按钮] --> F[KnowledgeOntologyPanel]
+    F --> B
+    F --> G[KnowledgeOntologyLauncher]
+    G --> D
+```
+
+第一版只把已经生成的每日 Markdown 交给 llm_wiki。它不会直接导出 SQLite 原始事件，也不会绕过 KnowYou 现有隐私过滤边界。
+
+## 12. 当前架构约束
 
 - 仅支持 macOS
 - 仅支持单机、本地存储
@@ -650,7 +676,7 @@ sequenceDiagram
 - onboarding 的 `Demo Day` 使用静态叙事内容，不是从真实用户数据实时生成
 - 当前 Xcode 工程对本地 Debug 构建使用手动代码签名，以减少重启后 TCC 权限丢失带来的验证噪音
 
-## 12. 设计取向总结
+## 13. 设计取向总结
 
 当前实现的核心取向不是“做一个原始日志查看器”，而是：
 

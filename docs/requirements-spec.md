@@ -359,6 +359,18 @@ onboarding 的配置约束为：
 - 产品必须展示版权主体信息
 - 仓库必须提供隐私政策、使用条款、社区说明与上线检查清单
 
+## 6.11 知识本体需求
+
+- 主窗口左侧栏必须提供 `知识本体` 入口
+- 点击 `知识本体` 后，主内容区必须切换到知识本体宿主页，而不是打开旧式 toolbar sheet
+- 知识本体宿主页必须使用黑色背景，与 KnowYou 当前视觉风格保持一致
+- 系统必须能创建 llm_wiki 兼容的项目结构，包括 `schema.md`、`purpose.md`、`wiki/` 与 `raw/sources/`
+- 系统必须能把已有 `YYYY-MM-DD.md` 日记同步为 `raw/sources/knowyou-diary-YYYY-MM-DD.md`
+- 重复同步同一天日记必须覆盖稳定文件名，不得生成重复文件
+- 第一版知识本体必须复用 `ThirdParty/llm_wiki` 的原始功能，不得用简化 SwiftUI 图谱替代它的 graph/search/review/deep research
+- KnowYou 必须优先打开 bundled llm_wiki helper；没有 bundled helper 时，允许回退到 `ThirdParty/llm_wiki` 开发源码目录
+- 知识本体第一版只能导出 KnowYou 已生成的每日 Markdown，不得直接导出未经额外授权的 SQLite 原始事件
+
 ## 7. 内容体验要求
 
 当前内容体验不是“事件流水账”，而是“可读的 Markdown 工作日记”。

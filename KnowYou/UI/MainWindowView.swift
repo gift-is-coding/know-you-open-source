@@ -1,6 +1,11 @@
 import SwiftUI
 import AppKit
 
+private enum MainWindowMode {
+    case journal
+    case knowledgeOntology
+}
+
 struct MainWindowView: View {
     @Environment(AppState.self) private var appState
     @State private var keyMonitor: Any?
@@ -8,6 +13,7 @@ struct MainWindowView: View {
     @State private var isShowingAPIDetail = false
     @State private var apiConfigDraft = SummarizerConfig.load()
     @State private var isTestingAPIConnection = false
+    @State private var mode: MainWindowMode = .journal
     let showsOnboardingEngineButton: Bool
     let onOpenEngineSetup: (() -> Void)?
     let onStoryParagraphTap: ((String) -> Void)?
@@ -27,52 +33,75 @@ struct MainWindowView: View {
             DateSidebarView(
                 dates: appState.availableDates,
                 selectedDate: appState.selectedDate,
-                isActive: appState.readerFocus == .dateList,
-                onSelect: appState.selectDate,
+                isActive: mode == .journal && appState.readerFocus == .dateList,
+                isKnowledgeOntologySelected: mode == .knowledgeOntology,
+                onSelect: { dayKey in
+                    mode = .journal
+                    appState.selectDate(dayKey)
+                },
+                onOpenKnowledgeOntology: {
+                    mode = .knowledgeOntology
+                },
                 onOpenSyncMemory: openSyncMemoryPanel
             )
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
         } content: {
-            DailyMarkdownView(
-                story: appState.selectedStory,
-                selectedParagraphID: appState.selectedStoryParagraphID,
-                dayKey: appState.selectedDate,
-                refreshJob: selectedRefreshJob,
-                refreshLogNotice: appState.refreshLogNotice(for: appState.selectedDate),
-                isGenerating: appState.isGeneratingJournal(for: appState.selectedDate),
-                isActive: appState.readerFocus == .storyParagraphs,
-                onSelectParagraph: { paragraphID in
-                    appState.focusStoryParagraphs()
-                    appState.selectStoryParagraph(paragraphID)
-                    onStoryParagraphTap?(paragraphID)
-                },
-                onFocusStory: {
-                    appState.focusStoryParagraphs()
-                },
-                onRefresh: {
-                    Task { @MainActor in
-                        await appState.refreshSelectedDay()
-                    }
-                },
-                onTodayFullRefresh: {
-                    Task { @MainActor in
-                        await appState.refreshSelectedDayFullRecovery()
-                    }
-                },
-                canFullRefresh: appState.selectedDate != nil && appState.selectedDate != OnboardingDemoStory.demoDayKey,
-                fullRefreshMenuTitle: appState.selectedDate == ISO8601DayKey.format(Date())
-                    ? "Full Refresh Today (Overwriting)"
-                    : "Full Refresh (Overwriting)"
-            )
-            .onboardingCoachmarkTarget(.storyPanel)
+            switch mode {
+            case .journal:
+                DailyMarkdownView(
+                    story: appState.selectedStory,
+                    selectedParagraphID: appState.selectedStoryParagraphID,
+                    dayKey: appState.selectedDate,
+                    refreshJob: selectedRefreshJob,
+                    refreshLogNotice: appState.refreshLogNotice(for: appState.selectedDate),
+                    isGenerating: appState.isGeneratingJournal(for: appState.selectedDate),
+                    isActive: appState.readerFocus == .storyParagraphs,
+                    onSelectParagraph: { paragraphID in
+                        appState.focusStoryParagraphs()
+                        appState.selectStoryParagraph(paragraphID)
+                        onStoryParagraphTap?(paragraphID)
+                    },
+                    onFocusStory: {
+                        appState.focusStoryParagraphs()
+                    },
+                    onRefresh: {
+                        Task { @MainActor in
+                            await appState.refreshSelectedDay()
+                        }
+                    },
+                    onTodayFullRefresh: {
+                        Task { @MainActor in
+                            await appState.refreshSelectedDayFullRecovery()
+                        }
+                    },
+                    canFullRefresh: appState.selectedDate != nil && appState.selectedDate != OnboardingDemoStory.demoDayKey,
+                    fullRefreshMenuTitle: appState.selectedDate == ISO8601DayKey.format(Date())
+                        ? "Full Refresh Today (Overwriting)"
+                        : "Full Refresh (Overwriting)"
+                )
+                .onboardingCoachmarkTarget(.storyPanel)
+            case .knowledgeOntology:
+                KnowledgeOntologyPanel(
+                    sourceVault: appState.environment?.vaultURL,
+                    projectRoot: knowledgeOntologyProjectRoot,
+                    developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL(),
+                    bundledHelperAppURL: KnowledgeOntologyLauncher.defaultBundledHelperAppURL()
+                )
+            }
         } detail: {
-            StorySourceDetailView(
-                selectedParagraph: appState.selectedStoryParagraph,
-                selectedEvents: appState.selectedStorySourceEvents,
-                allEvents: appState.selectedDayEvents
-            )
-            .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
-            .onboardingCoachmarkTarget(.sourcesPanel)
+            switch mode {
+            case .journal:
+                StorySourceDetailView(
+                    selectedParagraph: appState.selectedStoryParagraph,
+                    selectedEvents: appState.selectedStorySourceEvents,
+                    allEvents: appState.selectedDayEvents
+                )
+                .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
+                .onboardingCoachmarkTarget(.sourcesPanel)
+            case .knowledgeOntology:
+                KnowledgeOntologyDetailPlaceholder()
+                    .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 380)
+            }
         }
         .frame(minWidth: 1240, minHeight: 720)
         .overlay(alignment: .top) {
@@ -242,6 +271,12 @@ struct MainWindowView: View {
     private var selectedRefreshJob: DayRefreshJob? {
         guard let selectedDate = appState.selectedDate else { return nil }
         return appState.refreshJob(for: selectedDate)
+    }
+
+    private var knowledgeOntologyProjectRoot: URL? {
+        appState.environment?.vaultURL
+            .deletingLastPathComponent()
+            .appending(path: "KnowledgeOntology/KnowYouContext", directoryHint: .isDirectory)
     }
 
     private var currentEngineState: EngineIndicatorState {

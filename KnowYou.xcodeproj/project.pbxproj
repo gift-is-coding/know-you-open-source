@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5CD500F8D621611083D406AD /* KnowledgeOntologyPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7177E38EFF3DA333280EFBA /* KnowledgeOntologyPanel.swift */; };
+		724AA179C88234088E499A5B /* KnowledgeOntologyLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC41767E0E95299BB3007A33 /* KnowledgeOntologyLauncher.swift */; };
 		A10000010000000000000001 /* KnowYouApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000001 /* KnowYouApp.swift */; };
 		A10000010000000000000002 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000002 /* AppEnvironment.swift */; };
 		A10000010000000000000003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000003 /* AppState.swift */; };
@@ -44,24 +46,37 @@
 		A10000010000000000000023 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000025 /* OnboardingView.swift */; };
 		A10000010000000000000024 /* CLISummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000026 /* CLISummarizerTests.swift */; };
 		A10000010000000000000025 /* SummarizerConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000027 /* SummarizerConfigTests.swift */; };
+		A10000010000000000000026 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000028 /* KeychainHelper.swift */; };
+		A10000010000000000000027 /* OnboardingContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000029 /* OnboardingContent.swift */; };
+		A10000010000000000000028 /* OnboardingContentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000002A /* OnboardingContentTests.swift */; };
+		A10000010000000000000029 /* OnboardingViewLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000002B /* OnboardingViewLayoutTests.swift */; };
+		A10000010000000000000030 /* DailyMarkdownViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000030 /* DailyMarkdownViewTests.swift */; };
+		A10000010000000000000032 /* EngineProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000032 /* EngineProbeTests.swift */; };
 		A10000010000000000000033 /* EngineProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000033 /* EngineProbe.swift */; };
 		A10000010000000000000034 /* DiaryEngineSelectorButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000034 /* DiaryEngineSelectorButton.swift */; };
 		A10000010000000000000035 /* DiaryEnginePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000035 /* DiaryEnginePanel.swift */; };
 		A10000010000000000000036 /* APIDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000036 /* APIDetailSheet.swift */; };
-		A10000010000000000000041 /* SyncMemoryPathDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000041 /* SyncMemoryPathDetector.swift */; };
-		A10000010000000000000032 /* EngineProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000032 /* EngineProbeTests.swift */; };
 		A10000010000000000000037 /* SettingsMetadataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000037 /* SettingsMetadataTests.swift */; };
 		A10000010000000000000038 /* AppSupportMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000038 /* AppSupportMetadata.swift */; };
 		A1000001000000000000003A /* ManualDiaryRefreshTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000003A /* ManualDiaryRefreshTests.swift */; };
 		A10000010000000000000040 /* SyncMemoryPathDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000040 /* SyncMemoryPathDetectorTests.swift */; };
+		A10000010000000000000041 /* SyncMemoryPathDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000041 /* SyncMemoryPathDetector.swift */; };
 		A10000010000000000000042 /* SyncMemoryConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000042 /* SyncMemoryConfigTests.swift */; };
+		A10000010000000000000043 /* SyncMemoryChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000043 /* SyncMemoryChannel.swift */; };
+		A10000010000000000000044 /* SyncMemoryConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000044 /* SyncMemoryConfig.swift */; };
 		A10000010000000000000045 /* SyncMemoryCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000045 /* SyncMemoryCoordinatorTests.swift */; };
 		A10000010000000000000046 /* LaunchAgentManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000046 /* LaunchAgentManagerTests.swift */; };
+		A10000010000000000000047 /* SyncMemoryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000047 /* SyncMemoryCoordinator.swift */; };
 		A10000010000000000000048 /* LaunchAgentManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000048 /* LaunchAgentManager.swift */; };
 		A10000010000000000000049 /* SyncMemoryPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000049 /* SyncMemoryPanel.swift */; };
 		A1000001000000000000004A /* SyncMemoryPanelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004A /* SyncMemoryPanelTests.swift */; };
 		A1000001000000000000004B /* UpdateChannelResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004B /* UpdateChannelResolverTests.swift */; };
 		A1000001000000000000004C /* UpdateServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004C /* UpdateServiceTests.swift */; };
+		A1000001000000000000004D /* AppUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004D /* AppUpdate.swift */; };
+		A1000001000000000000004E /* UpdateChannelResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004E /* UpdateChannelResolver.swift */; };
+		A1000001000000000000004F /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004F /* UpdateService.swift */; };
+		A10000010000000000000050 /* UpdatePillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000050 /* UpdatePillView.swift */; };
+		A10000010000000000000051 /* UpdateSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000051 /* UpdateSheet.swift */; };
 		A10000010000000000000053 /* UpdatePresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000053 /* UpdatePresentationTests.swift */; };
 		A10000010000000000000054 /* OnboardingDemoStory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000054 /* OnboardingDemoStory.swift */; };
 		A10000010000000000000055 /* OnboardingProgressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000055 /* OnboardingProgressTests.swift */; };
@@ -84,20 +99,10 @@
 		B20000010000000000000007 /* CodexDirectSummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000007 /* CodexDirectSummarizerTests.swift */; };
 		B20000010000000000000008 /* CodexDirectSummarizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000008 /* CodexDirectSummarizer.swift */; };
 		B20000010000000000000009 /* CloudSummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000009 /* CloudSummarizerTests.swift */; };
-		A1000001000000000000004D /* AppUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004D /* AppUpdate.swift */; };
-		A1000001000000000000004E /* UpdateChannelResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004E /* UpdateChannelResolver.swift */; };
-		A1000001000000000000004F /* UpdateService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004F /* UpdateService.swift */; };
-		A10000010000000000000050 /* UpdatePillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000050 /* UpdatePillView.swift */; };
-		A10000010000000000000051 /* UpdateSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000051 /* UpdateSheet.swift */; };
-		A10000010000000000000043 /* SyncMemoryChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000043 /* SyncMemoryChannel.swift */; };
-		A10000010000000000000044 /* SyncMemoryConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000044 /* SyncMemoryConfig.swift */; };
-		A10000010000000000000047 /* SyncMemoryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000047 /* SyncMemoryCoordinator.swift */; };
-			A10000010000000000000026 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000028 /* KeychainHelper.swift */; };
-			A10000010000000000000027 /* OnboardingContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000029 /* OnboardingContent.swift */; };
-			A10000010000000000000028 /* OnboardingContentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000002A /* OnboardingContentTests.swift */; };
-			A10000010000000000000029 /* OnboardingViewLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000002B /* OnboardingViewLayoutTests.swift */; };
-			A10000010000000000000030 /* DailyMarkdownViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000030 /* DailyMarkdownViewTests.swift */; };
-			DB2772FFED33760F5D742D9B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */; };
+		C9F400816BDCE324EFF86EE3 /* KnowledgeOntologyProjectExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB20595053D3ED4A85FD3189 /* KnowledgeOntologyProjectExporter.swift */; };
+		D5F96550EFC82930419E3280 /* KnowledgeOntologyProjectExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9739E290450DEDA64E9F9F51 /* KnowledgeOntologyProjectExporterTests.swift */; };
+		D733ABE377D5CF118A7A64BE /* KnowledgeOntologyLauncherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4952115E094229FBA28670BF /* KnowledgeOntologyLauncherTests.swift */; };
+		DB2772FFED33760F5D742D9B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -111,6 +116,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		4952115E094229FBA28670BF /* KnowledgeOntologyLauncherTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyLauncherTests.swift; sourceTree = "<group>"; };
+		9739E290450DEDA64E9F9F51 /* KnowledgeOntologyProjectExporterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyProjectExporterTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000001 /* KnowYouApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowYouApp.swift; sourceTree = "<group>"; };
 		A10001010000000000000002 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
 		A10001010000000000000003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -146,23 +153,40 @@
 		A10001010000000000000023 /* CLISummarizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLISummarizer.swift; sourceTree = "<group>"; };
 		A10001010000000000000024 /* SummarizerConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummarizerConfig.swift; sourceTree = "<group>"; };
 		A10001010000000000000025 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		A10001010000000000000026 /* CLISummarizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLISummarizerTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000027 /* SummarizerConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummarizerConfigTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000028 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+		A10001010000000000000029 /* OnboardingContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingContent.swift; sourceTree = "<group>"; };
+		A1000101000000000000002A /* OnboardingContentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingContentTests.swift; sourceTree = "<group>"; };
+		A1000101000000000000002B /* OnboardingViewLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewLayoutTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000030 /* DailyMarkdownViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyMarkdownViewTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000031 /* DiaryEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryEngine.swift; sourceTree = "<group>"; };
+		A10001010000000000000032 /* EngineProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineProbeTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000033 /* EngineProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineProbe.swift; sourceTree = "<group>"; };
 		A10001010000000000000034 /* DiaryEngineSelectorButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryEngineSelectorButton.swift; sourceTree = "<group>"; };
 		A10001010000000000000035 /* DiaryEnginePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryEnginePanel.swift; sourceTree = "<group>"; };
 		A10001010000000000000036 /* APIDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIDetailSheet.swift; sourceTree = "<group>"; };
-		A10001010000000000000041 /* SyncMemoryPathDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryPathDetector.swift; sourceTree = "<group>"; };
 		A10001010000000000000037 /* SettingsMetadataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsMetadataTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000038 /* AppSupportMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSupportMetadata.swift; sourceTree = "<group>"; };
 		A1000101000000000000003A /* ManualDiaryRefreshTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualDiaryRefreshTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000040 /* SyncMemoryPathDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryPathDetectorTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000041 /* SyncMemoryPathDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryPathDetector.swift; sourceTree = "<group>"; };
 		A10001010000000000000042 /* SyncMemoryConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryConfigTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000043 /* SyncMemoryChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryChannel.swift; sourceTree = "<group>"; };
+		A10001010000000000000044 /* SyncMemoryConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryConfig.swift; sourceTree = "<group>"; };
 		A10001010000000000000045 /* SyncMemoryCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryCoordinatorTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000046 /* LaunchAgentManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAgentManagerTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000047 /* SyncMemoryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryCoordinator.swift; sourceTree = "<group>"; };
 		A10001010000000000000048 /* LaunchAgentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAgentManager.swift; sourceTree = "<group>"; };
 		A10001010000000000000049 /* SyncMemoryPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryPanel.swift; sourceTree = "<group>"; };
 		A1000101000000000000004A /* SyncMemoryPanelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryPanelTests.swift; sourceTree = "<group>"; };
 		A1000101000000000000004B /* UpdateChannelResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChannelResolverTests.swift; sourceTree = "<group>"; };
 		A1000101000000000000004C /* UpdateServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateServiceTests.swift; sourceTree = "<group>"; };
+		A1000101000000000000004D /* AppUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdate.swift; sourceTree = "<group>"; };
+		A1000101000000000000004E /* UpdateChannelResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChannelResolver.swift; sourceTree = "<group>"; };
+		A1000101000000000000004F /* UpdateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateService.swift; sourceTree = "<group>"; };
+		A10001010000000000000050 /* UpdatePillView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatePillView.swift; sourceTree = "<group>"; };
+		A10001010000000000000051 /* UpdateSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateSheet.swift; sourceTree = "<group>"; };
 		A10001010000000000000053 /* UpdatePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatePresentationTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000054 /* OnboardingDemoStory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingDemoStory.swift; sourceTree = "<group>"; };
 		A10001010000000000000055 /* OnboardingProgressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingProgressTests.swift; sourceTree = "<group>"; };
@@ -176,6 +200,8 @@
 		A1000101000000000000005D /* EndOfDayReminderAppStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndOfDayReminderAppStateTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000060 /* EndOfDayReminderRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndOfDayReminderRunner.swift; sourceTree = "<group>"; };
 		A10001010000000000000061 /* EndOfDayReminderRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndOfDayReminderRunnerTests.swift; sourceTree = "<group>"; };
+		AB20595053D3ED4A85FD3189 /* KnowledgeOntologyProjectExporter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyProjectExporter.swift; sourceTree = "<group>"; };
+		AC41767E0E95299BB3007A33 /* KnowledgeOntologyLauncher.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyLauncher.swift; sourceTree = "<group>"; };
 		B20001010000000000000001 /* CodexJWTTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexJWTTests.swift; sourceTree = "<group>"; };
 		B20001010000000000000002 /* CodexAuthStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAuthStoreTests.swift; sourceTree = "<group>"; };
 		B20001010000000000000003 /* CodexJWT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexJWT.swift; sourceTree = "<group>"; };
@@ -185,24 +211,8 @@
 		B20001010000000000000007 /* CodexDirectSummarizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexDirectSummarizerTests.swift; sourceTree = "<group>"; };
 		B20001010000000000000008 /* CodexDirectSummarizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexDirectSummarizer.swift; sourceTree = "<group>"; };
 		B20001010000000000000009 /* CloudSummarizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSummarizerTests.swift; sourceTree = "<group>"; };
-		A1000101000000000000004D /* AppUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdate.swift; sourceTree = "<group>"; };
-		A1000101000000000000004E /* UpdateChannelResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChannelResolver.swift; sourceTree = "<group>"; };
-		A1000101000000000000004F /* UpdateService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateService.swift; sourceTree = "<group>"; };
-		A10001010000000000000050 /* UpdatePillView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatePillView.swift; sourceTree = "<group>"; };
-		A10001010000000000000051 /* UpdateSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateSheet.swift; sourceTree = "<group>"; };
-		A10001010000000000000043 /* SyncMemoryChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryChannel.swift; sourceTree = "<group>"; };
-		A10001010000000000000044 /* SyncMemoryConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryConfig.swift; sourceTree = "<group>"; };
-		A10001010000000000000047 /* SyncMemoryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryCoordinator.swift; sourceTree = "<group>"; };
-			A10001010000000000000026 /* CLISummarizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLISummarizerTests.swift; sourceTree = "<group>"; };
-		A10001010000000000000027 /* SummarizerConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummarizerConfigTests.swift; sourceTree = "<group>"; };
-		A10001010000000000000032 /* EngineProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineProbeTests.swift; sourceTree = "<group>"; };
-		A10001010000000000000031 /* DiaryEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryEngine.swift; sourceTree = "<group>"; };
-			A10001010000000000000028 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
-			A10001010000000000000029 /* OnboardingContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingContent.swift; sourceTree = "<group>"; };
-			A1000101000000000000002A /* OnboardingContentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingContentTests.swift; sourceTree = "<group>"; };
-			A1000101000000000000002B /* OnboardingViewLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewLayoutTests.swift; sourceTree = "<group>"; };
-			A10001010000000000000030 /* DailyMarkdownViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyMarkdownViewTests.swift; sourceTree = "<group>"; };
-			CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = KnowYou/Assets.xcassets; sourceTree = "<group>"; };
+		CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = KnowYou/Assets.xcassets; sourceTree = "<group>"; };
+		E7177E38EFF3DA333280EFBA /* KnowledgeOntologyPanel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyPanel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -224,6 +234,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		45F0A963C3E524FB2CB9807B /* KnowledgeOntology */ = {
+			isa = PBXGroup;
+			children = (
+				AB20595053D3ED4A85FD3189 /* KnowledgeOntologyProjectExporter.swift */,
+				AC41767E0E95299BB3007A33 /* KnowledgeOntologyLauncher.swift */,
+			);
+			path = KnowledgeOntology;
+			sourceTree = "<group>";
+		};
 		A10000060000000000000001 = {
 			isa = PBXGroup;
 			children = (
@@ -267,6 +286,7 @@
 				A10000060000000000000008 /* Settings */,
 				A10000060000000000000020 /* Updates */,
 				A1000006000000000000001D /* Onboarding */,
+				D8C86E3E512B54C4B921C658 /* KnowledgeOntology */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -318,7 +338,7 @@
 				A1000101000000000000001A /* BackfillPlannerTests.swift */,
 				A10001010000000000000021 /* DailyAutomationPlannerTests.swift */,
 				A10001010000000000000022 /* NotificationDatabaseReaderTests.swift */,
-					A10001010000000000000026 /* CLISummarizerTests.swift */,
+				A10001010000000000000026 /* CLISummarizerTests.swift */,
 				B20001010000000000000009 /* CloudSummarizerTests.swift */,
 				A10001010000000000000027 /* SummarizerConfigTests.swift */,
 				A10001010000000000000032 /* EngineProbeTests.swift */,
@@ -345,6 +365,8 @@
 				A10001010000000000000055 /* OnboardingProgressTests.swift */,
 				A10001010000000000000056 /* OnboardingReferenceAdvancePolicyTests.swift */,
 				A10001010000000000000030 /* DailyMarkdownViewTests.swift */,
+				9739E290450DEDA64E9F9F51 /* KnowledgeOntologyProjectExporterTests.swift */,
+				4952115E094229FBA28670BF /* KnowledgeOntologyLauncherTests.swift */,
 			);
 			path = KnowYouTests;
 			sourceTree = "<group>";
@@ -385,6 +407,7 @@
 				A10000060000000000000015 /* Storage */,
 				A1000006000000000000001B /* Summary */,
 				A1000006000000000000001F /* Updates */,
+				45F0A963C3E524FB2CB9807B /* KnowledgeOntology */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -520,6 +543,14 @@
 				A1000101000000000000005A /* EndOfDayReminderService.swift */,
 			);
 			path = Reminders;
+			sourceTree = "<group>";
+		};
+		D8C86E3E512B54C4B921C658 /* KnowledgeOntology */ = {
+			isa = PBXGroup;
+			children = (
+				E7177E38EFF3DA333280EFBA /* KnowledgeOntologyPanel.swift */,
+			);
+			path = KnowledgeOntology;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -706,6 +737,9 @@
 				A10000010000000000000054 /* OnboardingDemoStory.swift in Sources */,
 				A10000010000000000000026 /* KeychainHelper.swift in Sources */,
 				A10000010000000000000027 /* OnboardingContent.swift in Sources */,
+				C9F400816BDCE324EFF86EE3 /* KnowledgeOntologyProjectExporter.swift in Sources */,
+				724AA179C88234088E499A5B /* KnowledgeOntologyLauncher.swift in Sources */,
+				5CD500F8D621611083D406AD /* KnowledgeOntologyPanel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -747,6 +781,8 @@
 				A10000010000000000000055 /* OnboardingProgressTests.swift in Sources */,
 				A10000010000000000000056 /* OnboardingReferenceAdvancePolicyTests.swift in Sources */,
 				A10000010000000000000030 /* DailyMarkdownViewTests.swift in Sources */,
+				D5F96550EFC82930419E3280 /* KnowledgeOntologyProjectExporterTests.swift in Sources */,
+				D733ABE377D5CF118A7A64BE /* KnowledgeOntologyLauncherTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -804,7 +840,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGNING_REQUIRED = YES;
-				CODE_SIGN_IDENTITY = "7A344B81C67439EEAB2F1C3243E3297B46287C55";
+				CODE_SIGN_IDENTITY = 7A344B81C67439EEAB2F1C3243E3297B46287C55;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 3;
@@ -812,8 +848,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "KnowYou";
-				INFOPLIST_KEY_CFBundleDisplayName = "KnowYou";
+				INFOPLIST_KEY_CFBundleDisplayName = KnowYou;
 				INFOPLIST_KEY_KYUpdateChannel = direct;
 				INFOPLIST_KEY_KYUpdateMetadataURL = "http://127.0.0.1:8765/Support/update-feed/debug-update.json";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -845,8 +880,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "KnowYou";
-				INFOPLIST_KEY_CFBundleDisplayName = "KnowYou";
+				INFOPLIST_KEY_CFBundleDisplayName = KnowYou;
 				INFOPLIST_KEY_KYUpdateChannel = direct;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -868,7 +902,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGNING_REQUIRED = YES;
-				CODE_SIGN_IDENTITY = "7A344B81C67439EEAB2F1C3243E3297B46287C55";
+				CODE_SIGN_IDENTITY = 7A344B81C67439EEAB2F1C3243E3297B46287C55;
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = GXG64KMCF7;
@@ -889,7 +923,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGNING_REQUIRED = YES;
-				CODE_SIGN_IDENTITY = "7A344B81C67439EEAB2F1C3243E3297B46287C55";
+				CODE_SIGN_IDENTITY = 7A344B81C67439EEAB2F1C3243E3297B46287C55;
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = GXG64KMCF7;

@@ -103,6 +103,7 @@
 		D5F96550EFC82930419E3280 /* KnowledgeOntologyProjectExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9739E290450DEDA64E9F9F51 /* KnowledgeOntologyProjectExporterTests.swift */; };
 		D733ABE377D5CF118A7A64BE /* KnowledgeOntologyLauncherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4952115E094229FBA28670BF /* KnowledgeOntologyLauncherTests.swift */; };
 		DB2772FFED33760F5D742D9B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */; };
+		E10000010000000000000001 /* KnowledgeOntologyPanelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10001010000000000000001 /* KnowledgeOntologyPanelTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -118,6 +119,7 @@
 /* Begin PBXFileReference section */
 		4952115E094229FBA28670BF /* KnowledgeOntologyLauncherTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyLauncherTests.swift; sourceTree = "<group>"; };
 		9739E290450DEDA64E9F9F51 /* KnowledgeOntologyProjectExporterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyProjectExporterTests.swift; sourceTree = "<group>"; };
+		E10001010000000000000001 /* KnowledgeOntologyPanelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyPanelTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000001 /* KnowYouApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowYouApp.swift; sourceTree = "<group>"; };
 		A10001010000000000000002 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
 		A10001010000000000000003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -367,6 +369,7 @@
 				A10001010000000000000030 /* DailyMarkdownViewTests.swift */,
 				9739E290450DEDA64E9F9F51 /* KnowledgeOntologyProjectExporterTests.swift */,
 				4952115E094229FBA28670BF /* KnowledgeOntologyLauncherTests.swift */,
+				E10001010000000000000001 /* KnowledgeOntologyPanelTests.swift */,
 			);
 			path = KnowYouTests;
 			sourceTree = "<group>";
@@ -783,6 +786,7 @@
 				A10000010000000000000030 /* DailyMarkdownViewTests.swift in Sources */,
 				D5F96550EFC82930419E3280 /* KnowledgeOntologyProjectExporterTests.swift in Sources */,
 				D733ABE377D5CF118A7A64BE /* KnowledgeOntologyLauncherTests.swift in Sources */,
+				E10000010000000000000001 /* KnowledgeOntologyPanelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

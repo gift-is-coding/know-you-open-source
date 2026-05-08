@@ -11,57 +11,77 @@ struct KnowledgeOntologyPanel: View {
     @State private var isSyncing = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            header
+        GeometryReader { proxy in
+            VStack(alignment: .leading, spacing: 22) {
+                header
 
-            VStack(alignment: .leading, spacing: 14) {
-                infoRow("Project", projectRoot?.path ?? "KnowYou environment is not ready.")
-                infoRow("llm_wiki", launchTarget.statusDescription)
-                infoRow("Status", statusMessage)
-            }
-            .font(.system(size: 13))
-            .foregroundStyle(.secondary)
-
-            HStack(spacing: 12) {
-                Button {
-                    syncDiaries()
-                } label: {
-                    Label("同步日记到知识本体", systemImage: "arrow.triangle.2.circlepath")
+                VStack(alignment: .leading, spacing: 14) {
+                    infoRow("Project", projectRoot?.path ?? "KnowYou environment is not ready.")
+                    infoRow("llm_wiki", launchTarget.statusDescription)
+                    infoRow("Status", statusMessage)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(isSyncing || sourceVault == nil || projectRoot == nil)
+                .font(.system(size: 13))
+                .foregroundStyle(.white.opacity(0.62))
 
-                Button {
-                    openKnowledgeOntology()
-                } label: {
-                    Label("打开知识本体", systemImage: "point.3.connected.trianglepath.dotted")
-                }
-                .buttonStyle(.bordered)
-                .disabled(projectRoot == nil || launchTarget == .missing)
-            }
-
-            if exportedFileNames.isEmpty == false {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("最近同步")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-
-                    ForEach(exportedFileNames, id: \.self) { fileName in
-                        Label(fileName, systemImage: "doc.plaintext")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                HStack(spacing: 12) {
+                    Button {
+                        syncDiaries()
+                    } label: {
+                        Label("同步日记到知识本体", systemImage: "arrow.triangle.2.circlepath")
                     }
-                }
-            }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isSyncing || sourceVault == nil || projectRoot == nil)
 
-            Spacer()
+                    Button {
+                        openKnowledgeOntology()
+                    } label: {
+                        Label("打开知识本体", systemImage: "point.3.connected.trianglepath.dotted")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(projectRoot == nil || launchTarget == .missing)
+                }
+
+                recentSyncSection
+            }
+            .padding(.horizontal, 32)
+            .padding(.top, 32)
+            .padding(.bottom, 40)
+            .frame(maxWidth: 760, alignment: .topLeading)
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
         }
-        .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.black)
         .foregroundStyle(.white)
         .onAppear {
             syncDiaries()
+        }
+    }
+
+    private var recentPresentation: KnowledgeOntologyRecentExportPresentation {
+        KnowledgeOntologyRecentExportPresentation(exportedFileNames: exportedFileNames)
+    }
+
+    @ViewBuilder
+    private var recentSyncSection: some View {
+        if exportedFileNames.isEmpty == false {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("最近同步")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+
+                ForEach(recentPresentation.visibleFileNames, id: \.self) { fileName in
+                    Label(fileName, systemImage: "doc.plaintext")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.62))
+                }
+
+                if let summaryText = recentPresentation.summaryText {
+                    Text(summaryText)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .padding(.top, 2)
+                }
+            }
         }
     }
 
@@ -78,7 +98,7 @@ struct KnowledgeOntologyPanel: View {
                 .font(.system(size: 28, weight: .semibold))
             Text("复用 llm_wiki 的 sources、wiki、search、graph、lint、review 和 deep research，把 KnowYou 日记作为原始资料输入。")
                 .font(.system(size: 14))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.62))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -121,6 +141,22 @@ struct KnowledgeOntologyPanel: View {
         } catch {
             statusMessage = error.localizedDescription
         }
+    }
+}
+
+struct KnowledgeOntologyRecentExportPresentation {
+    let visibleFileNames: [String]
+    let hiddenCount: Int
+
+    var summaryText: String? {
+        guard hiddenCount > 0 else { return nil }
+        return "还有 \(hiddenCount) 个文件已同步，可在 llm_wiki 的原始资料中查看。"
+    }
+
+    init(exportedFileNames: [String], maxVisibleCount: Int = 8) {
+        let limit = max(0, maxVisibleCount)
+        visibleFileNames = Array(exportedFileNames.prefix(limit))
+        hiddenCount = max(0, exportedFileNames.count - visibleFileNames.count)
     }
 }
 

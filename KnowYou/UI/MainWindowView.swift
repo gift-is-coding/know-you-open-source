@@ -29,78 +29,24 @@ struct MainWindowView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            DateSidebarView(
-                dates: appState.availableDates,
-                selectedDate: appState.selectedDate,
-                isActive: mode == .journal && appState.readerFocus == .dateList,
-                isKnowledgeOntologySelected: mode == .knowledgeOntology,
-                onSelect: { dayKey in
-                    mode = .journal
-                    appState.selectDate(dayKey)
-                },
-                onOpenKnowledgeOntology: {
-                    mode = .knowledgeOntology
-                },
-                onOpenSyncMemory: openSyncMemoryPanel
-            )
-            .navigationSplitViewColumnWidth(min: 180, ideal: 220)
-        } content: {
-            switch mode {
-            case .journal:
-                DailyMarkdownView(
-                    story: appState.selectedStory,
-                    selectedParagraphID: appState.selectedStoryParagraphID,
-                    dayKey: appState.selectedDate,
-                    refreshJob: selectedRefreshJob,
-                    refreshLogNotice: appState.refreshLogNotice(for: appState.selectedDate),
-                    isGenerating: appState.isGeneratingJournal(for: appState.selectedDate),
-                    isActive: appState.readerFocus == .storyParagraphs,
-                    onSelectParagraph: { paragraphID in
-                        appState.focusStoryParagraphs()
-                        appState.selectStoryParagraph(paragraphID)
-                        onStoryParagraphTap?(paragraphID)
-                    },
-                    onFocusStory: {
-                        appState.focusStoryParagraphs()
-                    },
-                    onRefresh: {
-                        Task { @MainActor in
-                            await appState.refreshSelectedDay()
-                        }
-                    },
-                    onTodayFullRefresh: {
-                        Task { @MainActor in
-                            await appState.refreshSelectedDayFullRecovery()
-                        }
-                    },
-                    canFullRefresh: appState.selectedDate != nil && appState.selectedDate != OnboardingDemoStory.demoDayKey,
-                    fullRefreshMenuTitle: appState.selectedDate == ISO8601DayKey.format(Date())
-                        ? "Full Refresh Today (Overwriting)"
-                        : "Full Refresh (Overwriting)"
-                )
-                .onboardingCoachmarkTarget(.storyPanel)
-            case .knowledgeOntology:
-                KnowledgeOntologyPanel(
-                    sourceVault: appState.environment?.vaultURL,
-                    projectRoot: knowledgeOntologyProjectRoot,
-                    developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL(),
-                    bundledHelperAppURL: KnowledgeOntologyLauncher.defaultBundledHelperAppURL()
-                )
-            }
-        } detail: {
-            switch mode {
-            case .journal:
-                StorySourceDetailView(
-                    selectedParagraph: appState.selectedStoryParagraph,
-                    selectedEvents: appState.selectedStorySourceEvents,
-                    allEvents: appState.selectedDayEvents
-                )
-                .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
-                .onboardingCoachmarkTarget(.sourcesPanel)
-            case .knowledgeOntology:
-                KnowledgeOntologyDetailPlaceholder()
-                    .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 380)
+        Group {
+            if mode == .knowledgeOntology {
+                knowledgeOntologyWorkspace
+            } else {
+                NavigationSplitView {
+                    sidebar
+                        .navigationSplitViewColumnWidth(min: 180, ideal: 220)
+                } content: {
+                    journalContent
+                } detail: {
+                    StorySourceDetailView(
+                        selectedParagraph: appState.selectedStoryParagraph,
+                        selectedEvents: appState.selectedStorySourceEvents,
+                        allEvents: appState.selectedDayEvents
+                    )
+                    .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
+                    .onboardingCoachmarkTarget(.sourcesPanel)
+                }
             }
         }
         .frame(minWidth: 1240, minHeight: 720)
@@ -262,6 +208,81 @@ struct MainWindowView: View {
         .onDisappear {
             stopKeyMonitor()
         }
+    }
+
+    private var sidebar: some View {
+        DateSidebarView(
+            dates: appState.availableDates,
+            selectedDate: appState.selectedDate,
+            isActive: mode == .journal && appState.readerFocus == .dateList,
+            isKnowledgeOntologySelected: mode == .knowledgeOntology,
+            onSelect: { dayKey in
+                mode = .journal
+                appState.selectDate(dayKey)
+            },
+            onOpenKnowledgeOntology: {
+                mode = .knowledgeOntology
+            },
+            onOpenSyncMemory: openSyncMemoryPanel
+        )
+    }
+
+    private var journalContent: some View {
+        DailyMarkdownView(
+            story: appState.selectedStory,
+            selectedParagraphID: appState.selectedStoryParagraphID,
+            dayKey: appState.selectedDate,
+            refreshJob: selectedRefreshJob,
+            refreshLogNotice: appState.refreshLogNotice(for: appState.selectedDate),
+            isGenerating: appState.isGeneratingJournal(for: appState.selectedDate),
+            isActive: appState.readerFocus == .storyParagraphs,
+            onSelectParagraph: { paragraphID in
+                appState.focusStoryParagraphs()
+                appState.selectStoryParagraph(paragraphID)
+                onStoryParagraphTap?(paragraphID)
+            },
+            onFocusStory: {
+                appState.focusStoryParagraphs()
+            },
+            onRefresh: {
+                Task { @MainActor in
+                    await appState.refreshSelectedDay()
+                }
+            },
+            onTodayFullRefresh: {
+                Task { @MainActor in
+                    await appState.refreshSelectedDayFullRecovery()
+                }
+            },
+            canFullRefresh: appState.selectedDate != nil && appState.selectedDate != OnboardingDemoStory.demoDayKey,
+            fullRefreshMenuTitle: appState.selectedDate == ISO8601DayKey.format(Date())
+                ? "Full Refresh Today (Overwriting)"
+                : "Full Refresh (Overwriting)"
+        )
+        .onboardingCoachmarkTarget(.storyPanel)
+    }
+
+    private var knowledgeOntologyWorkspace: some View {
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 228)
+
+            Divider()
+
+            KnowledgeOntologyPanel(
+                sourceVault: appState.environment?.vaultURL,
+                projectRoot: knowledgeOntologyProjectRoot,
+                developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL(),
+                bundledHelperAppURL: KnowledgeOntologyLauncher.defaultBundledHelperAppURL()
+            )
+            .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+
+            KnowledgeOntologyDetailPlaceholder()
+                .frame(width: 320)
+        }
+        .background(Color.black)
     }
 
     private var currentEngineTitle: String {

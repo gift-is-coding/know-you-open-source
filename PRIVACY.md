@@ -63,6 +63,7 @@ KnowYou 当前不采集浏览器历史、邮件、云端文档或其他未在产
 KnowYou 可以接入外部总结器来增强日记生成质量，例如：
 
 - OpenAI API
+- Codex Auth
 - Claude Code CLI
 - Codex CLI
 - Gemini CLI
@@ -71,6 +72,8 @@ KnowYou 可以接入外部总结器来增强日记生成质量，例如：
 这些能力是可选增强，不是首次 onboarding 和首次生成故事的前置依赖。
 
 如果你主动配置并启用了第三方总结器，经过隐私过滤后的内容可能会被发送给对应第三方服务，以生成更好的结构化日记。你有责任理解并接受相应第三方服务自己的隐私政策和使用条款。
+
+`Codex Auth` 会复用本机 Codex CLI 的本地登录状态。KnowYou 会从 macOS Keychain 或 `~/.codex/auth.json` 读取 Codex OAuth 凭证，用于刷新登录态并请求 Codex 后端；这些 token 不会写入 KnowYou 的 `UserDefaults`，也不会显示在 UI 或日志中。启用该引擎时，经过隐私过滤后的日记上下文会发送到 ChatGPT/Codex 服务以生成日记。
 
 ## 7. 你的控制权
 
@@ -97,4 +100,3 @@ KnowYou 正在准备 Discord 社区，适合公开讨论产品想法和使用体
 
 - X / Twitter: https://x.com/TianfuW49629
 - Email: cestlouiswu@gmail.com
-

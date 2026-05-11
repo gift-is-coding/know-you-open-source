@@ -43,6 +43,12 @@ For any non-trivial change:
 
 Do not claim a feature is complete, fixed, or passing without fresh command output from the current session.
 
+## Git Push Policy
+
+- Do not automatically push changes to the remote.
+- After local implementation, testing, and commit, stop and let the user test first.
+- Push only after the user explicitly confirms that the local result is ready to publish.
+
 ## Notes
 
 - User instructions override this file.

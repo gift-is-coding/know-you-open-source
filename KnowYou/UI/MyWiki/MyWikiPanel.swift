@@ -173,7 +173,18 @@ struct MyWikiPanel: View {
     }
 
     private var launchTarget: KnowledgeOntologyLaunchTarget {
-        KnowledgeOntologyLauncher.resolveLaunchTarget(
+        switch pipelineTarget {
+        case .bundledHelperApp(let url):
+            return .bundledHelperApp(url)
+        case .developmentSource(let url):
+            return .developmentSource(url)
+        case .missing:
+            return .missing
+        }
+    }
+
+    private var pipelineTarget: MyWikiPipelineTarget {
+        MyWikiPipelineBridge.resolveTarget(
             bundledHelperAppURL: bundledHelperAppURL,
             developmentSourceURL: developmentSourceURL
         )
@@ -226,7 +237,12 @@ struct MyWikiPanel: View {
                 projectRoot: projectRoot
             )
             exportedFileNames = result.exportedFileNames
-            statusMessage = "已整理 \(result.exportedFileNames.count) 篇日记。"
+            do {
+                try MyWikiPipelineBridge().runIngest(target: pipelineTarget, projectRoot: projectRoot)
+                statusMessage = "已整理 \(result.exportedFileNames.count) 篇日记，并连接 My Wiki pipeline。"
+            } catch {
+                statusMessage = "已整理 \(result.exportedFileNames.count) 篇日记；My Wiki pipeline 暂不可用。"
+            }
             loadDashboard()
         } catch {
             statusMessage = error.localizedDescription
@@ -246,7 +262,7 @@ struct MyWikiPanel: View {
         guard let projectRoot else { return }
 
         do {
-            try KnowledgeOntologyLauncher().launch(target: launchTarget, projectRoot: projectRoot)
+            try MyWikiPipelineBridge().openAdvancedWorkspace(target: pipelineTarget, projectRoot: projectRoot)
             statusMessage = "正在打开 My Wiki 高级工作台..."
         } catch {
             statusMessage = error.localizedDescription

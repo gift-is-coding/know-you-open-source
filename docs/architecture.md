@@ -639,31 +639,33 @@ sequenceDiagram
    若某一天在 bootstrap 开始时事件数超过 `50` 条，则该日内部改为按 `50` 条一批串行生成，并在 refresh log 中记录 chunk 进度
 8. bootstrap 完成后恢复 steady-state 自动化；`Demo Day` 继续留在列表底部供用户回看
 
-## 11. 知识本体子系统
+## 11. My Wiki 子系统
 
-当前新增的知识本体能力采用“KnowYou 宿主 + llm_wiki 子系统 + 最薄适配层”的结构。
+My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责是把已经生成的日记 Markdown 整理成更容易阅读和检索的个人 wiki：总结、人物、项目、主题、偏好、待办，以及可追溯到日期的来源。
 
-新增边界：
+当前实现采用“KnowYou 轻量页面 + llm_wiki 后端 pipeline 思路 + 兼容适配层”的结构：
 
-- [KnowledgeOntologyProjectExporter.swift](/Users/wutianfu/Documents/code/know-you-knowledge-ontology/KnowYou/Services/KnowledgeOntology/KnowledgeOntologyProjectExporter.swift) 负责创建 llm_wiki 兼容项目结构，并把 KnowYou 的 `YYYY-MM-DD.md` 导出到 `raw/sources/knowyou-diary-YYYY-MM-DD.md`
-- [KnowledgeOntologyLauncher.swift](/Users/wutianfu/Documents/code/know-you-knowledge-ontology/KnowYou/Services/KnowledgeOntology/KnowledgeOntologyLauncher.swift) 负责选择 bundled helper 或开发源码目录
-- [KnowledgeOntologyPanel.swift](/Users/wutianfu/Documents/code/know-you-knowledge-ontology/KnowYou/UI/KnowledgeOntology/KnowledgeOntologyPanel.swift) 是主窗口内的黑色宿主页
-- `ThirdParty/llm_wiki` 保留原项目的 React / Tauri / Rust 功能，避免重写图谱、搜索、review、deep research 等复杂界面
+- [MyWikiProjectExporter.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiProjectExporter.swift) 创建 My Wiki 项目结构，并把 `YYYY-MM-DD.md` 同步到 `raw/sources/knowyou-diary-YYYY-MM-DD.md`
+- [MyWikiMarkdownStore.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiMarkdownStore.swift) 读取 `wiki/summaries/`、`wiki/people/`、`wiki/projects/`、`wiki/themes/`、`wiki/preferences/`、`wiki/open-loops/`，转成 SwiftUI 首页模型
+- [MyWikiPipelineBridge.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiPipelineBridge.swift) 复用 llm_wiki 的项目发现和启动边界，后续承接 ingest/cache/search/page merge/vector store
+- [MyWikiAgentContextProvider.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiAgentContextProvider.swift) 输出给 Codex、Claude、Cowork 等 agent 使用的最小必要背景摘要
+- [MyWikiPanel.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底轻量首页，优先展示搜索、总结和核心脉络；高级 llm_wiki 工作台只作为开发/高级入口保留
 
 数据流如下：
 
 ```mermaid
 flowchart LR
-    A[KnowYou Vault YYYY-MM-DD.md] --> B[KnowledgeOntologyProjectExporter]
-    B --> C[KnowledgeOntology/KnowYouContext/raw/sources]
-    C --> D[llm_wiki Sources / Review / Graph / Search]
-    E[DateSidebar 知识本体按钮] --> F[KnowledgeOntologyPanel]
-    F --> B
-    F --> G[KnowledgeOntologyLauncher]
-    G --> D
+    A["KnowYou Vault: YYYY-MM-DD.md"] --> B["MyWikiProjectExporter"]
+    B --> C["raw/sources/knowyou-diary-YYYY-MM-DD.md"]
+    C --> D["MyWikiPipelineBridge"]
+    D --> E["wiki summaries / people / projects / themes / preferences / open-loops"]
+    E --> F["MyWikiMarkdownStore"]
+    F --> G["MyWikiPanel"]
+    F --> H["MyWikiAgentContextProvider"]
+    I["左侧栏 My Wiki"] --> G
 ```
 
-第一版只把已经生成的每日 Markdown 交给 llm_wiki。它不会直接导出 SQLite 原始事件，也不会绕过 KnowYou 现有隐私过滤边界。
+第一版只同步 KnowYou 已生成的每日 Markdown，不直接导出未经额外授权的 SQLite 原始事件。用户界面避免暴露内部工程术语，把复杂关系计算、结构化文件和高级工作台留在底层。
 
 ## 12. 当前架构约束
 

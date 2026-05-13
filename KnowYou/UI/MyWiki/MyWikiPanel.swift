@@ -275,13 +275,11 @@ private struct MyWikiSummarySection: View {
     @Binding var selectedEntry: MyWikiEntry?
 
     var body: some View {
-        if entries.isEmpty == false {
-            MyWikiCategorySection(
-                title: MyWikiCategory.summary.displayTitle,
-                entries: entries,
-                selectedEntry: $selectedEntry
-            )
-        }
+        MyWikiCategorySection(
+            title: MyWikiCategory.summary.displayTitle,
+            entries: entries,
+            selectedEntry: $selectedEntry
+        )
     }
 }
 
@@ -291,11 +289,22 @@ private struct MyWikiCategorySection: View {
     @Binding var selectedEntry: MyWikiEntry?
 
     var body: some View {
-        if entries.isEmpty == false {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(title)
-                    .font(.system(size: 18, weight: .semibold))
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 18, weight: .semibold))
 
+            if entries.isEmpty {
+                Text("暂无内容")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.48))
+                    .padding(.horizontal, 14)
+                    .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.04)))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                    )
+            } else {
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: 220), spacing: 12)],
                     alignment: .leading,

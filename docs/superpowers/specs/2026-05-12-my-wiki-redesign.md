@@ -4,14 +4,14 @@
 
 KnowYou 仍然是产品名。`My Wiki` 只是 KnowYou 左侧栏里的一个入口，也是该功能区的页面标题。
 
-用户不应该看到 `知识本体`、`ontology`、`entity`、`concept`、`schema`、`graph database` 这类工程术语。内部可以继续使用结构化 schema 和 markdown/wiki 文件，但 UI 必须使用普通用户能理解的语言。
+用户不应该看到结构化抽取、关系网络、schema 编辑、图数据库这类工程术语。内部可以继续使用结构化 schema 和 markdown/wiki 文件，但 UI 必须使用普通用户能理解的语言。
 
 ## 背景判断
 
-当前 `知识本体` 方案过重，主要问题是：
+当前方案过重，主要问题是：
 
 - 入口名称偏技术，用户不知道它和自己的日记有什么关系。
-- 页面把 llm_wiki 的 graph、review、lint、deep research 等能力直接暴露出来，像开发工具而不是个人产品。
+- 页面把 llm_wiki 的复杂关系图、审核、检查、深度研究等能力直接暴露出来，像开发工具而不是个人产品。
 - 用户真正想要的是被整理后的理解结果：核心内容、更准搜索、总结文字，而不是复杂图谱。
 
 参考 Karpathy 的 LLM Wiki 思路，KnowYou 应该保留“原始资料之上的可读 markdown/wiki 中间层”，但不要继承原项目的复杂用户界面。
@@ -60,8 +60,8 @@ KnowYou 仍然是产品名。`My Wiki` 只是 KnowYou 左侧栏里的一个入�
 以下能力可以保留在底层或开发/高级入口中，但第一版不要作为普通用户主界面：
 
 - 大图谱视图
-- lint/review 工作流
-- deep research 工作流
+- 审核/检查工作流
+- 深度研究工作流
 - schema 编辑器
 - llm_wiki 原始 workspace
 
@@ -162,6 +162,18 @@ KnowYou 侧只做适配层：
 
 这些接口后续可以包装成 MCP tool 或本地 HTTP API。
 
+## 实施落点
+
+当前分支的第一版实现分为五层：
+
+- `MyWikiProjectExporter`：创建 My Wiki 目录、写入 `purpose.md` 与 `schema.md`，同步已生成的日记 Markdown。
+- `MyWikiMarkdownStore`：读取生成后的 wiki 页面，转成首页展示模型。
+- `MyWikiPanel`：提供黑底轻量首页，固定展示搜索、总结、人物、项目、主题、偏好、待办。
+- `MyWikiPipelineBridge`：承接 llm_wiki 的项目发现与 pipeline 入口，后续继续复用 ingest/search/page merge/vector store。
+- `MyWikiAgentContextProvider`：为 Codex、Claude、Cowork 等 agent 输出简短、可追溯来源的背景摘要。
+
+旧内部文件名只作为兼容包装保留，不再作为用户文案或设计概念出现。
+
 ## 隐私边界
 
 - 第一版只导出已经生成的日记 Markdown。
@@ -171,8 +183,8 @@ KnowYou 侧只做适配层：
 
 ## 成功标准
 
-- 左侧栏入口从 `知识本体` 改为 `My Wiki`。
-- 用户进入后看到的是总结、核心脉络和搜索，而不是 graph/review/lint。
+- 左侧栏入口显示为 `My Wiki`。
+- 用户进入后看到的是总结、核心脉络和搜索，而不是复杂开发工具。
 - 后端仍能使用 llm_wiki 的 ingest/cache/search/page merge/vector store。
 - `schema.md` 继续存在，但内容面向 My Wiki 的人物、项目、主题、偏好、待办、总结。
 - 当前已有日记能被同步并整理成 My Wiki 页面。

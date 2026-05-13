@@ -359,17 +359,19 @@ onboarding 的配置约束为：
 - 产品必须展示版权主体信息
 - 仓库必须提供隐私政策、使用条款、社区说明与上线检查清单
 
-## 6.11 知识本体需求
+## 6.11 My Wiki 需求
 
-- 主窗口左侧栏必须提供 `知识本体` 入口
-- 点击 `知识本体` 后，主内容区必须切换到知识本体宿主页，而不是打开旧式 toolbar sheet
-- 知识本体宿主页必须使用黑色背景，与 KnowYou 当前视觉风格保持一致
-- 系统必须能创建 llm_wiki 兼容的项目结构，包括 `schema.md`、`purpose.md`、`wiki/` 与 `raw/sources/`
+- 主窗口左侧栏必须提供 `My Wiki` 入口
+- 点击 `My Wiki` 后，主内容区必须切换到黑色背景的 My Wiki 首页，而不是打开旧式 toolbar sheet
+- My Wiki 首页必须优先展示用户可理解的内容：搜索、总结、人物、项目、主题、偏好、待办
+- 没有生成内容时，首页也必须保留这些核心栏目位置，并用空状态说明下一步是整理日记
+- 系统必须能创建 My Wiki 项目结构，包括 `purpose.md`、`schema.md`、`raw/sources/`、`wiki/summaries/`、`wiki/people/`、`wiki/projects/`、`wiki/themes/`、`wiki/preferences/`、`wiki/open-loops/`
 - 系统必须能把已有 `YYYY-MM-DD.md` 日记同步为 `raw/sources/knowyou-diary-YYYY-MM-DD.md`
 - 重复同步同一天日记必须覆盖稳定文件名，不得生成重复文件
-- 第一版知识本体必须复用 `ThirdParty/llm_wiki` 的原始功能，不得用简化 SwiftUI 图谱替代它的 graph/search/review/deep research
-- KnowYou 必须优先打开 bundled llm_wiki helper；没有 bundled helper 时，允许回退到 `ThirdParty/llm_wiki` 开发源码目录
-- 知识本体第一版只能导出 KnowYou 已生成的每日 Markdown，不得直接导出未经额外授权的 SQLite 原始事件
+- My Wiki 必须继承 `ThirdParty/llm_wiki` 的后端 pipeline 思路，包括 ingest、cache、search、page merge、source traceability 和 vector store；普通用户首页不得直接暴露复杂工作台
+- KnowYou 必须优先连接 bundled llm_wiki helper；没有 bundled helper 时，允许回退到 `ThirdParty/llm_wiki` 开发源码目录
+- 第一版只能导出 KnowYou 已生成的每日 Markdown，不得直接导出未经额外授权的 SQLite 原始事件
+- 系统必须提供本地服务层能力，让 Codex、Claude、Cowork 等 agent 能读取 My Wiki 的最小必要背景摘要
 
 ## 7. 内容体验要求
 

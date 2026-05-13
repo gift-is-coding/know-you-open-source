@@ -2,14 +2,14 @@ import XCTest
 @testable import KnowYou
 
 final class KnowledgeOntologyProjectExporterTests: XCTestCase {
-    func testSyncCreatesLLMWikiProjectAndExportsDiarySources() throws {
+    func testSyncCreatesMyWikiProjectAndExportsDiarySources() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         let vault = root.appending(path: "Vault", directoryHint: .isDirectory)
-        let project = root.appending(path: "KnowledgeOntology/KnowYouContext", directoryHint: .isDirectory)
+        let project = root.appending(path: "MyWiki/KnowYouContext", directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
         try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
-        try "# 今日总结\n\n- 设计知识本体".write(
+        try "# 今日总结\n\n- 设计 My Wiki".write(
             to: vault.appending(path: "2026-05-09.md"),
             atomically: true,
             encoding: .utf8
@@ -31,8 +31,9 @@ final class KnowledgeOntologyProjectExporterTests: XCTestCase {
             "knowyou-diary-2026-05-08.md"
         ])
         XCTAssertTrue(FileManager.default.fileExists(atPath: project.appending(path: "schema.md").path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: project.appending(path: "wiki/entities").path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: project.appending(path: "wiki/concepts").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: project.appending(path: "wiki/people").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: project.appending(path: "wiki/projects").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: project.appending(path: "wiki/themes").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: project.appending(path: "raw/sources").path))
 
         let exported = try String(
@@ -42,13 +43,13 @@ final class KnowledgeOntologyProjectExporterTests: XCTestCase {
         XCTAssertTrue(exported.contains("type: knowyou-diary"))
         XCTAssertTrue(exported.contains("source: KnowYou"))
         XCTAssertTrue(exported.contains("day: 2026-05-09"))
-        XCTAssertTrue(exported.contains("- 设计知识本体"))
+        XCTAssertTrue(exported.contains("- 设计 My Wiki"))
     }
 
     func testSyncOverwritesStableDiarySourceNames() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         let vault = root.appending(path: "Vault", directoryHint: .isDirectory)
-        let project = root.appending(path: "KnowledgeOntology/KnowYouContext", directoryHint: .isDirectory)
+        let project = root.appending(path: "MyWiki/KnowYouContext", directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
         try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)

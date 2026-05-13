@@ -15,7 +15,7 @@ struct DateSidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             Button(action: onOpenKnowledgeOntology) {
-                Label("知识本体", systemImage: "point.3.connected.trianglepath.dotted")
+                Label("My Wiki", systemImage: "point.3.connected.trianglepath.dotted")
                     .font(.system(size: 13, weight: .semibold))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 12)

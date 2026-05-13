@@ -27,7 +27,7 @@ struct KnowledgeOntologyPanel: View {
                     Button {
                         syncDiaries()
                     } label: {
-                        Label("同步日记到知识本体", systemImage: "arrow.triangle.2.circlepath")
+                        Label("整理日记", systemImage: "arrow.triangle.2.circlepath")
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(isSyncing || sourceVault == nil || projectRoot == nil)
@@ -35,7 +35,7 @@ struct KnowledgeOntologyPanel: View {
                     Button {
                         openKnowledgeOntology()
                     } label: {
-                        Label("打开知识本体", systemImage: "point.3.connected.trianglepath.dotted")
+                        Label("打开高级工作台", systemImage: "point.3.connected.trianglepath.dotted")
                     }
                     .buttonStyle(.bordered)
                     .disabled(projectRoot == nil || launchTarget == .missing)
@@ -94,9 +94,9 @@ struct KnowledgeOntologyPanel: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("知识本体", systemImage: "point.3.connected.trianglepath.dotted")
+            Label("My Wiki", systemImage: "point.3.connected.trianglepath.dotted")
                 .font(.system(size: 28, weight: .semibold))
-            Text("复用 llm_wiki 的 sources、wiki、search、graph、lint、review 和 deep research，把 KnowYou 日记作为原始资料输入。")
+            Text("整理你的日记，沉淀最近的人、项目、主题、偏好、待办和总结。")
                 .font(.system(size: 14))
                 .foregroundStyle(.white.opacity(0.62))
                 .fixedSize(horizontal: false, vertical: true)
@@ -126,7 +126,7 @@ struct KnowledgeOntologyPanel: View {
                 projectRoot: projectRoot
             )
             exportedFileNames = result.exportedFileNames
-            statusMessage = "Synced \(result.exportedFileNames.count) diary source file(s)."
+            statusMessage = "已整理 \(result.exportedFileNames.count) 篇日记。"
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -137,7 +137,7 @@ struct KnowledgeOntologyPanel: View {
 
         do {
             try KnowledgeOntologyLauncher().launch(target: launchTarget, projectRoot: projectRoot)
-            statusMessage = "Opening knowledge ontology workspace..."
+            statusMessage = "正在打开 My Wiki 高级工作台..."
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -150,7 +150,7 @@ struct KnowledgeOntologyRecentExportPresentation {
 
     var summaryText: String? {
         guard hiddenCount > 0 else { return nil }
-        return "还有 \(hiddenCount) 个文件已同步，可在 llm_wiki 的原始资料中查看。"
+        return "还有 \(hiddenCount) 个文件已同步，可在 My Wiki 的原始资料中查看。"
     }
 
     init(exportedFileNames: [String], maxVisibleCount: Int = 8) {
@@ -163,11 +163,11 @@ struct KnowledgeOntologyRecentExportPresentation {
 struct KnowledgeOntologyDetailPlaceholder: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("llm_wiki 原功能", systemImage: "network")
+            Label("My Wiki 高级工作台", systemImage: "network")
                 .font(.headline)
                 .foregroundStyle(.white)
 
-            Text("知识本体的图谱、搜索、review、lint、deep research 和 settings 会在复用的 llm_wiki 工作台中运行。KnowYou 负责同步日记资料和启动这个工作台。")
+            Text("KnowYou 会优先展示轻量的 My Wiki 页面。底层仍可复用 llm_wiki 的高级工作台，用于开发、调试和后续 pipeline 验证。")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

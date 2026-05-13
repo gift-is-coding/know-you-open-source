@@ -12,7 +12,17 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
 
         XCTAssertEqual(presentation.visibleFileNames, Array(fileNames.prefix(8)))
         XCTAssertEqual(presentation.hiddenCount, 20)
-        XCTAssertEqual(presentation.summaryText, "还有 20 个文件已同步，可在 llm_wiki 的原始资料中查看。")
+        XCTAssertEqual(presentation.summaryText, "还有 20 个文件已同步，可在 My Wiki 的原始资料中查看。")
+    }
+
+    func testRecentExportSummaryUsesMyWikiLanguage() {
+        let names = (1...28).map { "knowyou-diary-2026-05-\(String(format: "%02d", $0)).md" }
+
+        let presentation = KnowledgeOntologyRecentExportPresentation(exportedFileNames: names)
+
+        XCTAssertEqual(presentation.visibleFileNames.count, 8)
+        XCTAssertEqual(presentation.hiddenCount, 20)
+        XCTAssertEqual(presentation.summaryText, "还有 20 个文件已同步，可在 My Wiki 的原始资料中查看。")
     }
 
     func testRecentExportPresentationShowsAllFilesWhenWithinLimit() {

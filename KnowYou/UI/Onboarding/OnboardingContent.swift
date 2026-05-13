@@ -45,6 +45,16 @@ enum OnboardingRequirement: String, Equatable, Hashable {
     case fullDiskAccess
 }
 
+struct OnboardingPermissionBypassPolicy {
+    static func allowsFullDiskAccessBypass(bundleURL: URL) -> Bool {
+        let components = Set(bundleURL.pathComponents)
+        return components.contains("DerivedData")
+            && components.contains("Build")
+            && components.contains("Products")
+            && components.contains("Debug")
+    }
+}
+
 enum OnboardingEnhancementKind: Equatable {
     case voiceInput
 }

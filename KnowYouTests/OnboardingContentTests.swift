@@ -80,6 +80,16 @@ final class OnboardingContentTests: XCTestCase {
         XCTAssertEqual(content.optionalEnhancement?.helperLinks.map(\.title), ["Typeless", "Shandianshuo"])
     }
 
+    func testFullDiskAccessBypassIsLimitedToDerivedDataDebugBuilds() {
+        let developmentBuildURL = URL(
+            fileURLWithPath: "/Users/me/Library/Developer/Xcode/DerivedData/KnowYou/Build/Products/Debug/KnowYou.app"
+        )
+        let installedAppURL = URL(fileURLWithPath: "/Applications/KnowYou.app")
+
+        XCTAssertTrue(OnboardingPermissionBypassPolicy.allowsFullDiskAccessBypass(bundleURL: developmentBuildURL))
+        XCTAssertFalse(OnboardingPermissionBypassPolicy.allowsFullDiskAccessBypass(bundleURL: installedAppURL))
+    }
+
     func testEnginePromptUsesTheRealButtonInsteadOfEmbeddingTheForm() {
         let content = OnboardingContent.content(for: .enginePrompt)
 

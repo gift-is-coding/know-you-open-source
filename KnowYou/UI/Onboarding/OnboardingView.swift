@@ -58,6 +58,7 @@ struct OnboardingView: View {
     @State private var generationError: String?
     @State private var referenceAdvancePolicy = OnboardingReferenceAdvancePolicy()
     @State private var referenceAdvanceTask: Task<Void, Never>?
+    @State private var didBypassFullDiskAccessForDevelopment = false
 
     init(
         onComplete: @escaping () -> Void,
@@ -147,6 +148,14 @@ struct OnboardingView: View {
 
     private var notificationsAvailable: Bool {
         appState.notificationStatus.isDatabaseAvailable || appState.environment?.notificationReader.isAvailable == true
+    }
+
+    private var allowsFullDiskAccessBypass: Bool {
+        OnboardingPermissionBypassPolicy.allowsFullDiskAccessBypass(bundleURL: Bundle.main.bundleURL)
+    }
+
+    private var permissionsReadyForOnboarding: Bool {
+        notificationsAvailable || didBypassFullDiskAccessForDevelopment
     }
 
     private var reminderAuthorizationStatus: ReminderAuthorizationStatus {
@@ -347,16 +356,25 @@ struct OnboardingView: View {
             EmptyView()
 
         case .permissions:
-            HStack(spacing: 12) {
-                Button("Open Full Disk Access") {
-                    openFullDiskAccess()
-                }
-                .buttonStyle(.borderedProminent)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    Button("Open Full Disk Access") {
+                        openFullDiskAccess()
+                    }
+                    .buttonStyle(.borderedProminent)
 
-                Button(currentContent.primaryCTA) {
-                    recheckPermissionAndAdvanceIfReady()
+                    Button(currentContent.primaryCTA) {
+                        recheckPermissionAndAdvanceIfReady()
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
+
+                if !notificationsAvailable && allowsFullDiskAccessBypass {
+                    Button("Continue in this dev build without Full Disk Access") {
+                        advancePastPermissionsForDevelopment()
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
 
         case .enginePrompt:
@@ -592,10 +610,24 @@ struct OnboardingView: View {
         reconcileVisibleStepWithProgress()
     }
 
+    private func advancePastPermissionsForDevelopment() {
+        guard allowsFullDiskAccessBypass else { return }
+        didBypassFullDiskAccessForDevelopment = true
+        appState.restoreOnboardingProgress(
+            isFullDiskAccessReady: false,
+            isEngineReady: isEngineConfigured,
+            allowsFullDiskAccessBypass: true
+        )
+        if appState.currentOnboardingStep == .enginePrompt {
+            step = .enginePrompt
+        }
+    }
+
     private func reconcileVisibleStepWithProgress() {
         appState.restoreOnboardingProgress(
             isFullDiskAccessReady: notificationsAvailable,
-            isEngineReady: isEngineConfigured
+            isEngineReady: isEngineConfigured,
+            allowsFullDiskAccessBypass: didBypassFullDiskAccessForDevelopment
         )
 
         guard let resolvedStep = appState.currentOnboardingStep else { return }
@@ -618,7 +650,7 @@ struct OnboardingView: View {
             return
         }
 
-        guard notificationsAvailable else {
+        guard permissionsReadyForOnboarding else {
             generationError = "Full Disk Access is still missing. Turn it on so KnowYou can rebuild your notification context."
             generationStarted = false
             return

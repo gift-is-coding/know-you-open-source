@@ -466,27 +466,29 @@ struct OnboardingProgress: Equatable {
 
     func restored(
         isFullDiskAccessReady: Bool,
-        isEngineReady: Bool
+        isEngineReady: Bool,
+        allowsFullDiskAccessBypass: Bool = false
     ) -> OnboardingProgress {
         guard let currentStep else {
             return self
         }
+        let canProceedPastPermissions = isFullDiskAccessReady || allowsFullDiskAccessBypass
 
         switch currentStep {
         case .demoRead, .demoClick, .demoReference, .privacy:
             return self
         case .permissions:
-            if !isFullDiskAccessReady {
+            if !canProceedPastPermissions {
                 return OnboardingProgress(state: .permissionsPending)
             }
             return OnboardingProgress(state: .enginePromptPending)
         case .enginePrompt:
-            if !isFullDiskAccessReady {
+            if !canProceedPastPermissions {
                 return OnboardingProgress(state: .permissionsPending)
             }
             return OnboardingProgress(state: .enginePromptPending)
         case .engineSetup:
-            if !isFullDiskAccessReady {
+            if !canProceedPastPermissions {
                 return OnboardingProgress(state: .permissionsPending)
             }
             if !isEngineReady {
@@ -494,7 +496,7 @@ struct OnboardingProgress: Equatable {
             }
             return OnboardingProgress(state: .firstGenerationInProgress)
         case .generating:
-            if !isFullDiskAccessReady {
+            if !canProceedPastPermissions {
                 return OnboardingProgress(state: .permissionsPending)
             }
             if !isEngineReady {
@@ -1509,13 +1511,15 @@ final class AppState {
         isFullDiskAccessReady: Bool,
         isEngineReady: Bool,
         hasVoiceTool _: Bool = false,
-        hasLaunchAtLogin _: Bool = false
+        hasLaunchAtLogin _: Bool = false,
+        allowsFullDiskAccessBypass: Bool = false
     ) {
         guard !onboardingProgress.isComplete else { return }
         setOnboardingProgress(
             onboardingProgress.restored(
                 isFullDiskAccessReady: isFullDiskAccessReady,
-                isEngineReady: isEngineReady
+                isEngineReady: isEngineReady,
+                allowsFullDiskAccessBypass: allowsFullDiskAccessBypass
             )
         )
     }

@@ -83,6 +83,23 @@ final class OnboardingProgressTests: XCTestCase {
     }
 
     @MainActor
+    func testDevelopmentBypassCanContinuePastPermissionsWithoutFullDiskAccess() {
+        let appState = AppState(bootstrapServices: false, userDefaults: defaults)
+
+        appState.resumeOnboardingStep(.permissions)
+        appState.restoreOnboardingProgress(
+            isFullDiskAccessReady: false,
+            isEngineReady: false,
+            hasVoiceTool: false,
+            hasLaunchAtLogin: false,
+            allowsFullDiskAccessBypass: true
+        )
+
+        XCTAssertEqual(appState.onboardingProgress.state, .enginePromptPending)
+        XCTAssertEqual(appState.currentOnboardingStep, .enginePrompt)
+    }
+
+    @MainActor
     func testReadyPermissionsStillLeadToEnginePromptEvenIfAnEngineIsAlreadyConfigured() {
         let appState = AppState(bootstrapServices: false, userDefaults: defaults)
 

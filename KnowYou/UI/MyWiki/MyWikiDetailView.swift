@@ -14,7 +14,7 @@ struct MyWikiDetailView: View {
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(.white)
 
-                Text(entry.summary.isEmpty ? "暂无摘要。" : entry.summary)
+                Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
                     .font(.system(size: 14))
                     .foregroundStyle(.white.opacity(0.72))
                     .lineSpacing(4)
@@ -22,7 +22,7 @@ struct MyWikiDetailView: View {
 
                 if entry.sourceNames.isEmpty == false {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("来源")
+                        Text("Sources")
                             .font(.headline)
                             .foregroundStyle(.white)
 
@@ -35,11 +35,11 @@ struct MyWikiDetailView: View {
                     .padding(.top, 10)
                 }
             } else {
-                Label("选择一条 My Wiki 内容", systemImage: "sidebar.right")
+                Label("Select a My Wiki item", systemImage: "sidebar.right")
                     .font(.headline)
                     .foregroundStyle(.white)
 
-                Text("这里会显示人物、项目、主题、偏好、待办或总结的详情。")
+                Text("Details for summaries, people, projects, topics, preferences, and follow-ups will appear here.")
                     .font(.system(size: 13))
                     .foregroundStyle(.white.opacity(0.62))
                     .fixedSize(horizontal: false, vertical: true)

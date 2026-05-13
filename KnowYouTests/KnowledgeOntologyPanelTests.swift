@@ -3,12 +3,12 @@ import XCTest
 
 final class KnowledgeOntologyPanelTests: XCTestCase {
     func testMyWikiCategoryLabelsAreUserFacing() {
-        XCTAssertEqual(MyWikiCategory.person.displayTitle, "人物")
-        XCTAssertEqual(MyWikiCategory.project.displayTitle, "项目")
-        XCTAssertEqual(MyWikiCategory.theme.displayTitle, "主题")
-        XCTAssertEqual(MyWikiCategory.preference.displayTitle, "偏好")
-        XCTAssertEqual(MyWikiCategory.openLoop.displayTitle, "待办")
-        XCTAssertEqual(MyWikiCategory.summary.displayTitle, "总结")
+        XCTAssertEqual(MyWikiCategory.person.displayTitle, "People")
+        XCTAssertEqual(MyWikiCategory.project.displayTitle, "Projects")
+        XCTAssertEqual(MyWikiCategory.theme.displayTitle, "Topics")
+        XCTAssertEqual(MyWikiCategory.preference.displayTitle, "Preferences")
+        XCTAssertEqual(MyWikiCategory.openLoop.displayTitle, "Follow-ups")
+        XCTAssertEqual(MyWikiCategory.summary.displayTitle, "Summary")
     }
 
     func testRecentExportPresentationLimitsVisibleFilesAndSummarizesHiddenCount() {
@@ -21,7 +21,7 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
 
         XCTAssertEqual(presentation.visibleFileNames, Array(fileNames.prefix(8)))
         XCTAssertEqual(presentation.hiddenCount, 20)
-        XCTAssertEqual(presentation.summaryText, "还有 20 个文件已同步，可在 My Wiki 的原始资料中查看。")
+        XCTAssertEqual(presentation.summaryText, "20 more files were synced. You can review them in My Wiki sources.")
     }
 
     func testRecentExportSummaryUsesMyWikiLanguage() {
@@ -31,7 +31,7 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
 
         XCTAssertEqual(presentation.visibleFileNames.count, 8)
         XCTAssertEqual(presentation.hiddenCount, 20)
-        XCTAssertEqual(presentation.summaryText, "还有 20 个文件已同步，可在 My Wiki 的原始资料中查看。")
+        XCTAssertEqual(presentation.summaryText, "20 more files were synced. You can review them in My Wiki sources.")
     }
 
     func testRecentExportPresentationShowsAllFilesWhenWithinLimit() {

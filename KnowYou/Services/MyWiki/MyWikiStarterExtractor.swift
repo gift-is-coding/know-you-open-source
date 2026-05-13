@@ -68,23 +68,23 @@ struct MyWikiStarterExtractor {
     private func writeSummary(projectRoot: URL, sources: [DiarySource]) throws -> Int {
         let latest = sources.prefix(7)
         let highlights = latest.flatMap { source in
-            source.extractHighlights(limit: 2).map { "- \(source.day)：\($0)" }
+            source.extractHighlights(limit: 2).map { "- \(source.day): \($0)" }
         }
         let body = """
-        # 最近日记总结
+        # Recent Journal Summary
 
-        已整理 \(sources.count) 篇 KnowYou 日记，最近日期是 \(sources.first?.day ?? "未知日期")。
+        KnowYou organized \(sources.count) journal files. The latest source date is \(sources.first?.day ?? "unknown").
 
-        ## 最近线索
+        ## Recent Signals
 
-        \(highlights.isEmpty ? "- 暂时没有提取到稳定线索。" : highlights.joined(separator: "\n"))
+        \(highlights.isEmpty ? "- No stable signals were found yet." : highlights.joined(separator: "\n"))
         """
 
         try writePage(
             projectRoot: projectRoot,
             relativePath: "wiki/summaries/recent-diary-summary.md",
             type: "summary",
-            title: "最近日记总结",
+            title: "Recent Journal Summary",
             sources: latest.map(\.fileName),
             body: body
         )
@@ -107,7 +107,7 @@ struct MyWikiStarterExtractor {
             let body = """
             # \(candidate.title)
 
-            ## 最近状态
+            ## Recent Status
 
             \(matches.bullets(limit: 5))
             """
@@ -128,10 +128,10 @@ struct MyWikiStarterExtractor {
 
     private func writeThemes(projectRoot: URL, sources: [DiarySource]) throws -> Int {
         let candidates = [
-            Candidate(title: "产品轻量化", slug: "product-simplification", keywords: ["轻量", "太重", "用户", "交互", "困惑"]),
-            Candidate(title: "AI Agent 协作", slug: "ai-agent-collaboration", keywords: ["agent", "codex", "claude", "cowork"]),
-            Candidate(title: "搜索与总结", slug: "search-and-summary", keywords: ["搜索", "总结", "检索", "准确"]),
-            Candidate(title: "本地隐私边界", slug: "local-privacy", keywords: ["隐私", "本地", "权限", "full disk access"])
+            Candidate(title: "Product Simplicity", slug: "product-simplification", keywords: ["轻量", "太重", "用户", "交互", "困惑"]),
+            Candidate(title: "AI Agent Collaboration", slug: "ai-agent-collaboration", keywords: ["agent", "codex", "claude", "cowork"]),
+            Candidate(title: "Search and Summaries", slug: "search-and-summary", keywords: ["搜索", "总结", "检索", "准确"]),
+            Candidate(title: "Local Privacy Boundaries", slug: "local-privacy", keywords: ["隐私", "本地", "权限", "full disk access"])
         ]
 
         var written = 0
@@ -142,7 +142,7 @@ struct MyWikiStarterExtractor {
             let body = """
             # \(candidate.title)
 
-            ## 最近线索
+            ## Recent Signals
 
             \(matches.bullets(limit: 5))
             """
@@ -164,7 +164,7 @@ struct MyWikiStarterExtractor {
     private func writePreferences(projectRoot: URL, sources: [DiarySource]) throws -> Int {
         let lines = sources.flatMap { source in
             source.lines(matching: ["我觉得", "我希望", "不要", "不需要", "应该", "更好", "太重", "轻量", "复用"])
-                .map { "- \(source.day)：\($0)" }
+                .map { "- \(source.day): \($0)" }
         }
         guard lines.isEmpty == false else { return 0 }
 
@@ -172,9 +172,9 @@ struct MyWikiStarterExtractor {
             source.containsAny(["我觉得", "我希望", "不要", "不需要", "应该", "更好", "太重", "轻量", "复用"])
         }
         let body = """
-        # 最近表达的偏好
+        # Recent Preferences
 
-        ## 可观察偏好
+        ## Observable Preferences
 
         \(lines.prefix(10).joined(separator: "\n"))
         """
@@ -183,7 +183,7 @@ struct MyWikiStarterExtractor {
             projectRoot: projectRoot,
             relativePath: "wiki/preferences/recent-preferences.md",
             type: "preference",
-            title: "最近表达的偏好",
+            title: "Recent Preferences",
             sources: matchedSources.map(\.fileName),
             body: body
         )
@@ -193,7 +193,7 @@ struct MyWikiStarterExtractor {
     private func writeOpenLoops(projectRoot: URL, sources: [DiarySource]) throws -> Int {
         let lines = sources.flatMap { source in
             source.lines(matching: ["- [ ]", "待办", "继续", "需要", "跟进", "确认", "测试", "完成", "follow up", "to follow up"])
-                .map { "- \(source.day)：\($0)" }
+                .map { "- \(source.day): \($0)" }
         }
         guard lines.isEmpty == false else { return 0 }
 
@@ -201,9 +201,9 @@ struct MyWikiStarterExtractor {
             source.containsAny(["- [ ]", "待办", "继续", "需要", "跟进", "确认", "测试", "完成", "follow up", "to follow up"])
         }
         let body = """
-        # 需要继续跟进
+        # Follow-ups
 
-        ## 待办和未闭环事项
+        ## Open Items
 
         \(lines.prefix(12).joined(separator: "\n"))
         """
@@ -212,7 +212,7 @@ struct MyWikiStarterExtractor {
             projectRoot: projectRoot,
             relativePath: "wiki/open-loops/recent-open-loops.md",
             type: "open-loop",
-            title: "需要继续跟进",
+            title: "Follow-ups",
             sources: matchedSources.map(\.fileName),
             body: body
         )
@@ -223,31 +223,31 @@ struct MyWikiStarterExtractor {
         let index = """
         # My Wiki Index
 
-        ## 总结
+        ## Summary
 
-        - [[recent-diary-summary|最近日记总结]]
+        - [[recent-diary-summary|Recent Journal Summary]]
 
-        ## 项目
+        ## Projects
 
         - [[knowyou|KnowYou]]
         - [[my-wiki|My Wiki]]
         - [[codex|Codex]]
         - [[claude-cowork|Claude / Cowork]]
 
-        ## 主题
+        ## Topics
 
-        - [[product-simplification|产品轻量化]]
-        - [[ai-agent-collaboration|AI Agent 协作]]
-        - [[search-and-summary|搜索与总结]]
-        - [[local-privacy|本地隐私边界]]
+        - [[product-simplification|Product Simplicity]]
+        - [[ai-agent-collaboration|AI Agent Collaboration]]
+        - [[search-and-summary|Search and Summaries]]
+        - [[local-privacy|Local Privacy Boundaries]]
 
-        ## 偏好
+        ## Preferences
 
-        - [[recent-preferences|最近表达的偏好]]
+        - [[recent-preferences|Recent Preferences]]
 
-        ## 待办
+        ## Follow-ups
 
-        - [[recent-open-loops|需要继续跟进]]
+        - [[recent-open-loops|Follow-ups]]
         """
 
         try index.write(
@@ -259,7 +259,7 @@ struct MyWikiStarterExtractor {
 
     private func appendLog(projectRoot: URL, fileCount: Int, sourceCount: Int) throws {
         let logURL = projectRoot.appending(path: "wiki/log.md")
-        let line = "- \(Date().formatted(date: .numeric, time: .shortened))：从 \(sourceCount) 篇日记生成 \(fileCount) 个 My Wiki 起始页面。\n"
+        let line = "- \(Date().formatted(date: .numeric, time: .shortened)): Generated \(fileCount) starter pages from \(sourceCount) journal files.\n"
         if fileManager.fileExists(atPath: logURL.path) {
             let handle = try FileHandle(forWritingTo: logURL)
             try handle.seekToEnd()
@@ -355,8 +355,8 @@ private extension Array where Element == DiarySource {
 
     func bullets(limit: Int) -> String {
         let lines = flatMap { source in
-            source.extractHighlights(limit: 2).map { "- \(source.day)：\($0)" }
+            source.extractHighlights(limit: 2).map { "- \(source.day): \($0)" }
         }
-        return lines.isEmpty ? "- 暂时没有提取到稳定线索。" : lines.prefix(limit).joined(separator: "\n")
+        return lines.isEmpty ? "- No stable signals were found yet." : lines.prefix(limit).joined(separator: "\n")
     }
 }

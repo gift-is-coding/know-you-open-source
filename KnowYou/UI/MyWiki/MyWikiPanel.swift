@@ -1,16 +1,17 @@
 import SwiftUI
+import AppKit
 
 struct MyWikiPanel: View {
     let sourceVault: URL?
     let projectRoot: URL?
     let developmentSourceURL: URL
     let bundledHelperAppURL: URL?
+    @Binding var selectedEntry: MyWikiEntry?
 
     @State private var query = ""
     @State private var statusMessage = "Ready"
     @State private var snapshot = MyWikiDashboardSnapshot.empty
     @State private var exportedFileNames: [String] = []
-    @State private var selectedEntry: MyWikiEntry?
     @State private var isSyncing = false
 
     var body: some View {
@@ -80,7 +81,7 @@ struct MyWikiPanel: View {
                 Label("My Wiki", systemImage: "point.3.connected.trianglepath.dotted")
                     .font(.system(size: 28, weight: .semibold))
 
-                Text("整理你的日记，看到最近的人、项目、主题、偏好、待办和总结。")
+                Text("Turn your journals into summaries, people, projects, topics, preferences, and follow-ups.")
                     .font(.system(size: 14))
                     .foregroundStyle(.white.opacity(0.62))
                     .fixedSize(horizontal: false, vertical: true)
@@ -91,7 +92,7 @@ struct MyWikiPanel: View {
             Button {
                 syncDiaries()
             } label: {
-                Label("整理日记", systemImage: "arrow.triangle.2.circlepath")
+                Label("Organize Journals", systemImage: "arrow.triangle.2.circlepath")
             }
             .buttonStyle(.borderedProminent)
             .disabled(isSyncing || sourceVault == nil || projectRoot == nil)
@@ -99,7 +100,7 @@ struct MyWikiPanel: View {
     }
 
     private var searchField: some View {
-        TextField("问问你的 My Wiki...", text: $query)
+        TextField("Search or ask My Wiki...", text: $query)
             .textFieldStyle(.plain)
             .font(.system(size: 15))
             .padding(.horizontal, 14)
@@ -116,26 +117,26 @@ struct MyWikiPanel: View {
 
     private var statusBar: some View {
         HStack(spacing: 14) {
-            infoPill("Project", projectRoot == nil ? "KnowYou environment is not ready." : "本地 My Wiki 项目")
+            infoPill("Project", projectRoot == nil ? "KnowYou environment is not ready." : "Local My Wiki project")
             infoPill("Status", statusMessage)
 
             Button {
-                openAdvancedWorkspace()
+                openProjectFolder()
             } label: {
-                Label("高级工作台", systemImage: "hammer")
+                Label("Open Project", systemImage: "folder")
             }
             .buttonStyle(.bordered)
-            .disabled(projectRoot == nil || launchTarget == .missing)
+            .disabled(projectRoot == nil)
         }
         .font(.system(size: 12))
     }
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("还没有生成 My Wiki 内容")
+            Text("No My Wiki pages yet")
                 .font(.headline)
                 .foregroundStyle(.white)
-            Text("先整理日记，KnowYou 会把原始资料写入 My Wiki 项目；后续 pipeline 会把它们整理成人物、项目、主题、偏好、待办和总结。")
+            Text("Organize your journals to create readable summaries, topics, projects, preferences, and follow-ups from your existing diary files.")
                 .font(.system(size: 13))
                 .foregroundStyle(.white.opacity(0.62))
                 .fixedSize(horizontal: false, vertical: true)
@@ -152,7 +153,7 @@ struct MyWikiPanel: View {
     private var recentSyncSection: some View {
         if exportedFileNames.isEmpty == false {
             VStack(alignment: .leading, spacing: 8) {
-                Text("最近整理")
+                Text("Recently organized")
                     .font(.headline)
                     .foregroundStyle(.white)
 
@@ -169,17 +170,6 @@ struct MyWikiPanel: View {
                         .padding(.top, 2)
                 }
             }
-        }
-    }
-
-    private var launchTarget: KnowledgeOntologyLaunchTarget {
-        switch pipelineTarget {
-        case .bundledHelperApp(let url):
-            return .bundledHelperApp(url)
-        case .developmentSource(let url):
-            return .developmentSource(url)
-        case .missing:
-            return .missing
         }
     }
 
@@ -239,9 +229,13 @@ struct MyWikiPanel: View {
             exportedFileNames = result.exportedFileNames
             do {
                 try MyWikiPipelineBridge().runIngest(target: pipelineTarget, projectRoot: projectRoot)
-                statusMessage = "已整理 \(result.exportedFileNames.count) 篇日记，并连接 My Wiki pipeline。"
+                if pipelineTarget == .missing {
+                    statusMessage = "Organized \(result.exportedFileNames.count) journals and generated starter pages. The full pipeline is not available yet."
+                } else {
+                    statusMessage = "Organized \(result.exportedFileNames.count) journals and refreshed My Wiki pages."
+                }
             } catch {
-                statusMessage = "已整理 \(result.exportedFileNames.count) 篇日记；My Wiki pipeline 暂不可用。"
+                statusMessage = "Organized \(result.exportedFileNames.count) journals; \(error.localizedDescription)"
             }
             loadDashboard()
         } catch {
@@ -258,15 +252,10 @@ struct MyWikiPanel: View {
         }
     }
 
-    private func openAdvancedWorkspace() {
+    private func openProjectFolder() {
         guard let projectRoot else { return }
-
-        do {
-            try MyWikiPipelineBridge().openAdvancedWorkspace(target: pipelineTarget, projectRoot: projectRoot)
-            statusMessage = "正在打开 My Wiki 高级工作台..."
-        } catch {
-            statusMessage = error.localizedDescription
-        }
+        NSWorkspace.shared.open(projectRoot)
+        statusMessage = "Opened the My Wiki project folder."
     }
 }
 
@@ -294,7 +283,7 @@ private struct MyWikiCategorySection: View {
                 .font(.system(size: 18, weight: .semibold))
 
             if entries.isEmpty {
-                Text("暂无内容")
+                Text("No items yet")
                     .font(.system(size: 13))
                     .foregroundStyle(.white.opacity(0.48))
                     .padding(.horizontal, 14)
@@ -320,7 +309,7 @@ private struct MyWikiCategorySection: View {
                                     .foregroundStyle(.white)
                                     .lineLimit(1)
 
-                                Text(entry.summary.isEmpty ? "暂无摘要。" : entry.summary)
+                                Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
                                     .font(.system(size: 12))
                                     .foregroundStyle(.white.opacity(0.62))
                                     .lineLimit(3)

@@ -38,9 +38,9 @@ final class MyWikiStarterExtractorTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appending(path: "wiki/open-loops/recent-open-loops.md").path))
 
         let snapshot = try MyWikiMarkdownStore().loadDashboard(projectRoot: root)
-        XCTAssertEqual(snapshot.summaries.first?.title, "最近日记总结")
+        XCTAssertEqual(snapshot.summaries.first?.title, "Recent Journal Summary")
         XCTAssertTrue(snapshot.projects.map(\.title).contains("KnowYou"))
-        XCTAssertTrue(snapshot.themes.map(\.title).contains("产品轻量化"))
+        XCTAssertTrue(snapshot.themes.map(\.title).contains("Product Simplicity"))
         XCTAssertEqual(snapshot.preferences.first?.sourceNames, ["knowyou-diary-2026-05-13.md"])
         XCTAssertTrue(snapshot.openLoops.first?.summary.contains("继续用 GUI 测试") == true)
     }

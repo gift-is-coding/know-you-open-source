@@ -185,8 +185,10 @@ KnowYou 侧只做适配层：
 ## 成功标准
 
 - 左侧栏入口显示为 `My Wiki`。
-- 用户进入后看到的是总结、核心脉络和搜索，而不是复杂开发工具。
+- 用户进入后看到的是总结、核心脉络和搜索，而不是复杂开发工具；面向用户的按钮、栏目和状态文案使用英文。
+- 用户点击条目后，右侧详情栏必须显示对应内容，不能停留在静态说明。
 - 后端仍能使用 llm_wiki 的 ingest/cache/search/page merge/vector store。
+- 即使 llm_wiki helper 或开发源码暂不可用，`Organize Journals` 也必须先基于已同步日记生成 starter pages。
 - `schema.md` 继续存在，但内容面向 My Wiki 的人物、项目、主题、偏好、待办、总结。
 - 当前已有日记能被同步并整理成 My Wiki 页面。
 - Codex/Claude 类 agent 可以读取 My Wiki 的简短上下文。

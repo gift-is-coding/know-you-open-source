@@ -364,12 +364,15 @@ onboarding 的配置约束为：
 - 主窗口左侧栏必须提供 `My Wiki` 入口
 - 点击 `My Wiki` 后，主内容区必须切换到黑色背景的 My Wiki 首页，而不是打开旧式 toolbar sheet
 - My Wiki 首页必须优先展示用户可理解的内容：搜索、总结、人物、项目、主题、偏好、待办
+- 面向用户的 My Wiki 控件、按钮和栏目文案必须使用英文，例如 `Organize Journals`、`Summary`、`Topics`、`Follow-ups`
+- 点击 My Wiki 条目后，右侧详情栏必须显示该条目的标题、分类、摘要和来源；不得停留在静态 placeholder
 - 没有生成内容时，首页也必须保留这些核心栏目位置，并用空状态说明下一步是整理日记
 - 系统必须能创建 My Wiki 项目结构，包括 `purpose.md`、`schema.md`、`raw/sources/`、`wiki/summaries/`、`wiki/people/`、`wiki/projects/`、`wiki/themes/`、`wiki/preferences/`、`wiki/open-loops/`
 - 系统必须能把已有 `YYYY-MM-DD.md` 日记同步为 `raw/sources/knowyou-diary-YYYY-MM-DD.md`
 - 重复同步同一天日记必须覆盖稳定文件名，不得生成重复文件
 - My Wiki 必须继承 `ThirdParty/llm_wiki` 的后端 pipeline 思路，包括 ingest、cache、search、page merge、source traceability 和 vector store；普通用户首页不得直接暴露复杂工作台
-- 在完整 LLM ingest 结果尚未生成前，My Wiki 必须能基于已同步日记生成可读起始页，让总结、项目、主题、偏好和待办不保持空白
+- 在完整 LLM ingest 结果尚未生成前，My Wiki 必须能基于已同步日记生成可读起始页，让 Summary、Projects、Topics、Preferences 和 Follow-ups 不保持空白
+- 即使 bundled helper 和 `ThirdParty/llm_wiki` 开发源码暂不可用，点击整理也必须生成 starter pages，并用状态文案解释完整 pipeline 暂不可用
 - KnowYou 必须优先连接 bundled llm_wiki helper；没有 bundled helper 时，允许回退到 `ThirdParty/llm_wiki` 开发源码目录
 - 第一版只能导出 KnowYou 已生成的每日 Markdown，不得直接导出未经额外授权的 SQLite 原始事件
 - 系统必须提供本地服务层能力，让 Codex、Claude、Cowork 等 agent 能读取 My Wiki 的最小必要背景摘要

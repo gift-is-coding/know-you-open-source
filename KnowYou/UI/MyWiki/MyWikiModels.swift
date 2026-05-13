@@ -39,17 +39,17 @@ extension MyWikiCategory {
     var displayTitle: String {
         switch self {
         case .summary:
-            return "总结"
+            return "Summary"
         case .person:
-            return "人物"
+            return "People"
         case .project:
-            return "项目"
+            return "Projects"
         case .theme:
-            return "主题"
+            return "Topics"
         case .preference:
-            return "偏好"
+            return "Preferences"
         case .openLoop:
-            return "待办"
+            return "Follow-ups"
         }
     }
 }

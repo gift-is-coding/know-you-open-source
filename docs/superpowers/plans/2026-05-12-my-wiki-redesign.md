@@ -878,6 +878,24 @@ git status --short --branch
 
 ---
 
+## 任务 9: 用户测试反馈后的轻量化修正
+
+**背景：** 用户认可 My Wiki 的方向，但指出当前版本仍有四个问题：界面文案需要面向海外市场使用英文；按钮点击后缺少可见反馈；`高级工作台` 概念不清；右侧详情栏没有随条目点击变化。
+
+**调整：**
+- My Wiki 主界面的按钮、栏目、状态、空状态和详情栏文案改为英文。
+- 栏目命名使用 `Summary`、`People`、`Projects`、`Topics`、`Preferences`、`Follow-ups`，避免 ontology/entity/concept 这类技术词。
+- 删除普通用户主界面的 `高级工作台` 按钮，替换为更明确的 `Open Project`。
+- 将选中的 My Wiki 条目状态提升到主窗口，让左侧条目点击可以驱动右侧详情栏。
+- `MyWikiPipelineBridge.runIngest` 在 helper 和开发源码都不可用时，也先运行 `MyWikiStarterExtractor`，保证点击 `Organize Journals` 后能生成可读 starter pages。
+
+**验证：**
+- 先写失败测试覆盖英文栏目和 missing pipeline fallback，再实现。
+- 定向运行 `KnowledgeOntologyPanelTests`、`MyWikiPipelineBridgeTests`、`MyWikiStarterExtractorTests`。
+- 最后仍需运行全量 `xcodebuild test`、`xcodebuild build`，并用 GUI 检查 My Wiki 页面。
+
+---
+
 ## 自查
 
 - 覆盖了 spec 中的命名边界：KnowYou 是产品名，`My Wiki` 是侧边栏入口和功能区。

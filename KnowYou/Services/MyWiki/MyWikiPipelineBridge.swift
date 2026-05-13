@@ -59,7 +59,7 @@ struct MyWikiPipelineBridge {
             )
             try MyWikiStarterExtractor().materialize(projectRoot: projectRoot)
         case .missing:
-            throw MyWikiPipelineBridgeError.missingPipeline
+            try MyWikiStarterExtractor().materialize(projectRoot: projectRoot)
         }
     }
 

@@ -647,10 +647,10 @@ My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责
 
 - [MyWikiProjectExporter.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiProjectExporter.swift) 创建 My Wiki 项目结构，并把 `YYYY-MM-DD.md` 同步到 `raw/sources/knowyou-diary-YYYY-MM-DD.md`
 - [MyWikiMarkdownStore.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiMarkdownStore.swift) 读取 `wiki/summaries/`、`wiki/people/`、`wiki/projects/`、`wiki/themes/`、`wiki/preferences/`、`wiki/open-loops/`，转成 SwiftUI 首页模型
-- [MyWikiPipelineBridge.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiPipelineBridge.swift) 复用 llm_wiki 的项目发现和启动边界，后续承接 ingest/cache/search/page merge/vector store
-- [MyWikiStarterExtractor.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiStarterExtractor.swift) 在完整 LLM ingest 接管前，从已同步日记生成可读起始页，确保已有日记能立即形成总结、项目、主题、偏好和待办
+- [MyWikiPipelineBridge.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiPipelineBridge.swift) 复用 llm_wiki 的项目发现和启动边界；如果 helper 或开发源码暂不可用，也必须触发 starter extractor，避免用户点击整理后看不到内容
+- [MyWikiStarterExtractor.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiStarterExtractor.swift) 在完整 LLM ingest 接管前，从已同步日记生成可读起始页，确保已有日记能立即形成 Summary、Projects、Topics、Preferences 和 Follow-ups
 - [MyWikiAgentContextProvider.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiAgentContextProvider.swift) 输出给 Codex、Claude、Cowork 等 agent 使用的最小必要背景摘要
-- [MyWikiPanel.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底轻量首页，优先展示搜索、总结和核心脉络；高级 llm_wiki 工作台只作为开发/高级入口保留
+- [MyWikiPanel.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底轻量首页，优先展示搜索、总结和核心脉络；面向用户的控件、按钮和栏目文案使用英文
 
 数据流如下：
 
@@ -667,7 +667,7 @@ flowchart LR
     I["左侧栏 My Wiki"] --> G
 ```
 
-第一版只同步 KnowYou 已生成的每日 Markdown，不直接导出未经额外授权的 SQLite 原始事件。用户界面避免暴露内部工程术语，把复杂关系计算、结构化文件和高级工作台留在底层。
+第一版只同步 KnowYou 已生成的每日 Markdown，不直接导出未经额外授权的 SQLite 原始事件。用户界面避免暴露内部工程术语，把复杂关系计算、结构化文件和 llm_wiki 开发入口留在底层；主界面只保留 `Organize Journals`、`Open Project` 和可点击条目的详情联动。
 
 ## 12. 当前架构约束
 

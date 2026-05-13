@@ -14,6 +14,7 @@ struct MainWindowView: View {
     @State private var apiConfigDraft = SummarizerConfig.load()
     @State private var isTestingAPIConnection = false
     @State private var mode: MainWindowMode = .journal
+    @State private var selectedMyWikiEntry: MyWikiEntry?
     let showsOnboardingEngineButton: Bool
     let onOpenEngineSetup: (() -> Void)?
     let onStoryParagraphTap: ((String) -> Void)?
@@ -273,13 +274,14 @@ struct MainWindowView: View {
                 sourceVault: appState.environment?.vaultURL,
                 projectRoot: knowledgeOntologyProjectRoot,
                 developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL(),
-                bundledHelperAppURL: KnowledgeOntologyLauncher.defaultBundledHelperAppURL()
+                bundledHelperAppURL: KnowledgeOntologyLauncher.defaultBundledHelperAppURL(),
+                selectedEntry: $selectedMyWikiEntry
             )
             .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
 
-            KnowledgeOntologyDetailPlaceholder()
+            MyWikiDetailView(entry: selectedMyWikiEntry)
                 .frame(width: 320)
         }
         .background(Color.black)

@@ -170,6 +170,7 @@ KnowYou 侧只做适配层：
 - `MyWikiMarkdownStore`：读取生成后的 wiki 页面，转成首页展示模型。
 - `MyWikiPanel`：提供黑底轻量首页，固定展示搜索、总结、人物、项目、主题、偏好、待办。
 - `MyWikiPipelineBridge`：承接 llm_wiki 的项目发现与 pipeline 入口，后续继续复用 ingest/search/page merge/vector store。
+- `MyWikiStarterExtractor`：在完整 LLM ingest 接管前，从已同步日记生成可读起始页，保证已有日记可以立即进入总结、项目、主题、偏好和待办。
 - `MyWikiAgentContextProvider`：为 Codex、Claude、Cowork 等 agent 输出简短、可追溯来源的背景摘要。
 
 旧内部文件名只作为兼容包装保留，不再作为用户文案或设计概念出现。

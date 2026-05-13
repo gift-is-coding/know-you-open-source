@@ -369,6 +369,7 @@ onboarding 的配置约束为：
 - 系统必须能把已有 `YYYY-MM-DD.md` 日记同步为 `raw/sources/knowyou-diary-YYYY-MM-DD.md`
 - 重复同步同一天日记必须覆盖稳定文件名，不得生成重复文件
 - My Wiki 必须继承 `ThirdParty/llm_wiki` 的后端 pipeline 思路，包括 ingest、cache、search、page merge、source traceability 和 vector store；普通用户首页不得直接暴露复杂工作台
+- 在完整 LLM ingest 结果尚未生成前，My Wiki 必须能基于已同步日记生成可读起始页，让总结、项目、主题、偏好和待办不保持空白
 - KnowYou 必须优先连接 bundled llm_wiki helper；没有 bundled helper 时，允许回退到 `ThirdParty/llm_wiki` 开发源码目录
 - 第一版只能导出 KnowYou 已生成的每日 Markdown，不得直接导出未经额外授权的 SQLite 原始事件
 - 系统必须提供本地服务层能力，让 Codex、Claude、Cowork 等 agent 能读取 My Wiki 的最小必要背景摘要

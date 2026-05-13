@@ -116,7 +116,7 @@ struct MyWikiPanel: View {
 
     private var statusBar: some View {
         HStack(spacing: 14) {
-            infoPill("Project", projectRoot?.path ?? "KnowYou environment is not ready.")
+            infoPill("Project", projectRoot == nil ? "KnowYou environment is not ready." : "本地 My Wiki 项目")
             infoPill("Status", statusMessage)
 
             Button {

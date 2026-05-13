@@ -57,6 +57,7 @@ struct MyWikiPipelineBridge {
                 at: projectRoot.appending(path: ".llm-wiki", directoryHint: .isDirectory),
                 withIntermediateDirectories: true
             )
+            try MyWikiStarterExtractor().materialize(projectRoot: projectRoot)
         case .missing:
             throw MyWikiPipelineBridgeError.missingPipeline
         }

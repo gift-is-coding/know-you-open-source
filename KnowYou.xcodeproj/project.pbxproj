@@ -19,6 +19,8 @@
 		830000010000000000000008 /* MyWikiPipelineBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830001010000000000000008 /* MyWikiPipelineBridge.swift */; };
 		830000010000000000000009 /* MyWikiAgentContextProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830001010000000000000009 /* MyWikiAgentContextProviderTests.swift */; };
 		83000001000000000000000A /* MyWikiAgentContextProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83000101000000000000000A /* MyWikiAgentContextProvider.swift */; };
+		83000001000000000000000B /* MyWikiStarterExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83000101000000000000000B /* MyWikiStarterExtractor.swift */; };
+		83000001000000000000000C /* MyWikiStarterExtractorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83000101000000000000000C /* MyWikiStarterExtractorTests.swift */; };
 		A10000010000000000000001 /* KnowYouApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000001 /* KnowYouApp.swift */; };
 		A10000010000000000000002 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000002 /* AppEnvironment.swift */; };
 		A10000010000000000000003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000003 /* AppState.swift */; };
@@ -142,6 +144,8 @@
 		830001010000000000000008 /* MyWikiPipelineBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiPipelineBridge.swift; sourceTree = "<group>"; };
 		830001010000000000000009 /* MyWikiAgentContextProviderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiAgentContextProviderTests.swift; sourceTree = "<group>"; };
 		83000101000000000000000A /* MyWikiAgentContextProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiAgentContextProvider.swift; sourceTree = "<group>"; };
+		83000101000000000000000B /* MyWikiStarterExtractor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiStarterExtractor.swift; sourceTree = "<group>"; };
+		83000101000000000000000C /* MyWikiStarterExtractorTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiStarterExtractorTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000001 /* KnowYouApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowYouApp.swift; sourceTree = "<group>"; };
 		A10001010000000000000002 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
 		A10001010000000000000003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -274,6 +278,7 @@
 				830001010000000000000004 /* MyWikiMarkdownStore.swift */,
 				830001010000000000000008 /* MyWikiPipelineBridge.swift */,
 				83000101000000000000000A /* MyWikiAgentContextProvider.swift */,
+				83000101000000000000000B /* MyWikiStarterExtractor.swift */,
 			);
 			path = MyWiki;
 			sourceTree = "<group>";
@@ -415,6 +420,7 @@
 				830001010000000000000002 /* MyWikiMarkdownStoreTests.swift */,
 				830001010000000000000007 /* MyWikiPipelineBridgeTests.swift */,
 				830001010000000000000009 /* MyWikiAgentContextProviderTests.swift */,
+				83000101000000000000000C /* MyWikiStarterExtractorTests.swift */,
 				9739E290450DEDA64E9F9F51 /* KnowledgeOntologyProjectExporterTests.swift */,
 				4952115E094229FBA28670BF /* KnowledgeOntologyLauncherTests.swift */,
 				E10001010000000000000001 /* KnowledgeOntologyPanelTests.swift */,
@@ -793,6 +799,7 @@
 				830000010000000000000004 /* MyWikiMarkdownStore.swift in Sources */,
 				830000010000000000000008 /* MyWikiPipelineBridge.swift in Sources */,
 				83000001000000000000000A /* MyWikiAgentContextProvider.swift in Sources */,
+				83000001000000000000000B /* MyWikiStarterExtractor.swift in Sources */,
 				830000010000000000000003 /* MyWikiModels.swift in Sources */,
 				830000010000000000000005 /* MyWikiPanel.swift in Sources */,
 				830000010000000000000006 /* MyWikiDetailView.swift in Sources */,
@@ -844,6 +851,7 @@
 				830000010000000000000002 /* MyWikiMarkdownStoreTests.swift in Sources */,
 				830000010000000000000007 /* MyWikiPipelineBridgeTests.swift in Sources */,
 				830000010000000000000009 /* MyWikiAgentContextProviderTests.swift in Sources */,
+				83000001000000000000000C /* MyWikiStarterExtractorTests.swift in Sources */,
 				D5F96550EFC82930419E3280 /* KnowledgeOntologyProjectExporterTests.swift in Sources */,
 				D733ABE377D5CF118A7A64BE /* KnowledgeOntologyLauncherTests.swift in Sources */,
 				E10000010000000000000001 /* KnowledgeOntologyPanelTests.swift in Sources */,

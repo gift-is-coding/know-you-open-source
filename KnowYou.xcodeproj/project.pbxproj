@@ -13,6 +13,8 @@
 		830000010000000000000002 /* MyWikiMarkdownStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830001010000000000000002 /* MyWikiMarkdownStoreTests.swift */; };
 		830000010000000000000003 /* MyWikiModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830001010000000000000003 /* MyWikiModels.swift */; };
 		830000010000000000000004 /* MyWikiMarkdownStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830001010000000000000004 /* MyWikiMarkdownStore.swift */; };
+		830000010000000000000005 /* MyWikiPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830001010000000000000005 /* MyWikiPanel.swift */; };
+		830000010000000000000006 /* MyWikiDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830001010000000000000006 /* MyWikiDetailView.swift */; };
 		A10000010000000000000001 /* KnowYouApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000001 /* KnowYouApp.swift */; };
 		A10000010000000000000002 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000002 /* AppEnvironment.swift */; };
 		A10000010000000000000003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000003 /* AppState.swift */; };
@@ -130,6 +132,8 @@
 		830001010000000000000002 /* MyWikiMarkdownStoreTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiMarkdownStoreTests.swift; sourceTree = "<group>"; };
 		830001010000000000000003 /* MyWikiModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiModels.swift; sourceTree = "<group>"; };
 		830001010000000000000004 /* MyWikiMarkdownStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiMarkdownStore.swift; sourceTree = "<group>"; };
+		830001010000000000000005 /* MyWikiPanel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiPanel.swift; sourceTree = "<group>"; };
+		830001010000000000000006 /* MyWikiDetailView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiDetailView.swift; sourceTree = "<group>"; };
 		A10001010000000000000001 /* KnowYouApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowYouApp.swift; sourceTree = "<group>"; };
 		A10001010000000000000002 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
 		A10001010000000000000003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -268,6 +272,8 @@
 			isa = PBXGroup;
 			children = (
 				830001010000000000000003 /* MyWikiModels.swift */,
+				830001010000000000000005 /* MyWikiPanel.swift */,
+				830001010000000000000006 /* MyWikiDetailView.swift */,
 			);
 			path = MyWiki;
 			sourceTree = "<group>";
@@ -774,6 +780,8 @@
 				830000010000000000000001 /* MyWikiProjectExporter.swift in Sources */,
 				830000010000000000000004 /* MyWikiMarkdownStore.swift in Sources */,
 				830000010000000000000003 /* MyWikiModels.swift in Sources */,
+				830000010000000000000005 /* MyWikiPanel.swift in Sources */,
+				830000010000000000000006 /* MyWikiDetailView.swift in Sources */,
 				C9F400816BDCE324EFF86EE3 /* KnowledgeOntologyProjectExporter.swift in Sources */,
 				724AA179C88234088E499A5B /* KnowledgeOntologyLauncher.swift in Sources */,
 				5CD500F8D621611083D406AD /* KnowledgeOntologyPanel.swift in Sources */,

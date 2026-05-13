@@ -2,6 +2,15 @@ import XCTest
 @testable import KnowYou
 
 final class KnowledgeOntologyPanelTests: XCTestCase {
+    func testMyWikiCategoryLabelsAreUserFacing() {
+        XCTAssertEqual(MyWikiCategory.person.displayTitle, "人物")
+        XCTAssertEqual(MyWikiCategory.project.displayTitle, "项目")
+        XCTAssertEqual(MyWikiCategory.theme.displayTitle, "主题")
+        XCTAssertEqual(MyWikiCategory.preference.displayTitle, "偏好")
+        XCTAssertEqual(MyWikiCategory.openLoop.displayTitle, "待办")
+        XCTAssertEqual(MyWikiCategory.summary.displayTitle, "总结")
+    }
+
     func testRecentExportPresentationLimitsVisibleFilesAndSummarizesHiddenCount() {
         let fileNames = (1...28).map { "knowyou-diary-2026-04-\(String(format: "%02d", $0)).md" }
 

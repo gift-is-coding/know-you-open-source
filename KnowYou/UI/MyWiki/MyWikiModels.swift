@@ -34,3 +34,22 @@ enum MyWikiCategory: String, CaseIterable, Equatable {
     case preference
     case openLoop
 }
+
+extension MyWikiCategory {
+    var displayTitle: String {
+        switch self {
+        case .summary:
+            return "总结"
+        case .person:
+            return "人物"
+        case .project:
+            return "项目"
+        case .theme:
+            return "主题"
+        case .preference:
+            return "偏好"
+        case .openLoop:
+            return "待办"
+        }
+    }
+}

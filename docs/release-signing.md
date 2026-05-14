@@ -27,7 +27,7 @@ For the normal public release path, run the single publish script:
 ./scripts/publish-release.sh
 ```
 
-It will build the Release archive, notarize it, verify the stapled app, upload the notarized zip plus `.sha256` to `gift-is-coding/know-you-downloads`, and update that repo's download landing page metadata.
+It will build the Release archive, notarize it, verify the stapled app, package a drag-to-Applications DMG, upload the DMG plus `.sha256` to `gift-is-coding/know-you-downloads`, and update that repo's download landing page metadata.
 
 If you need to run the steps manually, use the lower-level scripts below:
 
@@ -37,7 +37,7 @@ If you need to run the steps manually, use the lower-level scripts below:
 ./scripts/build-release.sh
 ```
 
-2. Submit the zip to Apple notarization, staple the ticket, and emit the final notarized zip:
+2. Submit the zip to Apple notarization, staple the ticket, and emit the final notarized zip plus public DMG:
 
 ```bash
 ./scripts/notarize-release.sh
@@ -57,6 +57,7 @@ Everything lands under `build/release/`:
 - `KnowYou.app`
 - `KnowYou-<version>-<build>.zip`
 - `KnowYou-<version>-<build>-notarized.zip`
+- `KnowYou-<version>-<build>.dmg`
 - `notary-result.json`
 
 ## Expected Success Signals

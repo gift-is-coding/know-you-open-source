@@ -83,8 +83,12 @@ notarized_zip_path() {
   printf '%s/%s-notarized.zip\n' "$release_dir" "$(artifact_basename)"
 }
 
+release_dmg_path() {
+  printf '%s/%s.dmg\n' "$release_dir" "$(artifact_basename)"
+}
+
 checksum_asset_name() {
-  printf '%s.sha256\n' "$(basename "$(notarized_zip_path)")"
+  printf '%s.sha256\n' "$(basename "$(release_dmg_path)")"
 }
 
 download_release_tag() {
@@ -99,7 +103,7 @@ download_asset_url() {
   printf 'https://github.com/%s/releases/download/%s/%s\n' \
     "$download_repo" \
     "$(download_release_tag)" \
-    "$(basename "$(notarized_zip_path)")"
+    "$(basename "$(release_dmg_path)")"
 }
 
 release_notes_body() {
@@ -110,12 +114,12 @@ Release:
 - Version: $(marketing_version)
 - Build: $(release_repo_build_number)
 - Commit: $(release_repo_commit)
-- Artifact: $(basename "$(notarized_zip_path)")
+- Artifact: $(basename "$(release_dmg_path)")
 - Notarization: Accepted on $(release_date)
 
 Install:
-- Download the zip asset below.
-- Unzip and move \`KnowYou.app\` to \`/Applications\`.
+- Download the DMG asset below.
+- Open the DMG and drag \`KnowYou.app\` to \`Applications\`.
 - Launch the app and complete the macOS permission prompts for clipboard and notifications.
 
 Verification:
@@ -180,7 +184,8 @@ patterns = [
     (
         r'(<div class="notice">\s*)(.*?)(\s*</div>)',
         (
-            r'\1This build is signed with Developer ID, notarized by Apple, and stapled. '
+            r'\1Open the DMG and drag KnowYou to Applications. '
+            r'This build is signed with Developer ID, notarized by Apple, and stapled. '
             r'Gatekeeper verification passed before release.\3'
         ),
     ),

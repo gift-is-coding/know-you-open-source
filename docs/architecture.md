@@ -27,7 +27,7 @@ KnowYou 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 4. 记忆同步层：Obsidian / OpenClaw 目标探测、文件复制、LaunchAgent 定时注册
 5. 提醒层：晚间回顾 planner、本地通知权限与调度
 6. 界面层：真实三栏阅读器上的 onboarding coachmarks、设置页、菜单栏状态入口、About & Community 对外入口
-7. 分发层：Developer ID release archive、notarytool notarization、stapled zip 验证
+7. 分发层：Developer ID release archive、notarytool notarization、stapled app 验证、drag-to-Applications DMG 发布
 
 ```mermaid
 flowchart LR
@@ -58,6 +58,7 @@ flowchart LR
     W --> X[KnowYou.app zip]
     X --> Y[notarytool submit]
     Y --> Z[stapler / spctl verify]
+    Z --> ZA[KnowYou DMG]
 ```
 
 ## 2.1 发布与分发
@@ -66,10 +67,10 @@ flowchart LR
 
 - Release 构建使用 `Developer ID Application`
 - Release 启用 hardened runtime
-- 分发脚本通过 `scripts/build-release.sh`、`scripts/notarize-release.sh`、`scripts/verify-release.sh` 串起 archive、压缩、notarize、staple、Gatekeeper 验证
+- 分发脚本通过 `scripts/build-release.sh`、`scripts/notarize-release.sh`、`scripts/build-dmg.sh`、`scripts/verify-release.sh` 串起 archive、压缩、notarize、staple、Gatekeeper 验证与 DMG 打包
 - Apple notarization 凭据通过本机 keychain 中的 `notarytool` profile 管理，而不是保存在仓库里
 
-这条链路的目标是让仓库能稳定产出可上传到下载页的 macOS release zip，同时不影响 Debug/测试阶段的日常签名配置。
+这条链路的目标是让仓库能稳定产出可上传到下载页的 macOS DMG，同时不影响 Debug/测试阶段的日常签名配置。
 
 ## 3. 运行时入口
 

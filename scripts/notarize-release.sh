@@ -15,7 +15,7 @@ ensure_file_exists "$(release_zip_path)"
 ensure_file_exists "$app_path"
 
 result_json="$release_dir/notary-result.json"
-rm -f "$result_json" "$(notarized_zip_path)"
+rm -f "$result_json" "$(notarized_zip_path)" "$(release_dmg_path)"
 
 xcrun notarytool submit "$(release_zip_path)" \
   --keychain-profile "$notary_profile" \
@@ -42,7 +42,9 @@ fi
 xcrun stapler staple "$app_path"
 xcrun stapler validate "$app_path"
 ditto -c -k --sequesterRsrc --keepParent "$app_path" "$(notarized_zip_path)"
+"$repo_root/scripts/build-dmg.sh"
 
 echo "Notarization status: $status"
 echo "Result JSON: $result_json"
 echo "Notarized zip: $(notarized_zip_path)"
+echo "DMG: $(release_dmg_path)"

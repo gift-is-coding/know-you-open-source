@@ -10,7 +10,7 @@ Current public URL:
 
 - Landing page: https://gift-is-coding.github.io/know-you-downloads/
 - Latest release: https://github.com/gift-is-coding/know-you-downloads/releases/tag/v1.0.3-build128
-- Direct download: https://github.com/gift-is-coding/know-you-downloads/releases/download/v1.0.3-build128/KnowYou-1.0.3-3-notarized.zip
+- Direct download: https://github.com/gift-is-coding/know-you-downloads/releases/download/v1.0.4-build139/KnowYou-1.0.4-3.dmg
 - Discord: https://discord.gg/ZrqF5jwQ
 - X / Twitter: https://x.com/TianfuW49629
 - Support email: cestlouiswu@gmail.com
@@ -146,7 +146,7 @@ Before clicking publish:
 
 - Confirm Product Hunt account is a personal maker account, not a company account.
 - Confirm the landing page URL works in an incognito browser.
-- Confirm the download button points to the latest notarized zip.
+- Confirm the download button points to the latest DMG.
 - Confirm screenshots do not reveal private clipboard, notification, account, or workspace data.
 - Confirm privacy policy and terms are public or linked from the landing page.
 - Confirm Discord invite is stable.

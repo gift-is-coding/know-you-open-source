@@ -28,6 +28,7 @@ assert_eq "45" "$(build_number)" "build_number"
 assert_eq "KnowYou-1.2.3-45" "$(artifact_basename)" "artifact_basename"
 assert_eq "$repo_root/build/test-release/KnowYou-1.2.3-45.zip" "$(release_zip_path)" "release_zip_path"
 assert_eq "$repo_root/build/test-release/KnowYou-1.2.3-45-notarized.zip" "$(notarized_zip_path)" "notarized_zip_path"
+assert_eq "$repo_root/build/test-release/KnowYou-1.2.3-45.dmg" "$(release_dmg_path)" "release_dmg_path"
 
 mkdir -p "$KNOWYOU_RELEASE_DIR"
 touch "$KNOWYOU_RELEASE_DIR/smoke.txt"

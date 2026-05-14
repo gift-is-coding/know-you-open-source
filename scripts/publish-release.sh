@@ -14,11 +14,11 @@ require_command shasum
 "$repo_root/scripts/notarize-release.sh"
 "$repo_root/scripts/verify-release.sh"
 
-ensure_file_exists "$(notarized_zip_path)"
+ensure_file_exists "$(release_dmg_path)"
 
-checksum_path="$(notarized_zip_path).sha256"
-checksum_value="$(shasum -a 256 "$(notarized_zip_path)" | awk '{print $1}')"
-printf '%s  %s\n' "$checksum_value" "$(basename "$(notarized_zip_path)")" >"$checksum_path"
+checksum_path="$(release_dmg_path).sha256"
+checksum_value="$(shasum -a 256 "$(release_dmg_path)" | awk '{print $1}')"
+printf '%s  %s\n' "$checksum_value" "$(basename "$(release_dmg_path)")" >"$checksum_path"
 
 tmp_dir="$(mktemp -d)"
 cleanup() {
@@ -32,12 +32,12 @@ gh repo clone "$download_repo" "$downloads_clone_path" -- -q
 index_path="$downloads_clone_path/index.html"
 ensure_file_exists "$index_path"
 
-artifact_size_label="$(python3 - <<'PY' "$(notarized_zip_path)"
+artifact_size_label="$(python3 - <<'PY' "$(release_dmg_path)"
 import os
 import sys
 
 size = os.path.getsize(sys.argv[1])
-print(f"{size / 1024 / 1024:.1f} MB zip")
+print(f"{size / 1024 / 1024:.1f} MB DMG")
 PY
 )"
 
@@ -48,7 +48,7 @@ release_notes_body >"$release_notes_path"
 
 if gh release view "$(download_release_tag)" -R "$download_repo" >/dev/null 2>&1; then
   gh release upload "$(download_release_tag)" \
-    "$(notarized_zip_path)" \
+    "$(release_dmg_path)" \
     "$checksum_path" \
     -R "$download_repo" \
     --clobber
@@ -59,7 +59,7 @@ if gh release view "$(download_release_tag)" -R "$download_repo" >/dev/null 2>&1
     --latest
 else
   gh release create "$(download_release_tag)" \
-    "$(notarized_zip_path)" \
+    "$(release_dmg_path)" \
     "$checksum_path" \
     -R "$download_repo" \
     --latest \

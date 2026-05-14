@@ -327,9 +327,10 @@ onboarding 的配置约束为：
 
 - 系统必须能产出一个使用 `Developer ID Application` 签名的 macOS release app
 - Release 构建必须启用 hardened runtime，满足 notarization 前提
-- 项目必须提供可复用脚本来完成 archive、压缩、notarize、staple、verify
+- 项目必须提供可复用脚本来完成 archive、压缩、notarize、staple、verify、DMG 打包
 - Apple ID app-specific password 不得保存在仓库文件中，必须通过 keychain `notarytool` profile 管理
 - 发布验证必须至少包含 `codesign --verify --deep --strict --verbose=2`、`stapler validate`、`spctl --assess --type execute -vv`
+- 对外下载主 artifact 必须是包含 `KnowYou.app` 与 `Applications` 链接的 DMG，以引导用户把 app 安装到 `/Applications`
 - `fullRecovery` 成功写盘前必须执行一次规范化，以保证新生成 `Details` 保持 paragraph-level workstream 结构
 
 ## 6.9 状态反馈需求

@@ -18,7 +18,7 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
         XCTAssertEqual(target.statusDescription, "Using development llm_wiki pipeline: \(dev.path)")
     }
 
-    func testRunIngestMaterializesStarterPagesFromRawSources() throws {
+    func testRunIngestDoesNotMaterializeLocalFallbackWhenHeadlessRunnerIsUnavailable() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -39,14 +39,112 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
         let dev = root.appending(path: "ThirdParty/llm_wiki", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: dev, withIntermediateDirectories: true)
 
-        try MyWikiPipelineBridge().runIngest(target: .developmentSource(dev), projectRoot: root)
+        XCTAssertThrowsError(try MyWikiPipelineBridge().runIngest(target: .developmentSource(dev), projectRoot: root)) { error in
+            guard case MyWikiPipelineBridgeError.pipelineExecutionFailed = error else {
+                XCTFail("Expected pipelineExecutionFailed, got \(error)")
+                return
+            }
+        }
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appending(path: ".llm-wiki").path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appending(path: "wiki/summaries/recent-diary-summary.md").path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appending(path: "wiki/projects/knowyou.md").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "wiki/summaries/recent-diary-summary.md").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "wiki/projects/knowyou.md").path))
+
+        let statusURL = root.appending(path: ".llm-wiki/last-ingest-status.json")
+        let statusText = try String(contentsOf: statusURL, encoding: .utf8)
+        XCTAssertTrue(statusText.contains(#""status":"failed""#), statusText)
+        XCTAssertTrue(statusText.contains("headless llm_wiki runner is not available"), statusText)
     }
 
-    func testRunIngestStillMaterializesStarterPagesWhenPipelineIsMissing() throws {
+    func testRunIngestInvokesDevelopmentHeadlessRunner() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let rawSources = root.appending(path: "raw/sources", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: rawSources, withIntermediateDirectories: true)
+        try "# 2026-05-14\n\nMet Huang Shan.".write(
+            to: rawSources.appending(path: "knowyou-diary-2026-05-14.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let dev = root.appending(path: "ThirdParty/llm_wiki", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: dev, withIntermediateDirectories: true)
+        try #"{"scripts":{"knowyou:ingest":"node scripts/knowyou-ingest-runner.mjs"}}"#.write(
+            to: dev.appending(path: "package.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let runner = RecordingMyWikiPipelineRunner(
+            result: MyWikiPipelineProcessResult(
+                stdout: #"{"status":"succeeded","sourcesProcessed":1}"#,
+                stderr: "",
+                terminationStatus: 0
+            )
+        )
+
+        try MyWikiPipelineBridge(processRunner: runner).runIngest(target: .developmentSource(dev), projectRoot: root)
+
+        XCTAssertEqual(runner.calls.count, 1)
+        XCTAssertEqual(runner.calls[0].executable, "/usr/bin/env")
+        XCTAssertEqual(runner.calls[0].workingDirectory, dev)
+        XCTAssertEqual(
+            runner.calls[0].arguments,
+            [
+                "npm",
+                "run",
+                "knowyou:ingest",
+                "--",
+                "--project",
+                root.path,
+                "--provider",
+                "codex-cli",
+                "--model",
+                "gpt-5.5"
+            ]
+        )
+
+        let statusText = try String(contentsOf: root.appending(path: ".llm-wiki/last-ingest-status.json"), encoding: .utf8)
+        XCTAssertTrue(statusText.contains(#""status":"succeeded""#), statusText)
+    }
+
+    func testRunIngestWritesFailureStatusWhenDevelopmentRunnerFails() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let dev = root.appending(path: "ThirdParty/llm_wiki", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: dev, withIntermediateDirectories: true)
+        try #"{"scripts":{"knowyou:ingest":"node scripts/knowyou-ingest-runner.mjs"}}"#.write(
+            to: dev.appending(path: "package.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let runner = RecordingMyWikiPipelineRunner(
+            result: MyWikiPipelineProcessResult(
+                stdout: "",
+                stderr: "Codex CLI failed",
+                terminationStatus: 1
+            )
+        )
+
+        XCTAssertThrowsError(try MyWikiPipelineBridge(processRunner: runner).runIngest(target: .developmentSource(dev), projectRoot: root)) { error in
+            guard case MyWikiPipelineBridgeError.pipelineExecutionFailed(let message) = error else {
+                XCTFail("Expected pipelineExecutionFailed, got \(error)")
+                return
+            }
+            XCTAssertTrue(message.contains("Codex CLI failed"), message)
+        }
+
+        let statusText = try String(contentsOf: root.appending(path: ".llm-wiki/last-ingest-status.json"), encoding: .utf8)
+        XCTAssertTrue(statusText.contains(#""status":"failed""#), statusText)
+        XCTAssertTrue(statusText.contains("Codex CLI failed"), statusText)
+    }
+
+    func testRunIngestWritesFailureStatusWithoutLocalFallbackWhenPipelineIsMissing() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -63,12 +161,52 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
             encoding: .utf8
         )
 
-        try MyWikiPipelineBridge().runIngest(target: .missing, projectRoot: root)
+        XCTAssertThrowsError(try MyWikiPipelineBridge().runIngest(target: .missing, projectRoot: root)) { error in
+            guard case MyWikiPipelineBridgeError.missingPipeline = error else {
+                XCTFail("Expected missingPipeline, got \(error)")
+                return
+            }
+        }
 
         let summaryURL = root.appending(path: "wiki/summaries/recent-diary-summary.md")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: summaryURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: summaryURL.path))
 
-        let snapshot = try MyWikiMarkdownStore().loadDashboard(projectRoot: root)
-        XCTAssertEqual(snapshot.summaries.first?.title, "Recent Journal Summary")
+        let statusURL = root.appending(path: ".llm-wiki/last-ingest-status.json")
+        let statusText = try String(contentsOf: statusURL, encoding: .utf8)
+        XCTAssertTrue(statusText.contains(#""status":"failed""#), statusText)
+        XCTAssertTrue(statusText.contains("llm_wiki pipeline is not available"), statusText)
+    }
+}
+
+private final class RecordingMyWikiPipelineRunner: MyWikiPipelineProcessRunning {
+    struct Call: Equatable {
+        let executable: String
+        let arguments: [String]
+        let workingDirectory: URL
+        let timeoutSeconds: TimeInterval
+    }
+
+    private let result: MyWikiPipelineProcessResult
+    private(set) var calls: [Call] = []
+
+    init(result: MyWikiPipelineProcessResult) {
+        self.result = result
+    }
+
+    func run(
+        executable: String,
+        arguments: [String],
+        workingDirectory: URL,
+        timeoutSeconds: TimeInterval
+    ) throws -> MyWikiPipelineProcessResult {
+        calls.append(
+            Call(
+                executable: executable,
+                arguments: arguments,
+                workingDirectory: workingDirectory,
+                timeoutSeconds: timeoutSeconds
+            )
+        )
+        return result
     }
 }

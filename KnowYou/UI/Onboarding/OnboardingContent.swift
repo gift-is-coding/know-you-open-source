@@ -46,12 +46,24 @@ enum OnboardingRequirement: String, Equatable, Hashable {
 }
 
 struct OnboardingPermissionBypassPolicy {
+    static let developmentBypassDefaultsKey = "onboardingFullDiskAccessDevelopmentBypass"
+
     static func allowsFullDiskAccessBypass(bundleURL: URL) -> Bool {
         let components = Set(bundleURL.pathComponents)
         return components.contains("DerivedData")
             && components.contains("Build")
             && components.contains("Products")
             && components.contains("Debug")
+    }
+
+    static func hasStoredDevelopmentBypass(bundleURL: URL, userDefaults: UserDefaults = .standard) -> Bool {
+        allowsFullDiskAccessBypass(bundleURL: bundleURL)
+            && userDefaults.bool(forKey: developmentBypassDefaultsKey)
+    }
+
+    static func storeDevelopmentBypass(bundleURL: URL, userDefaults: UserDefaults = .standard) {
+        guard allowsFullDiskAccessBypass(bundleURL: bundleURL) else { return }
+        userDefaults.set(true, forKey: developmentBypassDefaultsKey)
     }
 }
 

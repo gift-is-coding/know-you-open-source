@@ -8,28 +8,56 @@ struct MyWikiMarkdownStore {
     }
 
     func loadDashboard(projectRoot: URL) throws -> MyWikiDashboardSnapshot {
-        MyWikiDashboardSnapshot(
-            summaries: try loadEntries(category: .summary, folder: "wiki/summaries", projectRoot: projectRoot),
-            people: try loadEntries(category: .person, folder: "wiki/people", projectRoot: projectRoot),
-            projects: try loadEntries(category: .project, folder: "wiki/projects", projectRoot: projectRoot),
-            themes: try loadEntries(category: .theme, folder: "wiki/themes", projectRoot: projectRoot),
-            preferences: try loadEntries(category: .preference, folder: "wiki/preferences", projectRoot: projectRoot),
-            openLoops: try loadEntries(category: .openLoop, folder: "wiki/open-loops", projectRoot: projectRoot)
-        )
+        let schema = try loadSchema(projectRoot: projectRoot)
+        var entriesByCategoryID: [String: [MyWikiEntry]] = [:]
+        for definition in schema.categories {
+            entriesByCategoryID[definition.id] = try loadEntries(
+                category: MyWikiCategory(definition: definition),
+                definition: definition,
+                projectRoot: projectRoot
+            )
+        }
+
+        return MyWikiDashboardSnapshot(schema: schema, entriesByCategoryID: entriesByCategoryID)
     }
 
-    private func loadEntries(category: MyWikiCategory, folder: String, projectRoot: URL) throws -> [MyWikiEntry] {
-        let directory = projectRoot.appending(path: folder, directoryHint: .isDirectory)
-        guard fileManager.fileExists(atPath: directory.path) else { return [] }
+    private func loadSchema(projectRoot: URL) throws -> MyWikiSchemaConfig {
+        let schemaURL = projectRoot.appending(path: "mywiki.schema.json")
+        guard fileManager.fileExists(atPath: schemaURL.path) else {
+            return try MyWikiSchemaConfig.defaultPersonalContext()
+        }
 
-        let files = try fileManager.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        )
-        .filter { $0.pathExtension.lowercased() == "md" }
+        let data = try Data(contentsOf: schemaURL)
+        return try JSONDecoder().decode(MyWikiSchemaConfig.self, from: data)
+    }
 
-        return try files.map { file in
+    private func loadEntries(
+        category: MyWikiCategory,
+        definition: MyWikiCategoryDefinition,
+        projectRoot: URL
+    ) throws -> [MyWikiEntry] {
+        var files: [URL] = []
+        var seenPaths: Set<String> = []
+
+        for folder in definition.directoryCandidates {
+            let directory = projectRoot.appending(path: folder, directoryHint: .isDirectory)
+            guard fileManager.fileExists(atPath: directory.path) else { continue }
+
+            let folderFiles = try fileManager.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )
+            .filter { $0.pathExtension.lowercased() == "md" }
+
+            for file in folderFiles where seenPaths.insert(file.path).inserted {
+                files.append(file)
+            }
+        }
+
+        guard files.isEmpty == false else { return [] }
+
+        return try files.compactMap { file in
             try loadEntry(file: file, category: category)
         }
         .sorted {
@@ -37,18 +65,54 @@ struct MyWikiMarkdownStore {
         }
     }
 
-    private func loadEntry(file: URL, category: MyWikiCategory) throws -> MyWikiEntry {
+    private func loadEntry(file: URL, category: MyWikiCategory) throws -> MyWikiEntry? {
         let markdown = try String(contentsOf: file, encoding: .utf8)
         let parsed = Self.parseMarkdown(markdown)
         let title = parsed.frontmatter["title"] ?? Self.titleFromFileName(file.deletingPathExtension().lastPathComponent)
 
-        return MyWikiEntry(
+        let entry = MyWikiEntry(
             id: file.deletingPathExtension().lastPathComponent,
             title: title,
             category: category,
             summary: Self.summary(from: parsed.body),
-            sourceNames: Self.sources(from: parsed.frontmatter["sources"])
+            sourceNames: Self.array(from: parsed.frontmatter["sources"]),
+            aliases: Self.array(from: parsed.frontmatter["aliases"]),
+            related: Self.array(from: parsed.frontmatter["related"]),
+            confidence: parsed.frontmatter["confidence"] ?? "",
+            mentions: Self.mentions(from: parsed.body),
+            markdownBody: parsed.body.trimmingCharacters(in: .whitespacesAndNewlines),
+            fileURL: file
         )
+        return Self.shouldLoad(entry: entry, frontmatter: parsed.frontmatter, body: parsed.body) ? entry : nil
+    }
+
+    private static func shouldLoad(entry: MyWikiEntry, frontmatter: [String: String], body: String) -> Bool {
+        let normalizedTitle = MyWikiRenameService.slug(for: entry.title)
+        let generatedBy = frontmatter["generated_by"]?.lowercased() ?? ""
+        let isStarterPage = generatedBy.contains("starter extractor")
+        let toolOrAgentSlugs = [
+            "codex",
+            "claude",
+            "cowork",
+            "chatgpt",
+            "openai",
+            "gemini",
+            "openclaw"
+        ]
+        let knownToolOrAgent = toolOrAgentSlugs.contains(normalizedTitle)
+        let starterToolOrAgentProject = isStarterPage
+            && entry.category == .project
+            && toolOrAgentSlugs.contains { normalizedTitle.components(separatedBy: "-").contains($0) }
+
+        guard knownToolOrAgent || starterToolOrAgentProject else { return true }
+        if entry.category == .person { return false }
+        if entry.category == .project && isStarterPage { return false }
+
+        let text = ([entry.summary] + entry.aliases + entry.related + [body])
+            .joined(separator: " ")
+            .lowercased()
+        let toolSignals = ["agent", "cli", "llm", "model", "tool", "assistant", "ai"]
+        return toolSignals.contains { text.contains($0) } == false
     }
 
     private static func parseMarkdown(_ markdown: String) -> (frontmatter: [String: String], body: String) {
@@ -96,7 +160,7 @@ struct MyWikiMarkdownStore {
         return String(content[..<endIndex])
     }
 
-    private static func sources(from rawValue: String?) -> [String] {
+    static func array(from rawValue: String?) -> [String] {
         guard let rawValue else { return [] }
 
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -114,10 +178,269 @@ struct MyWikiMarkdownStore {
         return [trimmed].filter { $0.isEmpty == false }
     }
 
+    static func frontmatterArray(_ values: [String]) -> String {
+        "[\(values.uniqued().map { "\"\($0.replacingOccurrences(of: "\"", with: "\\\""))\"" }.joined(separator: ", "))]"
+    }
+
+    static func parseMarkdownDocument(_ markdown: String) -> (frontmatter: [String: String], body: String) {
+        parseMarkdown(markdown)
+    }
+
+    static func mentions(from body: String) -> [MyWikiMention] {
+        body.components(separatedBy: .newlines).compactMap { line in
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.hasPrefix("- ") else { return nil }
+            let content = trimmed.dropFirst(2)
+            guard content.count >= 11 else { return nil }
+            let day = String(content.prefix(10))
+            guard day.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil else {
+                return nil
+            }
+            var text = String(content.dropFirst(10)).trimmingCharacters(in: .whitespacesAndNewlines)
+            if text.hasPrefix(":") || text.hasPrefix("-") {
+                text = String(text.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            return MyWikiMention(day: day, text: text)
+        }
+    }
+
     private static func titleFromFileName(_ fileName: String) -> String {
         fileName
             .split(separator: "-")
             .map { $0.prefix(1).uppercased() + $0.dropFirst() }
             .joined(separator: " ")
+    }
+}
+
+enum MyWikiRenameResult: Equatable {
+    case renamed
+    case conflict(existingTitle: String)
+}
+
+struct MyWikiRenameService {
+    let fileManager: FileManager
+
+    init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+    }
+
+    func rename(
+        _ entry: MyWikiEntry,
+        to newTitle: String,
+        aliases: [String],
+        summary: String,
+        projectRoot: URL
+    ) throws -> MyWikiRenameResult {
+        let trimmedTitle = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let snapshot = try MyWikiMarkdownStore(fileManager: fileManager).loadDashboard(projectRoot: projectRoot)
+        if let conflict = snapshot.entries(for: entry.category).first(where: { other in
+            other.id != entry.id && (
+                other.title.caseInsensitiveCompare(trimmedTitle) == .orderedSame
+                    || Self.slug(for: other.title) == Self.slug(for: trimmedTitle)
+            )
+        }) {
+            return .conflict(existingTitle: conflict.title)
+        }
+
+        let existingMarkdown = try String(contentsOf: entry.fileURL, encoding: .utf8)
+        let parsed = MyWikiMarkdownStore.parseMarkdownDocument(existingMarkdown)
+        var mergedAliases = aliases
+        if entry.title.caseInsensitiveCompare(trimmedTitle) != .orderedSame {
+            mergedAliases.append(entry.title)
+        }
+        mergedAliases = mergedAliases.uniqued().filter { $0.caseInsensitiveCompare(trimmedTitle) != .orderedSame }
+
+        let body = Self.rewrittenBody(originalBody: parsed.body, title: trimmedTitle, summary: summary)
+        let markdown = Self.markdown(
+            type: entry.category.frontmatterType,
+            title: trimmedTitle,
+            aliases: mergedAliases,
+            related: entry.related,
+            sources: entry.sourceNames,
+            confidence: entry.confidence,
+            body: body
+        )
+        try markdown.write(to: entry.fileURL, atomically: true, encoding: .utf8)
+        return .renamed
+    }
+
+    static func slug(for title: String) -> String {
+        let allowed = CharacterSet.alphanumerics
+        let parts = title.lowercased().unicodeScalars.map { scalar -> Character in
+            allowed.contains(scalar) ? Character(scalar) : "-"
+        }
+        return String(parts)
+            .split(separator: "-")
+            .joined(separator: "-")
+    }
+
+    private static func rewrittenBody(originalBody: String, title: String, summary: String) -> String {
+        let lines = originalBody.components(separatedBy: .newlines)
+        let bodyWithoutTitle = lines.drop { line in
+            line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || line.hasPrefix("# ")
+        }
+        let trailing = bodyWithoutTitle.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        if trailing.isEmpty {
+            return "# \(title)\n\n\(summary)"
+        }
+        return "# \(title)\n\n\(summary)\n\n\(trailing)"
+    }
+
+    static func markdown(
+        type: String,
+        title: String,
+        aliases: [String],
+        related: [String],
+        sources: [String],
+        confidence: String,
+        body: String
+    ) -> String {
+        """
+        ---
+        type: \(type)
+        title: \(title)
+        aliases: \(MyWikiMarkdownStore.frontmatterArray(aliases))
+        related: \(MyWikiMarkdownStore.frontmatterArray(related))
+        sources: \(MyWikiMarkdownStore.frontmatterArray(sources))
+        confidence: \(confidence.isEmpty ? "medium" : confidence)
+        ---
+
+        \(body.trimmingCharacters(in: .whitespacesAndNewlines))
+        """
+    }
+}
+
+struct MyWikiDuplicateSuggestion: Equatable {
+    let entries: [MyWikiEntry]
+    let reason: String
+    let confidence: String
+}
+
+struct MyWikiDuplicateService {
+    let fileManager: FileManager
+
+    init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+    }
+
+    func findDuplicateSuggestions(projectRoot: URL) throws -> [MyWikiDuplicateSuggestion] {
+        let snapshot = try MyWikiMarkdownStore(fileManager: fileManager).loadDashboard(projectRoot: projectRoot)
+        let candidates = snapshot.primaryEntries
+        var suggestions: [MyWikiDuplicateSuggestion] = []
+
+        for (index, entry) in candidates.enumerated() {
+            for other in candidates.dropFirst(index + 1) {
+                guard entry.category == other.category else { continue }
+                if Self.looksDuplicate(entry, other) {
+                    suggestions.append(
+                        MyWikiDuplicateSuggestion(
+                            entries: [entry, other],
+                            reason: "Names or aliases overlap.",
+                            confidence: "medium"
+                        )
+                    )
+                }
+            }
+        }
+
+        return suggestions
+    }
+
+    func merge(suggestion: MyWikiDuplicateSuggestion, canonicalID: String, projectRoot: URL) throws {
+        guard let canonical = suggestion.entries.first(where: { $0.id == canonicalID }) else { return }
+        let mergedAway = suggestion.entries.filter { $0.id != canonicalID }
+        guard mergedAway.isEmpty == false else { return }
+
+        let backupDir = projectRoot
+            .appending(path: ".llm-wiki/page-history", directoryHint: .isDirectory)
+            .appending(path: "mywiki-dedup-\(Int(Date().timeIntervalSince1970))", directoryHint: .isDirectory)
+        try fileManager.createDirectory(at: backupDir, withIntermediateDirectories: true)
+
+        var aliases = canonical.aliases + [canonical.title]
+        var related = canonical.related
+        var sources = canonical.sourceNames
+        var bodyParts = [canonical.markdownBody]
+
+        for entry in mergedAway {
+            let backupURL = backupDir.appending(path: entry.fileURL.lastPathComponent)
+            if fileManager.fileExists(atPath: entry.fileURL.path) {
+                try fileManager.copyItem(at: entry.fileURL, to: backupURL)
+            }
+            aliases.append(contentsOf: entry.aliases + [entry.title])
+            related.append(contentsOf: entry.related)
+            sources.append(contentsOf: entry.sourceNames)
+            bodyParts.append(entry.markdownBody)
+            try? fileManager.removeItem(at: entry.fileURL)
+        }
+
+        let canonicalBackup = backupDir.appending(path: canonical.fileURL.lastPathComponent)
+        if fileManager.fileExists(atPath: canonical.fileURL.path) {
+            try? fileManager.copyItem(at: canonical.fileURL, to: canonicalBackup)
+        }
+
+        let body = bodyParts
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+            .joined(separator: "\n\n## Merged Notes\n\n")
+        let markdown = MyWikiRenameService.markdown(
+            type: canonical.category.frontmatterType,
+            title: canonical.title,
+            aliases: aliases.uniqued().filter { $0.caseInsensitiveCompare(canonical.title) != .orderedSame },
+            related: related.uniqued(),
+            sources: sources.uniqued(),
+            confidence: canonical.confidence,
+            body: body
+        )
+        try markdown.write(to: canonical.fileURL, atomically: true, encoding: .utf8)
+        try rewriteReferences(from: mergedAway, to: canonical, projectRoot: projectRoot)
+    }
+
+    private static func looksDuplicate(_ lhs: MyWikiEntry, _ rhs: MyWikiEntry) -> Bool {
+        let leftNames = Set(([lhs.title] + lhs.aliases).map(normalizedName))
+        let rightNames = Set(([rhs.title] + rhs.aliases).map(normalizedName))
+        return leftNames.isDisjoint(with: rightNames) == false
+            || leftNames.contains(MyWikiRenameService.slug(for: rhs.title))
+            || rightNames.contains(MyWikiRenameService.slug(for: lhs.title))
+    }
+
+    private static func normalizedName(_ value: String) -> String {
+        MyWikiRenameService.slug(for: value)
+    }
+
+    private func rewriteReferences(from mergedAway: [MyWikiEntry], to canonical: MyWikiEntry, projectRoot: URL) throws {
+        let wikiRoot = projectRoot.appending(path: "wiki", directoryHint: .isDirectory)
+        guard fileManager.fileExists(atPath: wikiRoot.path) else { return }
+
+        let files = fileManager.enumerator(
+            at: wikiRoot,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )?
+            .compactMap { $0 as? URL }
+            .filter { $0.pathExtension.lowercased() == "md" } ?? []
+
+        let replacements = mergedAway.flatMap { entry in
+            [entry.id, entry.title] + entry.aliases
+        }
+        .filter { $0.isEmpty == false }
+        .uniqued()
+
+        for file in files {
+            var markdown = try String(contentsOf: file, encoding: .utf8)
+            let original = markdown
+            for replacement in replacements {
+                markdown = markdown.replacingOccurrences(of: "[[\(replacement)]]", with: "[[\(canonical.id)]]")
+            }
+            if markdown != original {
+                try markdown.write(to: file, atomically: true, encoding: .utf8)
+            }
+        }
+    }
+}
+
+extension Array where Element: Hashable {
+    func uniqued() -> [Element] {
+        var seen: Set<Element> = []
+        return filter { seen.insert($0).inserted }
     }
 }

@@ -65,6 +65,58 @@ describe("buildGenerationPrompt language directive", () => {
     expect(prompt).toContain("my-paper.pdf")
   })
 
+  it("uses My Wiki category directories instead of generic entity/concept pages when KnowYou contract is present", () => {
+    const prompt = buildGenerationPrompt(
+      [
+        "<!-- KNOWYOU_MY_WIKI_OUTPUT_CONTRACT -->",
+        "## My Wiki Output Contract",
+        "| Category | Directory | Frontmatter types | Use |",
+        "| --- | --- | --- | --- |",
+        "| People | `wiki/people` | `person` | Real people. |",
+        "| Projects | `wiki/projects` | `project` | Named efforts. |",
+        "| Events | `wiki/events` | `event` | Bounded happenings. |",
+        "| Topics | `wiki/topics` | `topic` | Recurring subjects. |",
+        "| Preferences | `wiki/preferences` | `preference` | Stable preferences. |",
+        "| Follow-ups | `wiki/follow-ups` | `follow-up` | Unresolved items. |",
+      ].join("\n"),
+      "purpose",
+      "index",
+      "knowyou-diary-2026-05-15.md",
+    )
+
+    expect(prompt).toContain("Pages for People in wiki/people/")
+    expect(prompt).toContain("Pages for Projects in wiki/projects/")
+    expect(prompt).toContain("Pages for Events in wiki/events/")
+    expect(prompt).toContain("Pages for Topics in wiki/topics/")
+    expect(prompt).toContain("Pages for Preferences in wiki/preferences/")
+    expect(prompt).toContain("Pages for Follow-ups in wiki/follow-ups/")
+    expect(prompt).toContain("Do NOT create `wiki/people/codex.md`")
+    expect(prompt).not.toContain("Entity pages in wiki/entities/")
+    expect(prompt).not.toContain("Concept pages in wiki/concepts/")
+  })
+
+  it("builds My Wiki generation targets from schema categories instead of hardcoded Swift categories", () => {
+    const prompt = buildGenerationPrompt(
+      [
+        "<!-- KNOWYOU_MY_WIKI_OUTPUT_CONTRACT -->",
+        "## My Wiki Output Contract",
+        "| Category | Directory | Frontmatter types | Use |",
+        "| --- | --- | --- | --- |",
+        "| Relationships | `wiki/relationships` | `relationship` | Important relationships between entities. |",
+      ].join("\n"),
+      "purpose",
+      "index",
+      "knowyou-diary-2026-05-15.md",
+    )
+
+    expect(prompt).toContain("Pages for Relationships in wiki/relationships/")
+    expect(prompt).toContain("one of: source | relationship")
+    expect(prompt).not.toContain("People pages in wiki/people/")
+    expect(prompt).not.toContain("Project pages in wiki/projects/")
+    expect(prompt).not.toContain("Topic pages in wiki/themes/")
+    expect(prompt).not.toContain("Follow-up pages in wiki/open-loops/")
+  })
+
   it("respects user setting regardless of source content language", () => {
     useWikiStore.getState().setOutputLanguage("English")
     const prompt = buildGenerationPrompt("", "", "", "x.pdf", undefined, "私は日本語の文章を書きます")

@@ -9,93 +9,140 @@ struct MyWikiPanel: View {
     @Binding var selectedEntry: MyWikiEntry?
 
     @State private var query = ""
-    @State private var statusMessage = "Ready"
     @State private var snapshot = MyWikiDashboardSnapshot.empty
-    @State private var exportedFileNames: [String] = []
+    @State private var duplicateSuggestions: [MyWikiDuplicateSuggestion] = []
+    @State private var statusMessage = "Ready"
     @State private var isSyncing = false
+    @State private var fullListCategory: MyWikiCategory?
+    @State private var expandedCategoryIDs: Set<String> = []
+    @State private var editingEntry: MyWikiEntry?
+    @State private var conflictMessage: String?
+    @State private var isShowingStatus = false
+    @State private var reviewingSuggestion: MyWikiDuplicateSuggestion?
 
     var body: some View {
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    header
-                    searchField
-                    statusBar
+        HSplitView {
+            indexPane
+                .frame(minWidth: 320, idealWidth: 390, maxWidth: 520)
 
-                    if filteredEntries.isEmpty && exportedFileNames.isEmpty {
-                        emptyState
-                    }
-
-                    MyWikiSummarySection(
-                        entries: filtered(snapshot.summaries),
-                        selectedEntry: $selectedEntry
-                    )
-
-                    MyWikiCategorySection(
-                        title: MyWikiCategory.person.displayTitle,
-                        entries: filtered(snapshot.people),
-                        selectedEntry: $selectedEntry
-                    )
-                    MyWikiCategorySection(
-                        title: MyWikiCategory.project.displayTitle,
-                        entries: filtered(snapshot.projects),
-                        selectedEntry: $selectedEntry
-                    )
-                    MyWikiCategorySection(
-                        title: MyWikiCategory.theme.displayTitle,
-                        entries: filtered(snapshot.themes),
-                        selectedEntry: $selectedEntry
-                    )
-                    MyWikiCategorySection(
-                        title: MyWikiCategory.preference.displayTitle,
-                        entries: filtered(snapshot.preferences),
-                        selectedEntry: $selectedEntry
-                    )
-                    MyWikiCategorySection(
-                        title: MyWikiCategory.openLoop.displayTitle,
-                        entries: filtered(snapshot.openLoops),
-                        selectedEntry: $selectedEntry
-                    )
-
-                    recentSyncSection
-                }
-                .padding(.horizontal, 32)
-                .padding(.top, 32)
-                .padding(.bottom, 40)
-                .frame(maxWidth: 860, alignment: .topLeading)
-                .frame(minHeight: proxy.size.height, alignment: .topLeading)
-            }
+            detailPane
+                .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.black)
         .foregroundStyle(.white)
         .onAppear {
-            loadDashboard()
-            syncDiaries()
+            for action in MyWikiPanelLifecyclePolicy.onAppearActions {
+                switch action {
+                case .loadDashboard:
+                    loadDashboard()
+                case .syncDiaries:
+                    syncDiaries()
+                }
+            }
+        }
+        .sheet(item: $editingEntry) { entry in
+            MyWikiEditSheet(
+                entry: entry,
+                conflictMessage: conflictMessage,
+                onCancel: {
+                    conflictMessage = nil
+                    editingEntry = nil
+                },
+                onFindDuplicates: {
+                    conflictMessage = nil
+                    editingEntry = nil
+                    findDuplicates()
+                },
+                onSave: saveEdit
+            )
+        }
+        .alert("Wiki Status", isPresented: $isShowingStatus) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(statusMessage)
         }
     }
 
+    private var indexPane: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            header
+            searchField
+            duplicateSuggestionBanner
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    section(
+                        title: "Recently active",
+                        category: MyWikiCategory(id: "recent", displayTitle: "Recent", singularTitle: "Recent item", frontmatterType: "recent"),
+                        entries: recentEntries,
+                        showsViewAll: false
+                    )
+
+                    ForEach(indexSections) { sectionPresentation in
+                        section(
+                            title: sectionPresentation.presentation.title,
+                            category: sectionPresentation.category,
+                            entries: sectionPresentation.presentation.entries
+                        )
+                    }
+                }
+                .padding(.bottom, 24)
+            }
+        }
+        .padding(24)
+        .background(Color.black)
+    }
+
+    private var detailPane: some View {
+        Group {
+            if let suggestion = reviewingSuggestion {
+                MyWikiDuplicateReviewView(
+                    suggestion: suggestion,
+                    onCancel: {
+                        reviewingSuggestion = nil
+                    },
+                    onMerge: { canonicalID in
+                        mergeSuggestion(suggestion, canonicalID: canonicalID)
+                    }
+                )
+            } else if let category = fullListCategory {
+                MyWikiFullListView(
+                    title: "All \(category.displayTitle)",
+                    entries: filtered(snapshot.entries(for: category)),
+                    selectedEntry: $selectedEntry,
+                    onSelect: {
+                        selectedEntry = $0
+                        fullListCategory = nil
+                    }
+                )
+            } else {
+                MyWikiDetailView(
+                    entry: selectedEntry,
+                    duplicateSuggestionCount: duplicateSuggestions.count,
+                    isSyncing: isSyncing,
+                    onEdit: { entry in
+                        conflictMessage = nil
+                        editingEntry = entry
+                    },
+                    onOrganizeJournals: syncDiaries,
+                    onFindDuplicates: findDuplicates,
+                    onRevealWikiFolder: openProjectFolder,
+                    onShowStatus: { isShowingStatus = true }
+                )
+            }
+        }
+        .background(Color.black.opacity(0.98))
+    }
+
     private var header: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Label("My Wiki", systemImage: "point.3.connected.trianglepath.dotted")
-                    .font(.system(size: 28, weight: .semibold))
+        VStack(alignment: .leading, spacing: 8) {
+            Label("My Wiki", systemImage: "point.3.connected.trianglepath.dotted")
+                .font(.system(size: 30, weight: .semibold))
 
-                Text("Turn your journals into summaries, people, projects, topics, preferences, and follow-ups.")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.white.opacity(0.62))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-
-            Button {
-                syncDiaries()
-            } label: {
-                Label("Organize Journals", systemImage: "arrow.triangle.2.circlepath")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(isSyncing || sourceVault == nil || projectRoot == nil)
+            Text("Search and review the people, projects, topics, patterns, and follow-ups extracted from your journals.")
+                .font(.system(size: 14))
+                .foregroundStyle(.white.opacity(0.62))
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -104,7 +151,7 @@ struct MyWikiPanel: View {
             .textFieldStyle(.plain)
             .font(.system(size: 15))
             .padding(.horizontal, 14)
-            .frame(height: 42)
+            .frame(height: 44)
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.white.opacity(0.08))
@@ -115,62 +162,120 @@ struct MyWikiPanel: View {
             )
     }
 
-    private var statusBar: some View {
-        HStack(spacing: 14) {
-            infoPill("Project", projectRoot == nil ? "KnowYou environment is not ready." : "Local My Wiki project")
-            infoPill("Status", statusMessage)
-
-            Button {
-                openProjectFolder()
-            } label: {
-                Label("Open Project", systemImage: "folder")
-            }
-            .buttonStyle(.bordered)
-            .disabled(projectRoot == nil)
-        }
-        .font(.system(size: 12))
-    }
-
-    private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("No My Wiki pages yet")
-                .font(.headline)
-                .foregroundStyle(.white)
-            Text("Organize your journals to create readable summaries, topics, projects, preferences, and follow-ups from your existing diary files.")
-                .font(.system(size: 13))
-                .foregroundStyle(.white.opacity(0.62))
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.06)))
-    }
-
-    private var recentPresentation: KnowledgeOntologyRecentExportPresentation {
-        KnowledgeOntologyRecentExportPresentation(exportedFileNames: exportedFileNames)
-    }
-
     @ViewBuilder
-    private var recentSyncSection: some View {
-        if exportedFileNames.isEmpty == false {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Recently organized")
-                    .font(.headline)
-                    .foregroundStyle(.white)
+    private var duplicateSuggestionBanner: some View {
+        if duplicateSuggestions.isEmpty == false {
+            Button {
+                if let first = duplicateSuggestions.first {
+                    reviewingSuggestion = first
+                    fullListCategory = nil
+                }
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(duplicateSuggestions.count) duplicate suggestions")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(red: 0.94, green: 0.86, blue: 0.48))
+                        Text("Review possible same people, projects, or topics.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color(red: 0.72, green: 0.66, blue: 0.45))
+                    }
+                    Spacer()
+                    Text("Review")
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 10)
+                        .frame(height: 28)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.08)))
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(red: 0.98, green: 0.8, blue: 0.16).opacity(0.08))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color(red: 0.98, green: 0.8, blue: 0.16).opacity(0.28), lineWidth: 1)
+                        )
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
 
-                ForEach(recentPresentation.visibleFileNames, id: \.self) { fileName in
-                    Label(fileName, systemImage: "doc.plaintext")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.62))
+    private func section(title: String, category: MyWikiCategory, entries: [MyWikiEntry], showsViewAll: Bool = true) -> some View {
+        let presentation = MyWikiIndexSectionPresentation(
+            title: title,
+            entries: entries,
+            isExpanded: expandedCategoryIDs.contains(category.id),
+            previewLimit: 4
+        )
+
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Button {
+                    toggle(category)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: expandedCategoryIDs.contains(category.id) ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(title.uppercased())
+                            .font(.system(size: 11, weight: .bold))
+                            .tracking(0.8)
+                    }
+                    .foregroundStyle(.white.opacity(0.48))
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                if showsViewAll && entries.isEmpty == false {
+                    Button("View all") {
+                        fullListCategory = category
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.7))
                 }
 
-                if let summaryText = recentPresentation.summaryText {
-                    Text(summaryText)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.5))
-                        .padding(.top, 2)
+                Text("\(entries.count)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.42))
+            }
+            .frame(height: 34)
+
+            ForEach(presentation.visibleEntries) { entry in
+                MyWikiIndexRow(entry: entry, isSelected: isSelected(entry)) {
+                    selectedEntry = entry
+                    fullListCategory = nil
                 }
             }
         }
+    }
+
+    private var recentEntries: [MyWikiEntry] {
+        MyWikiIndexSectionsBuilder().recentEntries(snapshot: snapshot, query: query)
+    }
+
+    private var indexSections: [MyWikiIndexCategorySection] {
+        MyWikiIndexSectionsBuilder().categorySections(
+            snapshot: snapshot,
+            query: query,
+            expandedCategoryIDs: expandedCategoryIDs,
+            previewLimit: 4
+        )
+    }
+
+    private func filtered(_ entries: [MyWikiEntry]) -> [MyWikiEntry] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return entries }
+
+        return entries.filter { entry in
+            ([entry.title, entry.summary] + entry.aliases + entry.related)
+                .contains { $0.localizedCaseInsensitiveContains(trimmed) }
+        }
+    }
+
+    private func isSelected(_ entry: MyWikiEntry) -> Bool {
+        selectedEntry?.id == entry.id && selectedEntry?.category == entry.category
     }
 
     private var pipelineTarget: MyWikiPipelineTarget {
@@ -180,66 +285,44 @@ struct MyWikiPanel: View {
         )
     }
 
-    private var filteredEntries: [MyWikiEntry] {
-        [
-            snapshot.summaries,
-            snapshot.people,
-            snapshot.projects,
-            snapshot.themes,
-            snapshot.preferences,
-            snapshot.openLoops
-        ].flatMap { filtered($0) }
-    }
-
-    private func filtered(_ entries: [MyWikiEntry]) -> [MyWikiEntry] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false else { return entries }
-
-        return entries.filter { entry in
-            entry.title.localizedCaseInsensitiveContains(trimmed)
-                || entry.summary.localizedCaseInsensitiveContains(trimmed)
+    private func toggle(_ category: MyWikiCategory) {
+        if expandedCategoryIDs.contains(category.id) {
+            expandedCategoryIDs.remove(category.id)
+        } else {
+            expandedCategoryIDs.insert(category.id)
         }
-    }
-
-    private func infoPill(_ title: String, _ value: String) -> some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .fontWeight(.semibold)
-                .foregroundStyle(.white.opacity(0.8))
-            Text(value)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundStyle(.white.opacity(0.56))
-        }
-        .padding(.horizontal, 10)
-        .frame(height: 30)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.06)))
     }
 
     private func syncDiaries() {
         guard let sourceVault, let projectRoot else { return }
+        guard !isSyncing else { return }
         isSyncing = true
-        defer { isSyncing = false }
+        statusMessage = "Organizing journals..."
 
-        do {
-            let result = try KnowledgeOntologyProjectExporter().syncDiaries(
-                sourceVault: sourceVault,
-                projectRoot: projectRoot
-            )
-            exportedFileNames = result.exportedFileNames
-            do {
-                try MyWikiPipelineBridge().runIngest(target: pipelineTarget, projectRoot: projectRoot)
-                if pipelineTarget == .missing {
-                    statusMessage = "Organized \(result.exportedFileNames.count) journals and generated starter pages. The full pipeline is not available yet."
-                } else {
-                    statusMessage = "Organized \(result.exportedFileNames.count) journals and refreshed My Wiki pages."
+        let target = pipelineTarget
+        Task {
+            let outcome = await Task.detached(priority: .userInitiated) {
+                do {
+                    let result = try KnowledgeOntologyProjectExporter().syncDiaries(
+                        sourceVault: sourceVault,
+                        projectRoot: projectRoot
+                    )
+                    do {
+                        try MyWikiPipelineBridge().runIngest(target: target, projectRoot: projectRoot)
+                        return "Organized \(result.exportedFileNames.count) journals and refreshed My Wiki."
+                    } catch {
+                        return "Organized \(result.exportedFileNames.count) journals; \(error.localizedDescription)"
+                    }
+                } catch {
+                    return error.localizedDescription
                 }
-            } catch {
-                statusMessage = "Organized \(result.exportedFileNames.count) journals; \(error.localizedDescription)"
+            }.value
+
+            await MainActor.run {
+                statusMessage = outcome
+                isSyncing = false
+                loadDashboard()
             }
-            loadDashboard()
-        } catch {
-            statusMessage = error.localizedDescription
         }
     }
 
@@ -247,86 +330,336 @@ struct MyWikiPanel: View {
         guard let projectRoot else { return }
         do {
             snapshot = try MyWikiMarkdownStore().loadDashboard(projectRoot: projectRoot)
+            if expandedCategoryIDs.isEmpty {
+                expandedCategoryIDs = Set(snapshot.categories.map(\.id) + ["recent"])
+            }
+            if selectedEntry == nil {
+                selectedEntry = recentEntries.first ?? snapshot.summaries.first
+            }
         } catch {
             statusMessage = error.localizedDescription
+        }
+    }
+
+    private func saveEdit(entry: MyWikiEntry, title: String, aliases: [String], summary: String) {
+        guard let projectRoot else { return }
+        do {
+            let result = try MyWikiRenameService().rename(
+                entry,
+                to: title,
+                aliases: aliases,
+                summary: summary,
+                projectRoot: projectRoot
+            )
+            switch result {
+            case .renamed:
+                conflictMessage = nil
+                editingEntry = nil
+                loadDashboard()
+                selectedEntry = snapshot.entries(for: entry.category).first { $0.id == entry.id }
+            case .conflict(let existingTitle):
+                conflictMessage = "A \(entry.category.singularTitle) named \(existingTitle) already exists. Keep the current name, choose another name, or use More > Find duplicates to merge."
+            }
+        } catch {
+            conflictMessage = error.localizedDescription
+        }
+    }
+
+    private func findDuplicates() {
+        guard let projectRoot else { return }
+        do {
+            duplicateSuggestions = try MyWikiDuplicateService().findDuplicateSuggestions(projectRoot: projectRoot)
+            statusMessage = duplicateSuggestions.isEmpty
+                ? "No duplicate suggestions found."
+                : "\(duplicateSuggestions.count) duplicate suggestions found."
+            reviewingSuggestion = duplicateSuggestions.first
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    private func mergeSuggestion(_ suggestion: MyWikiDuplicateSuggestion, canonicalID: String) {
+        guard let projectRoot else { return }
+        do {
+            try MyWikiDuplicateService().merge(
+                suggestion: suggestion,
+                canonicalID: canonicalID,
+                projectRoot: projectRoot
+            )
+            statusMessage = "Merged duplicate My Wiki items."
+            reviewingSuggestion = nil
+            duplicateSuggestions = try MyWikiDuplicateService().findDuplicateSuggestions(projectRoot: projectRoot)
+            loadDashboard()
+            selectedEntry = snapshot.allEntries.first { $0.id == canonicalID }
+        } catch {
+            statusMessage = error.localizedDescription
+            isShowingStatus = true
         }
     }
 
     private func openProjectFolder() {
         guard let projectRoot else { return }
         NSWorkspace.shared.open(projectRoot)
-        statusMessage = "Opened the My Wiki project folder."
+        statusMessage = "Opened the My Wiki folder."
     }
 }
 
-private struct MyWikiSummarySection: View {
-    let entries: [MyWikiEntry]
-    @Binding var selectedEntry: MyWikiEntry?
+private struct MyWikiIndexRow: View {
+    let entry: MyWikiEntry
+    let isSelected: Bool
+    let onSelect: () -> Void
 
     var body: some View {
-        MyWikiCategorySection(
-            title: MyWikiCategory.summary.displayTitle,
-            entries: entries,
-            selectedEntry: $selectedEntry
-        )
+        Button(action: onSelect) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(entry.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.46))
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Text(entry.category.singularTitle)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(entry.category.badgeForeground)
+                    .padding(.horizontal, 8)
+                    .frame(height: 22)
+                    .background(Capsule().fill(entry.category.badgeBackground))
+            }
+            .padding(.horizontal, 10)
+            .frame(minHeight: 58)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? Color.white.opacity(0.09) : Color.clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isSelected ? Color.blue.opacity(0.78) : Color.clear, lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
-private struct MyWikiCategorySection: View {
+private struct MyWikiFullListView: View {
     let title: String
     let entries: [MyWikiEntry]
     @Binding var selectedEntry: MyWikiEntry?
+    let onSelect: (MyWikiEntry) -> Void
+
+    @State private var localQuery = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 18) {
             Text(title)
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 34, weight: .semibold))
+            TextField("Filter this list...", text: $localQuery)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 12)
+                .frame(height: 40)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.08)))
 
-            if entries.isEmpty {
-                Text("No items yet")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.white.opacity(0.48))
-                    .padding(.horizontal, 14)
-                    .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.04)))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                    )
-            } else {
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 220), spacing: 12)],
-                    alignment: .leading,
-                    spacing: 12
-                ) {
-                    ForEach(entries) { entry in
-                        Button {
-                            selectedEntry = entry
-                        } label: {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(entry.title)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .lineLimit(1)
-
-                                Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.white.opacity(0.62))
-                                    .lineLimit(3)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            .padding(14)
-                            .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.06)))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.white.opacity(selectedEntry == entry ? 0.36 : 0.08), lineWidth: 1)
-                            )
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(filteredEntries) { entry in
+                        MyWikiIndexRow(entry: entry, isSelected: isSelected(entry)) {
+                            onSelect(entry)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var filteredEntries: [MyWikiEntry] {
+        let trimmed = localQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return entries }
+        return entries.filter { $0.title.localizedCaseInsensitiveContains(trimmed) || $0.summary.localizedCaseInsensitiveContains(trimmed) }
+    }
+
+    private func isSelected(_ entry: MyWikiEntry) -> Bool {
+        selectedEntry?.id == entry.id && selectedEntry?.category == entry.category
+    }
+}
+
+private struct MyWikiDuplicateReviewView: View {
+    let suggestion: MyWikiDuplicateSuggestion
+    let onCancel: () -> Void
+    let onMerge: (String) -> Void
+
+    @State private var canonicalID: String
+
+    init(
+        suggestion: MyWikiDuplicateSuggestion,
+        onCancel: @escaping () -> Void,
+        onMerge: @escaping (String) -> Void
+    ) {
+        self.suggestion = suggestion
+        self.onCancel = onCancel
+        self.onMerge = onMerge
+        _canonicalID = State(initialValue: suggestion.entries.first?.id ?? "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Review Duplicate Suggestion")
+                .font(.system(size: 34, weight: .semibold))
+            Text(suggestion.reason)
+                .font(.system(size: 15))
+                .foregroundStyle(.white.opacity(0.62))
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(suggestion.entries) { entry in
+                    Button {
+                        canonicalID = entry.id
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(entry.title)
+                                    .font(.system(size: 17, weight: .semibold))
+                                Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(.white.opacity(0.56))
+                                    .lineLimit(2)
+                                if entry.aliases.isEmpty == false {
+                                    Text("Aliases: \(entry.aliases.joined(separator: ", "))")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.white.opacity(0.45))
+                                }
+                            }
+                            Spacer()
+                            Image(systemName: canonicalID == entry.id ? "largecircle.fill.circle" : "circle")
+                        }
+                        .padding(16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.white.opacity(canonicalID == entry.id ? 0.10 : 0.04))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.12), lineWidth: 1))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            HStack {
+                Button("Not duplicates", action: onCancel)
+                Spacer()
+                Button("Merge with selected canonical item") {
+                    onMerge(canonicalID)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(canonicalID.isEmpty)
+            }
+        }
+        .padding(32)
+        .frame(maxWidth: 920, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.black.opacity(0.98))
+    }
+}
+
+private struct MyWikiEditSheet: View {
+    let entry: MyWikiEntry
+    let conflictMessage: String?
+    let onCancel: () -> Void
+    let onFindDuplicates: () -> Void
+    let onSave: (MyWikiEntry, String, [String], String) -> Void
+
+    @State private var title: String
+    @State private var aliasesText: String
+    @State private var summary: String
+
+    init(
+        entry: MyWikiEntry,
+        conflictMessage: String?,
+        onCancel: @escaping () -> Void,
+        onFindDuplicates: @escaping () -> Void,
+        onSave: @escaping (MyWikiEntry, String, [String], String) -> Void
+    ) {
+        self.entry = entry
+        self.conflictMessage = conflictMessage
+        self.onCancel = onCancel
+        self.onFindDuplicates = onFindDuplicates
+        self.onSave = onSave
+        _title = State(initialValue: entry.title)
+        _aliasesText = State(initialValue: entry.aliases.joined(separator: ", "))
+        _summary = State(initialValue: entry.summary)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Edit \(entry.category.singularTitle)")
+                .font(.title2.weight(.semibold))
+            TextField("Name", text: $title)
+            TextField("Aliases, comma separated", text: $aliasesText)
+            TextEditor(text: $summary)
+                .frame(minHeight: 160)
+
+            if let conflictMessage {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(conflictMessage)
+                        .font(.callout)
+                        .foregroundStyle(.yellow)
+                    HStack {
+                        Button("Keep current name", action: onCancel)
+                        Button("Choose another name") {
+                            title = ""
+                        }
+                        Button("Review possible merge", action: onFindDuplicates)
+                            .buttonStyle(.borderedProminent)
+                    }
+                }
+                .padding(12)
+                .background(Color.yellow.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                Button("Save") {
+                    onSave(entry, title, aliases, summary)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(24)
+        .frame(width: 520)
+    }
+
+    private var aliases: [String] {
+        aliasesText
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+    }
+}
+
+private extension MyWikiCategory {
+    var badgeForeground: Color {
+        switch id {
+        case MyWikiCategory.person.id: return Color(red: 0.56, green: 0.76, blue: 1)
+        case MyWikiCategory.project.id: return Color(red: 0.5, green: 0.9, blue: 0.63)
+        case MyWikiCategory.event.id: return Color(red: 1, green: 0.68, blue: 0.42)
+        case MyWikiCategory.preference.id: return Color(red: 0.92, green: 0.84, blue: 0.48)
+        default: return .white.opacity(0.72)
+        }
+    }
+
+    var badgeBackground: Color {
+        switch id {
+        case MyWikiCategory.person.id: return Color.blue.opacity(0.18)
+        case MyWikiCategory.project.id: return Color.green.opacity(0.16)
+        case MyWikiCategory.event.id: return Color.orange.opacity(0.16)
+        case MyWikiCategory.preference.id: return Color.yellow.opacity(0.14)
+        default: return Color.white.opacity(0.12)
         }
     }
 }

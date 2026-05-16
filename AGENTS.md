@@ -41,6 +41,7 @@ For any non-trivial change:
   - `xcodebuild build -scheme KnowYou -destination 'platform=macOS'`
 - When launching the app after a build, inspect the current session's DerivedData output, use only the freshly built `KnowYou.app`, and delete stale historical `KnowYou.app` build artifacts so verification never points at an old binary and disk usage stays bounded.
 - During GUI verification, do not clear or reset the dev bundle's persisted onboarding, auth, engine, or login state unless the test explicitly requires it. If a repro requires changing `dev.knowyou.app` UserDefaults or auth state, restore the prior completed/configured state before handing the app back to the user.
+- Build, rebuild, and launch workflows must preserve login and onboarding state by default. Do not delete app containers, Keychain items, auth files, or `UserDefaults` domains such as `dev.knowyou.app` unless the user explicitly asks for a clean-state test.
 
 Do not claim a feature is complete, fixed, or passing without fresh command output from the current session.
 
@@ -49,6 +50,14 @@ Do not claim a feature is complete, fixed, or passing without fresh command outp
 - Do not automatically push changes to the remote.
 - After local implementation, testing, and commit, stop and let the user test first.
 - Push only after the user explicitly confirms that the local result is ready to publish.
+
+## AI-First Semantics Policy
+
+- For My Wiki, ontology extraction, deduplication, relationship discovery, summarization, search ranking, and agent-context generation, prefer LLM-based semantic understanding over mechanical keyword lists, broad regular expressions, or hardcoded candidate tables.
+- Deterministic rules are acceptable only for plumbing, safety, formatting, cache keys, path validation, schema validation, source provenance, and conservative fallbacks. They must not pretend to be the primary ontology or intelligence pipeline.
+- If an LLM-powered pipeline is unavailable, write an explicit failed or degraded status instead of silently producing low-quality ontology as if it were complete.
+- Reuse proven upstream LLM Wiki pipeline code for ingest, page merge, source traceability, related-page discovery, review items, search, and vector indexing whenever feasible. Do not rewrite these capabilities from scratch in Swift unless there is a documented reason.
+- Any fallback extractor must be visibly labeled as fallback/degraded output, must preserve source evidence, and must avoid creating confident People, Projects, Events, Topics, Patterns, or Follow-ups from keyword matches alone.
 
 ## Notes
 

@@ -1,21 +1,96 @@
 import Foundation
 
 struct MyWikiDashboardSnapshot: Equatable {
-    var summaries: [MyWikiEntry]
-    var people: [MyWikiEntry]
-    var projects: [MyWikiEntry]
-    var themes: [MyWikiEntry]
-    var preferences: [MyWikiEntry]
-    var openLoops: [MyWikiEntry]
+    var schema: MyWikiSchemaConfig
+    var entriesByCategoryID: [String: [MyWikiEntry]]
+
+    var categories: [MyWikiCategoryDefinition] {
+        schema.categories
+    }
+
+    var summaries: [MyWikiEntry] {
+        entries(for: .summary)
+    }
+
+    var people: [MyWikiEntry] {
+        entries(for: .person)
+    }
+
+    var projects: [MyWikiEntry] {
+        entries(for: .project)
+    }
+
+    var events: [MyWikiEntry] {
+        entries(for: .event)
+    }
+
+    var themes: [MyWikiEntry] {
+        entries(for: .theme)
+    }
+
+    var preferences: [MyWikiEntry] {
+        entries(for: .preference)
+    }
+
+    var openLoops: [MyWikiEntry] {
+        entries(for: .openLoop)
+    }
+
+    var allEntries: [MyWikiEntry] {
+        schema.categories.flatMap { entries(for: $0.id) }
+    }
+
+    var primaryEntries: [MyWikiEntry] {
+        schema.categories
+            .filter { ["summaries", "sources"].contains($0.id) == false }
+            .flatMap { entries(for: $0.id) }
+    }
+
+    init(schema: MyWikiSchemaConfig, entriesByCategoryID: [String: [MyWikiEntry]]) {
+        self.schema = schema
+        self.entriesByCategoryID = entriesByCategoryID
+    }
+
+    init(
+        summaries: [MyWikiEntry],
+        people: [MyWikiEntry],
+        projects: [MyWikiEntry],
+        events: [MyWikiEntry] = [],
+        themes: [MyWikiEntry],
+        preferences: [MyWikiEntry],
+        openLoops: [MyWikiEntry]
+    ) {
+        schema = Self.defaultSchema
+        entriesByCategoryID = [
+            MyWikiCategory.summary.id: summaries,
+            MyWikiCategory.person.id: people,
+            MyWikiCategory.project.id: projects,
+            MyWikiCategory.event.id: events,
+            MyWikiCategory.theme.id: themes,
+            MyWikiCategory.preference.id: preferences,
+            MyWikiCategory.openLoop.id: openLoops
+        ]
+    }
 
     static let empty = MyWikiDashboardSnapshot(
         summaries: [],
         people: [],
         projects: [],
+        events: [],
         themes: [],
         preferences: [],
         openLoops: []
     )
+
+    private static let defaultSchema = try! MyWikiSchemaConfig.defaultPersonalContext()
+
+    func entries(for category: MyWikiCategory) -> [MyWikiEntry] {
+        entries(for: category.id)
+    }
+
+    func entries(for categoryID: String) -> [MyWikiEntry] {
+        entriesByCategoryID[categoryID] ?? []
+    }
 }
 
 struct MyWikiEntry: Identifiable, Equatable {
@@ -24,32 +99,176 @@ struct MyWikiEntry: Identifiable, Equatable {
     let category: MyWikiCategory
     let summary: String
     let sourceNames: [String]
+    var aliases: [String] = []
+    var related: [String] = []
+    var confidence: String = ""
+    var mentions: [MyWikiMention] = []
+    var markdownBody: String = ""
+    var fileURL: URL = URL(fileURLWithPath: "/")
 }
 
-enum MyWikiCategory: String, CaseIterable, Equatable {
-    case summary
-    case person
-    case project
-    case theme
-    case preference
-    case openLoop
+struct MyWikiMention: Equatable {
+    let day: String
+    let text: String
 }
 
-extension MyWikiCategory {
-    var displayTitle: String {
-        switch self {
-        case .summary:
-            return "Summary"
-        case .person:
-            return "People"
-        case .project:
-            return "Projects"
-        case .theme:
-            return "Topics"
-        case .preference:
-            return "Preferences"
-        case .openLoop:
-            return "Follow-ups"
+struct MyWikiDetailPresentation: Equatable {
+    let markdownText: String
+    let isMarkdownTruncated: Bool
+
+    init(entry: MyWikiEntry, markdownPreviewLimit: Int = 8_000) {
+        let source = entry.markdownBody.isEmpty ? entry.summary : entry.markdownBody
+        let limit = max(0, markdownPreviewLimit)
+        if source.count > limit {
+            let endIndex = source.index(source.startIndex, offsetBy: limit)
+            markdownText = String(source[..<endIndex])
+            isMarkdownTruncated = true
+        } else {
+            markdownText = source
+            isMarkdownTruncated = false
         }
     }
+}
+
+struct MyWikiIndexSectionPresentation {
+    let title: String
+    let entries: [MyWikiEntry]
+    let isExpanded: Bool
+    let previewLimit: Int
+
+    var visibleEntries: [MyWikiEntry] {
+        guard isExpanded else { return [] }
+        return Array(entries.prefix(max(0, previewLimit)))
+    }
+
+    var canViewAll: Bool {
+        entries.count > previewLimit
+    }
+}
+
+struct MyWikiIndexCategorySection: Identifiable {
+    let category: MyWikiCategory
+    let presentation: MyWikiIndexSectionPresentation
+
+    var id: String {
+        category.id
+    }
+}
+
+struct MyWikiIndexSectionsBuilder {
+    func categorySections(
+        snapshot: MyWikiDashboardSnapshot,
+        query: String,
+        expandedCategoryIDs: Set<String>,
+        previewLimit: Int
+    ) -> [MyWikiIndexCategorySection] {
+        snapshot.categories.compactMap { definition in
+            let category = MyWikiCategory(definition: definition)
+            let entries = filtered(snapshot.entries(for: definition.id), query: query)
+            guard entries.isEmpty == false || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return nil
+            }
+            return MyWikiIndexCategorySection(
+                category: category,
+                presentation: MyWikiIndexSectionPresentation(
+                    title: definition.displayName,
+                    entries: entries,
+                    isExpanded: expandedCategoryIDs.contains(definition.id),
+                    previewLimit: previewLimit
+                )
+            )
+        }
+    }
+
+    func recentEntries(snapshot: MyWikiDashboardSnapshot, query: String) -> [MyWikiEntry] {
+        filtered(snapshot.primaryEntries, query: query)
+            .sorted { lhs, rhs in
+                (lhs.mentions.first?.day ?? "").localizedStandardCompare(rhs.mentions.first?.day ?? "") == .orderedDescending
+            }
+    }
+
+    private func filtered(_ entries: [MyWikiEntry], query: String) -> [MyWikiEntry] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return entries }
+
+        return entries.filter { entry in
+            ([entry.title, entry.summary] + entry.aliases + entry.related)
+                .contains { $0.localizedCaseInsensitiveContains(trimmed) }
+        }
+    }
+}
+
+enum MyWikiPanelLifecycleAction: Equatable {
+    case loadDashboard
+    case syncDiaries
+}
+
+struct MyWikiPanelLifecyclePolicy {
+    static var onAppearActions: [MyWikiPanelLifecycleAction] {
+        [.loadDashboard]
+    }
+}
+
+struct MyWikiCategory: Equatable, Hashable, Identifiable {
+    let id: String
+    let displayTitle: String
+    let singularTitle: String
+    let frontmatterType: String
+
+    init(id: String, displayTitle: String, singularTitle: String, frontmatterType: String) {
+        self.id = id
+        self.displayTitle = displayTitle
+        self.singularTitle = singularTitle
+        self.frontmatterType = frontmatterType
+    }
+
+    init(definition: MyWikiCategoryDefinition) {
+        self.id = definition.id
+        self.displayTitle = definition.displayName
+        self.singularTitle = definition.singularName
+        self.frontmatterType = definition.frontmatterTypes.first ?? definition.id
+    }
+
+    static let summary = MyWikiCategory(
+        id: "summaries",
+        displayTitle: "Summaries",
+        singularTitle: "Summary",
+        frontmatterType: "summary"
+    )
+    static let person = MyWikiCategory(
+        id: "people",
+        displayTitle: "People",
+        singularTitle: "Person",
+        frontmatterType: "person"
+    )
+    static let project = MyWikiCategory(
+        id: "projects",
+        displayTitle: "Projects",
+        singularTitle: "Project",
+        frontmatterType: "project"
+    )
+    static let event = MyWikiCategory(
+        id: "events",
+        displayTitle: "Events",
+        singularTitle: "Event",
+        frontmatterType: "event"
+    )
+    static let theme = MyWikiCategory(
+        id: "topics",
+        displayTitle: "Topics",
+        singularTitle: "Topic",
+        frontmatterType: "topic"
+    )
+    static let preference = MyWikiCategory(
+        id: "preferences",
+        displayTitle: "Preferences",
+        singularTitle: "Preference",
+        frontmatterType: "preference"
+    )
+    static let openLoop = MyWikiCategory(
+        id: "follow-ups",
+        displayTitle: "Follow-ups",
+        singularTitle: "Follow-up",
+        frontmatterType: "follow-up"
+    )
 }

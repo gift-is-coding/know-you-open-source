@@ -19,16 +19,30 @@ enum MyWikiPipelineTarget: Equatable {
 
 enum MyWikiPipelineBridgeError: LocalizedError {
     case missingPipeline
+    case pipelineExecutionFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .missingPipeline:
             return "Could not find the bundled llm_wiki helper or ThirdParty/llm_wiki source."
+        case .pipelineExecutionFailed(let detail):
+            return detail
         }
     }
 }
 
 struct MyWikiPipelineBridge {
+    private let processRunner: MyWikiPipelineProcessRunning
+    private let npmExecutable: String
+
+    init(
+        processRunner: MyWikiPipelineProcessRunning = DefaultMyWikiPipelineProcessRunner(),
+        npmExecutable: String = "/usr/bin/env"
+    ) {
+        self.processRunner = processRunner
+        self.npmExecutable = npmExecutable
+    }
+
     static func resolveTarget(
         bundledHelperAppURL: URL?,
         developmentSourceURL: URL,
@@ -51,15 +65,22 @@ struct MyWikiPipelineBridge {
     }
 
     func runIngest(target: MyWikiPipelineTarget, projectRoot: URL) throws {
+        try FileManager.default.createDirectory(
+            at: projectRoot.appending(path: ".llm-wiki", directoryHint: .isDirectory),
+            withIntermediateDirectories: true
+        )
+
         switch target {
-        case .bundledHelperApp, .developmentSource:
-            try FileManager.default.createDirectory(
-                at: projectRoot.appending(path: ".llm-wiki", directoryHint: .isDirectory),
-                withIntermediateDirectories: true
-            )
-            try MyWikiStarterExtractor().materialize(projectRoot: projectRoot)
+        case .bundledHelperApp:
+            let message = "headless llm_wiki runner is not available for bundled helper apps yet."
+            try writeFailureStatus(message: message, projectRoot: projectRoot)
+            throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
+        case .developmentSource(let sourceURL):
+            try runDevelopmentPipeline(sourceURL: sourceURL, projectRoot: projectRoot)
         case .missing:
-            try MyWikiStarterExtractor().materialize(projectRoot: projectRoot)
+            let message = "llm_wiki pipeline is not available."
+            try writeFailureStatus(message: message, projectRoot: projectRoot)
+            throw MyWikiPipelineBridgeError.missingPipeline
         }
     }
 
@@ -80,5 +101,131 @@ struct MyWikiPipelineBridge {
         case .missing:
             return .missing
         }
+    }
+
+    private func writeFailureStatus(message: String, projectRoot: URL) throws {
+        let status = MyWikiIngestStatus(
+            status: "failed",
+            message: message,
+            updatedAt: ISO8601DateFormatter().string(from: Date()),
+            sourcesProcessed: 0,
+            filesWritten: []
+        )
+        let data = try JSONEncoder().encode(status)
+        try data.write(to: projectRoot.appending(path: ".llm-wiki/last-ingest-status.json"))
+    }
+
+    private func writeSuccessStatus(message: String, projectRoot: URL) throws {
+        let status = MyWikiIngestStatus(
+            status: "succeeded",
+            message: message,
+            updatedAt: ISO8601DateFormatter().string(from: Date()),
+            sourcesProcessed: nil,
+            filesWritten: nil
+        )
+        let data = try JSONEncoder().encode(status)
+        try data.write(to: projectRoot.appending(path: ".llm-wiki/last-ingest-status.json"))
+    }
+
+    private func runDevelopmentPipeline(sourceURL: URL, projectRoot: URL) throws {
+        let packageURL = sourceURL.appending(path: "package.json")
+        guard FileManager.default.fileExists(atPath: packageURL.path) else {
+            let message = "headless llm_wiki runner is not available for development source yet."
+            try writeFailureStatus(message: message, projectRoot: projectRoot)
+            throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
+        }
+
+        let result = try processRunner.run(
+            executable: npmExecutable,
+            arguments: [
+                "npm",
+                "run",
+                "knowyou:ingest",
+                "--",
+                "--project",
+                projectRoot.path,
+                "--provider",
+                "codex-cli",
+                "--model",
+                "gpt-5.5"
+            ],
+            workingDirectory: sourceURL,
+            timeoutSeconds: 30 * 60
+        )
+
+        guard result.terminationStatus == 0 else {
+            let detail = [result.stderr, result.stdout]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { $0.isEmpty == false }
+                .joined(separator: "\n")
+            let message = detail.isEmpty
+                ? "llm_wiki headless runner exited with status \(result.terminationStatus)."
+                : detail
+            try writeFailureStatus(message: message, projectRoot: projectRoot)
+            throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
+        }
+
+        try writeSuccessStatus(message: "My Wiki pipeline completed.", projectRoot: projectRoot)
+    }
+}
+
+private struct MyWikiIngestStatus: Encodable {
+    let status: String
+    let message: String
+    let updatedAt: String
+    let sourcesProcessed: Int?
+    let filesWritten: [String]?
+}
+
+struct MyWikiPipelineProcessResult: Equatable {
+    let stdout: String
+    let stderr: String
+    let terminationStatus: Int32
+}
+
+protocol MyWikiPipelineProcessRunning {
+    func run(
+        executable: String,
+        arguments: [String],
+        workingDirectory: URL,
+        timeoutSeconds: TimeInterval
+    ) throws -> MyWikiPipelineProcessResult
+}
+
+struct DefaultMyWikiPipelineProcessRunner: MyWikiPipelineProcessRunning {
+    func run(
+        executable: String,
+        arguments: [String],
+        workingDirectory: URL,
+        timeoutSeconds: TimeInterval
+    ) throws -> MyWikiPipelineProcessResult {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.currentDirectoryURL = workingDirectory
+
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+
+        try process.run()
+
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while process.isRunning && Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+        if process.isRunning {
+            process.terminate()
+            throw MyWikiPipelineBridgeError.pipelineExecutionFailed("llm_wiki headless runner timed out.")
+        }
+
+        let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
+        let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
+        return MyWikiPipelineProcessResult(
+            stdout: String(data: stdoutData, encoding: .utf8) ?? "",
+            stderr: String(data: stderrData, encoding: .utf8) ?? "",
+            terminationStatus: process.terminationStatus
+        )
     }
 }

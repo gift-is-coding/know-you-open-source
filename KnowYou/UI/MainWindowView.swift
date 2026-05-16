@@ -277,12 +277,7 @@ struct MainWindowView: View {
                 bundledHelperAppURL: KnowledgeOntologyLauncher.defaultBundledHelperAppURL(),
                 selectedEntry: $selectedMyWikiEntry
             )
-            .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
-
-            Divider()
-
-            MyWikiDetailView(entry: selectedMyWikiEntry)
-                .frame(width: 320)
+            .frame(minWidth: 860, maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Color.black)
     }

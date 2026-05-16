@@ -48,18 +48,13 @@ struct MyWikiProjectExporter {
     }
 
     func ensureProject(at projectRoot: URL) throws {
-        let directories = [
+        let schema = try ensureSchemaConfig(at: projectRoot)
+        let directories = ([
             "raw/sources",
             "raw/assets",
-            "wiki/people",
-            "wiki/projects",
-            "wiki/themes",
-            "wiki/preferences",
-            "wiki/open-loops",
-            "wiki/summaries",
-            "wiki/sources",
+            "wiki",
             ".obsidian"
-        ]
+        ] + schema.categories.flatMap(\.directoryCandidates)).uniqued()
 
         for directory in directories {
             try fileManager.createDirectory(
@@ -68,9 +63,9 @@ struct MyWikiProjectExporter {
             )
         }
 
-        try writeIfMissing(projectRoot.appending(path: "schema.md"), contents: Self.schemaMarkdown)
+        try write(projectRoot.appending(path: "schema.md"), contents: MyWikiSchemaMarkdownRenderer().render(schema))
         try writeIfMissing(projectRoot.appending(path: "purpose.md"), contents: Self.purposeMarkdown)
-        try writeIfMissing(projectRoot.appending(path: "wiki/index.md"), contents: Self.indexMarkdown)
+        try writeIfMissing(projectRoot.appending(path: "wiki/index.md"), contents: Self.indexMarkdown(for: schema))
         try writeIfMissing(projectRoot.appending(path: "wiki/log.md"), contents: Self.logMarkdown)
         try writeIfMissing(projectRoot.appending(path: "wiki/overview.md"), contents: Self.overviewMarkdown)
         try writeIfMissing(projectRoot.appending(path: ".obsidian/app.json"), contents: Self.obsidianAppJSON)
@@ -107,8 +102,31 @@ struct MyWikiProjectExporter {
         return diaries
     }
 
+    private func ensureSchemaConfig(at projectRoot: URL) throws -> MyWikiSchemaConfig {
+        let schemaURL = projectRoot.appending(path: "mywiki.schema.json")
+        if fileManager.fileExists(atPath: schemaURL.path) {
+            let data = try Data(contentsOf: schemaURL)
+            return try JSONDecoder().decode(MyWikiSchemaConfig.self, from: data)
+        }
+
+        let schema = try MyWikiSchemaConfig.defaultPersonalContext()
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        let data = try encoder.encode(schema)
+        try fileManager.createDirectory(
+            at: schemaURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: schemaURL, options: .atomic)
+        return schema
+    }
+
     private func writeIfMissing(_ url: URL, contents: String) throws {
         guard fileManager.fileExists(atPath: url.path) == false else { return }
+        try write(url, contents: contents)
+    }
+
+    private func write(_ url: URL, contents: String) throws {
         try fileManager.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -128,53 +146,6 @@ struct MyWikiProjectExporter {
         """
     }
 
-    private static let schemaMarkdown = """
-    # My Wiki Schema
-
-    ## 页面类型
-
-    | 类型 | 目录 | 用途 |
-    |------|------|------|
-    | 人物 | wiki/people/ | 日记里反复出现的人、合作对象、朋友、家人 |
-    | 项目 | wiki/projects/ | 正在推进或反复被提到的工作、产品、研究、生活计划 |
-    | 主题 | wiki/themes/ | 长期关注的话题、方法、困惑、价值判断 |
-    | 偏好 | wiki/preferences/ | 用户稳定的选择倾向、工作方式、沟通偏好 |
-    | 待办 | wiki/open-loops/ | 尚未解决、需要跟进、需要别人协助的事项 |
-    | 总结 | wiki/summaries/ | 按周、月、主题聚合后的可读结论 |
-    | 来源 | wiki/sources/ | 从 KnowYou 日记或外部资料整理出的来源索引 |
-
-    ## 抽取规则
-
-    - 优先从 `raw/sources/knowyou-diary-*.md` 中抽取真实经历、任务、关系、偏好和反复出现的问题。
-    - 对普通用户可见的页面应使用自然语言标题，例如“重要的人”“最近在做的项目”“我反复提到的主题”。
-    - 内部可以保留稳定 ID，但页面正文必须能让用户直接读懂。
-    - 每个重要结论都要保留来源日期，方便回到原始日记核对。
-    - 不确定的信息进入待确认条目，不要硬写成事实。
-    - 敏感信息只记录必要摘要，不复制密钥、密码、token 或完整账号。
-
-    ## Frontmatter
-
-    ```yaml
-    ---
-    type: person | project | theme | preference | open-loop | summary | source | overview
-    title: 可读标题
-    aliases: []
-    tags: []
-    related: []
-    source_days: []
-    confidence: high | medium | low
-    created: YYYY-MM-DD
-    updated: YYYY-MM-DD
-    ---
-    ```
-
-    ## 交叉引用
-
-    - 页面之间使用 `[[page-slug]]` 引用。
-    - 重要人物、项目、主题、偏好和待办都应进入 `wiki/index.md`。
-    - 总结页必须引用参与整理的来源。
-    """
-
     private static let purposeMarkdown = """
     # Project Purpose
 
@@ -184,7 +155,7 @@ struct MyWikiProjectExporter {
 
     ## 关键问题
 
-    1. 最近哪些人、项目、主题和偏好反复出现在我的日记里？
+    1. 最近哪些人、项目、事件、主题和偏好反复出现在我的日记里？
     2. 哪些事情需要继续跟进？
     3. 其他 agent 在执行任务前应该知道哪些长期背景？
 
@@ -192,7 +163,7 @@ struct MyWikiProjectExporter {
 
     **In scope:**
     - KnowYou 每日日记
-    - 从日记整理人物、项目、主题、偏好、待办、总结和来源
+    - 从日记整理人物、项目、事件、主题、偏好、待办、总结和来源
     - 可读页面、搜索索引、agent 可调用摘要
 
     **Out of scope:**
@@ -200,23 +171,12 @@ struct MyWikiProjectExporter {
     - 多用户团队协作知识库
     """
 
-    private static let indexMarkdown = """
-    # My Wiki Index
-
-    ## People
-
-    ## Projects
-
-    ## Themes
-
-    ## Preferences
-
-    ## Open Loops
-
-    ## Summaries
-
-    ## Sources
-    """
+    private static func indexMarkdown(for schema: MyWikiSchemaConfig) -> String {
+        let sections = schema.categories
+            .map { "## \($0.displayName)" }
+            .joined(separator: "\n\n")
+        return "# My Wiki Index\n\n\(sections)\n"
+    }
 
     private static let logMarkdown = """
     # My Wiki Log
@@ -234,7 +194,7 @@ struct MyWikiProjectExporter {
 
     # Overview
 
-    这里汇总 KnowYou 日记整理出的人物、项目、主题、偏好、待办和总结。
+    这里汇总 KnowYou 日记整理出的人物、项目、事件、主题、偏好、待办和总结。
     """
 
     private static let obsidianAppJSON = """

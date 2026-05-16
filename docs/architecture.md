@@ -641,33 +641,37 @@ sequenceDiagram
 
 ## 11. My Wiki 子系统
 
-My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责是把已经生成的日记 Markdown 整理成更容易阅读和检索的个人 wiki：总结、人物、项目、主题、偏好、待办，以及可追溯到日期的来源。
+My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责是把已经生成的日记 Markdown 整理成更容易阅读和检索的个人 wiki：总结、人物、组织、项目、事件、主题、决策、偏好、待办，以及可追溯到日期的来源。
 
-当前实现采用“KnowYou 轻量页面 + llm_wiki 后端 pipeline 思路 + 兼容适配层”的结构：
+当前实现采用“KnowYou 轻量页面 + LLM Wiki 后端 pipeline + schema 兼容适配层”的结构。分类和视图由项目级 `mywiki.schema.json` 驱动；`schema.md` 是从该配置生成的 LLM-readable contract。KnowYou 不在 Swift UI 中硬编码 People/Projects/Events，也不再用 keyword/starter extractor 生成正式本体页。LLM Wiki headless ingest 是唯一可信页面生成路径；KnowYou 负责导出日记、准备 schema、触发 pipeline、读取 markdown/frontmatter 并展示简洁 UI。
 
 - [MyWikiProjectExporter.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiProjectExporter.swift) 创建 My Wiki 项目结构，并把 `YYYY-MM-DD.md` 同步到 `raw/sources/knowyou-diary-YYYY-MM-DD.md`
-- [MyWikiMarkdownStore.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiMarkdownStore.swift) 读取 `wiki/summaries/`、`wiki/people/`、`wiki/projects/`、`wiki/themes/`、`wiki/preferences/`、`wiki/open-loops/`，转成 SwiftUI 首页模型
-- [MyWikiPipelineBridge.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiPipelineBridge.swift) 复用 llm_wiki 的项目发现和启动边界；如果 helper 或开发源码暂不可用，也必须触发 starter extractor，避免用户点击整理后看不到内容
-- [MyWikiStarterExtractor.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiStarterExtractor.swift) 在完整 LLM ingest 接管前，从已同步日记生成可读起始页，确保已有日记能立即形成 Summary、Projects、Topics、Preferences 和 Follow-ups
+- [MyWikiSchemaConfig.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiSchemaConfig.swift) 定义机器可读 schema、默认推荐 preset、legacy 目录/type 兼容规则，以及 `schema.md` contract renderer。默认 preset 包含 `People`、`Organizations`、`Projects`、`Events`、`Topics`、`Decisions`、`Preferences`、`Follow-ups`、`Summaries`、`Sources`；`Recent` 和 `Needs Review` 是 view，不是 ontology category
+- [MyWikiMarkdownStore.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiMarkdownStore.swift) 根据 `mywiki.schema.json` 扫描配置目录与 legacy 目录，解析 frontmatter、正文、mentions、sources、aliases、related 和 confidence，转成 SwiftUI 索引与详情模型。默认 `Topics` 使用 `wiki/topics` 并兼容 `wiki/themes`；默认 `Follow-ups` 使用 `wiki/follow-ups` 并兼容 `wiki/open-loops`
+- `MyWikiRenameService` 负责 display name、aliases 与 summary 的保存；保存前会检查同分类内的标题或 slug 冲突，冲突时交给 UI 引导用户保留现名、另选名称或进入合并审核
+- `MyWikiDuplicateService` 负责主动发现疑似重复项，并在用户确认后合并 sources、aliases、related 与正文；合并前写入 `.llm-wiki/page-history/` 备份，合并后重写 wiki 内部引用并刷新 dashboard snapshot
+- [MyWikiPipelineBridge.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiPipelineBridge.swift) 复用 llm_wiki 的项目发现和启动边界；运行时调用 `ThirdParty/llm_wiki` headless ingest，并通过 Codex CLI provider 使用大模型语义能力。pipeline 不可用或失败时只写入 `.llm-wiki/last-ingest-status.json` 的 failed 状态，不生成 keyword/regex fallback 本体页，也不把降级结果标记为成功
+- [ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts) 读取 `mywiki.schema.json` 并生成动态 My Wiki output contract；[ingest.ts](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/ThirdParty/llm_wiki/src/lib/ingest.ts) 解析 contract，按配置目录和 frontmatter types 构建 prompt，而不是硬编码固定分类
+- [MyWikiStarterExtractor.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiStarterExtractor.swift) 保留为 legacy/degraded 工具代码，不是正式本体生成路径；正式 My Wiki 页面必须来自 LLM Wiki pipeline
 - [MyWikiAgentContextProvider.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiAgentContextProvider.swift) 输出给 Codex、Claude、Cowork 等 agent 使用的最小必要背景摘要
-- [MyWikiPanel.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底轻量首页，优先展示搜索、总结和核心脉络；面向用户的控件、按钮和栏目文案使用英文
+- [MyWikiPanel.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底 My Wiki 工作区：左侧是高密度可折叠索引和 `View all`，右侧是全量列表、详情阅读、编辑 sheet 或重复项审核
+- [MyWikiDetailView.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiDetailView.swift) 提供 LLM Wiki 风格详情页，包含 Summary、Recent Mentions、完整 Markdown Page、Sources、Related 和 More 菜单
 
 数据流如下：
 
 ```mermaid
 flowchart LR
     A["KnowYou Vault: YYYY-MM-DD.md"] --> B["MyWikiProjectExporter"]
-    B --> C["raw/sources/knowyou-diary-YYYY-MM-DD.md"]
+    B --> C["raw/sources + mywiki.schema.json + schema.md"]
     C --> D["MyWikiPipelineBridge"]
-    D --> J["MyWikiStarterExtractor"]
-    J --> E["wiki summaries / people / projects / themes / preferences / open-loops"]
-    E --> F["MyWikiMarkdownStore"]
+    D --> E["LLM Wiki headless ingest with Codex CLI provider"]
+    E --> F["Configured wiki directories"]
     F --> G["MyWikiPanel"]
     F --> H["MyWikiAgentContextProvider"]
     I["左侧栏 My Wiki"] --> G
 ```
 
-第一版只同步 KnowYou 已生成的每日 Markdown，不直接导出未经额外授权的 SQLite 原始事件。用户界面避免暴露内部工程术语，把复杂关系计算、结构化文件和 llm_wiki 开发入口留在底层；主界面只保留 `Organize Journals`、`Open Project` 和可点击条目的详情联动。
+第一版只同步 KnowYou 已生成的每日 Markdown，不直接导出未经额外授权的 SQLite 原始事件。用户界面避免暴露内部工程术语，把复杂关系计算、结构化文件和 llm_wiki 开发入口留在底层；主界面保留 `My Wiki`、搜索、可折叠分类索引、全量列表、详情阅读、编辑和确认式合并。`Open Project`、journal count、last date 等维护信息不占主界面，而进入 `More` 菜单或状态弹窗。
 
 ## 12. 当前架构约束
 

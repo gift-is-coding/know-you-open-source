@@ -714,6 +714,16 @@ final class MainWindowViewModelTests: XCTestCase {
     private var engineDefaultsSuiteName: String!
     private var engineDefaults: UserDefaults!
     private var engineKeychain: AppStateTestKeychainStore!
+    nonisolated(unsafe) private var standardDefaultsSnapshot: [String: Any] = [:]
+    nonisolated(unsafe) private var missingStandardDefaultsKeys: Set<String> = []
+
+    nonisolated(unsafe) private let standardDefaultsKeysTouchedByTests = [
+        AppState.UserDefaultsKeys.hasCompletedOnboarding,
+        AppState.UserDefaultsKeys.onboardingProgressState,
+        AppState.UserDefaultsKeys.onboardingBootstrapState,
+        AppState.UserDefaultsKeys.onboardingBootstrapDayKeys,
+        AppState.UserDefaultsKeys.launchAtLoginDefaultRegistrationAttempted,
+    ]
 
     private func markOnboardingComplete(in defaults: UserDefaults) {
         defaults.set(true, forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
@@ -727,21 +737,42 @@ final class MainWindowViewModelTests: XCTestCase {
         engineDefaultsSuiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
         engineDefaults = UserDefaults(suiteName: engineDefaultsSuiteName)!
         engineKeychain = AppStateTestKeychainStore()
+        snapshotStandardDefaults()
         markOnboardingComplete(in: engineDefaults)
         markOnboardingComplete(in: .standard)
     }
 
     override func tearDown() {
         MainWindowStubURLProtocol.reset()
-        UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
-        UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.onboardingProgressState)
-        UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.onboardingBootstrapState)
-        UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.onboardingBootstrapDayKeys)
-        UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.launchAtLoginDefaultRegistrationAttempted)
+        restoreStandardDefaults()
         if let engineDefaultsSuiteName {
             engineDefaults.removePersistentDomain(forName: engineDefaultsSuiteName)
         }
+        standardDefaultsSnapshot = [:]
+        missingStandardDefaultsKeys = []
         super.tearDown()
+    }
+
+    nonisolated private func snapshotStandardDefaults() {
+        standardDefaultsSnapshot = [:]
+        missingStandardDefaultsKeys = []
+        for key in standardDefaultsKeysTouchedByTests {
+            if let value = UserDefaults.standard.object(forKey: key) {
+                standardDefaultsSnapshot[key] = value
+            } else {
+                missingStandardDefaultsKeys.insert(key)
+            }
+        }
+    }
+
+    nonisolated private func restoreStandardDefaults() {
+        for key in standardDefaultsKeysTouchedByTests {
+            if let value = standardDefaultsSnapshot[key] {
+                UserDefaults.standard.set(value, forKey: key)
+            } else if missingStandardDefaultsKeys.contains(key) {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
     }
 
     func testDefaultLaunchAtLoginRegistersOnce() {

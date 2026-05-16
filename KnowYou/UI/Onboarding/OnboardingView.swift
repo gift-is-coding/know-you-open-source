@@ -66,6 +66,9 @@ struct OnboardingView: View {
     ) {
         self.onComplete = onComplete
         _step = State(initialValue: initialStep)
+        _didBypassFullDiskAccessForDevelopment = State(
+            initialValue: OnboardingPermissionBypassPolicy.hasStoredDevelopmentBypass(bundleURL: Bundle.main.bundleURL)
+        )
     }
 
     var body: some View {
@@ -607,11 +610,16 @@ struct OnboardingView: View {
 
     private func recheckPermissionAndAdvanceIfReady() {
         appState.recheckNotificationAccess()
+        if !notificationsAvailable && allowsFullDiskAccessBypass {
+            OnboardingPermissionBypassPolicy.storeDevelopmentBypass(bundleURL: Bundle.main.bundleURL)
+            didBypassFullDiskAccessForDevelopment = true
+        }
         reconcileVisibleStepWithProgress()
     }
 
     private func advancePastPermissionsForDevelopment() {
         guard allowsFullDiskAccessBypass else { return }
+        OnboardingPermissionBypassPolicy.storeDevelopmentBypass(bundleURL: Bundle.main.bundleURL)
         didBypassFullDiskAccessForDevelopment = true
         appState.restoreOnboardingProgress(
             isFullDiskAccessReady: false,

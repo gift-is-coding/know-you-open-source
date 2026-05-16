@@ -81,10 +81,10 @@ const defaultMyWikiCategories: MyWikiSchemaCategory[] = [
   },
   {
     id: "preferences",
-    displayName: "Preferences",
+    displayName: "Patterns",
     directory: "wiki/preferences",
     frontmatterTypes: ["preference"],
-    extractionGuidance: "Stable preferences, working style, communication habits, or recurring personal patterns.",
+    extractionGuidance: "Stable user patterns, working style, communication habits, or explicit long-term constraints.",
   },
   {
     id: "follow-ups",

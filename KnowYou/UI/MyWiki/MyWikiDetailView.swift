@@ -7,8 +7,11 @@ struct MyWikiDetailView: View {
     var onEdit: (MyWikiEntry) -> Void = { _ in }
     var onOrganizeJournals: () -> Void = {}
     var onFindDuplicates: () -> Void = {}
+    var onManageSources: () -> Void = {}
     var onRevealWikiFolder: () -> Void = {}
     var onShowStatus: () -> Void = {}
+    var onOpenSource: (String) -> Void = { _ in }
+    var onOpenRelated: (String) -> Void = { _ in }
 
     var body: some View {
         ScrollView {
@@ -40,6 +43,7 @@ struct MyWikiDetailView: View {
             Menu("More") {
                 Button(isSyncing ? "Organizing Journals..." : "Organize Journals", action: onOrganizeJournals)
                     .disabled(isSyncing)
+                Button("Source Library", action: onManageSources)
                 Divider()
                 Button("Find duplicates", action: onFindDuplicates)
                 Button("Reveal Wiki Folder", action: onRevealWikiFolder)
@@ -96,9 +100,7 @@ struct MyWikiDetailView: View {
     }
 
     private func contentGrid(_ entry: MyWikiEntry) -> some View {
-        let presentation = MyWikiDetailPresentation(entry: entry)
-
-        return HStack(alignment: .top, spacing: 24) {
+        HStack(alignment: .top, spacing: 24) {
             VStack(alignment: .leading, spacing: 16) {
                 detailCard("Summary") {
                     Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
@@ -120,27 +122,11 @@ struct MyWikiDetailView: View {
                         }
                     }
                 }
-
-                detailCard("Markdown Page") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        if presentation.isMarkdownTruncated {
-                            Text("Showing a preview. Use Reveal Wiki Folder from More to open the full Markdown file.")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.white.opacity(0.48))
-                        }
-
-                        Text(presentation.markdownText)
-                            .font(.system(size: 14, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.68))
-                            .lineSpacing(4)
-                            .textSelection(.enabled)
-                    }
-                }
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
 
             VStack(alignment: .leading, spacing: 16) {
-                detailCard("Sources") {
+                detailCard("Evidence Sources") {
                     sourceList(entry)
                 }
 
@@ -148,21 +134,30 @@ struct MyWikiDetailView: View {
                     detailCard("Related") {
                         FlowLayout(spacing: 8) {
                             ForEach(entry.related, id: \.self) { related in
-                                Text(related)
-                                    .font(.system(size: 12))
-                                    .padding(.horizontal, 10)
-                                    .frame(height: 28)
-                                    .background(Capsule().fill(Color.white.opacity(0.08)))
+                                Button {
+                                    onOpenRelated(related)
+                                } label: {
+                                    Text(related)
+                                        .font(.system(size: 12))
+                                        .padding(.horizontal, 10)
+                                        .frame(height: 28)
+                                        .background(Capsule().fill(Color.white.opacity(0.08)))
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
                 }
 
-                detailCard("Maintenance") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(duplicateSuggestionCount == 0 ? "No duplicate suggestions loaded." : "\(duplicateSuggestionCount) duplicate suggestions found.")
-                            .detailBodyStyle()
-                        Button("Find duplicates", action: onFindDuplicates)
+                if MyWikiDetailMaintenancePolicy.showsDuplicateSuggestionCard(
+                    duplicateSuggestionCount: duplicateSuggestionCount
+                ) {
+                    detailCard("Duplicate Suggestions") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("\(duplicateSuggestionCount) possible duplicate group(s) found.")
+                                .detailBodyStyle()
+                            Button("Review duplicates", action: onFindDuplicates)
+                        }
                     }
                 }
             }
@@ -178,10 +173,17 @@ struct MyWikiDetailView: View {
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(entry.sourceNames, id: \.self) { sourceName in
-                    Label(sourceName, systemImage: "doc.plaintext")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.68))
-                        .lineLimit(1)
+                    Button {
+                        onOpenSource(sourceName)
+                    } label: {
+                        Label(sourceName, systemImage: "doc.plaintext")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.68))
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
                 }
             }
         }
@@ -213,6 +215,10 @@ struct MyWikiDetailView: View {
         }
         .padding(.top, 80)
     }
+}
+
+enum MyWikiDetailMoreMenuPolicy {
+    static let includesSourceLibrary = true
 }
 
 private extension Text {

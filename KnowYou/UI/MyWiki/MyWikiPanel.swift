@@ -12,12 +12,14 @@ struct MyWikiPanel: View {
     @State private var snapshot = MyWikiDashboardSnapshot.empty
     @State private var duplicateSuggestions: [MyWikiDuplicateSuggestion] = []
     @State private var statusMessage = "Ready"
+    @State private var ingestProgress: MyWikiIngestProgress?
     @State private var isSyncing = false
     @State private var fullListCategory: MyWikiCategory?
     @State private var expandedCategoryIDs: Set<String> = []
     @State private var editingEntry: MyWikiEntry?
     @State private var conflictMessage: String?
     @State private var isShowingStatus = false
+    @State private var isShowingSourceLibrary = false
     @State private var reviewingSuggestion: MyWikiDuplicateSuggestion?
 
     var body: some View {
@@ -37,6 +39,22 @@ struct MyWikiPanel: View {
                     loadDashboard()
                 case .syncDiaries:
                     syncDiaries()
+                }
+            }
+        }
+        .task(id: progressRefreshTaskID) {
+            guard MyWikiProgressRefreshPolicy.shouldRefresh(
+                isSyncing: isSyncing,
+                progressState: ingestProgress?.state
+            ) else {
+                return
+            }
+
+            while Task.isCancelled == false {
+                try? await Task.sleep(nanoseconds: MyWikiProgressRefreshPolicy.intervalNanoseconds)
+                loadIngestProgress()
+                if ingestProgress?.state != .running && isSyncing == false {
+                    break
                 }
             }
         }
@@ -61,12 +79,24 @@ struct MyWikiPanel: View {
         } message: {
             Text(statusMessage)
         }
+        .sheet(isPresented: $isShowingSourceLibrary) {
+            if let projectRoot {
+                MyWikiSourceLibraryView(projectRoot: projectRoot) {
+                    loadIngestProgress()
+                    loadDashboard()
+                }
+            } else {
+                Text("My Wiki folder is not available.")
+                    .padding(24)
+            }
+        }
     }
 
     private var indexPane: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
             searchField
+            ingestProgressView
             duplicateSuggestionBanner
 
             ScrollView {
@@ -126,8 +156,11 @@ struct MyWikiPanel: View {
                     },
                     onOrganizeJournals: syncDiaries,
                     onFindDuplicates: findDuplicates,
+                    onManageSources: { isShowingSourceLibrary = true },
                     onRevealWikiFolder: openProjectFolder,
-                    onShowStatus: { isShowingStatus = true }
+                    onShowStatus: { isShowingStatus = true },
+                    onOpenSource: openSource,
+                    onOpenRelated: openRelated
                 )
             }
         }
@@ -160,6 +193,48 @@ struct MyWikiPanel: View {
                             .stroke(Color.white.opacity(0.12), lineWidth: 1)
                     )
             )
+    }
+
+    @ViewBuilder
+    private var ingestProgressView: some View {
+        if let ingestProgress {
+            Button {
+                isShowingSourceLibrary = true
+            } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Text(ingestProgress.title)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.82))
+                        Spacer()
+                        Text(ingestProgress.detail)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.52))
+                    }
+
+                    GeometryReader { proxy in
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(Color.white.opacity(0.1))
+                            Capsule()
+                                .fill(progressColor(for: ingestProgress.state))
+                                .frame(width: max(0, proxy.size.width * ingestProgress.fraction))
+                        }
+                    }
+                    .frame(height: 4)
+                }
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.white.opacity(0.06))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                    )
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     @ViewBuilder
@@ -285,6 +360,10 @@ struct MyWikiPanel: View {
         )
     }
 
+    private var progressRefreshTaskID: String {
+        "\(isSyncing)-\(ingestProgress?.state.rawValue ?? "none")"
+    }
+
     private func toggle(_ category: MyWikiCategory) {
         if expandedCategoryIDs.contains(category.id) {
             expandedCategoryIDs.remove(category.id)
@@ -298,6 +377,7 @@ struct MyWikiPanel: View {
         guard !isSyncing else { return }
         isSyncing = true
         statusMessage = "Organizing journals..."
+        loadIngestProgress()
 
         let target = pipelineTarget
         Task {
@@ -330,6 +410,7 @@ struct MyWikiPanel: View {
         guard let projectRoot else { return }
         do {
             snapshot = try MyWikiMarkdownStore().loadDashboard(projectRoot: projectRoot)
+            loadIngestProgress()
             if expandedCategoryIDs.isEmpty {
                 expandedCategoryIDs = Set(snapshot.categories.map(\.id) + ["recent"])
             }
@@ -339,6 +420,11 @@ struct MyWikiPanel: View {
         } catch {
             statusMessage = error.localizedDescription
         }
+    }
+
+    private func loadIngestProgress() {
+        guard let projectRoot else { return }
+        ingestProgress = try? MyWikiIngestProgressStore().load(projectRoot: projectRoot)
     }
 
     private func saveEdit(entry: MyWikiEntry, title: String, aliases: [String], summary: String) {
@@ -397,10 +483,45 @@ struct MyWikiPanel: View {
         }
     }
 
+    private func openSource(_ sourceName: String) {
+        guard let projectRoot else { return }
+        if let url = MyWikiNavigationResolver().resolveSourceURL(sourceName, projectRoot: projectRoot) {
+            NSWorkspace.shared.open(url)
+            statusMessage = "Opened source \(sourceName)."
+        } else {
+            statusMessage = "Source not found: \(sourceName)"
+            isShowingStatus = true
+        }
+    }
+
+    private func openRelated(_ reference: String) {
+        if let entry = MyWikiNavigationResolver().resolveRelatedEntry(reference, snapshot: snapshot) {
+            selectedEntry = entry
+            fullListCategory = nil
+            reviewingSuggestion = nil
+        } else {
+            statusMessage = "Related page not found: \(reference)"
+            isShowingStatus = true
+        }
+    }
+
     private func openProjectFolder() {
         guard let projectRoot else { return }
         NSWorkspace.shared.open(projectRoot)
         statusMessage = "Opened the My Wiki folder."
+    }
+
+    private func progressColor(for state: MyWikiIngestProgress.State) -> Color {
+        switch state {
+        case .running:
+            return Color.blue
+        case .succeeded:
+            return Color.green
+        case .failed:
+            return Color(red: 0.98, green: 0.72, blue: 0.24)
+        case .unknown:
+            return Color.white.opacity(0.42)
+        }
     }
 }
 
@@ -433,7 +554,8 @@ private struct MyWikiIndexRow: View {
                     .background(Capsule().fill(entry.category.badgeBackground))
             }
             .padding(.horizontal, 10)
-            .frame(minHeight: 58)
+            .frame(maxWidth: .infinity, minHeight: MyWikiIndexRowHitTargetPolicy.minHeight, alignment: .leading)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(isSelected ? Color.white.opacity(0.09) : Color.clear)

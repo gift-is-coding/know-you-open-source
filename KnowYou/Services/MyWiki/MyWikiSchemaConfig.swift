@@ -74,11 +74,11 @@ struct MyWikiSchemaConfig: Codable, Equatable {
         },
         {
           "id": "preferences",
-          "displayName": "Preferences",
-          "singularName": "Preference",
+          "displayName": "Patterns",
+          "singularName": "Pattern",
           "directory": "wiki/preferences",
           "frontmatterTypes": ["preference"],
-          "extractionGuidance": "Extract stable user preferences, working style, product taste, communication preferences, and explicit long-term constraints.",
+          "extractionGuidance": "Extract stable user patterns, working style, product taste, communication habits, and explicit long-term constraints.",
           "detailSections": ["Summary", "Evidence", "Sources", "Related", "Markdown Page"]
         },
         {

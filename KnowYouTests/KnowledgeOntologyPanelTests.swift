@@ -6,7 +6,7 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertEqual(MyWikiCategory.person.displayTitle, "People")
         XCTAssertEqual(MyWikiCategory.project.displayTitle, "Projects")
         XCTAssertEqual(MyWikiCategory.theme.displayTitle, "Topics")
-        XCTAssertEqual(MyWikiCategory.preference.displayTitle, "Preferences")
+        XCTAssertEqual(MyWikiCategory.preference.displayTitle, "Patterns")
         XCTAssertEqual(MyWikiCategory.openLoop.displayTitle, "Follow-ups")
         XCTAssertEqual(MyWikiCategory.summary.displayTitle, "Summaries")
     }
@@ -84,6 +84,47 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
     func testMyWikiPanelDoesNotRunPipelineOnAppear() {
         XCTAssertEqual(MyWikiPanelLifecyclePolicy.onAppearActions, [.loadDashboard])
         XCTAssertFalse(MyWikiPanelLifecyclePolicy.onAppearActions.contains(.syncDiaries))
+    }
+
+    func testMainWindowLaunchPolicyUsesPresentedSingleWindow() {
+        XCTAssertEqual(KnowYouMainWindowLaunchPolicy.title, "KnowYou")
+        XCTAssertFalse(KnowYouMainWindowLaunchPolicy.usesSwiftUIWindowScene)
+        XCTAssertTrue(KnowYouMainWindowLaunchPolicy.usesAppKitPresenter)
+    }
+
+    func testDetailPresentationDoesNotShowMarkdownPageByDefault() {
+        let entry = MyWikiEntry(
+            id: "adam-wu",
+            title: "Adam Wu",
+            category: .person,
+            summary: "Adam coordinates the knowledge-platform workstream.",
+            sourceNames: ["knowyou-diary-2026-05-06.md"],
+            markdownBody: "# Adam Wu\n\nFull markdown body."
+        )
+
+        let presentation = MyWikiDetailPresentation(entry: entry)
+
+        XCTAssertFalse(presentation.showsMarkdownPage)
+    }
+
+    func testIndexRowUsesWholeRowHitTargetPolicy() {
+        XCTAssertTrue(MyWikiIndexRowHitTargetPolicy.usesFullRowContentShape)
+        XCTAssertEqual(MyWikiIndexRowHitTargetPolicy.minHeight, 58)
+    }
+
+    func testDetailMoreMenuIncludesSourceManagementAction() {
+        XCTAssertTrue(MyWikiDetailMoreMenuPolicy.includesSourceLibrary)
+    }
+
+    func testProgressRefreshRunsWhilePipelineIsActive() {
+        XCTAssertTrue(MyWikiProgressRefreshPolicy.shouldRefresh(isSyncing: true, progressState: nil))
+        XCTAssertTrue(MyWikiProgressRefreshPolicy.shouldRefresh(isSyncing: false, progressState: .running))
+        XCTAssertFalse(MyWikiProgressRefreshPolicy.shouldRefresh(isSyncing: false, progressState: .succeeded))
+    }
+
+    func testDetailMaintenanceCardOnlyAppearsForDuplicateSuggestions() {
+        XCTAssertFalse(MyWikiDetailMaintenancePolicy.showsDuplicateSuggestionCard(duplicateSuggestionCount: 0))
+        XCTAssertTrue(MyWikiDetailMaintenancePolicy.showsDuplicateSuggestionCard(duplicateSuggestionCount: 2))
     }
 
     func testRecentExportPresentationLimitsVisibleFilesAndSummarizesHiddenCount() {

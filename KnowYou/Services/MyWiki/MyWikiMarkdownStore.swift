@@ -74,7 +74,7 @@ struct MyWikiMarkdownStore {
             id: file.deletingPathExtension().lastPathComponent,
             title: title,
             category: category,
-            summary: Self.summary(from: parsed.body),
+            summary: Self.summary(from: parsed.body, frontmatter: parsed.frontmatter),
             sourceNames: Self.array(from: parsed.frontmatter["sources"]),
             aliases: Self.array(from: parsed.frontmatter["aliases"]),
             related: Self.array(from: parsed.frontmatter["related"]),
@@ -90,6 +90,9 @@ struct MyWikiMarkdownStore {
         let normalizedTitle = MyWikiRenameService.slug(for: entry.title)
         let generatedBy = frontmatter["generated_by"]?.lowercased() ?? ""
         let isStarterPage = generatedBy.contains("starter extractor")
+        if isStarterPage {
+            return false
+        }
         let toolOrAgentSlugs = [
             "codex",
             "claude",
@@ -100,13 +103,8 @@ struct MyWikiMarkdownStore {
             "openclaw"
         ]
         let knownToolOrAgent = toolOrAgentSlugs.contains(normalizedTitle)
-        let starterToolOrAgentProject = isStarterPage
-            && entry.category == .project
-            && toolOrAgentSlugs.contains { normalizedTitle.components(separatedBy: "-").contains($0) }
-
-        guard knownToolOrAgent || starterToolOrAgentProject else { return true }
+        guard knownToolOrAgent else { return true }
         if entry.category == .person { return false }
-        if entry.category == .project && isStarterPage { return false }
 
         let text = ([entry.summary] + entry.aliases + entry.related + [body])
             .joined(separator: " ")
@@ -145,19 +143,78 @@ struct MyWikiMarkdownStore {
         return (frontmatter, body)
     }
 
-    private static func summary(from body: String) -> String {
-        let content = body
-            .components(separatedBy: .newlines)
-            .filter { line in
-                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                return trimmed.hasPrefix("# ") == false
-            }
-            .joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    private static func summary(from body: String, frontmatter: [String: String]) -> String {
+        if let description = cleanSummary(frontmatter["description"]), description.isEmpty == false {
+            return description
+        }
+        if let summarySection = section(named: "Summary", from: body), summarySection.isEmpty == false {
+            return summarySection
+        }
+        return firstBodyParagraph(from: body)
+    }
 
-        guard content.count > 240 else { return content }
-        let endIndex = content.index(content.startIndex, offsetBy: 240)
-        return String(content[..<endIndex])
+    private static func section(named heading: String, from body: String) -> String? {
+        let lines = body.components(separatedBy: .newlines)
+        var collected: [String] = []
+        var isCollecting = false
+        let normalizedHeading = heading.lowercased()
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("## ") {
+                let title = trimmed
+                    .dropFirst(3)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                if isCollecting {
+                    break
+                }
+                if title == normalizedHeading {
+                    isCollecting = true
+                }
+                continue
+            }
+
+            if isCollecting {
+                collected.append(line)
+            }
+        }
+
+        return cleanSummary(collected.joined(separator: "\n"))
+    }
+
+    private static func firstBodyParagraph(from body: String) -> String {
+        var paragraph: [String] = []
+        for line in body.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.hasPrefix("#") == false else {
+                if paragraph.isEmpty == false {
+                    break
+                }
+                continue
+            }
+            if trimmed.isEmpty {
+                if paragraph.isEmpty == false {
+                    break
+                }
+                continue
+            }
+            paragraph.append(trimmed)
+        }
+
+        return cleanSummary(paragraph.joined(separator: " ")) ?? ""
+    }
+
+    private static func cleanSummary(_ rawValue: String?) -> String? {
+        guard let rawValue else { return nil }
+        let collapsed = rawValue
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { $0.isEmpty == false }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard collapsed.count > 480 else { return collapsed }
+        let endIndex = collapsed.index(collapsed.startIndex, offsetBy: 480)
+        return String(collapsed[..<endIndex])
     }
 
     static func array(from rawValue: String?) -> [String] {

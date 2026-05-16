@@ -127,6 +127,104 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
         XCTAssertEqual(entry.fileURL.lastPathComponent, "huang-shan.md")
     }
 
+    func testLoadDashboardUsesDescriptionFrontmatterAsSummary() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(at: root.appending(path: "wiki/people"), withIntermediateDirectories: true)
+        try """
+        ---
+        type: person
+        title: Adam Wu
+        description: Adam coordinates the Lenovo knowledge-platform workstream.
+        sources: ["knowyou-diary-2026-05-06.md"]
+        ---
+
+        # Adam Wu
+
+        This longer body should not replace the explicit description.
+        """.write(to: root.appending(path: "wiki/people/adam-wu.md"), atomically: true, encoding: .utf8)
+
+        let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
+
+        XCTAssertEqual(snapshot.people.first?.summary, "Adam coordinates the Lenovo knowledge-platform workstream.")
+    }
+
+    func testLoadDashboardUsesSummarySectionBeforeBodyFallback() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(at: root.appending(path: "wiki/people"), withIntermediateDirectories: true)
+        try """
+        ---
+        type: person
+        title: Adam Wu
+        sources: ["knowyou-diary-2026-05-06.md"]
+        ---
+
+        # Adam Wu
+
+        ## Summary
+
+        Adam connects CTO, DT, and external vendor discussions for the knowledge-platform collaboration.
+
+        ## Recent Mentions
+
+        - 2026-05-06: Adam agreed to include the right colleagues.
+        """.write(to: root.appending(path: "wiki/people/adam-wu.md"), atomically: true, encoding: .utf8)
+
+        let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
+
+        XCTAssertEqual(
+            snapshot.people.first?.summary,
+            "Adam connects CTO, DT, and external vendor discussions for the knowledge-platform collaboration."
+        )
+    }
+
+    func testLoadDashboardFallsBackToFirstBodyParagraph() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(at: root.appending(path: "wiki/people"), withIntermediateDirectories: true)
+        try """
+        ---
+        type: person
+        title: Adam Wu
+        sources: ["knowyou-diary-2026-05-06.md"]
+        ---
+
+        # Adam Wu
+
+        Adam helps connect knowledge-platform planning across teams.
+
+        A second paragraph has extra detail that should stay in the markdown body.
+        """.write(to: root.appending(path: "wiki/people/adam-wu.md"), atomically: true, encoding: .utf8)
+
+        let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
+
+        XCTAssertEqual(snapshot.people.first?.summary, "Adam helps connect knowledge-platform planning across teams.")
+    }
+
+    func testLoadDashboardSkipsStarterExtractorPages() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(at: root.appending(path: "wiki/people"), withIntermediateDirectories: true)
+        try page(title: "Adam", aliases: [], body: "Adam appears as a real person mentioned in the journal evidence below.")
+            .replacingOccurrences(of: "confidence: medium", with: "confidence: medium\ngenerated_by: KnowYou My Wiki starter extractor")
+            .write(to: root.appending(path: "wiki/people/adam.md"), atomically: true, encoding: .utf8)
+        try page(title: "Adam Wu", aliases: [], body: "Adam coordinates the Lenovo knowledge-platform workstream.")
+            .write(to: root.appending(path: "wiki/people/adam-wu.md"), atomically: true, encoding: .utf8)
+
+        let snapshot = try MyWikiMarkdownStore().loadDashboard(projectRoot: root)
+
+        XCTAssertEqual(snapshot.people.map(\.title), ["Adam Wu"])
+    }
+
     func testHidesStarterGeneratedAiToolsFromPeopleAndProjects() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)

@@ -365,7 +365,7 @@ onboarding 的配置约束为：
 - 点击 `My Wiki` 后，主内容区必须切换到黑色背景的 My Wiki 首页，而不是打开旧式 toolbar sheet
 - My Wiki 首页必须优先展示用户可理解的内容：搜索、总结、人物、组织、项目、事件、主题、决策、偏好、待办
 - 面向用户的 My Wiki 控件、按钮和栏目文案必须使用英文，例如 `Organize Journals`、`Summary`、`Topics`、`Follow-ups`
-- 点击 My Wiki 条目后，右侧详情栏必须显示该条目的标题、分类、摘要、近期提及、来源、相关项和完整 Markdown 页面；不得停留在静态 placeholder
+- 点击 My Wiki 条目后，右侧详情栏必须显示该条目的标题、分类、摘要、近期提及、证据来源和相关项；不得停留在静态 placeholder，也不得默认用完整 Markdown 正文挤占 summary 阅读空间
 - My Wiki 主界面不得重复显示分类 tabs 和分组标题；左侧只保留搜索与可展开分组
 - My Wiki 分类必须从项目级 `mywiki.schema.json` 读取，不得写死在 Swift UI enum 或固定 tabs 中
 - 默认推荐 schema 必须包含 `People`、`Organizations`、`Projects`、`Events`、`Topics`、`Decisions`、`Preferences`、`Follow-ups`、`Summaries`、`Sources`，但用户项目中的 `mywiki.schema.json` 优先
@@ -375,6 +375,7 @@ onboarding 的配置约束为：
 - 用户可见分类名称必须来自 schema；默认使用 `Preferences` 表示稳定偏好、工作方式和长期约束
 - 主界面不得展示 `tag:` 一类内部字段；别名应展示为 `Also known as`，关系应展示为 `Related`
 - `Open Project`、journal count、last date 等维护信息必须进入 `More > Wiki Status / Reveal Wiki Folder`，不得占据主阅读界面
+- `More` 菜单必须提供轻量 `Source Library` 入口，允许用户选择文件夹、导入文件或拖拽素材，并能区分全局 source 处理进度与单个 entity 的 evidence source 数
 - `Edit` 必须统一编辑 display name、aliases 与 summary
 - 改名保存前必须检测同分类 title 或 slug 冲突；有冲突时不得直接覆盖，必须引导用户保留当前名称、另选名称或进入合并审核
 - 主动发现疑似重复实体必须由用户显式触发或仅在有真实候选时提示；系统不得固定展示假的 duplicate 状态
@@ -389,6 +390,7 @@ onboarding 的配置约束为：
 - LLM Wiki headless runner 必须根据 `mywiki.schema.json` 生成 output contract，ingest prompt 必须按 contract 中的目录和 frontmatter types 生成页面
 - My Wiki 的正式本体抽取、关系发现、去重、总结和 agent context 必须使用 LLM 语义能力，不得用 keyword/regex/starter extractor 伪造可信本体页
 - bundled helper、`ThirdParty/llm_wiki` 开发源码或 Codex CLI pipeline 不可用时，系统必须写入失败/降级状态并保留已有页面，不得生成 keyword fallback People、Projects、Events、Topics 等正式页面
+- 仓库中的旧 starter extractor 不得再作为产品代码或测试入口保留；读取层只允许过滤旧历史页面，不能生成新的 starter ontology 页面
 - My Wiki 生成页的 frontmatter type 必须与 schema category 语义一致；旧 `entity/concept/query` 页面读入或整理后必须迁移或兼容到当前 schema type
 - KnowYou 必须优先连接 bundled llm_wiki helper；没有 bundled helper 时，允许回退到 `ThirdParty/llm_wiki` 开发源码目录
 - 第一版只能导出 KnowYou 已生成的每日 Markdown，不得直接导出未经额外授权的 SQLite 原始事件

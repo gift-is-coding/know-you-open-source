@@ -79,7 +79,7 @@ flowchart LR
 
 启动后会创建单例式的 `AppState`，并挂接三个界面入口：
 
-- 主窗口（`WindowGroup(id: "main")`）
+- 主窗口（由 `KnowYouMainWindowPresenter` 通过 AppKit `NSWindowController` 显式创建和复用）
 - 菜单栏入口
 - Settings 窗口
 
@@ -87,7 +87,7 @@ flowchart LR
 
 如果用户尚未完成 onboarding，则仍然进入真实主阅读器，但会叠加 Demo Day + coachmark 引导；否则直接进入正常主阅读器。
 
-菜单栏中的 `Open KnowYou` 会显式调用 `openWindow(id: "main")` 并激活应用，因此主窗口既能由正常启动拉起，也能由菜单栏重新唤起。
+菜单栏中的 `Open KnowYou` 会显式调用 `KnowYouMainWindowPresenter` 并激活应用，因此主窗口既能由正常启动拉起，也能由菜单栏重新唤起。当前实现不再同时保留 SwiftUI `Window` 场景和 AppKit 兜底窗口，避免 fresh build 后出现重复窗口或主窗口恢复失败。
 
 ### 3.2 AppState 作为编排中心
 
@@ -652,10 +652,10 @@ My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责
 - `MyWikiDuplicateService` 负责主动发现疑似重复项，并在用户确认后合并 sources、aliases、related 与正文；合并前写入 `.llm-wiki/page-history/` 备份，合并后重写 wiki 内部引用并刷新 dashboard snapshot
 - [MyWikiPipelineBridge.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiPipelineBridge.swift) 复用 llm_wiki 的项目发现和启动边界；运行时调用 `ThirdParty/llm_wiki` headless ingest，并通过 Codex CLI provider 使用大模型语义能力。pipeline 不可用或失败时只写入 `.llm-wiki/last-ingest-status.json` 的 failed 状态，不生成 keyword/regex fallback 本体页，也不把降级结果标记为成功
 - [ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts) 读取 `mywiki.schema.json` 并生成动态 My Wiki output contract；[ingest.ts](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/ThirdParty/llm_wiki/src/lib/ingest.ts) 解析 contract，按配置目录和 frontmatter types 构建 prompt，而不是硬编码固定分类
-- [MyWikiStarterExtractor.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiStarterExtractor.swift) 保留为 legacy/degraded 工具代码，不是正式本体生成路径；正式 My Wiki 页面必须来自 LLM Wiki pipeline
 - [MyWikiAgentContextProvider.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiAgentContextProvider.swift) 输出给 Codex、Claude、Cowork 等 agent 使用的最小必要背景摘要
+- [MyWikiSourceLibrary.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiSourceLibrary.swift) 与 [MyWikiSourceLibraryView.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiSourceLibraryView.swift) 提供轻量 source 管理入口，支持选择文件夹、多文件导入和拖拽导入，并把素材复制到 `raw/sources`
 - [MyWikiPanel.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底 My Wiki 工作区：左侧是高密度可折叠索引和 `View all`，右侧是全量列表、详情阅读、编辑 sheet 或重复项审核
-- [MyWikiDetailView.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiDetailView.swift) 提供 LLM Wiki 风格详情页，包含 Summary、Recent Mentions、完整 Markdown Page、Sources、Related 和 More 菜单
+- [MyWikiDetailView.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiDetailView.swift) 提供 LLM Wiki 风格详情页，默认展示 Summary、Recent Mentions、Evidence Sources、Related 和 More 菜单；完整 Markdown 正文不再作为默认卡片占用详情页
 
 数据流如下：
 

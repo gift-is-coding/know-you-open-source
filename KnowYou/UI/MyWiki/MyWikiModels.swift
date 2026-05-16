@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 struct MyWikiDashboardSnapshot: Equatable {
@@ -115,8 +116,10 @@ struct MyWikiMention: Equatable {
 struct MyWikiDetailPresentation: Equatable {
     let markdownText: String
     let isMarkdownTruncated: Bool
+    let showsMarkdownPage: Bool
 
-    init(entry: MyWikiEntry, markdownPreviewLimit: Int = 8_000) {
+    init(entry: MyWikiEntry, markdownPreviewLimit: Int = 8_000, showsMarkdownPage: Bool = false) {
+        self.showsMarkdownPage = showsMarkdownPage
         let source = entry.markdownBody.isEmpty ? entry.summary : entry.markdownBody
         let limit = max(0, markdownPreviewLimit)
         if source.count > limit {
@@ -127,6 +130,25 @@ struct MyWikiDetailPresentation: Equatable {
             markdownText = source
             isMarkdownTruncated = false
         }
+    }
+}
+
+enum MyWikiIndexRowHitTargetPolicy {
+    static let usesFullRowContentShape = true
+    static let minHeight: CGFloat = 58
+}
+
+enum MyWikiProgressRefreshPolicy {
+    static let intervalNanoseconds: UInt64 = 2_000_000_000
+
+    static func shouldRefresh(isSyncing: Bool, progressState: MyWikiIngestProgress.State?) -> Bool {
+        isSyncing || progressState == .running
+    }
+}
+
+enum MyWikiDetailMaintenancePolicy {
+    static func showsDuplicateSuggestionCard(duplicateSuggestionCount: Int) -> Bool {
+        duplicateSuggestionCount > 0
     }
 }
 
@@ -261,8 +283,8 @@ struct MyWikiCategory: Equatable, Hashable, Identifiable {
     )
     static let preference = MyWikiCategory(
         id: "preferences",
-        displayTitle: "Preferences",
-        singularTitle: "Preference",
+        displayTitle: "Patterns",
+        singularTitle: "Pattern",
         frontmatterType: "preference"
     )
     static let openLoop = MyWikiCategory(

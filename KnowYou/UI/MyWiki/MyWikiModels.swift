@@ -74,7 +74,12 @@ struct MyWikiDashboardSnapshot: Equatable {
         openLoops: [MyWikiEntry]
     ) {
         schema = Self.defaultSchema
+        let entityEntries = Self.recategorized(people + projects + events, as: .entity)
+        let conceptEntries = Self.recategorized(summaries + themes + preferences + openLoops, as: .concept)
         entriesByCategoryID = [
+            MyWikiCategory.source.id: [],
+            MyWikiCategory.entity.id: entityEntries,
+            MyWikiCategory.concept.id: conceptEntries,
             MyWikiCategory.summary.id: summaries,
             MyWikiCategory.person.id: people,
             MyWikiCategory.project.id: projects,
@@ -96,6 +101,24 @@ struct MyWikiDashboardSnapshot: Equatable {
     )
 
     private static let defaultSchema = try! MyWikiSchemaConfig.defaultPersonalContext()
+
+    private static func recategorized(_ entries: [MyWikiEntry], as category: MyWikiCategory) -> [MyWikiEntry] {
+        entries.map { entry in
+            MyWikiEntry(
+                id: entry.id,
+                title: entry.title,
+                category: category,
+                summary: entry.summary,
+                sourceNames: entry.sourceNames,
+                aliases: entry.aliases,
+                related: entry.related,
+                confidence: entry.confidence,
+                mentions: entry.mentions,
+                markdownBody: entry.markdownBody,
+                fileURL: entry.fileURL
+            )
+        }
+    }
 
     func entries(for category: MyWikiCategory) -> [MyWikiEntry] {
         entries(for: category.id)

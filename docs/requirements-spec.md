@@ -363,16 +363,16 @@ onboarding 的配置约束为：
 
 - 主窗口左侧栏必须提供 `My Wiki` 入口
 - 点击 `My Wiki` 后，主内容区必须切换到黑色背景的 My Wiki 首页，而不是打开旧式 toolbar sheet
-- My Wiki 首页必须优先展示用户可理解的内容：搜索、总结、人物、组织、项目、事件、主题、决策、偏好、待办
-- 面向用户的 My Wiki 控件、按钮和栏目文案必须使用英文，例如 `Organize Journals`、`Summary`、`Topics`、`Follow-ups`
+- My Wiki 首页必须优先展示用户可理解的内容：搜索、来源、实体、概念、近期活动和需要复核的线索
+- 面向用户的 My Wiki 控件、按钮和栏目文案必须使用英文，例如 `Organize Journals`、`Sources`、`Entities`、`Concepts`
 - 点击 My Wiki 条目后，右侧详情栏必须显示该条目的标题、分类、摘要、近期提及、证据来源和相关项；不得停留在静态 placeholder，也不得默认用完整 Markdown 正文挤占 summary 阅读空间
 - My Wiki 主界面不得重复显示分类 tabs 和分组标题；左侧只保留搜索与可展开分组
 - My Wiki 分类必须从项目级 `mywiki.schema.json` 读取，不得写死在 Swift UI enum 或固定 tabs 中
-- 默认推荐 schema 的用户可见分类必须包含 `People`、`Organizations`、`Projects`、`Events`、`Topics`、`Decisions`、`Patterns`、`Follow-ups`、`Summaries`、`Sources`，但用户项目中的 `mywiki.schema.json` 优先
+- 默认推荐 schema 的用户可见分类必须是 llm_wiki 原生 `Sources`、`Entities`、`Concepts`，但用户项目中的 `mywiki.schema.json` 优先
 - `Recent`、`Needs Review` 等必须作为 view 处理，不得作为 ontology category 生成对应 wiki 目录
 - 每个 schema 分类分组必须支持展开/折叠，首页仅显示少量高频条目，并提供 `View all` 进入该分类全量列表
 - 全量列表必须支持搜索、排序和点击选择条目；窗口放大时应把更多空间留给右侧详情内容
-- 用户可见分类名称必须来自 schema；默认使用 `Patterns` 表示稳定偏好、工作方式、反复出现的选择和长期约束；内部仍兼容旧 `preferences` id、`wiki/preferences` 目录和 `preference` frontmatter type
+- 用户可见分类名称必须来自 schema；默认不强行拆分 People/Projects/Topics 等细分类。旧 `wiki/people`、`wiki/organizations`、`wiki/projects`、`wiki/events` 必须读入 `Entities`，旧 `wiki/topics`、`wiki/decisions`、`wiki/preferences`、`wiki/follow-ups`、`wiki/summaries` 必须读入 `Concepts`
 - 主界面不得展示 `tag:` 一类内部字段；别名应展示为 `Also known as`，关系应展示为 `Related`
 - `Open Project`、journal count、last date 等维护信息必须进入 `More > Wiki Status / Reveal Wiki Folder`，不得占据主阅读界面
 - `More` 菜单必须提供轻量 `Source Library` 入口，允许用户选择文件夹、导入文件或拖拽素材，并能区分全局 source 处理进度与单个 entity 的 evidence source 数
@@ -383,15 +383,15 @@ onboarding 的配置约束为：
 - 合并前必须写备份；合并后应重写 wiki 内部引用，避免旧实体名继续悬挂
 - 没有生成内容时，首页也必须保留这些核心栏目位置，并用空状态说明下一步是整理日记
 - 系统必须能创建 My Wiki 项目结构，包括 `purpose.md`、`mywiki.schema.json`、`schema.md`、`raw/sources/` 和 schema 中声明的各个 `wiki/` 目录
-- 默认 schema 目录必须使用 `wiki/topics` 和 `wiki/follow-ups`；读取层仍需兼容 legacy `wiki/themes` 和 `wiki/open-loops`
+- 默认 schema 目录必须使用 `wiki/sources`、`wiki/entities`、`wiki/concepts`；读取层仍需兼容 legacy People/Projects/Topics/Preferences/Follow-ups/Summaries 等旧目录，但不得默认创建这些旧目录
 - 系统必须能把已有 `YYYY-MM-DD.md` 日记同步为 `raw/sources/knowyou-diary-YYYY-MM-DD.md`
 - 重复同步同一天日记必须覆盖稳定文件名，不得生成重复文件
 - My Wiki 必须尽量复用 `ThirdParty/llm_wiki` 的后端 pipeline，包括 LLM ingest、cache、search、page merge、source traceability、dedup/review 和 vector store；普通用户首页不得直接暴露复杂工作台
-- LLM Wiki headless runner 必须根据 `mywiki.schema.json` 生成 output contract，ingest prompt 必须按 contract 中的目录和 frontmatter types 生成页面
+- LLM Wiki headless runner 对原生 `Sources / Entities / Concepts` schema 不得生成 KnowYou 自定义 output contract，必须尽量复用 llm_wiki 默认生成路径；只有非原生自定义目录才生成 output contract，并按 contract 中的目录和 frontmatter types 生成页面
 - My Wiki 的正式本体抽取、关系发现、去重、总结和 agent context 必须使用 LLM 语义能力，不得用 keyword/regex/starter extractor 伪造可信本体页
-- bundled helper、`ThirdParty/llm_wiki` 开发源码或 Codex CLI pipeline 不可用时，系统必须写入失败/降级状态并保留已有页面，不得生成 keyword fallback People、Projects、Events、Topics 等正式页面
+- bundled helper、`ThirdParty/llm_wiki` 开发源码或 Codex CLI pipeline 不可用时，系统必须写入失败/降级状态并保留已有页面，不得生成 keyword fallback 正式页面
 - 仓库中的旧 starter extractor 不得再作为产品代码或测试入口保留；读取层只允许过滤旧历史页面，不能生成新的 starter ontology 页面
-- My Wiki 生成页的 frontmatter type 必须与 schema category 语义一致；旧 `entity/concept/query` 页面读入或整理后必须迁移或兼容到当前 schema type
+- My Wiki 生成页的 frontmatter type 必须与 schema category 语义一致；默认生成 `source`、`entity`、`concept`。旧 `person`、`organization`、`project`、`event`、`topic`、`decision`、`preference`、`follow-up`、`summary` 页面必须读取兼容到当前 native schema
 - KnowYou 必须优先连接 bundled llm_wiki helper；没有 bundled helper 时，允许回退到 `ThirdParty/llm_wiki` 开发源码目录
 - 第一版只能导出 KnowYou 已生成的每日 Markdown，不得直接导出未经额外授权的 SQLite 原始事件
 - 系统必须提供本地服务层能力，让 Codex、Claude、Cowork 等 agent 能读取 My Wiki 的最小必要背景摘要

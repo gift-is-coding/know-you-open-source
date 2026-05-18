@@ -296,8 +296,11 @@ git commit -m "feat: use native llm wiki ingest contract"
 **Files:**
 - Modify: `docs/architecture.md`
 - Modify: `docs/requirements-spec.md`
+- Modify: `KnowYou/UI/MyWiki/MyWikiModels.swift`
+- Modify: `KnowYouTests/KnowledgeOntologyProjectExporterTests.swift`
+- Modify: `KnowYouTests/MainWindowViewModelTests.swift`
 
-- [ ] **Step 1: Update docs**
+- [x] **Step 1: Update docs**
 
 Update My Wiki sections to say:
 
@@ -306,7 +309,7 @@ Update My Wiki sections to say:
 - Legacy People/Projects/etc. directories may be read for compatibility but are not the default generation target.
 - `ThirdParty/llm_wiki` remains the trusted generation path; no starter extractor fallback.
 
-- [ ] **Step 2: Run targeted verification**
+- [x] **Step 2: Run targeted verification**
 
 Run:
 
@@ -317,7 +320,7 @@ npx vitest run src/headless/knowyou-ingest.test.ts src/lib/ingest-cache.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 3: Run full required verification**
+- [x] **Step 3: Run full required verification**
 
 Run:
 
@@ -334,7 +337,14 @@ npm audit --audit-level=high
 
 Expected: Xcode test/build pass. `npm audit` may still fail on existing `fast-uri`/`mermaid`; report exact output if unchanged.
 
-- [ ] **Step 4: Commit docs and any verification-only fixes**
+Result on 2026-05-18:
+
+- `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -parallel-testing-enabled NO -resultBundlePath /tmp/KnowYouFull.xcresult`: PASS, 442 tests, 2 skipped, 0 failures.
+- `xcodebuild build -scheme KnowYou -destination 'platform=macOS'`: PASS.
+- `npx vitest run src/headless/knowyou-ingest.test.ts src/lib/ingest-cache.test.ts`: PASS, 2 files, 10 tests.
+- `npm audit --audit-level=high`: FAIL on existing dependency advisories: `fast-uri <=3.1.1` high path traversal/host confusion, `mermaid 11.0.0-alpha.1 - 11.14.0` moderate DoS/CSS/HTML injection advisories.
+
+- [x] **Step 4: Commit docs and any verification-only fixes**
 
 ```bash
 git add docs/architecture.md docs/requirements-spec.md

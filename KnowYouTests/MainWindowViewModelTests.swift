@@ -2034,11 +2034,29 @@ final class MainWindowViewModelTests: XCTestCase {
         let writer = try DatabaseWriter.inMemory()
         let reader = RecordingNotificationReader()
         let calendar = Calendar(identifier: .gregorian)
+        let historicalDay = "2026-04-08"
+        let historicalStart = DateComponents(calendar: calendar, year: 2026, month: 4, day: 8).date!
+        let eventID = UUID()
+        try writer.insert(
+            EventRecord(
+                id: eventID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: DateComponents(calendar: calendar, year: 2026, month: 4, day: 8, hour: 9).date!,
+                dayKey: historicalDay,
+                text: "Historical refresh window event",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "historical-refresh-window-event"
+            )
+        )
         let environment = AppEnvironment(
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
             databaseWriter: writer,
-            summarizer: nil,
+            summarizer: StaticSummarizer(
+                response: makeValidStoryResponse(sourceEventID: eventID, summaryLine: "Selected day refreshed")
+            ),
             notificationReader: reader,
             dailyAutomationPlanner: DailyAutomationPlanner(
                 backfillPlanner: BackfillPlanner(calendar: calendar)
@@ -2046,17 +2064,16 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         let appState = AppState(environment: environment, bootstrapServices: false)
         appState.selectedDate = nil
-        appState.selectDate("2026-04-08")
+        appState.selectDate(historicalDay)
 
         await appState.refreshSelectedDay(
             now: DateComponents(calendar: calendar, year: 2026, month: 4, day: 11).date!
         )
 
-        let expectedStart = DateComponents(calendar: calendar, year: 2026, month: 4, day: 8).date!
-        let expectedEnd = calendar.date(byAdding: .day, value: 1, to: expectedStart)
-        XCTAssertEqual(reader.requestedSince, expectedStart)
+        let expectedEnd = calendar.date(byAdding: .day, value: 1, to: historicalStart)
+        XCTAssertEqual(reader.requestedSince, historicalStart)
         XCTAssertEqual(reader.requestedUpperBound, expectedEnd.map(NotificationFetchUpperBound.exclusive))
-        XCTAssertEqual(appState.selectedDate, "2026-04-08")
+        XCTAssertEqual(appState.selectedDate, historicalDay)
     }
 
     func testRefreshSelectedDayDoesNotRunMultiDayAutomationBackfill() async throws {

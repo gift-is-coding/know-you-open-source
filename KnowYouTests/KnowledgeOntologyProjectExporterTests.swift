@@ -31,9 +31,11 @@ final class KnowledgeOntologyProjectExporterTests: XCTestCase {
             "knowyou-diary-2026-05-08.md"
         ])
         XCTAssertTrue(FileManager.default.fileExists(atPath: project.appending(path: "schema.md").path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: project.appending(path: "wiki/people").path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: project.appending(path: "wiki/projects").path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: project.appending(path: "wiki/themes").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: project.appending(path: "wiki/sources").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: project.appending(path: "wiki/entities").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: project.appending(path: "wiki/concepts").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: project.appending(path: "wiki/people").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: project.appending(path: "wiki/projects").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: project.appending(path: "raw/sources").path))
 
         let exported = try String(
@@ -43,6 +45,7 @@ final class KnowledgeOntologyProjectExporterTests: XCTestCase {
         XCTAssertTrue(exported.contains("type: knowyou-diary"))
         XCTAssertTrue(exported.contains("source: KnowYou"))
         XCTAssertTrue(exported.contains("day: 2026-05-09"))
+        XCTAssertTrue(exported.contains("tags: [knowyou, diary]"))
         XCTAssertTrue(exported.contains("- 设计 My Wiki"))
     }
 

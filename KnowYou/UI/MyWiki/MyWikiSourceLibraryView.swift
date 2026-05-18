@@ -19,8 +19,8 @@ struct MyWikiSourceLibraryView: View {
         }
         .padding(24)
         .frame(minWidth: 560, minHeight: 520)
-        .background(Color.black)
-        .foregroundStyle(.white)
+        .background(MyWikiTheme.contentBackground)
+        .foregroundStyle(.primary)
         .onAppear(perform: reload)
     }
 
@@ -32,7 +32,7 @@ struct MyWikiSourceLibraryView: View {
                         .font(.system(size: 26, weight: .semibold))
                     Text(statusMessage)
                         .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.58))
+                        .foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("Done") {
@@ -58,7 +58,7 @@ struct MyWikiSourceLibraryView: View {
 
                 Text("\(sources.count) sources")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.52))
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -71,17 +71,17 @@ struct MyWikiSourceLibraryView: View {
                 .font(.system(size: 14, weight: .semibold))
             Text("Imported files become pending sources until the next My Wiki run.")
                 .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 22)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isDropTargeted ? Color.blue.opacity(0.18) : Color.white.opacity(0.06))
+                .fill(isDropTargeted ? Color.blue.opacity(0.18) : MyWikiTheme.controlBackground)
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(
-                            isDropTargeted ? Color.blue.opacity(0.7) : Color.white.opacity(0.12),
+                            isDropTargeted ? Color.blue.opacity(0.7) : MyWikiTheme.border,
                             style: StrokeStyle(lineWidth: 1, dash: [5, 4])
                         )
                 )
@@ -107,7 +107,7 @@ struct MyWikiSourceLibraryView: View {
                                 .lineLimit(1)
                             Text(source.status.rawValue)
                                 .font(.system(size: 12))
-                                .foregroundStyle(.white.opacity(0.48))
+                                .foregroundStyle(.secondary)
                         }
                         Spacer()
                         if let summaryURL = source.summaryURL {
@@ -120,10 +120,10 @@ struct MyWikiSourceLibraryView: View {
                     .padding(10)
                     .background(
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.white.opacity(0.045))
+                            .fill(MyWikiTheme.cardBackground)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                    .stroke(MyWikiTheme.border, lineWidth: 1)
                             )
                     )
                 }
@@ -195,7 +195,7 @@ struct MyWikiSourceLibraryView: View {
         case .failed, .needsReview:
             return .orange
         case .pending:
-            return .white.opacity(0.42)
+            return .secondary
         }
     }
 

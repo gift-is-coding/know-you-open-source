@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { createTempProject, fileExists, readFileRaw, realFs, writeFileRaw } from "@/test-helpers/fs-temp"
+import { useWikiStore } from "@/stores/wiki-store"
 
 vi.mock("@/commands/fs", () => realFs)
 
@@ -32,11 +33,11 @@ describe("KnowYou headless ingest runner", () => {
       await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
       await writeFileRaw(
         path.join(tmp.path, "raw/sources/knowyou-diary-2026-05-14.md"),
-        "# 2026-05-14\n\nMet Huang Shan about Lenovo platform ownership.",
+        "# 2026-05-14\n\n和黄山讨论联想平台归属问题。",
       )
 
       pendingResponses = [
-        "Huang Shan is a person who appears in the journal.",
+        "黄山是日记中出现的人物，和联想平台归属有关。",
         [
           "---FILE: wiki/people/huang-shan.md---",
           "---",
@@ -52,7 +53,7 @@ describe("KnowYou headless ingest runner", () => {
           "",
           "## Summary",
           "",
-          "Huang Shan appears in the journal as a Lenovo platform contact.",
+          "黄山在日记中作为联想平台联系人出现，讨论平台归属和协作边界。",
           "---END FILE---",
           "---FILE: wiki/index.md---",
           "# My Wiki Index",
@@ -118,11 +119,11 @@ describe("KnowYou headless ingest runner", () => {
       )
       await writeFileRaw(
         path.join(tmp.path, "raw/sources/knowyou-diary-2026-05-15.md"),
-        "# 2026-05-15\n\nHuang Shan connects Lenovo platform ownership to the My Wiki redesign.",
+        "# 2026-05-15\n\n黄山把联想平台归属问题和 My Wiki 改版中的知识整理需求连接起来。",
       )
 
       pendingResponses = [
-        "The source contains a relationship between Huang Shan, Lenovo, and My Wiki.",
+        "来源包含黄山、联想和 My Wiki 之间的关系线索。",
         [
           "---FILE: wiki/relationships/huang-shan-lenovo-my-wiki.md---",
           "---",
@@ -136,7 +137,7 @@ describe("KnowYou headless ingest runner", () => {
           "",
           "## Summary",
           "",
-          "Huang Shan connects Lenovo platform ownership to the My Wiki redesign.",
+          "黄山把联想平台归属问题和 My Wiki 改版中的知识整理需求连接起来。",
           "---END FILE---",
         ].join("\n"),
       ]
@@ -154,6 +155,113 @@ describe("KnowYou headless ingest runner", () => {
       expect(schemaMarkdown).not.toContain("wiki/themes/")
       expect(schemaMarkdown).not.toContain("wiki/open-loops/")
       expect(await fileExists(path.join(tmp.path, "wiki/relationships/huang-shan-lenovo-my-wiki.md"))).toBe(true)
+    } finally {
+      await tmp.cleanup()
+    }
+  })
+
+  it("replaces legacy generic ontology schema instead of appending to it", async () => {
+    const tmp = await createTempProject("knowyou-headless-clean-schema")
+    try {
+      await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
+      await writeFileRaw(
+        path.join(tmp.path, "schema.md"),
+        [
+          "# Schema",
+          "",
+          "## entity | wiki/entities/",
+          "Use this for named entities.",
+          "",
+          "## concept | wiki/concepts/",
+          "Use this for concepts.",
+        ].join("\n"),
+      )
+      await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Purpose\n\nBuild My Wiki.")
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+      await writeFileRaw(
+        path.join(tmp.path, "raw/sources/knowyou-diary-2026-05-16.md"),
+        "# 2026-05-16\n\nMet Huang Shan about Lenovo platform ownership.",
+      )
+
+      pendingResponses = [
+        "黄山是日记中出现的人物，和联想平台归属有关。",
+        [
+          "---FILE: wiki/people/huang-shan.md---",
+          "---",
+          "type: person",
+          "title: Huang Shan",
+          "sources: [knowyou-diary-2026-05-16.md]",
+          "---",
+          "",
+          "# Huang Shan",
+          "",
+          "## Summary",
+          "",
+          "黄山在日记中作为联想平台联系人出现，讨论平台归属和协作边界。",
+          "---END FILE---",
+        ].join("\n"),
+      ]
+
+      await runKnowYouIngest({
+        projectPath: tmp.path,
+        provider: "openai",
+        model: "test-model",
+      })
+
+      const schemaMarkdown = await readFileRaw(path.join(tmp.path, "schema.md"))
+      expect(schemaMarkdown).toContain("# My Wiki Schema")
+      expect(schemaMarkdown).toContain("People")
+      expect(schemaMarkdown).not.toContain("## entity | wiki/entities/")
+      expect(schemaMarkdown).not.toContain("## concept | wiki/concepts/")
+      expect(schemaMarkdown).not.toContain("Use this for named entities.")
+      expect(schemaMarkdown).not.toContain("Use this for concepts.")
+    } finally {
+      await tmp.cleanup()
+    }
+  })
+
+  it("keeps source-language auto detection for KnowYou output", async () => {
+    const tmp = await createTempProject("knowyou-headless-language")
+    try {
+      await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
+      await writeFileRaw(path.join(tmp.path, "schema.md"), "# Schema\n")
+      await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Purpose\n\nBuild My Wiki.")
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+      await writeFileRaw(
+        path.join(tmp.path, "raw/sources/knowyou-diary-2026-05-17.md"),
+        "# 2026-05-17\n\nAdam discussed an AI Builder rollout.",
+      )
+
+      pendingResponses = [
+        "Adam 是日记中出现的人物，和 AI Builder 推进有关。",
+        [
+          "---FILE: wiki/people/adam.md---",
+          "---",
+          "type: person",
+          "title: Adam",
+          "sources: [knowyou-diary-2026-05-17.md]",
+          "---",
+          "",
+          "# Adam",
+          "",
+          "## Summary",
+          "",
+          "Adam 在日记中被提到，关联 AI Builder 的推进和落地讨论。",
+          "---END FILE---",
+        ].join("\n"),
+      ]
+
+      await runKnowYouIngest({
+        projectPath: tmp.path,
+        provider: "openai",
+        model: "test-model",
+      })
+
+      expect(useWikiStore.getState().outputLanguage).toBe("auto")
     } finally {
       await tmp.cleanup()
     }

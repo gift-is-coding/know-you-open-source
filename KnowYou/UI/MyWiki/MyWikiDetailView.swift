@@ -29,14 +29,14 @@ struct MyWikiDetailView: View {
             .frame(maxWidth: 1040, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.black.opacity(0.98))
+        .background(MyWikiTheme.contentBackground)
     }
 
     private var toolbar: some View {
         HStack {
             Text(entry.map { "\($0.category.displayTitle) / \($0.title)" } ?? "My Wiki")
                 .font(.system(size: 13))
-                .foregroundStyle(.white.opacity(0.58))
+                .foregroundStyle(.secondary)
 
             Spacer()
 
@@ -70,11 +70,10 @@ struct MyWikiDetailView: View {
 
             Text(entry.title)
                 .font(.system(size: 42, weight: .semibold))
-                .foregroundStyle(.white)
 
             Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
                 .font(.system(size: 18))
-                .foregroundStyle(.white.opacity(0.78))
+                .foregroundStyle(.primary)
                 .lineSpacing(5)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -83,10 +82,10 @@ struct MyWikiDetailView: View {
                     ForEach(entry.aliases, id: \.self) { alias in
                         Text("Also known as: \(alias)")
                             .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.72))
+                            .foregroundStyle(.secondary)
                             .padding(.horizontal, 10)
                             .frame(height: 28)
-                            .background(Capsule().fill(Color.white.opacity(0.08)))
+                            .background(Capsule().fill(MyWikiTheme.controlBackground))
                     }
                 }
             }
@@ -94,7 +93,7 @@ struct MyWikiDetailView: View {
         .padding(.bottom, 20)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(Color.white.opacity(0.12))
+                .fill(MyWikiTheme.border)
                 .frame(height: 1)
         }
     }
@@ -141,7 +140,7 @@ struct MyWikiDetailView: View {
                                         .font(.system(size: 12))
                                         .padding(.horizontal, 10)
                                         .frame(height: 28)
-                                        .background(Capsule().fill(Color.white.opacity(0.08)))
+                                        .background(Capsule().fill(MyWikiTheme.controlBackground))
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -178,7 +177,7 @@ struct MyWikiDetailView: View {
                     } label: {
                         Label(sourceName, systemImage: "doc.plaintext")
                             .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.68))
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -193,15 +192,14 @@ struct MyWikiDetailView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(title)
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white)
             content()
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(0.035))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.10), lineWidth: 1))
+                .fill(MyWikiTheme.cardBackground)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(MyWikiTheme.border, lineWidth: 1))
         )
     }
 
@@ -211,7 +209,7 @@ struct MyWikiDetailView: View {
                 .font(.headline)
             Text("Summaries, people, projects, topics, patterns, and follow-ups will appear here.")
                 .font(.system(size: 14))
-                .foregroundStyle(.white.opacity(0.62))
+                .foregroundStyle(.secondary)
         }
         .padding(.top, 80)
     }
@@ -225,7 +223,7 @@ private extension Text {
     func detailBodyStyle() -> some View {
         self
             .font(.system(size: 15))
-            .foregroundStyle(.white.opacity(0.72))
+            .foregroundStyle(.secondary)
             .lineSpacing(4)
             .fixedSize(horizontal: false, vertical: true)
     }

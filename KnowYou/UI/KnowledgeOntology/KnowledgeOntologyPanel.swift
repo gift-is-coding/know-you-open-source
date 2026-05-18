@@ -39,7 +39,6 @@ struct KnowledgeOntologyDetailPlaceholder: View {
         VStack(alignment: .leading, spacing: 14) {
             Label("Select a My Wiki item", systemImage: "sidebar.right")
                 .font(.headline)
-                .foregroundStyle(.white)
 
             Text("Details for summaries, people, projects, topics, preferences, and follow-ups will appear here.")
                 .font(.system(size: 13))
@@ -50,6 +49,6 @@ struct KnowledgeOntologyDetailPlaceholder: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.black.opacity(0.96))
+        .background(Color(nsColor: .textBackgroundColor))
     }
 }

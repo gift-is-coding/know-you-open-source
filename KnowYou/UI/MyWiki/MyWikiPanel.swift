@@ -31,8 +31,8 @@ struct MyWikiPanel: View {
             detailPane
                 .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color.black)
-        .foregroundStyle(.white)
+        .background(MyWikiTheme.contentBackground)
+        .foregroundStyle(.primary)
         .onAppear {
             for action in MyWikiPanelLifecyclePolicy.onAppearActions {
                 switch action {
@@ -121,7 +121,7 @@ struct MyWikiPanel: View {
             }
         }
         .padding(24)
-        .background(Color.black)
+        .background(MyWikiTheme.sidebarBackground)
     }
 
     private var detailPane: some View {
@@ -165,7 +165,7 @@ struct MyWikiPanel: View {
                 )
             }
         }
-        .background(Color.black.opacity(0.98))
+        .background(MyWikiTheme.contentBackground)
     }
 
     private var header: some View {
@@ -175,7 +175,7 @@ struct MyWikiPanel: View {
 
             Text("Search and review the people, projects, topics, patterns, and follow-ups extracted from your journals.")
                 .font(.system(size: 14))
-                .foregroundStyle(.white.opacity(0.62))
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -188,10 +188,10 @@ struct MyWikiPanel: View {
             .frame(height: 44)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(0.08))
+                    .fill(MyWikiTheme.controlBackground)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            .stroke(MyWikiTheme.border, lineWidth: 1)
                     )
             )
     }
@@ -206,17 +206,16 @@ struct MyWikiPanel: View {
                     HStack(spacing: 8) {
                         Text(ingestProgress.title)
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.82))
                         Spacer()
                         Text(ingestProgress.detail)
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.52))
+                            .foregroundStyle(.secondary)
                     }
 
                     GeometryReader { proxy in
                         ZStack(alignment: .leading) {
                             Capsule()
-                                .fill(Color.white.opacity(0.1))
+                                .fill(MyWikiTheme.controlBackground)
                             Capsule()
                                 .fill(progressColor(for: ingestProgress.state))
                                 .frame(width: max(0, proxy.size.width * ingestProgress.fraction))
@@ -227,10 +226,10 @@ struct MyWikiPanel: View {
                 .padding(10)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.white.opacity(0.06))
+                        .fill(MyWikiTheme.cardBackground)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                .stroke(MyWikiTheme.border, lineWidth: 1)
                         )
                     )
             }
@@ -257,11 +256,11 @@ struct MyWikiPanel: View {
                             .foregroundStyle(Color(red: 0.72, green: 0.66, blue: 0.45))
                     }
                     Spacer()
-                    Text("Review")
-                        .font(.system(size: 12, weight: .semibold))
-                        .padding(.horizontal, 10)
-                        .frame(height: 28)
-                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.08)))
+                        Text("Review")
+                            .font(.system(size: 12, weight: .semibold))
+                            .padding(.horizontal, 10)
+                            .frame(height: 28)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(MyWikiTheme.controlBackground))
                 }
                 .padding(12)
                 .background(
@@ -297,7 +296,7 @@ struct MyWikiPanel: View {
                             .font(.system(size: 11, weight: .bold))
                             .tracking(0.8)
                     }
-                    .foregroundStyle(.white.opacity(0.48))
+                    .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
 
@@ -309,12 +308,12 @@ struct MyWikiPanel: View {
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(.secondary)
                 }
 
                 Text("\(entries.count)")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.42))
+                    .foregroundStyle(.secondary)
             }
             .frame(height: 34)
 
@@ -539,7 +538,7 @@ struct MyWikiPanel: View {
         case .failed:
             return Color(red: 0.98, green: 0.72, blue: 0.24)
         case .unknown:
-            return Color.white.opacity(0.42)
+            return .secondary
         }
     }
 }
@@ -555,11 +554,10 @@ private struct MyWikiIndexRow: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(entry.title)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
                         .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.46))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
 
@@ -577,7 +575,7 @@ private struct MyWikiIndexRow: View {
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? Color.white.opacity(0.09) : Color.clear)
+                    .fill(isSelected ? MyWikiTheme.selectionBackground : Color.clear)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(isSelected ? Color.blue.opacity(0.78) : Color.clear, lineWidth: 1)
@@ -604,7 +602,7 @@ private struct MyWikiFullListView: View {
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 12)
                 .frame(height: 40)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.08)))
+                .background(RoundedRectangle(cornerRadius: 8).fill(MyWikiTheme.controlBackground))
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
@@ -655,7 +653,7 @@ private struct MyWikiDuplicateReviewView: View {
                 .font(.system(size: 34, weight: .semibold))
             Text(suggestion.reason)
                 .font(.system(size: 15))
-                .foregroundStyle(.white.opacity(0.62))
+                .foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(suggestion.entries) { entry in
@@ -668,12 +666,12 @@ private struct MyWikiDuplicateReviewView: View {
                                     .font(.system(size: 17, weight: .semibold))
                                 Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
                                     .font(.system(size: 13))
-                                    .foregroundStyle(.white.opacity(0.56))
+                                    .foregroundStyle(.secondary)
                                     .lineLimit(2)
                                 if entry.aliases.isEmpty == false {
                                     Text("Aliases: \(entry.aliases.joined(separator: ", "))")
                                         .font(.system(size: 12))
-                                        .foregroundStyle(.white.opacity(0.45))
+                                        .foregroundStyle(.secondary)
                                 }
                             }
                             Spacer()
@@ -682,8 +680,8 @@ private struct MyWikiDuplicateReviewView: View {
                         .padding(16)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.white.opacity(canonicalID == entry.id ? 0.10 : 0.04))
-                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.12), lineWidth: 1))
+                                .fill(canonicalID == entry.id ? MyWikiTheme.selectionBackground : MyWikiTheme.cardBackground)
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(MyWikiTheme.border, lineWidth: 1))
                         )
                     }
                     .buttonStyle(.plain)
@@ -702,7 +700,7 @@ private struct MyWikiDuplicateReviewView: View {
         }
         .padding(32)
         .frame(maxWidth: 920, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.black.opacity(0.98))
+        .background(MyWikiTheme.contentBackground)
     }
 }
 
@@ -790,7 +788,7 @@ private extension MyWikiCategory {
         case MyWikiCategory.project.id: return Color(red: 0.5, green: 0.9, blue: 0.63)
         case MyWikiCategory.event.id: return Color(red: 1, green: 0.68, blue: 0.42)
         case MyWikiCategory.preference.id: return Color(red: 0.92, green: 0.84, blue: 0.48)
-        default: return .white.opacity(0.72)
+        default: return .secondary
         }
     }
 
@@ -800,7 +798,16 @@ private extension MyWikiCategory {
         case MyWikiCategory.project.id: return Color.green.opacity(0.16)
         case MyWikiCategory.event.id: return Color.orange.opacity(0.16)
         case MyWikiCategory.preference.id: return Color.yellow.opacity(0.14)
-        default: return Color.white.opacity(0.12)
+        default: return Color.primary.opacity(0.08)
         }
     }
+}
+
+enum MyWikiTheme {
+    static let sidebarBackground = Color(nsColor: .windowBackgroundColor)
+    static let contentBackground = Color(nsColor: .textBackgroundColor)
+    static let controlBackground = Color.primary.opacity(0.06)
+    static let cardBackground = Color.primary.opacity(0.035)
+    static let selectionBackground = Color.accentColor.opacity(0.12)
+    static let border = Color.primary.opacity(0.10)
 }

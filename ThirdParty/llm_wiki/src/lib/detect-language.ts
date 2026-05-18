@@ -17,11 +17,13 @@ export function detectLanguage(text: string): string {
   }
 
   // Special case: Japanese uses BOTH Hiragana/Katakana and Kanji. Pure
-  // Chinese uses ONLY Kanji. If we see any Japanese script characters at
-  // all alongside Kanji, the language is Japanese, regardless of which
-  // count dominates. (Kanji-heavy Japanese text would otherwise be
-  // misclassified as Chinese.)
-  if ((counts.Japanese ?? 0) > 0 && (counts.Chinese ?? 0) > 0) {
+  // Chinese uses ONLY Kanji. Do not let a tiny amount of kana inside a
+  // long Chinese source flip the whole document to Japanese; this matters
+  // for personal journals that can contain copied titles, song metadata, or
+  // chat snippets in several languages.
+  const japaneseCount = counts.Japanese ?? 0
+  const chineseCount = counts.Chinese ?? 0
+  if (japaneseCount >= 3 && chineseCount > 0 && japaneseCount / (japaneseCount + chineseCount) >= 0.2) {
     return "Japanese"
   }
 

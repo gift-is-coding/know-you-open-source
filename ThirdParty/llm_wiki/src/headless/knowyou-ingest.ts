@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { autoIngest } from "@/lib/ingest"
+import { detectLanguage } from "@/lib/detect-language"
 import { useActivityStore } from "@/stores/activity-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useReviewStore } from "@/stores/review-store"
@@ -152,11 +153,44 @@ ${rows.join("\n")}
 Hard rules:
 
 - Do not write \`wiki/entities/\`, \`wiki/concepts/\`, or generic ontology folders.
+- Do not write folders outside the configured directories above, including \`wiki/comparisons/\`, \`wiki/synthesis/\`, or \`wiki/tools/\`.
 - Do not call user-facing categories "entities" or "concepts".
 - Prefer a small number of high-signal pages over many low-confidence pages.
 - Every generated page must include clear prose summary, source dates, aliases when useful, and related pages.
 - If unsure where something belongs, use the configured categories (${categoryNames}) instead of inventing a new category.
 `
+}
+
+function buildMyWikiSchemaMarkdown(categories: MyWikiSchemaCategory[]): string {
+  const rows = categories.map((category) => {
+    const directory = normalizeDirectory(category.directory)
+    const types = category.frontmatterTypes.map((type) => `\`${type}\``).join(", ")
+    return `| ${category.displayName} | \`${directory}\` | ${types} | ${category.extractionGuidance} |`
+  })
+
+  return [
+    "# My Wiki Schema",
+    "",
+    "Generated from `mywiki.schema.json`. Treat this file as the source of truth for KnowYou My Wiki extraction.",
+    "",
+    "## Categories",
+    "",
+    "| Category | Directory | Frontmatter types | Extraction guidance |",
+    "| --- | --- | --- | --- |",
+    ...rows,
+    "",
+    "## Shared Rules",
+    "",
+    "- Use LLM semantic understanding for ontology extraction, relationship discovery, deduplication, summarization, search ranking, and agent context generation.",
+    "- Do not classify tools, agents, products, or companies as people.",
+    "- Every generated page must cite sources using source filenames or source days.",
+    "- Use aliases for alternate spellings and translations; use rename only for the display title.",
+    "- Mark uncertain facts as low confidence or needs review instead of writing them as certain.",
+    "- Do not copy secrets, API keys, tokens, passwords, or complete account identifiers.",
+    "",
+    buildMyWikiOutputContract(categories).trimEnd(),
+    "",
+  ].join("\n")
 }
 
 function parseArgs(argv: string[]): IngestOptions {
@@ -209,16 +243,7 @@ async function listSources(projectPath: string, maxSources?: number): Promise<st
 async function ensureMyWikiOutputContract(projectPath: string): Promise<void> {
   const schemaPath = path.join(projectPath, "schema.md")
   const categories = await loadMyWikiCategories(projectPath)
-  let schema = ""
-  try {
-    schema = await fs.readFile(schemaPath, "utf-8")
-  } catch {
-    schema = "# My Wiki Schema\n"
-  }
-
-  const markerIndex = schema.indexOf(outputContractMarker)
-  const base = markerIndex >= 0 ? schema.slice(0, markerIndex).trimEnd() : schema.trimEnd()
-  await fs.writeFile(schemaPath, `${base}\n\n${buildMyWikiOutputContract(categories)}\n`, "utf-8")
+  await fs.writeFile(schemaPath, buildMyWikiSchemaMarkdown(categories), "utf-8")
 }
 
 function resetStores(projectPath: string, llmConfig: LlmConfig): void {
@@ -299,7 +324,15 @@ export async function runKnowYouIngest(options: IngestOptions): Promise<IngestSt
 
   let processed = 0
   for (const sourcePath of sources) {
-    const written = await autoIngest(projectPath, sourcePath, llmConfig)
+    const previousOutputLanguage = useWikiStore.getState().outputLanguage
+    const sourceContent = await fs.readFile(sourcePath, "utf-8")
+    useWikiStore.getState().setOutputLanguage(detectLanguage(sourceContent))
+    let written: string[]
+    try {
+      written = await autoIngest(projectPath, sourcePath, llmConfig)
+    } finally {
+      useWikiStore.getState().setOutputLanguage(previousOutputLanguage)
+    }
     written.forEach((filePath) => filesWritten.add(filePath))
     processed += 1
     await writeStatus(projectPath, {

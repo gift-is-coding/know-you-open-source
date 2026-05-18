@@ -66,6 +66,16 @@ describe("detectLanguage", () => {
       // Mostly Chinese with a few English words
       expect(detectLanguage("机器学习 machine learning 深度学习 神经网络")).toBe("Chinese")
     })
+
+    it("does not let tiny kana snippets flip a mostly Chinese source to Japanese", () => {
+      expect(
+        detectLanguage("今天继续推进研发智能体、本体构建和产品验证。偶尔复制到 ありがとう 这种外部片段。"),
+      ).toBe("Chinese")
+    })
+
+    it("still detects real mixed-script Japanese", () => {
+      expect(detectLanguage("これは日本語の文章です。知識と記録を整理します。")).toBe("Japanese")
+    })
   })
 
   describe("Latin-script languages", () => {

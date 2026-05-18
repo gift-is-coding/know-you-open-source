@@ -127,6 +127,10 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertTrue(MyWikiDetailMaintenancePolicy.showsDuplicateSuggestionCard(duplicateSuggestionCount: 2))
     }
 
+    func testDuplicateDiscoveryRunsWhenDashboardLoads() {
+        XCTAssertTrue(MyWikiDuplicateDiscoveryPolicy.scansOnDashboardLoad)
+    }
+
     func testRecentExportPresentationLimitsVisibleFilesAndSummarizesHiddenCount() {
         let fileNames = (1...28).map { "knowyou-diary-2026-04-\(String(format: "%02d", $0)).md" }
 

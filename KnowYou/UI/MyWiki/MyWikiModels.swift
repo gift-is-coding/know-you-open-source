@@ -152,6 +152,10 @@ enum MyWikiDetailMaintenancePolicy {
     }
 }
 
+enum MyWikiDuplicateDiscoveryPolicy {
+    static let scansOnDashboardLoad = true
+}
+
 struct MyWikiIndexSectionPresentation {
     let title: String
     let entries: [MyWikiEntry]

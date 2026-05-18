@@ -46,6 +46,30 @@ final class MyWikiIngestProgressStoreTests: XCTestCase {
         XCTAssertEqual(progress.fraction, 1)
     }
 
+    func testStatusTotalOverridesRawSourceCountForPreviewRuns() throws {
+        let root = try makeProjectRoot()
+        try writeSources(root: root, names: ["a.md", "b.md", "c.md"])
+        try writeStatus(
+            root: root,
+            """
+            {
+              "status": "running",
+              "message": "Ingested 1/2 source file(s).",
+              "updatedAt": "2026-05-16T13:56:50.593Z",
+              "sourcesProcessed": 1,
+              "sourcesTotal": 2,
+              "filesWritten": []
+            }
+            """
+        )
+
+        let progress = try XCTUnwrap(MyWikiIngestProgressStore().load(projectRoot: root))
+
+        XCTAssertEqual(progress.title, "Processing sources")
+        XCTAssertEqual(progress.detail, "1/2 sources")
+        XCTAssertEqual(progress.fraction, 0.5, accuracy: 0.001)
+    }
+
     func testMissingStatusReturnsNil() throws {
         let root = try makeProjectRoot()
 

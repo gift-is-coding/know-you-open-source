@@ -21,6 +21,7 @@ struct MyWikiPanel: View {
     @State private var isShowingStatus = false
     @State private var isShowingSourceLibrary = false
     @State private var reviewingSuggestion: MyWikiDuplicateSuggestion?
+    @State private var duplicateDiscoveryTask: Task<Void, Never>?
 
     var body: some View {
         HSplitView {
@@ -417,8 +418,26 @@ struct MyWikiPanel: View {
             if selectedEntry == nil {
                 selectedEntry = recentEntries.first ?? snapshot.summaries.first
             }
+            if MyWikiDuplicateDiscoveryPolicy.scansOnDashboardLoad {
+                refreshDuplicateSuggestionsInBackground(projectRoot: projectRoot)
+            }
         } catch {
             statusMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshDuplicateSuggestionsInBackground(projectRoot: URL) {
+        duplicateDiscoveryTask?.cancel()
+        duplicateDiscoveryTask = Task { @MainActor in
+            let suggestions = await Task.detached(priority: .utility) {
+                do {
+                    return try MyWikiDuplicateService().findDuplicateSuggestions(projectRoot: projectRoot)
+                } catch {
+                    return []
+                }
+            }.value
+            guard Task.isCancelled == false else { return }
+            duplicateSuggestions = suggestions
         }
     }
 

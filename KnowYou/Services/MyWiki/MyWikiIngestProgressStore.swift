@@ -49,16 +49,18 @@ struct MyWikiIngestProgressStore {
 
         let data = try Data(contentsOf: statusURL)
         let status = try JSONDecoder().decode(MyWikiIngestStatusFile.self, from: data)
-        let totalSources = countMarkdownSources(projectRoot: projectRoot)
+        let rawSourceCount = countMarkdownSources(projectRoot: projectRoot)
+        let statusTotal = status.sourcesTotal ?? rawSourceCount
         let state = MyWikiIngestProgress.State(rawValue: status.status) ?? .unknown
-        let processed = status.sourcesProcessed ?? (state == .succeeded ? totalSources : 0)
+        let processed = status.sourcesProcessed ?? (state == .succeeded ? statusTotal : 0)
+        let totalSources = statusTotal == 0 ? max(processed, rawSourceCount) : statusTotal
 
         return MyWikiIngestProgress(
             state: state,
             message: status.message,
             updatedAt: status.updatedAt,
             sourcesProcessed: max(0, min(processed, totalSources == 0 ? processed : totalSources)),
-            totalSources: totalSources == 0 ? max(processed, 0) : totalSources
+            totalSources: totalSources
         )
     }
 
@@ -79,4 +81,5 @@ private struct MyWikiIngestStatusFile: Decodable {
     let message: String
     let updatedAt: String?
     let sourcesProcessed: Int?
+    let sourcesTotal: Int?
 }

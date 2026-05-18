@@ -65,12 +65,14 @@ v1.1 的目标是让 My Wiki 当前 app 页面只展示可信的正式语义结�
 - `MyWikiDetailView` 删除默认 `Markdown Page` card。
 - `Sources` 改成按钮；点击后由 `MyWikiPanel` 打开对应文件。
 - `Related` 改成按钮；点击后由 `MyWikiPanel` 选中对应 entry。
+- My Wiki dashboard 加载时自动运行一次轻量 duplicate scan。只有扫描到真实候选时才显示 duplicate banner；不会固定展示假状态，也不会自动合并。
 - 左侧搜索框下方增加一条紧凑 ingest 状态：
   - `Processing sources`：pipeline 运行中。
   - `Preview generated`：用户中止全量处理，但已有部分结果可预览。
   - `Updated`：本次 ingest 完成。
   - `Needs attention`：pipeline 失败，需要用户查看状态。
 - 进度文案使用 `23/36 sources` 这类整体 source 处理数，不和单个 entity 的 `Sources` 混用。
+- `.llm-wiki/last-ingest-status.json` 必须同时写入 `sourcesProcessed` 和 `sourcesTotal`。Swift 读取层优先使用 status 中的 `sourcesTotal`，只有旧状态文件缺失该字段时才回退到扫描 `raw/sources`，避免 preview / `--max-sources` 场景把局部处理数误显示成全量素材数。
 
 ### Source 管理入口
 
@@ -111,8 +113,10 @@ v1.1 不做复杂工作台，但已经提供一个轻量 `Source Library` 入口
 - 详情页没有默认 `Markdown Page` 原文卡片。
 - Source 按钮能打开对应 markdown/source 文件。
 - Related 按钮能在 My Wiki 内部跳转。
+- dashboard 加载后能主动发现同名或 alias 重叠的重复页面，例如真实数据中的两个 `郭强` 页面。
 - 当前 app 项目目录的 ingest 状态变为 `succeeded`，或失败时 UI/状态明确显示失败。
 - 用户中止全量 ingest 后，左侧能看到类似 `Preview generated · 23/36 sources` 的紧凑进度。
+- preview 或 `--max-sources` 跑法会显示本次处理集合的总数，例如 `1/2 sources`，而不是项目 raw source 的全量数。
 - 用户能理解 entity 的 `Sources (5)` 是证据数，而不是全局处理数。
 
 ## 测试要求
@@ -127,5 +131,6 @@ v1.1 不做复杂工作台，但已经提供一个轻量 `Source Library` 入口
   - raw source 能解析到 `raw/sources`
   - related slug 能解析到 snapshot entry
 - Swift targeted tests。
+- `ThirdParty/llm_wiki` headless ingest tests 覆盖 status file 写入 `sourcesTotal`。
 - `xcodebuild build -scheme KnowYou -destination 'platform=macOS'`。
 - 启动 freshly built app，用 GUI 验证 My Wiki。

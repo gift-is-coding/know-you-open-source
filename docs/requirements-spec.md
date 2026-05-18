@@ -368,11 +368,11 @@ onboarding 的配置约束为：
 - 点击 My Wiki 条目后，右侧详情栏必须显示该条目的标题、分类、摘要、近期提及、证据来源和相关项；不得停留在静态 placeholder，也不得默认用完整 Markdown 正文挤占 summary 阅读空间
 - My Wiki 主界面不得重复显示分类 tabs 和分组标题；左侧只保留搜索与可展开分组
 - My Wiki 分类必须从项目级 `mywiki.schema.json` 读取，不得写死在 Swift UI enum 或固定 tabs 中
-- 默认推荐 schema 必须包含 `People`、`Organizations`、`Projects`、`Events`、`Topics`、`Decisions`、`Preferences`、`Follow-ups`、`Summaries`、`Sources`，但用户项目中的 `mywiki.schema.json` 优先
+- 默认推荐 schema 的用户可见分类必须包含 `People`、`Organizations`、`Projects`、`Events`、`Topics`、`Decisions`、`Patterns`、`Follow-ups`、`Summaries`、`Sources`，但用户项目中的 `mywiki.schema.json` 优先
 - `Recent`、`Needs Review` 等必须作为 view 处理，不得作为 ontology category 生成对应 wiki 目录
 - 每个 schema 分类分组必须支持展开/折叠，首页仅显示少量高频条目，并提供 `View all` 进入该分类全量列表
 - 全量列表必须支持搜索、排序和点击选择条目；窗口放大时应把更多空间留给右侧详情内容
-- 用户可见分类名称必须来自 schema；默认使用 `Preferences` 表示稳定偏好、工作方式和长期约束
+- 用户可见分类名称必须来自 schema；默认使用 `Patterns` 表示稳定偏好、工作方式、反复出现的选择和长期约束；内部仍兼容旧 `preferences` id、`wiki/preferences` 目录和 `preference` frontmatter type
 - 主界面不得展示 `tag:` 一类内部字段；别名应展示为 `Also known as`，关系应展示为 `Related`
 - `Open Project`、journal count、last date 等维护信息必须进入 `More > Wiki Status / Reveal Wiki Folder`，不得占据主阅读界面
 - `More` 菜单必须提供轻量 `Source Library` 入口，允许用户选择文件夹、导入文件或拖拽素材，并能区分全局 source 处理进度与单个 entity 的 evidence source 数

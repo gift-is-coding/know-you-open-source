@@ -72,12 +72,16 @@ describe("KnowYou headless ingest runner", () => {
 
       expect(status.status).toBe("succeeded")
       expect(status.sourcesProcessed).toBe(1)
+      expect(status.sourcesTotal).toBe(1)
       expect(await fileExists(path.join(tmp.path, "wiki/people/huang-shan.md"))).toBe(true)
       expect(await readFileRaw(path.join(tmp.path, "schema.md"))).toContain(
         "Do not write `wiki/entities/`, `wiki/concepts/`, or generic ontology folders.",
       )
       expect(await readFileRaw(path.join(tmp.path, ".llm-wiki/last-ingest-status.json"))).toContain(
         '"status": "succeeded"',
+      )
+      expect(await readFileRaw(path.join(tmp.path, ".llm-wiki/last-ingest-status.json"))).toContain(
+        '"sourcesTotal": 1',
       )
     } finally {
       await tmp.cleanup()

@@ -319,6 +319,23 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/MyWikiIngestProgressStoreTests
 ```
 
+- [x] **Step 1.5: 修正 ingest status 总数**
+
+修复：
+
+- `ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts` 写入 `sourcesTotal`。
+- `MyWikiIngestProgressStore` 优先读取 status 中的 `sourcesTotal`，旧状态文件再回退到 raw source 扫描。
+- 更新 `MyWikiIngestProgressStoreTests` 与 `knowyou-ingest.test.ts`，覆盖 preview / `--max-sources` 不被 raw source 总数污染。
+
+- [x] **Step 1.6: 主动发现重复实体**
+
+修复：
+
+- `MyWikiPanel.loadDashboard()` 加载后自动运行轻量 duplicate scan。
+- 只有扫描到真实候选才显示 duplicate banner，不固定展示假状态。
+- 补 `KnowledgeOntologyPanelTests` 覆盖 dashboard 加载策略。
+- 补 `MyWikiMarkdownStoreTests` 覆盖真实数据里类似 `guo-qiang.md` / `qiang-guo.md` 这类同名不同 slug 页面能被发现。
+
 - [x] **Step 2: build**
 
 ```bash

@@ -347,6 +347,33 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appending(path: ".llm-wiki/page-history").path))
     }
 
+    func testDuplicateServiceFindsSameTitlePagesWithDifferentSlugs() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let people = root.appending(path: "wiki/people", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: people, withIntermediateDirectories: true)
+        try page(
+            title: "郭强",
+            aliases: [],
+            related: ["my-ai-builder"],
+            sources: ["knowyou-diary-2026-04-28.md"],
+            body: "Asked about My AI Builder positioning."
+        ).write(to: people.appending(path: "guo-qiang.md"), atomically: true, encoding: .utf8)
+        try page(
+            title: "郭强",
+            aliases: [],
+            related: ["field-data-engineering"],
+            sources: ["knowyou-diary-2026-05-14.md"],
+            body: "Defined the FDE three-layer closed loop."
+        ).write(to: people.appending(path: "qiang-guo.md"), atomically: true, encoding: .utf8)
+
+        let suggestions = try MyWikiDuplicateService().findDuplicateSuggestions(projectRoot: root)
+
+        XCTAssertEqual(suggestions.first?.entries.map(\.id).sorted(), ["guo-qiang", "qiang-guo"])
+    }
+
     private func page(
         title: String,
         aliases: [String],

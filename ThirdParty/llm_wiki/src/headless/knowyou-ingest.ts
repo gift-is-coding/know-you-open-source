@@ -18,6 +18,7 @@ interface IngestStatus {
   message: string
   updatedAt: string
   sourcesProcessed: number
+  sourcesTotal: number
   filesWritten: string[]
 }
 
@@ -292,6 +293,7 @@ export async function runKnowYouIngest(options: IngestOptions): Promise<IngestSt
     message: `Ingesting ${sources.length} source file(s).`,
     updatedAt: new Date().toISOString(),
     sourcesProcessed: 0,
+    sourcesTotal: sources.length,
     filesWritten: [],
   })
 
@@ -305,6 +307,7 @@ export async function runKnowYouIngest(options: IngestOptions): Promise<IngestSt
       message: `Ingested ${processed}/${sources.length} source file(s).`,
       updatedAt: new Date().toISOString(),
       sourcesProcessed: processed,
+      sourcesTotal: sources.length,
       filesWritten: [...filesWritten].sort(),
     })
   }
@@ -314,6 +317,7 @@ export async function runKnowYouIngest(options: IngestOptions): Promise<IngestSt
     message: `Ingested ${processed} source file(s) into My Wiki.`,
     updatedAt: new Date().toISOString(),
     sourcesProcessed: processed,
+    sourcesTotal: sources.length,
     filesWritten: [...filesWritten].sort(),
   }
   await writeStatus(projectPath, status)
@@ -333,6 +337,7 @@ export async function runKnowYouIngestCli(argv: string[]): Promise<void> {
       message,
       updatedAt: new Date().toISOString(),
       sourcesProcessed: 0,
+      sourcesTotal: 0,
       filesWritten: [],
     }).catch(() => {})
     process.stderr.write(`${message}\n`)

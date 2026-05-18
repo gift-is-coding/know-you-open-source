@@ -7,21 +7,35 @@ final class MyWikiSchemaConfigTests: XCTestCase {
 
         XCTAssertEqual(schema.id, "personal-context-default")
         XCTAssertEqual(schema.categories.map(\.id), [
-            "people",
-            "organizations",
-            "projects",
-            "events",
-            "topics",
-            "decisions",
-            "preferences",
-            "follow-ups",
-            "summaries",
-            "sources"
+            "sources",
+            "entities",
+            "concepts"
         ])
-        XCTAssertEqual(schema.categories.first?.displayName, "People")
-        XCTAssertEqual(schema.categories.first?.directory, "wiki/people")
-        XCTAssertEqual(schema.categories.first?.frontmatterTypes, ["person"])
-        XCTAssertTrue(schema.categories.first?.extractionGuidance.contains("real individual people") == true)
+        XCTAssertEqual(schema.categories.map(\.directory), [
+            "wiki/sources",
+            "wiki/entities",
+            "wiki/concepts"
+        ])
+        XCTAssertEqual(schema.categories.map { $0.frontmatterTypes.first }, [
+            "source",
+            "entity",
+            "concept"
+        ])
+        XCTAssertEqual(schema.categories.first(where: { $0.id == "entities" })?.legacyDirectories, [
+            "wiki/people",
+            "wiki/organizations",
+            "wiki/projects",
+            "wiki/events"
+        ])
+        XCTAssertEqual(schema.categories.first(where: { $0.id == "concepts" })?.legacyDirectories, [
+            "wiki/topics",
+            "wiki/decisions",
+            "wiki/preferences",
+            "wiki/follow-ups",
+            "wiki/summaries"
+        ])
+        XCTAssertEqual(schema.categories.first?.displayName, "Sources")
+        XCTAssertTrue(schema.categories.first?.extractionGuidance.contains("KnowYou diary source") == true)
     }
 
     func testRecentIsAViewNotAnOntologyCategory() throws {

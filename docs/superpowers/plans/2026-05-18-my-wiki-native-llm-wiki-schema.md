@@ -31,7 +31,7 @@
 - Modify: `KnowYou/Services/MyWiki/MyWikiSchemaConfig.swift`
 - Modify: `KnowYou/Services/MyWiki/MyWikiProjectExporter.swift`
 
-- [ ] **Step 1: Write failing schema tests**
+- [x] **Step 1: Write failing schema tests**
 
 Change `testDefaultPersonalContextSchemaKeepsOntologyCategoriesConfigurable` to expect:
 
@@ -64,7 +64,7 @@ XCTAssertFalse(schemaMarkdown.contains("KNOWYOU_MY_WIKI_OUTPUT_CONTRACT"))
 XCTAssertFalse(schemaMarkdown.contains("Do not write `wiki/entities/`"))
 ```
 
-- [ ] **Step 2: Run red tests**
+- [x] **Step 2: Run red tests**
 
 Run:
 
@@ -74,7 +74,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: FAIL because defaults still include People/Projects and source tags are absent.
 
-- [ ] **Step 3: Implement native default schema**
+- [x] **Step 3: Implement native default schema**
 
 Update `defaultPersonalContextJSON` to categories:
 
@@ -86,7 +86,7 @@ Update `views` to use `["sources", "entities", "concepts"]`.
 
 Update `MyWikiSchemaMarkdownRenderer.render` shared rules to describe native llm_wiki use and remove the line that implies bespoke My Wiki categories.
 
-- [ ] **Step 4: Add source tags**
+- [x] **Step 4: Add source tags**
 
 Update `exportedDiaryMarkdown` frontmatter:
 
@@ -101,7 +101,7 @@ tags: [knowyou, diary]
 
 Add a project exporter test that syncs one `2026-05-18.md` and asserts the exported raw source contains `tags: [knowyou, diary]`.
 
-- [ ] **Step 5: Run green tests and commit**
+- [x] **Step 5: Run green tests and commit**
 
 Run the same `xcodebuild test` command. Expected: PASS.
 

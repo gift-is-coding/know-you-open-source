@@ -54,7 +54,7 @@ struct MyWikiProjectExporter {
             "raw/assets",
             "wiki",
             ".obsidian"
-        ] + schema.categories.flatMap(\.directoryCandidates)).uniqued()
+        ] + schema.categories.map(\.directory)).uniqued()
 
         for directory in directories {
             try fileManager.createDirectory(
@@ -140,6 +140,7 @@ struct MyWikiProjectExporter {
         type: knowyou-diary
         source: KnowYou
         day: \(dayKey)
+        tags: [knowyou, diary]
         ---
 
         \(markdown)

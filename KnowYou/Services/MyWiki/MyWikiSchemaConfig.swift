@@ -17,98 +17,35 @@ struct MyWikiSchemaConfig: Codable, Equatable {
       "displayName": "Personal Context",
       "categories": [
         {
-          "id": "people",
-          "displayName": "People",
-          "singularName": "Person",
-          "directory": "wiki/people",
-          "frontmatterTypes": ["person"],
-          "extractionGuidance": "Extract real individual people only: family, friends, collaborators, customers, investors, creators, or named public figures. Do not classify tools, agents, companies, or product names as people.",
-          "detailSections": ["Summary", "Recent Mentions", "Sources", "Related", "Markdown Page"]
-        },
-        {
-          "id": "organizations",
-          "displayName": "Organizations",
-          "singularName": "Organization",
-          "directory": "wiki/organizations",
-          "frontmatterTypes": ["organization", "company", "team"],
-          "extractionGuidance": "Extract companies, teams, communities, institutions, and product organizations that recur in the source material.",
-          "detailSections": ["Summary", "Recent Mentions", "Sources", "Related", "Markdown Page"]
-        },
-        {
-          "id": "projects",
-          "displayName": "Projects",
-          "singularName": "Project",
-          "directory": "wiki/projects",
-          "frontmatterTypes": ["project"],
-          "extractionGuidance": "Extract ongoing bodies of work with goals, milestones, owners, or repeated execution context.",
-          "detailSections": ["Summary", "Recent Mentions", "Sources", "Related", "Markdown Page"]
-        },
-        {
-          "id": "events",
-          "displayName": "Events",
-          "singularName": "Event",
-          "directory": "wiki/events",
-          "frontmatterTypes": ["event"],
-          "extractionGuidance": "Extract bounded happenings such as meetings, calls, trips, launches, deadlines, incidents, or decisions made at a specific time.",
-          "detailSections": ["Summary", "Recent Mentions", "Sources", "Related", "Markdown Page"]
-        },
-        {
-          "id": "topics",
-          "displayName": "Topics",
-          "singularName": "Topic",
-          "directory": "wiki/topics",
-          "legacyDirectories": ["wiki/themes"],
-          "frontmatterTypes": ["topic"],
-          "legacyTypes": ["theme"],
-          "extractionGuidance": "Extract recurring themes, interests, questions, fields, technical areas, product ideas, and conceptual concerns.",
-          "detailSections": ["Summary", "Recent Mentions", "Sources", "Related", "Markdown Page"]
-        },
-        {
-          "id": "decisions",
-          "displayName": "Decisions",
-          "singularName": "Decision",
-          "directory": "wiki/decisions",
-          "frontmatterTypes": ["decision"],
-          "extractionGuidance": "Extract explicit choices, trade-offs, commitments, and policy decisions that should guide future behavior.",
-          "detailSections": ["Summary", "Rationale", "Sources", "Related", "Markdown Page"]
-        },
-        {
-          "id": "preferences",
-          "displayName": "Patterns",
-          "singularName": "Pattern",
-          "directory": "wiki/preferences",
-          "frontmatterTypes": ["preference"],
-          "extractionGuidance": "Extract stable user patterns, working style, product taste, communication habits, and explicit long-term constraints.",
-          "detailSections": ["Summary", "Evidence", "Sources", "Related", "Markdown Page"]
-        },
-        {
-          "id": "follow-ups",
-          "displayName": "Follow-ups",
-          "singularName": "Follow-up",
-          "directory": "wiki/follow-ups",
-          "legacyDirectories": ["wiki/open-loops"],
-          "frontmatterTypes": ["follow-up"],
-          "legacyTypes": ["open-loop"],
-          "extractionGuidance": "Extract unresolved open loops, promised next steps, pending asks, waiting-for items, and things the user wants to revisit.",
-          "detailSections": ["Summary", "Status", "Sources", "Related", "Markdown Page"]
-        },
-        {
-          "id": "summaries",
-          "displayName": "Summaries",
-          "singularName": "Summary",
-          "directory": "wiki/summaries",
-          "frontmatterTypes": ["summary", "overview"],
-          "extractionGuidance": "Create readable synthesis pages across days, weeks, projects, or themes. Summaries should cite sources and avoid inventing facts.",
-          "detailSections": ["Summary", "Sources", "Markdown Page"]
-        },
-        {
           "id": "sources",
           "displayName": "Sources",
           "singularName": "Source",
           "directory": "wiki/sources",
           "frontmatterTypes": ["source", "knowyou-diary"],
-          "extractionGuidance": "Represent source materials and source indexes. Do not duplicate raw secrets or credentials.",
+          "extractionGuidance": "Represent KnowYou diary source materials and source indexes. Do not duplicate raw secrets or credentials.",
           "detailSections": ["Summary", "Markdown Page"]
+        },
+        {
+          "id": "entities",
+          "displayName": "Entities",
+          "singularName": "Entity",
+          "directory": "wiki/entities",
+          "legacyDirectories": ["wiki/people", "wiki/organizations", "wiki/projects", "wiki/events"],
+          "frontmatterTypes": ["entity"],
+          "legacyTypes": ["person", "organization", "company", "team", "project", "event"],
+          "extractionGuidance": "Extract high-signal people, organizations, tools, products, projects, and other concrete entities that matter across the journal sources.",
+          "detailSections": ["Summary", "Recent Mentions", "Sources", "Related", "Markdown Page"]
+        },
+        {
+          "id": "concepts",
+          "displayName": "Concepts",
+          "singularName": "Concept",
+          "directory": "wiki/concepts",
+          "legacyDirectories": ["wiki/topics", "wiki/decisions", "wiki/preferences", "wiki/follow-ups", "wiki/summaries"],
+          "frontmatterTypes": ["concept"],
+          "legacyTypes": ["topic", "decision", "preference", "follow-up", "summary", "overview"],
+          "extractionGuidance": "Extract high-signal topics, working patterns, preferences, decisions, open loops, questions, and long-term context from the journals.",
+          "detailSections": ["Summary", "Evidence", "Sources", "Related", "Markdown Page"]
         }
       ],
       "views": [
@@ -116,13 +53,13 @@ struct MyWikiSchemaConfig: Codable, Equatable {
           "id": "recent",
           "displayName": "Recent",
           "kind": "recentActivity",
-          "categoryIDs": ["people", "organizations", "projects", "events", "topics", "decisions", "preferences", "follow-ups"]
+          "categoryIDs": ["sources", "entities", "concepts"]
         },
         {
           "id": "needs-review",
           "displayName": "Needs Review",
           "kind": "needsReview",
-          "categoryIDs": ["people", "organizations", "projects", "events", "topics", "decisions", "preferences", "follow-ups"]
+          "categoryIDs": ["sources", "entities", "concepts"]
         }
       ]
     }
@@ -231,8 +168,8 @@ struct MyWikiSchemaMarkdownRenderer {
 
         ## Shared Rules
 
-        - Use LLM semantic understanding for ontology extraction, relationship discovery, deduplication, summarization, search ranking, and agent context generation.
-        - Do not classify tools, agents, products, or companies as people.
+        - Use llm_wiki's native source, entity, and concept pages for extraction, relationship discovery, deduplication, summarization, search ranking, and agent context generation.
+        - Prefer a small number of high-signal entity and concept pages over many low-confidence category pages.
         - Every generated page must cite sources using source filenames or source days.
         - Use aliases for alternate spellings and translations; use rename only for the display title.
         - Mark uncertain facts as low confidence or needs review instead of writing them as certain.

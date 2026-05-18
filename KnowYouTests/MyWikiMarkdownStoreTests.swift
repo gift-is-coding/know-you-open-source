@@ -47,6 +47,33 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
         XCTAssertEqual(snapshot.entries(for: "relationships").first?.category.singularTitle, "Relationship")
     }
 
+    func testDefaultSchemaReadsNativeAndLegacyDirectoriesIntoLlmWikiCategories() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try FileManager.default.createDirectory(at: root.appending(path: "wiki/entities"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appending(path: "wiki/concepts"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appending(path: "wiki/people"), withIntermediateDirectories: true)
+
+        try page(type: "entity", title: "Huang Shan", body: "Huang Shan coordinates hardware acceleration boundaries.")
+            .write(to: root.appending(path: "wiki/entities/huang-shan.md"), atomically: true, encoding: .utf8)
+        try page(type: "concept", title: "Agentic Engineering", body: "Agentic engineering is a recurring working pattern.")
+            .write(to: root.appending(path: "wiki/concepts/agentic-engineering.md"), atomically: true, encoding: .utf8)
+        try page(type: "person", title: "Alex", body: "Alex remains readable from legacy People pages.")
+            .write(to: root.appending(path: "wiki/people/alex.md"), atomically: true, encoding: .utf8)
+
+        let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
+
+        XCTAssertEqual(MyWikiCategory.source.frontmatterType, "source")
+        XCTAssertEqual(MyWikiCategory.entity.frontmatterType, "entity")
+        XCTAssertEqual(MyWikiCategory.concept.frontmatterType, "concept")
+        XCTAssertEqual(snapshot.categories.map(\.id), ["sources", "entities", "concepts"])
+        XCTAssertEqual(snapshot.entities.map(\.title), ["Alex", "Huang Shan"])
+        XCTAssertEqual(snapshot.concepts.map(\.title), ["Agentic Engineering"])
+        XCTAssertEqual(snapshot.primaryEntries.map(\.category.id).sorted(), ["concepts", "entities", "entities"])
+    }
+
     func testLoadsDashboardSnapshotFromMarkdownFolders() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
@@ -83,10 +110,9 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
 
         let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
 
-        XCTAssertEqual(snapshot.people.map(\.title), ["Alex"])
-        XCTAssertEqual(snapshot.projects.map(\.title), ["KnowYou"])
-        XCTAssertTrue(snapshot.people[0].summary.contains("产品轻量化"))
-        XCTAssertEqual(snapshot.people[0].sourceNames, ["knowyou-diary-2026-05-12.md"])
+        XCTAssertEqual(snapshot.entities.map(\.title), ["Alex", "KnowYou"])
+        XCTAssertTrue(snapshot.entities[0].summary.contains("产品轻量化"))
+        XCTAssertEqual(snapshot.entities[0].sourceNames, ["knowyou-diary-2026-05-12.md"])
     }
 
     func testLoadsAliasesRelatedMentionsAndMarkdownBodyFromWikiPage() throws {
@@ -118,7 +144,7 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
 
         let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
 
-        let entry = try XCTUnwrap(snapshot.people.first)
+        let entry = try XCTUnwrap(snapshot.entities.first)
         XCTAssertEqual(entry.aliases, ["黄山", "huang-shan"])
         XCTAssertEqual(entry.related, ["lenovo", "cloud-platform"])
         XCTAssertEqual(entry.confidence, "medium")
@@ -148,7 +174,7 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
 
         let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
 
-        XCTAssertEqual(snapshot.people.first?.summary, "Adam coordinates the Lenovo knowledge-platform workstream.")
+        XCTAssertEqual(snapshot.entities.first?.summary, "Adam coordinates the Lenovo knowledge-platform workstream.")
     }
 
     func testLoadDashboardUsesSummarySectionBeforeBodyFallback() throws {
@@ -178,7 +204,7 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
         let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
 
         XCTAssertEqual(
-            snapshot.people.first?.summary,
+            snapshot.entities.first?.summary,
             "Adam connects CTO, DT, and external vendor discussions for the knowledge-platform collaboration."
         )
     }
@@ -205,7 +231,7 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
 
         let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
 
-        XCTAssertEqual(snapshot.people.first?.summary, "Adam helps connect knowledge-platform planning across teams.")
+        XCTAssertEqual(snapshot.entities.first?.summary, "Adam helps connect knowledge-platform planning across teams.")
     }
 
     func testLoadDashboardSkipsStarterExtractorPages() throws {
@@ -222,7 +248,7 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
 
         let snapshot = try MyWikiMarkdownStore().loadDashboard(projectRoot: root)
 
-        XCTAssertEqual(snapshot.people.map(\.title), ["Adam Wu"])
+        XCTAssertEqual(snapshot.entities.map(\.title), ["Adam Wu"])
     }
 
     func testHidesStarterGeneratedAiToolsFromPeopleAndProjects() throws {
@@ -242,8 +268,7 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
 
         let snapshot = try MyWikiMarkdownStore().loadDashboard(projectRoot: root)
 
-        XCTAssertTrue(snapshot.people.isEmpty)
-        XCTAssertTrue(snapshot.projects.isEmpty)
+        XCTAssertTrue(snapshot.entities.isEmpty)
     }
 
     func testMarkdownPreviewCapsLargeEntryBodiesForResponsiveSelection() {
@@ -251,7 +276,7 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
         let entry = MyWikiEntry(
             id: "large",
             title: "Large Page",
-            category: .theme,
+            category: .concept,
             summary: "Summary",
             sourceNames: [],
             markdownBody: largeBody
@@ -277,7 +302,7 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
 
         let store = MyWikiMarkdownStore(fileManager: .default)
         var snapshot = try store.loadDashboard(projectRoot: root)
-        let huangShan = try XCTUnwrap(snapshot.people.first { $0.id == "huang-shan" })
+        let huangShan = try XCTUnwrap(snapshot.entities.first { $0.id == "huang-shan" })
 
         let renameResult = try MyWikiRenameService(fileManager: .default).rename(
             huangShan,
@@ -289,7 +314,7 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
         XCTAssertEqual(renameResult, .renamed)
 
         snapshot = try store.loadDashboard(projectRoot: root)
-        let renamed = try XCTUnwrap(snapshot.people.first { $0.id == "huang-shan" })
+        let renamed = try XCTUnwrap(snapshot.entities.first { $0.id == "huang-shan" })
         XCTAssertEqual(renamed.title, "H. Shan")
         XCTAssertTrue(renamed.aliases.contains("Huang Shan"))
         XCTAssertTrue(renamed.summary.contains("Updated summary."))
@@ -338,8 +363,8 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
         )
 
         let snapshot = try MyWikiMarkdownStore().loadDashboard(projectRoot: root)
-        let merged = try XCTUnwrap(snapshot.people.first { $0.id == "huang-shan" })
-        XCTAssertEqual(snapshot.people.count, 1)
+        let merged = try XCTUnwrap(snapshot.entities.first { $0.id == "huang-shan" })
+        XCTAssertEqual(snapshot.entities.count, 1)
         XCTAssertTrue(merged.aliases.contains("黄山"))
         XCTAssertTrue(merged.aliases.contains("huang-shan"))
         XCTAssertEqual(Set(merged.sourceNames), ["knowyou-diary-2026-05-14.md", "knowyou-diary-2026-05-07.md"])
@@ -375,15 +400,16 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
     }
 
     private func page(
+        type: String = "person",
         title: String,
-        aliases: [String],
+        aliases: [String] = [],
         related: [String] = [],
         sources: [String] = [],
         body: String
     ) -> String {
         """
         ---
-        type: person
+        type: \(type)
         title: \(title)
         aliases: [\(aliases.map { "\"\($0)\"" }.joined(separator: ", "))]
         related: [\(related.map { "\"\($0)\"" }.joined(separator: ", "))]

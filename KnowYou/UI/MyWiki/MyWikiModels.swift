@@ -13,6 +13,18 @@ struct MyWikiDashboardSnapshot: Equatable {
         entries(for: .summary)
     }
 
+    var sources: [MyWikiEntry] {
+        entries(for: .source)
+    }
+
+    var entities: [MyWikiEntry] {
+        entries(for: .entity)
+    }
+
+    var concepts: [MyWikiEntry] {
+        entries(for: .concept)
+    }
+
     var people: [MyWikiEntry] {
         entries(for: .person)
     }
@@ -255,6 +267,24 @@ struct MyWikiCategory: Equatable, Hashable, Identifiable {
         self.frontmatterType = definition.frontmatterTypes.first ?? definition.id
     }
 
+    static let source = MyWikiCategory(
+        id: "sources",
+        displayTitle: "Sources",
+        singularTitle: "Source",
+        frontmatterType: "source"
+    )
+    static let entity = MyWikiCategory(
+        id: "entities",
+        displayTitle: "Entities",
+        singularTitle: "Entity",
+        frontmatterType: "entity"
+    )
+    static let concept = MyWikiCategory(
+        id: "concepts",
+        displayTitle: "Concepts",
+        singularTitle: "Concept",
+        frontmatterType: "concept"
+    )
     static let summary = MyWikiCategory(
         id: "summaries",
         displayTitle: "Summaries",

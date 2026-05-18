@@ -121,7 +121,7 @@ git commit -m "feat: default my wiki to native llm wiki schema"
 - Modify: `KnowYou/UI/MyWiki/MyWikiModels.swift`
 - Modify: `KnowYou/Services/MyWiki/MyWikiMarkdownStore.swift` if required by failing tests.
 
-- [ ] **Step 1: Write failing reader tests**
+- [x] **Step 1: Write failing reader tests**
 
 Add a test that creates default schema project with:
 
@@ -138,7 +138,7 @@ XCTAssertEqual(snapshot.entries(for: "concepts").map(\.title), ["Agentic Enginee
 XCTAssertEqual(snapshot.primaryEntries.map(\.category.id).sorted(), ["concepts", "entities", "entities"])
 ```
 
-- [ ] **Step 2: Run red test**
+- [x] **Step 2: Run red test**
 
 Run:
 
@@ -148,7 +148,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: FAIL if old convenience accessors or category constants assume People/Projects defaults.
 
-- [ ] **Step 3: Implement minimal compatibility**
+- [x] **Step 3: Implement minimal compatibility**
 
 If needed, update `MyWikiCategory` static constants to include:
 
@@ -160,7 +160,7 @@ static let concept = MyWikiCategory(id: "concepts", displayTitle: "Concepts", si
 
 Keep legacy constants for old tests and old pages. Do not hardcode default UI to old categories.
 
-- [ ] **Step 4: Run green tests and commit**
+- [x] **Step 4: Run green tests and commit**
 
 Run the same `xcodebuild test` command. Expected: PASS.
 

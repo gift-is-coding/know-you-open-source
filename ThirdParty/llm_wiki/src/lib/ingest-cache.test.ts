@@ -80,6 +80,27 @@ describe("ingest-cache — checkIngestCache", () => {
     expect(result).toBeNull()
   })
 
+  it("invalidates when cache context changes even if source content is unchanged", async () => {
+    let persisted = ""
+    mockReadFile.mockImplementation(async () => persisted || JSON.stringify({ entries: {} }))
+    mockWriteFile.mockImplementation(async (_p: string, c: string) => {
+      persisted = c
+    })
+    await saveIngestCache("/project", "foo.md", "hello", ["wiki/sources/foo.md"], {
+      schema: "old schema",
+      purpose: "purpose",
+      pipelineVersion: "v1",
+    })
+
+    mockFileExists.mockResolvedValue(true)
+    const result = await checkIngestCache("/project", "foo.md", "hello", {
+      schema: "new schema",
+      purpose: "purpose",
+      pipelineVersion: "v1",
+    })
+    expect(result).toBeNull()
+  })
+
   it("returns null if fileExists itself throws (safer to re-ingest than to trust)", async () => {
     let persisted = ""
     mockReadFile.mockImplementation(async () => persisted || JSON.stringify({ entries: {} }))

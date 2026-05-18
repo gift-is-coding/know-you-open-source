@@ -49,6 +49,8 @@ import { buildLanguageDirective } from "@/lib/output-language"
 import { detectLanguage } from "@/lib/detect-language"
 import { sameScriptFamily } from "@/lib/language-metadata"
 
+const INGEST_CACHE_PIPELINE_VERSION = "knowyou-native-llm-wiki-schema-v1"
+
 // Legacy export kept for backward compatibility with existing diagnostic
 // tests. The live pipeline goes through parseFileBlocks() below, which
 // handles classes of LLM output this regex silently drops (see H1/H3/H5
@@ -402,6 +404,11 @@ async function autoIngestImpl(
     tryReadFile(`${pp}/wiki/index.md`),
     tryReadFile(`${pp}/wiki/overview.md`),
   ])
+  const ingestCacheContext = {
+    schema,
+    purpose,
+    pipelineVersion: INGEST_CACHE_PIPELINE_VERSION,
+  }
 
   // ── Cache check: skip re-ingest if source content hasn't changed ──
   //
@@ -413,7 +420,7 @@ async function autoIngestImpl(
   // re-running them costs only the extraction time and converges the
   // source-summary page on the current pipeline's contract regardless
   // of when the file was first ingested.
-  const cachedFiles = await checkIngestCache(pp, fileName, sourceContent)
+  const cachedFiles = await checkIngestCache(pp, fileName, sourceContent, ingestCacheContext)
   console.log(`[ingest:diag] cache check for "${fileName}":`, cachedFiles === null ? "MISS (full pipeline)" : `HIT (${cachedFiles.length} cached files)`)
   if (cachedFiles !== null) {
     try {
@@ -789,7 +796,7 @@ async function autoIngestImpl(
   // — they represent deterministic decisions and caching them is
   // safe.
   if (writtenPaths.length > 0 && hardFailures.length === 0) {
-    await saveIngestCache(pp, fileName, sourceContent, writtenPaths)
+    await saveIngestCache(pp, fileName, sourceContent, writtenPaths, ingestCacheContext)
   } else if (hardFailures.length > 0) {
     console.warn(
       `[ingest] Skipping cache save for "${fileName}" — ${hardFailures.length} block(s) failed to write: ${hardFailures.join(", ")}`,

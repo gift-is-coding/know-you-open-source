@@ -17,12 +17,28 @@ interface CacheData {
   entries: Record<string, CacheEntry> // keyed by source filename
 }
 
+export interface IngestCacheContext {
+  schema?: string
+  purpose?: string
+  pipelineVersion?: string
+}
+
 async function sha256(content: string): Promise<string> {
   const encoder = new TextEncoder()
   const data = encoder.encode(content)
   const hashBuffer = await crypto.subtle.digest("SHA-256", data)
   const hashArray = Array.from(new Uint8Array(hashBuffer))
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
+}
+
+function cacheHashInput(sourceContent: string, context?: IngestCacheContext): string {
+  if (!context) return sourceContent
+  return JSON.stringify({
+    sourceContent,
+    schema: context.schema ?? "",
+    purpose: context.purpose ?? "",
+    pipelineVersion: context.pipelineVersion ?? "",
+  })
 }
 
 function cachePath(projectPath: string): string {
@@ -62,12 +78,13 @@ export async function checkIngestCache(
   projectPath: string,
   sourceFileName: string,
   sourceContent: string,
+  context?: IngestCacheContext,
 ): Promise<string[] | null> {
   const cache = await loadCache(projectPath)
   const entry = cache.entries[sourceFileName]
   if (!entry) return null
 
-  const currentHash = await sha256(sourceContent)
+  const currentHash = await sha256(cacheHashInput(sourceContent, context))
   if (entry.hash !== currentHash) return null
 
   const pp = normalizePath(projectPath)
@@ -100,9 +117,10 @@ export async function saveIngestCache(
   sourceFileName: string,
   sourceContent: string,
   filesWritten: string[],
+  context?: IngestCacheContext,
 ): Promise<void> {
   const cache = await loadCache(projectPath)
-  const hash = await sha256(sourceContent)
+  const hash = await sha256(cacheHashInput(sourceContent, context))
   const newEntries = { ...cache.entries }
   newEntries[sourceFileName] = {
     hash,

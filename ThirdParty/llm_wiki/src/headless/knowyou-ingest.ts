@@ -40,74 +40,25 @@ interface MyWikiSchemaFile {
 
 const defaultMyWikiCategories: MyWikiSchemaCategory[] = [
   {
-    id: "people",
-    displayName: "People",
-    directory: "wiki/people",
-    frontmatterTypes: ["person"],
-    extractionGuidance: "Real people repeatedly mentioned in journals.",
-  },
-  {
-    id: "organizations",
-    displayName: "Organizations",
-    directory: "wiki/organizations",
-    frontmatterTypes: ["organization", "company", "team"],
-    extractionGuidance: "Companies, teams, communities, institutions, and product organizations.",
-  },
-  {
-    id: "projects",
-    displayName: "Projects",
-    directory: "wiki/projects",
-    frontmatterTypes: ["project"],
-    extractionGuidance: "Named efforts, products, workstreams, plans, or initiatives.",
-  },
-  {
-    id: "events",
-    displayName: "Events",
-    directory: "wiki/events",
-    frontmatterTypes: ["event"],
-    extractionGuidance: "Time-bound meetings, launches, interviews, deadlines, or concrete happenings.",
-  },
-  {
-    id: "topics",
-    displayName: "Topics",
-    directory: "wiki/topics",
-    frontmatterTypes: ["topic"],
-    extractionGuidance: "Recurring subjects, questions, interests, or areas of attention.",
-  },
-  {
-    id: "decisions",
-    displayName: "Decisions",
-    directory: "wiki/decisions",
-    frontmatterTypes: ["decision"],
-    extractionGuidance: "Explicit choices, trade-offs, commitments, and policy decisions.",
-  },
-  {
-    id: "preferences",
-    displayName: "Patterns",
-    directory: "wiki/preferences",
-    frontmatterTypes: ["preference"],
-    extractionGuidance: "Stable user patterns, working style, communication habits, or explicit long-term constraints.",
-  },
-  {
-    id: "follow-ups",
-    displayName: "Follow-ups",
-    directory: "wiki/follow-ups",
-    frontmatterTypes: ["follow-up"],
-    extractionGuidance: "Unresolved items that need later action or review.",
-  },
-  {
-    id: "summaries",
-    displayName: "Summaries",
-    directory: "wiki/summaries",
-    frontmatterTypes: ["summary", "overview"],
-    extractionGuidance: "Readable summaries across sources.",
-  },
-  {
     id: "sources",
     displayName: "Sources",
     directory: "wiki/sources",
     frontmatterTypes: ["source", "knowyou-diary"],
-    extractionGuidance: "Source-summary pages for original journal files.",
+    extractionGuidance: "KnowYou diary source materials and source-summary pages.",
+  },
+  {
+    id: "entities",
+    displayName: "Entities",
+    directory: "wiki/entities",
+    frontmatterTypes: ["entity"],
+    extractionGuidance: "High-signal people, organizations, tools, products, projects, and other concrete entities.",
+  },
+  {
+    id: "concepts",
+    displayName: "Concepts",
+    directory: "wiki/concepts",
+    frontmatterTypes: ["concept"],
+    extractionGuidance: "High-signal topics, working patterns, preferences, decisions, open loops, questions, and long-term context.",
   },
 ]
 
@@ -161,6 +112,13 @@ Hard rules:
 `
 }
 
+function isNativeLlmWikiSchema(categories: MyWikiSchemaCategory[]): boolean {
+  const nativeDirectories = new Set(["wiki/sources", "wiki/entities", "wiki/concepts"])
+  return categories.length > 0 && categories.every((category) =>
+    nativeDirectories.has(normalizeDirectory(category.directory))
+  )
+}
+
 function buildMyWikiSchemaMarkdown(categories: MyWikiSchemaCategory[]): string {
   const rows = categories.map((category) => {
     const directory = normalizeDirectory(category.directory)
@@ -168,7 +126,7 @@ function buildMyWikiSchemaMarkdown(categories: MyWikiSchemaCategory[]): string {
     return `| ${category.displayName} | \`${directory}\` | ${types} | ${category.extractionGuidance} |`
   })
 
-  return [
+  const sections = [
     "# My Wiki Schema",
     "",
     "Generated from `mywiki.schema.json`. Treat this file as the source of truth for KnowYou My Wiki extraction.",
@@ -181,16 +139,20 @@ function buildMyWikiSchemaMarkdown(categories: MyWikiSchemaCategory[]): string {
     "",
     "## Shared Rules",
     "",
-    "- Use LLM semantic understanding for ontology extraction, relationship discovery, deduplication, summarization, search ranking, and agent context generation.",
-    "- Do not classify tools, agents, products, or companies as people.",
+    "- Use llm_wiki's native source, entity, and concept pages for extraction, relationship discovery, deduplication, summarization, search ranking, and agent context generation.",
+    "- Prefer a small number of high-signal entity and concept pages over many low-confidence category pages.",
     "- Every generated page must cite sources using source filenames or source days.",
     "- Use aliases for alternate spellings and translations; use rename only for the display title.",
     "- Mark uncertain facts as low confidence or needs review instead of writing them as certain.",
     "- Do not copy secrets, API keys, tokens, passwords, or complete account identifiers.",
     "",
-    buildMyWikiOutputContract(categories).trimEnd(),
-    "",
-  ].join("\n")
+  ]
+
+  if (!isNativeLlmWikiSchema(categories)) {
+    sections.push(buildMyWikiOutputContract(categories).trimEnd(), "")
+  }
+
+  return sections.join("\n")
 }
 
 function parseArgs(argv: string[]): IngestOptions {

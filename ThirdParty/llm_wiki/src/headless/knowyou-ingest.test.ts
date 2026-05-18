@@ -27,7 +27,7 @@ describe("KnowYou headless ingest runner", () => {
     try {
       await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
       await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
-      await writeFileRaw(path.join(tmp.path, "schema.md"), "# Schema\n\nCreate people pages.")
+      await writeFileRaw(path.join(tmp.path, "schema.md"), "# Schema\n\nCreate entity pages.")
       await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Purpose\n\nBuild My Wiki.")
       await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
       await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
@@ -39,9 +39,9 @@ describe("KnowYou headless ingest runner", () => {
       pendingResponses = [
         "黄山是日记中出现的人物，和联想平台归属有关。",
         [
-          "---FILE: wiki/people/huang-shan.md---",
+          "---FILE: wiki/entities/huang-shan.md---",
           "---",
-          "type: person",
+          "type: entity",
           "title: Huang Shan",
           "aliases: [黄山]",
           "related: [Lenovo]",
@@ -58,9 +58,9 @@ describe("KnowYou headless ingest runner", () => {
           "---FILE: wiki/index.md---",
           "# My Wiki Index",
           "",
-          "## People",
+          "## Entities",
           "",
-          "- [[people/huang-shan|Huang Shan]]",
+          "- [[entities/huang-shan|Huang Shan]]",
           "---END FILE---",
         ].join("\n"),
       ]
@@ -74,10 +74,9 @@ describe("KnowYou headless ingest runner", () => {
       expect(status.status).toBe("succeeded")
       expect(status.sourcesProcessed).toBe(1)
       expect(status.sourcesTotal).toBe(1)
-      expect(await fileExists(path.join(tmp.path, "wiki/people/huang-shan.md"))).toBe(true)
-      expect(await readFileRaw(path.join(tmp.path, "schema.md"))).toContain(
-        "Do not write `wiki/entities/`, `wiki/concepts/`, or generic ontology folders.",
-      )
+      expect(await fileExists(path.join(tmp.path, "wiki/entities/huang-shan.md"))).toBe(true)
+      expect(await readFileRaw(path.join(tmp.path, "schema.md"))).not.toContain("KNOWYOU_MY_WIKI_OUTPUT_CONTRACT")
+      expect(await readFileRaw(path.join(tmp.path, "schema.md"))).not.toContain("Do not write `wiki/entities/`")
       expect(await readFileRaw(path.join(tmp.path, ".llm-wiki/last-ingest-status.json"))).toContain(
         '"status": "succeeded"',
       )
@@ -152,6 +151,8 @@ describe("KnowYou headless ingest runner", () => {
       expect(schemaMarkdown).toContain("Relationships")
       expect(schemaMarkdown).toContain("wiki/relationships")
       expect(schemaMarkdown).toContain("`relationship`")
+      expect(schemaMarkdown).toContain("KNOWYOU_MY_WIKI_OUTPUT_CONTRACT")
+      expect(schemaMarkdown).toContain("Do not write `wiki/entities/`")
       expect(schemaMarkdown).not.toContain("wiki/themes/")
       expect(schemaMarkdown).not.toContain("wiki/open-loops/")
       expect(await fileExists(path.join(tmp.path, "wiki/relationships/huang-shan-lenovo-my-wiki.md"))).toBe(true)
@@ -188,9 +189,9 @@ describe("KnowYou headless ingest runner", () => {
       pendingResponses = [
         "黄山是日记中出现的人物，和联想平台归属有关。",
         [
-          "---FILE: wiki/people/huang-shan.md---",
+          "---FILE: wiki/entities/huang-shan.md---",
           "---",
-          "type: person",
+          "type: entity",
           "title: Huang Shan",
           "sources: [knowyou-diary-2026-05-16.md]",
           "---",
@@ -212,7 +213,11 @@ describe("KnowYou headless ingest runner", () => {
 
       const schemaMarkdown = await readFileRaw(path.join(tmp.path, "schema.md"))
       expect(schemaMarkdown).toContain("# My Wiki Schema")
-      expect(schemaMarkdown).toContain("People")
+      expect(schemaMarkdown).toContain("Sources")
+      expect(schemaMarkdown).toContain("Entities")
+      expect(schemaMarkdown).toContain("Concepts")
+      expect(schemaMarkdown).not.toContain("KNOWYOU_MY_WIKI_OUTPUT_CONTRACT")
+      expect(schemaMarkdown).not.toContain("Do not write `wiki/entities/`")
       expect(schemaMarkdown).not.toContain("## entity | wiki/entities/")
       expect(schemaMarkdown).not.toContain("## concept | wiki/concepts/")
       expect(schemaMarkdown).not.toContain("Use this for named entities.")
@@ -239,9 +244,9 @@ describe("KnowYou headless ingest runner", () => {
       pendingResponses = [
         "Adam 是日记中出现的人物，和 AI Builder 推进有关。",
         [
-          "---FILE: wiki/people/adam.md---",
+          "---FILE: wiki/entities/adam.md---",
           "---",
-          "type: person",
+          "type: entity",
           "title: Adam",
           "sources: [knowyou-diary-2026-05-17.md]",
           "---",

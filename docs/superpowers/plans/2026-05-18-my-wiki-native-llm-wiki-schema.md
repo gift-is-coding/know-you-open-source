@@ -182,7 +182,7 @@ git commit -m "feat: read native my wiki categories"
 - Modify: `ThirdParty/llm_wiki/src/lib/ingest-cache.ts`
 - Modify: `ThirdParty/llm_wiki/src/lib/ingest.ts`
 
-- [ ] **Step 1: Write failing headless tests**
+- [x] **Step 1: Write failing headless tests**
 
 Update `knowyou-ingest.test.ts` so the default/no-schema case expects:
 
@@ -194,7 +194,7 @@ expect(await fileExists(path.join(tmp.path, "wiki/entities/huang-shan.md"))).toB
 
 Keep the custom schema test for non-native categories, and make it assert the contract still appears when schema has `wiki/relationships`.
 
-- [ ] **Step 2: Write failing cache context test**
+- [x] **Step 2: Write failing cache context test**
 
 In `ingest-cache.test.ts`, add:
 
@@ -221,7 +221,7 @@ it("invalidates when cache context changes even if source content is unchanged",
 })
 ```
 
-- [ ] **Step 3: Run red tests**
+- [x] **Step 3: Run red tests**
 
 Run:
 
@@ -231,7 +231,7 @@ npx vitest run src/headless/knowyou-ingest.test.ts src/lib/ingest-cache.test.ts
 
 Expected: FAIL because default headless still writes custom contract and cache API has no context argument.
 
-- [ ] **Step 4: Implement native/custom contract split**
+- [x] **Step 4: Implement native/custom contract split**
 
 Add helper in `knowyou-ingest.ts`:
 
@@ -248,7 +248,7 @@ Only append `buildMyWikiOutputContract(categories)` when `isNativeLlmWikiSchema(
 
 Change default categories to Sources/Entities/Concepts.
 
-- [ ] **Step 5: Implement cache context**
+- [x] **Step 5: Implement cache context**
 
 In `ingest-cache.ts` add:
 
@@ -272,7 +272,7 @@ const INGEST_CACHE_PIPELINE_VERSION = "knowyou-native-llm-wiki-schema-v1"
 
 Pass `{ schema, purpose, pipelineVersion: INGEST_CACHE_PIPELINE_VERSION }` to cache check/save.
 
-- [ ] **Step 6: Run green tests and commit**
+- [x] **Step 6: Run green tests and commit**
 
 Run:
 

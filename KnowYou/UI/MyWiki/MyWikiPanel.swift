@@ -173,7 +173,7 @@ struct MyWikiPanel: View {
             Label("My Wiki", systemImage: "point.3.connected.trianglepath.dotted")
                 .font(.system(size: 30, weight: .semibold))
 
-            Text("Search and review the people, projects, topics, patterns, and follow-ups extracted from your journals.")
+            Text(MyWikiUserFacingCopy.overviewSubtitle)
                 .font(.system(size: 14))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -251,7 +251,7 @@ struct MyWikiPanel: View {
                         Text("\(duplicateSuggestions.count) duplicate suggestions")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color(red: 0.94, green: 0.86, blue: 0.48))
-                        Text("Review possible same people, projects, or topics.")
+                        Text(MyWikiUserFacingCopy.duplicateSuggestionSubtitle)
                             .font(.system(size: 12))
                             .foregroundStyle(Color(red: 0.72, green: 0.66, blue: 0.45))
                     }

@@ -353,6 +353,55 @@ git commit -m "docs: document native my wiki schema"
 
 ---
 
+### Task 5: User-Facing Copy Acceptance
+
+**Files:**
+- Modify: `KnowYou/UI/MyWiki/MyWikiModels.swift`
+- Modify: `KnowYou/UI/MyWiki/MyWikiPanel.swift`
+- Modify: `KnowYou/UI/MyWiki/MyWikiDetailView.swift`
+- Modify: `KnowYou/UI/KnowledgeOntology/KnowledgeOntologyPanel.swift`
+- Modify: `KnowYouTests/KnowledgeOntologyPanelTests.swift`
+
+- [x] **Step 1: Replace remaining old-category default copy**
+
+Move shared default My Wiki copy into `MyWikiUserFacingCopy` and update the panel subtitle, duplicate suggestion subtitle, and empty/detail placeholder copy to describe sources, entities, and concepts.
+
+- [x] **Step 2: Add copy regression coverage**
+
+Add `KnowledgeOntologyPanelTests.testDefaultMyWikiCopyDescribesNativeLlmWikiCategories` to assert default copy contains sources/entities/concepts and does not contain old People/Projects/Topics/Patterns/Follow-ups phrasing.
+
+- [x] **Step 3: Run targeted UI copy verification**
+
+Run:
+
+```bash
+xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/KnowledgeOntologyPanelTests
+```
+
+Result on 2026-05-18: PASS, 16 tests, 0 failures.
+
+- [x] **Step 4: Run final verification and launch check**
+
+Run:
+
+```bash
+xcodebuild test -scheme KnowYou -destination 'platform=macOS' -parallel-testing-enabled NO -resultBundlePath /tmp/KnowYouFull.xcresult
+npx vitest run src/headless/knowyou-ingest.test.ts src/lib/ingest-cache.test.ts
+npm audit --audit-level=high
+xcodebuild build -scheme KnowYou -destination 'platform=macOS'
+open -n ~/Library/Developer/Xcode/DerivedData/KnowYou-aadhgyjhceosdiboxjvopjekbquj/Build/Products/Debug/KnowYou.app
+```
+
+Result on 2026-05-18:
+
+- `xcodebuild test`: PASS, 444 tests, 2 skipped, 0 failures.
+- `npx vitest`: PASS, 2 files, 10 tests.
+- `npm audit --audit-level=high`: FAIL on existing dependency advisories: `fast-uri <=3.1.1` high path traversal/host confusion, `mermaid 11.0.0-alpha.1 - 11.14.0` moderate DoS/CSS/HTML injection advisories.
+- `xcodebuild build`: PASS.
+- Fresh DerivedData `KnowYou.app` launched and stayed running from `/Users/wutianfu/Library/Developer/Xcode/DerivedData/KnowYou-aadhgyjhceosdiboxjvopjekbquj/Build/Products/Debug/KnowYou.app`.
+
+---
+
 ## Self-Review
 
 - Spec coverage: Covers native schema, source tags, cache invalidation, legacy directory compatibility, docs, and verification.

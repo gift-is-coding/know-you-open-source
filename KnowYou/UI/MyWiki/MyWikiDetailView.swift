@@ -207,7 +207,7 @@ struct MyWikiDetailView: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Select a My Wiki item", systemImage: "sidebar.right")
                 .font(.headline)
-            Text("Summaries, people, projects, topics, patterns, and follow-ups will appear here.")
+            Text(MyWikiUserFacingCopy.detailPlaceholder)
                 .font(.system(size: 14))
                 .foregroundStyle(.secondary)
         }

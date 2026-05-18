@@ -40,7 +40,7 @@ struct KnowledgeOntologyDetailPlaceholder: View {
             Label("Select a My Wiki item", systemImage: "sidebar.right")
                 .font(.headline)
 
-            Text("Details for summaries, people, projects, topics, preferences, and follow-ups will appear here.")
+            Text(MyWikiUserFacingCopy.detailPlaceholder)
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

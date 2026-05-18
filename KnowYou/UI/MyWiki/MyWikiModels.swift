@@ -264,6 +264,12 @@ enum MyWikiPanelLifecycleAction: Equatable {
     case syncDiaries
 }
 
+enum MyWikiUserFacingCopy {
+    static let overviewSubtitle = "Search and review sources, entities, and concepts organized from your journals."
+    static let duplicateSuggestionSubtitle = "Review possible duplicate entities or concepts."
+    static let detailPlaceholder = "Sources, entities, and concepts will appear here after your journals are organized."
+}
+
 struct MyWikiPanelLifecyclePolicy {
     static var onAppearActions: [MyWikiPanelLifecycleAction] {
         [.loadDashboard]

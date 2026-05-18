@@ -3,12 +3,33 @@ import XCTest
 
 final class KnowledgeOntologyPanelTests: XCTestCase {
     func testMyWikiCategoryLabelsAreUserFacing() {
+        XCTAssertEqual(MyWikiCategory.source.displayTitle, "Sources")
+        XCTAssertEqual(MyWikiCategory.entity.displayTitle, "Entities")
+        XCTAssertEqual(MyWikiCategory.concept.displayTitle, "Concepts")
+    }
+
+    func testLegacyMyWikiCategoryLabelsRemainAvailableForExistingPages() {
         XCTAssertEqual(MyWikiCategory.person.displayTitle, "People")
         XCTAssertEqual(MyWikiCategory.project.displayTitle, "Projects")
         XCTAssertEqual(MyWikiCategory.theme.displayTitle, "Topics")
         XCTAssertEqual(MyWikiCategory.preference.displayTitle, "Patterns")
         XCTAssertEqual(MyWikiCategory.openLoop.displayTitle, "Follow-ups")
         XCTAssertEqual(MyWikiCategory.summary.displayTitle, "Summaries")
+    }
+
+    func testDefaultMyWikiCopyDescribesNativeLlmWikiCategories() {
+        let copy = [
+            MyWikiUserFacingCopy.overviewSubtitle,
+            MyWikiUserFacingCopy.duplicateSuggestionSubtitle,
+            MyWikiUserFacingCopy.detailPlaceholder,
+        ].joined(separator: " ")
+
+        XCTAssertTrue(copy.contains("sources"))
+        XCTAssertTrue(copy.contains("entities"))
+        XCTAssertTrue(copy.contains("concepts"))
+        XCTAssertFalse(copy.localizedCaseInsensitiveContains("people, projects"))
+        XCTAssertFalse(copy.localizedCaseInsensitiveContains("topics, patterns"))
+        XCTAssertFalse(copy.localizedCaseInsensitiveContains("follow-ups"))
     }
 
     func testIndexSectionPresentationSupportsCollapsedAndViewAllStates() {

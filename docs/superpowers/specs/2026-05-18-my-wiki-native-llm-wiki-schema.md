@@ -84,6 +84,8 @@ Swift UI 继续叫 `My Wiki`，继续从 `mywiki.schema.json` 读取 categories�
 
 详情页继续显示 title、summary、sources、related、markdown body。用户可见文案避免过度强调 “ontology”；`Entities` 和 `Concepts` 是 llm_wiki 的原生分组名，可以保留。
 
+空状态、详情占位、首页说明和重复项复核提示也必须使用 `Sources`、`Entities`、`Concepts` 这套默认模型；不应再把默认 My Wiki 描述成 `People / Projects / Topics / Patterns / Follow-ups` 的强分类工作台。
+
 ### Dedup
 
 复用 llm_wiki 原生 dedup 路径，因为它本来扫描 `wiki/entities` 和 `wiki/concepts`。Swift 侧的 `MyWikiDuplicateService` 可以继续作为轻量 fallback，但默认 schema 回归后，应优先让后续工作接入 `ThirdParty/llm_wiki/src/lib/dedup-runner.ts` 或至少不再阻断其适用目录。
@@ -138,3 +140,4 @@ TypeScript 层：
 - headless ingest 默认走 llm_wiki 原生 entity/concept/source generation targets。
 - ingest cache 的 hash/signature 包含 source content、schema、purpose 和 pipeline cache version；旧强分类 cache 不会让 native schema 重跑短路。
 - Swift targeted tests 和 llm_wiki targeted tests 通过。
+- 默认 My Wiki 用户可见说明、占位和重复项提示不再出现旧的 People/Projects/Topics/Patterns/Follow-ups 分类串。

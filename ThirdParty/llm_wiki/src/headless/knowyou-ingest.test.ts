@@ -7,8 +7,14 @@ import { useWikiStore } from "@/stores/wiki-store"
 vi.mock("@/commands/fs", () => realFs)
 
 let pendingResponses: string[] = []
+let streamedPrompts: string[] = []
 vi.mock("@/lib/llm-client", () => ({
-  streamChat: vi.fn(async (_cfg, _messages, callbacks) => {
+  streamChat: vi.fn(async (_cfg, messages, callbacks) => {
+    streamedPrompts.push(
+      messages
+        .map((message: { content: string }) => message.content)
+        .join("\n\n"),
+    )
     const response = pendingResponses.shift() ?? ""
     callbacks.onToken(response)
     callbacks.onDone()
@@ -19,6 +25,7 @@ import { runKnowYouIngest } from "./knowyou-ingest"
 
 beforeEach(() => {
   pendingResponses = []
+  streamedPrompts = []
 })
 
 describe("KnowYou headless ingest runner", () => {
@@ -83,6 +90,52 @@ describe("KnowYou headless ingest runner", () => {
       expect(await readFileRaw(path.join(tmp.path, ".llm-wiki/last-ingest-status.json"))).toContain(
         '"sourcesTotal": 1',
       )
+    } finally {
+      await tmp.cleanup()
+    }
+  })
+
+  it("limits each run to unindexed sources before revisiting indexed sources", async () => {
+    const tmp = await createTempProject("knowyou-headless-ingest-batch")
+    try {
+      await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki/sources"), { recursive: true })
+      await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Purpose\n\nBuild My Wiki.")
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+
+      for (const day of ["10", "11", "12", "13", "14"]) {
+        await writeFileRaw(
+          path.join(tmp.path, `raw/sources/knowyou-diary-2026-05-${day}.md`),
+          `# 2026-05-${day}\n\nJournal content for ${day}.`,
+        )
+      }
+      await writeFileRaw(path.join(tmp.path, "wiki/sources/knowyou-diary-2026-05-14.md"), "# Already indexed 14\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/sources/knowyou-diary-2026-05-13.md"), "# Already indexed 13\n")
+
+      pendingResponses = [
+        "Analysis for May 12.",
+        sourceSummaryBlock("2026-05-12"),
+        "Analysis for May 11.",
+        sourceSummaryBlock("2026-05-11"),
+      ]
+
+      const status = await runKnowYouIngest({
+        projectPath: tmp.path,
+        provider: "openai",
+        model: "test-model",
+        maxSources: 2,
+      })
+
+      expect(status.sourcesProcessed).toBe(2)
+      expect(status.sourcesTotal).toBe(2)
+      expect(streamedPrompts.join("\n")).toContain("knowyou-diary-2026-05-12.md")
+      expect(streamedPrompts.join("\n")).toContain("knowyou-diary-2026-05-11.md")
+      expect(streamedPrompts.join("\n")).not.toContain("knowyou-diary-2026-05-14.md")
+      expect(streamedPrompts.join("\n")).not.toContain("knowyou-diary-2026-05-13.md")
+      expect(await fileExists(path.join(tmp.path, "wiki/sources/knowyou-diary-2026-05-12.md"))).toBe(true)
+      expect(await fileExists(path.join(tmp.path, "wiki/sources/knowyou-diary-2026-05-11.md"))).toBe(true)
+      expect(await fileExists(path.join(tmp.path, "wiki/sources/knowyou-diary-2026-05-10.md"))).toBe(false)
     } finally {
       await tmp.cleanup()
     }
@@ -272,3 +325,23 @@ describe("KnowYou headless ingest runner", () => {
     }
   })
 })
+
+function sourceSummaryBlock(day: string): string {
+  return [
+    `---FILE: wiki/sources/knowyou-diary-${day}.md---`,
+    "---",
+    "type: source",
+    `title: KnowYou Diary ${day}`,
+    `sources: [knowyou-diary-${day}.md]`,
+    "tags: [knowyou, diary]",
+    "related: []",
+    "---",
+    "",
+    `# KnowYou Diary ${day}`,
+    "",
+    "## Summary",
+    "",
+    `Source summary for ${day}.`,
+    "---END FILE---",
+  ].join("\n")
+}

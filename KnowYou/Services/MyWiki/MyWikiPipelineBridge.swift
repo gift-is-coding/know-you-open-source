@@ -17,6 +17,10 @@ enum MyWikiPipelineTarget: Equatable {
     }
 }
 
+enum MyWikiIngestBatchPolicy {
+    static let maxSourcesPerRun = 3
+}
+
 enum MyWikiPipelineBridgeError: LocalizedError {
     case missingPipeline
     case pipelineExecutionFailed(String)
@@ -147,7 +151,9 @@ struct MyWikiPipelineBridge {
                 "--provider",
                 "codex-cli",
                 "--model",
-                "gpt-5.5"
+                "gpt-5.5",
+                "--max-sources",
+                "\(MyWikiIngestBatchPolicy.maxSourcesPerRun)"
             ],
             workingDirectory: sourceURL,
             timeoutSeconds: 30 * 60

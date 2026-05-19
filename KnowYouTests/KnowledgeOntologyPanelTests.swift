@@ -72,10 +72,19 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
             extractionGuidance: "Relationships between entities.",
             detailSections: ["Summary"]
         )
+        let memoriesCategory = MyWikiCategoryDefinition(
+            id: "memories",
+            displayName: "Memories",
+            singularName: "Memory",
+            directory: "wiki/memories",
+            frontmatterTypes: ["memory"],
+            extractionGuidance: "Personal memory records.",
+            detailSections: ["Summary"]
+        )
         let schema = MyWikiSchemaConfig(
             id: "custom",
             displayName: "Custom",
-            categories: [relationshipCategory],
+            categories: [relationshipCategory, memoriesCategory],
             views: []
         )
         let entry = MyWikiEntry(
@@ -97,9 +106,40 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
             previewLimit: 4
         )
 
-        XCTAssertEqual(sections.map(\.category.id), ["relationships"])
+        XCTAssertEqual(sections.map(\.category.id), ["relationships", "memories"])
         XCTAssertEqual(sections.first?.presentation.title, "Relationships")
         XCTAssertEqual(sections.first?.presentation.visibleEntries.map(\.title), ["Huang Shan and Lenovo"])
+    }
+
+    func testDefaultIndexSectionsPrioritizeEntitiesAndConceptsBeforeSources() throws {
+        let schema = try MyWikiSchemaConfig.defaultPersonalContext()
+        let sourceEntries = makeEntries(prefix: "Source", category: .source, count: 12)
+        let entityEntries = makeEntries(prefix: "Entity", category: .entity, count: 12)
+        let conceptEntries = makeEntries(prefix: "Concept", category: .concept, count: 12)
+        let snapshot = MyWikiDashboardSnapshot(
+            schema: schema,
+            entriesByCategoryID: [
+                MyWikiCategory.source.id: sourceEntries,
+                MyWikiCategory.entity.id: entityEntries,
+                MyWikiCategory.concept.id: conceptEntries,
+            ]
+        )
+
+        let sections = MyWikiIndexSectionsBuilder().categorySections(
+            snapshot: snapshot,
+            query: "",
+            expandedCategoryIDs: [MyWikiCategory.source.id, MyWikiCategory.entity.id, MyWikiCategory.concept.id],
+            previewLimit: 4
+        )
+
+        XCTAssertEqual(sections.map(\.category.id), [
+            MyWikiCategory.entity.id,
+            MyWikiCategory.concept.id,
+            MyWikiCategory.source.id,
+        ])
+        XCTAssertEqual(sections[0].presentation.visibleEntries.count, 10)
+        XCTAssertEqual(sections[1].presentation.visibleEntries.count, 10)
+        XCTAssertEqual(sections[2].presentation.visibleEntries.count, 4)
     }
 
     func testMyWikiPanelDoesNotRunPipelineOnAppear() {
@@ -190,5 +230,17 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertEqual(presentation.visibleFileNames, fileNames)
         XCTAssertEqual(presentation.hiddenCount, 0)
         XCTAssertNil(presentation.summaryText)
+    }
+
+    private func makeEntries(prefix: String, category: MyWikiCategory, count: Int) -> [MyWikiEntry] {
+        (1...count).map { index in
+            MyWikiEntry(
+                id: "\(category.id)-\(index)",
+                title: "\(prefix) \(index)",
+                category: category,
+                summary: "Summary \(index)",
+                sourceNames: []
+            )
+        }
     }
 }

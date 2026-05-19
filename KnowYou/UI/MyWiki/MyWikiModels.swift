@@ -191,6 +191,32 @@ enum MyWikiDuplicateDiscoveryPolicy {
     static let scansOnDashboardLoad = true
 }
 
+enum MyWikiIndexPreviewPolicy {
+    static let expandedEntityConceptLimit = 10
+
+    static func previewLimit(for categoryID: String, fallback: Int) -> Int {
+        switch categoryID {
+        case MyWikiCategory.entity.id, MyWikiCategory.concept.id:
+            return expandedEntityConceptLimit
+        default:
+            return fallback
+        }
+    }
+
+    static func sortPriority(for categoryID: String) -> Int {
+        switch categoryID {
+        case MyWikiCategory.entity.id:
+            return 0
+        case MyWikiCategory.concept.id:
+            return 1
+        case MyWikiCategory.source.id:
+            return 99
+        default:
+            return 10
+        }
+    }
+}
+
 struct MyWikiIndexSectionPresentation {
     let title: String
     let entries: [MyWikiEntry]
@@ -223,7 +249,16 @@ struct MyWikiIndexSectionsBuilder {
         expandedCategoryIDs: Set<String>,
         previewLimit: Int
     ) -> [MyWikiIndexCategorySection] {
-        snapshot.categories.compactMap { definition in
+        let orderedDefinitions = snapshot.categories.enumerated().sorted { lhs, rhs in
+            let lhsPriority = MyWikiIndexPreviewPolicy.sortPriority(for: lhs.element.id)
+            let rhsPriority = MyWikiIndexPreviewPolicy.sortPriority(for: rhs.element.id)
+            if lhsPriority != rhsPriority {
+                return lhsPriority < rhsPriority
+            }
+            return lhs.offset < rhs.offset
+        }.map(\.element)
+
+        return orderedDefinitions.compactMap { definition in
             let category = MyWikiCategory(definition: definition)
             let entries = filtered(snapshot.entries(for: definition.id), query: query)
             guard entries.isEmpty == false || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -235,7 +270,10 @@ struct MyWikiIndexSectionsBuilder {
                     title: definition.displayName,
                     entries: entries,
                     isExpanded: expandedCategoryIDs.contains(definition.id),
-                    previewLimit: previewLimit
+                    previewLimit: MyWikiIndexPreviewPolicy.previewLimit(
+                        for: definition.id,
+                        fallback: previewLimit
+                    )
                 )
             )
         }

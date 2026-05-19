@@ -18,8 +18,29 @@
 - Modify `ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts`: do not generate `KNOWYOU_MY_WIKI_OUTPUT_CONTRACT` for native schemas; keep custom contract only when schema declares non-native categories.
 - Modify `ThirdParty/llm_wiki/src/lib/ingest-cache.ts`: cache hash includes source content plus cache context.
 - Modify `ThirdParty/llm_wiki/src/lib/ingest.ts`: pass schema/purpose/cache version into cache check/save.
+- Modify `KnowYou/Services/MyWiki/MyWikiPipelineBridge.swift`: pass `--max-sources 3` to the headless runner.
+- Modify `KnowYou/UI/MyWiki/MyWikiModels.swift`: order default index sections as Entities, Concepts, Sources and expand entity/concept previews to 10.
 - Update tests in `KnowYouTests/*` and `ThirdParty/llm_wiki/src/**/*test.ts`.
 - Update `docs/architecture.md` and `docs/requirements-spec.md`.
+
+---
+
+### Task 8: Small Batch Rerun And Index Priorities
+
+**Files:**
+- Modify: `KnowYouTests/MyWikiPipelineBridgeTests.swift`
+- Modify: `KnowYouTests/KnowledgeOntologyPanelTests.swift`
+- Modify: `KnowYouTests/MyWikiProjectExporterTests.swift`
+- Modify: `ThirdParty/llm_wiki/src/headless/knowyou-ingest.test.ts`
+- Modify: `KnowYou/Services/MyWiki/MyWikiPipelineBridge.swift`
+- Modify: `KnowYou/UI/MyWiki/MyWikiModels.swift`
+- Modify: `KnowYou/Services/MyWiki/MyWikiProjectExporter.swift`
+- Modify: `ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts`
+
+- [x] Add tests proving the app passes `--max-sources 3`, the headless runner prefers unindexed sources, the index shows Entities/Concepts before Sources, and legacy prompt docs are replaced.
+- [x] Implement the app-side max source policy and the unindexed-first source selector.
+- [x] Update default project prompt docs away from legacy People/Projects/Topics wording.
+- [x] Update architecture and requirements docs.
 
 ---
 

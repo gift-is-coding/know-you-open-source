@@ -102,7 +102,9 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
                 "--provider",
                 "codex-cli",
                 "--model",
-                "gpt-5.5"
+                "gpt-5.5",
+                "--max-sources",
+                "3"
             ]
         )
 

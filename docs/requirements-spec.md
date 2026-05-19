@@ -369,6 +369,7 @@ onboarding 的配置约束为：
 - My Wiki 主界面不得重复显示分类 tabs 和分组标题；左侧只保留搜索与可展开分组
 - My Wiki 分类必须从项目级 `mywiki.schema.json` 读取，不得写死在 Swift UI enum 或固定 tabs 中
 - 默认推荐 schema 的用户可见分类必须是 llm_wiki 原生 `Sources`、`Entities`、`Concepts`，但用户项目中的 `mywiki.schema.json` 优先
+- 默认首页索引必须优先显示 `Entities`、`Concepts`，并把 `Sources` 放在最后；`Entities` 和 `Concepts` 展开时默认最多显示 10 个条目，`Sources` 保持紧凑预览
 - `Recent`、`Needs Review` 等必须作为 view 处理，不得作为 ontology category 生成对应 wiki 目录
 - 每个 schema 分类分组必须支持展开/折叠，首页仅显示少量高频条目，并提供 `View all` 进入该分类全量列表
 - 全量列表必须支持搜索、排序和点击选择条目；窗口放大时应把更多空间留给右侧详情内容
@@ -387,6 +388,7 @@ onboarding 的配置约束为：
 - 系统必须能把已有 `YYYY-MM-DD.md` 日记同步为 `raw/sources/knowyou-diary-YYYY-MM-DD.md`
 - 重复同步同一天日记必须覆盖稳定文件名，不得生成重复文件
 - My Wiki 必须尽量复用 `ThirdParty/llm_wiki` 的后端 pipeline，包括 LLM ingest、cache、search、page merge、source traceability、dedup/review 和 vector store；普通用户首页不得直接暴露复杂工作台
+- 默认 My Wiki pipeline 每次运行最多处理 3 个 source，并且在限定批量时优先选择还没有 `wiki/sources/<source>.md` 的最新 raw source；旧生成内容清理后重跑也必须按小批次逐步推进
 - LLM Wiki headless runner 对原生 `Sources / Entities / Concepts` schema 不得生成 KnowYou 自定义 output contract，必须尽量复用 llm_wiki 默认生成路径；只有非原生自定义目录才生成 output contract，并按 contract 中的目录和 frontmatter types 生成页面
 - My Wiki 的正式本体抽取、关系发现、去重、总结和 agent context 必须使用 LLM 语义能力，不得用 keyword/regex/starter extractor 伪造可信本体页
 - bundled helper、`ThirdParty/llm_wiki` 开发源码或 Codex CLI pipeline 不可用时，系统必须写入失败/降级状态并保留已有页面，不得生成 keyword fallback 正式页面

@@ -138,6 +138,8 @@ TypeScript 层：
 - `schema.md` 默认不包含 `KNOWYOU_MY_WIKI_OUTPUT_CONTRACT`，也不禁止 `wiki/entities/` 或 `wiki/concepts/`。
 - KnowYou source frontmatter 包含 `tags: [knowyou, diary]`。
 - headless ingest 默认走 llm_wiki 原生 entity/concept/source generation targets。
+- 默认 My Wiki 重跑每次最多处理 3 个 source；限定批量时优先处理尚未生成 `wiki/sources/<source>.md` 的最新 raw source，避免反复覆盖同几篇。
+- 默认首页索引先显示 `Entities`、`Concepts`，`Sources` 放最后；`Entities` 和 `Concepts` 展开时最多显示 10 个。
 - ingest cache 的 hash/signature 包含 source content、schema、purpose 和 pipeline cache version；旧强分类 cache 不会让 native schema 重跑短路。
 - Swift targeted tests 和 llm_wiki targeted tests 通过。
 - 默认 My Wiki 用户可见说明、占位和重复项提示不再出现旧的 People/Projects/Topics/Patterns/Follow-ups 分类串。

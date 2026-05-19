@@ -197,9 +197,37 @@ async function listSources(projectPath: string, maxSources?: number): Promise<st
     .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".md"))
     .map((entry) => path.join(sourceDir, entry.name).replace(/\\/g, "/"))
     .sort()
-  return Number.isFinite(maxSources) && maxSources && maxSources > 0
-    ? sources.slice(-maxSources)
-    : sources
+  if (!Number.isFinite(maxSources) || !maxSources || maxSources <= 0) {
+    return sources
+  }
+
+  const newestFirst = [...sources].reverse()
+  const pending: string[] = []
+  const alreadyIndexed: string[] = []
+  for (const sourcePath of newestFirst) {
+    const indexed = await fileExists(sourceSummaryPath(projectPath, sourcePath))
+    if (indexed) {
+      alreadyIndexed.push(sourcePath)
+    } else {
+      pending.push(sourcePath)
+    }
+  }
+
+  return [...pending, ...alreadyIndexed].slice(0, maxSources)
+}
+
+function sourceSummaryPath(projectPath: string, sourcePath: string): string {
+  const basename = path.basename(sourcePath, path.extname(sourcePath))
+  return path.join(projectPath, "wiki", "sources", `${basename}.md`)
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath)
+    return true
+  } catch {
+    return false
+  }
 }
 
 async function ensureMyWikiOutputContract(projectPath: string): Promise<void> {

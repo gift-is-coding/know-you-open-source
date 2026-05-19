@@ -64,10 +64,18 @@ struct MyWikiProjectExporter {
         }
 
         try write(projectRoot.appending(path: "schema.md"), contents: MyWikiSchemaMarkdownRenderer().render(schema))
-        try writeIfMissing(projectRoot.appending(path: "purpose.md"), contents: Self.purposeMarkdown)
+        try writeIfMissingOrLegacy(
+            projectRoot.appending(path: "purpose.md"),
+            contents: Self.purposeMarkdown,
+            legacyMarkers: Self.legacyPurposeMarkers
+        )
         try writeIfMissing(projectRoot.appending(path: "wiki/index.md"), contents: Self.indexMarkdown(for: schema))
         try writeIfMissing(projectRoot.appending(path: "wiki/log.md"), contents: Self.logMarkdown)
-        try writeIfMissing(projectRoot.appending(path: "wiki/overview.md"), contents: Self.overviewMarkdown)
+        try writeIfMissingOrLegacy(
+            projectRoot.appending(path: "wiki/overview.md"),
+            contents: Self.overviewMarkdown,
+            legacyMarkers: Self.legacyOverviewMarkers
+        )
         try writeIfMissing(projectRoot.appending(path: ".obsidian/app.json"), contents: Self.obsidianAppJSON)
         try writeIfMissing(projectRoot.appending(path: ".obsidian/appearance.json"), contents: Self.obsidianAppearanceJSON)
         try writeIfMissing(projectRoot.appending(path: ".obsidian/core-plugins.json"), contents: Self.obsidianCorePluginsJSON)
@@ -126,6 +134,17 @@ struct MyWikiProjectExporter {
         try write(url, contents: contents)
     }
 
+    private func writeIfMissingOrLegacy(_ url: URL, contents: String, legacyMarkers: [String]) throws {
+        guard fileManager.fileExists(atPath: url.path) else {
+            try write(url, contents: contents)
+            return
+        }
+
+        let existing = try String(contentsOf: url, encoding: .utf8)
+        guard legacyMarkers.contains(where: existing.contains) else { return }
+        try write(url, contents: contents)
+    }
+
     private func write(_ url: URL, contents: String) throws {
         try fileManager.createDirectory(
             at: url.deletingLastPathComponent(),
@@ -156,15 +175,15 @@ struct MyWikiProjectExporter {
 
     ## 关键问题
 
-    1. 最近哪些人、项目、事件、主题和偏好反复出现在我的日记里？
-    2. 哪些事情需要继续跟进？
-    3. 其他 agent 在执行任务前应该知道哪些长期背景？
+    1. 最近哪些 Sources 已经被整理，哪些还没有进入 My Wiki？
+    2. 哪些 Entities（人、组织、工具、产品、项目或其他具体对象）值得长期保留？
+    3. 哪些 Concepts（主题、偏好、决策、问题、工作模式和开放事项）能帮助后续 agent 理解背景？
 
     ## 范围
 
     **In scope:**
     - KnowYou 每日日记
-    - 从日记整理人物、项目、事件、主题、偏好、待办、总结和来源
+    - 用 llm_wiki 原生 Sources、Entities、Concepts 结构整理高信号内容
     - 可读页面、搜索索引、agent 可调用摘要
 
     **Out of scope:**
@@ -195,8 +214,19 @@ struct MyWikiProjectExporter {
 
     # Overview
 
-    这里汇总 KnowYou 日记整理出的人物、项目、事件、主题、偏好、待办和总结。
+    这里汇总 KnowYou 日记整理出的 Sources、Entities 和 Concepts。Sources 保留来源线索，Entities 记录具体对象，Concepts 收纳主题、偏好、决策、问题、工作模式和开放事项。
     """
+
+    private static let legacyPurposeMarkers = [
+        "个人知识本体",
+        "哪些人、项目、工具和主题",
+        "人物、项目、事件、主题、偏好、待办"
+    ]
+
+    private static let legacyOverviewMarkers = [
+        "人物、项目、事件、主题、偏好、待办",
+        "这里汇总 KnowYou 日记整理出的人物"
+    ]
 
     private static let obsidianAppJSON = """
     {

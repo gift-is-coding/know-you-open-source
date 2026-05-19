@@ -99,68 +99,75 @@ struct MyWikiDetailView: View {
     }
 
     private func contentGrid(_ entry: MyWikiEntry) -> some View {
-        HStack(alignment: .top, spacing: 24) {
-            VStack(alignment: .leading, spacing: 16) {
-                detailCard("Summary") {
-                    Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
-                        .detailBodyStyle()
-                }
+        let presentation = MyWikiDetailPresentation(entry: entry)
 
-                if entry.mentions.isEmpty == false {
-                    detailCard("Recent Mentions") {
-                        VStack(alignment: .leading, spacing: 12) {
-                            ForEach(entry.mentions, id: \.day) { mention in
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text(mention.day)
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(Color(red: 0.56, green: 0.76, blue: 1))
-                                    Text(mention.text)
-                                        .detailBodyStyle()
-                                }
+        return VStack(alignment: .leading, spacing: 16) {
+            detailCard("Summary") {
+                Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
+                    .detailBodyStyle()
+            }
+
+            if entry.mentions.isEmpty == false {
+                detailCard("Recent Mentions") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(entry.mentions, id: \.day) { mention in
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(mention.day)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(Color(red: 0.56, green: 0.76, blue: 1))
+                                Text(mention.text)
+                                    .detailBodyStyle()
                             }
                         }
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
 
-            VStack(alignment: .leading, spacing: 16) {
-                detailCard("Evidence Sources") {
-                    sourceList(entry)
-                }
-
-                if entry.related.isEmpty == false {
-                    detailCard("Related") {
-                        FlowLayout(spacing: 8) {
-                            ForEach(entry.related, id: \.self) { related in
-                                Button {
-                                    onOpenRelated(related)
-                                } label: {
-                                    Text(related)
-                                        .font(.system(size: 12))
-                                        .padding(.horizontal, 10)
-                                        .frame(height: 28)
-                                        .background(Capsule().fill(MyWikiTheme.controlBackground))
-                                }
-                                .buttonStyle(.plain)
+            if entry.related.isEmpty == false {
+                detailCard("Related") {
+                    FlowLayout(spacing: 8) {
+                        ForEach(entry.related, id: \.self) { related in
+                            Button {
+                                onOpenRelated(related)
+                            } label: {
+                                Text(related)
+                                    .font(.system(size: 12))
+                                    .padding(.horizontal, 10)
+                                    .frame(height: 28)
+                                    .background(Capsule().fill(MyWikiTheme.controlBackground))
                             }
-                        }
-                    }
-                }
-
-                if MyWikiDetailMaintenancePolicy.showsDuplicateSuggestionCard(
-                    duplicateSuggestionCount: duplicateSuggestionCount
-                ) {
-                    detailCard("Duplicate Suggestions") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("\(duplicateSuggestionCount) possible duplicate group(s) found.")
-                                .detailBodyStyle()
-                            Button("Review duplicates", action: onFindDuplicates)
+                            .buttonStyle(.plain)
                         }
                     }
                 }
             }
-            .frame(width: 310, alignment: .topLeading)
+
+            if MyWikiDetailMaintenancePolicy.showsDuplicateSuggestionCard(
+                duplicateSuggestionCount: duplicateSuggestionCount
+            ) {
+                detailCard("Duplicate Suggestions") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("\(duplicateSuggestionCount) possible duplicate group(s) found.")
+                            .detailBodyStyle()
+                        Button("Review duplicates", action: onFindDuplicates)
+                    }
+                }
+            }
+
+            if presentation.showsMarkdownPage {
+                detailCard("Page") {
+                    MyWikiMarkdownBodyView(markdown: presentation.markdownText)
+                    if presentation.isMarkdownTruncated {
+                        Text("Page preview truncated.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            detailCard("Sources") {
+                sourceList(entry)
+            }
         }
     }
 
@@ -212,6 +219,120 @@ struct MyWikiDetailView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.top, 80)
+    }
+}
+
+private struct MyWikiMarkdownBodyView: View {
+    let markdown: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(DailyMarkdownRenderer.blocks(from: markdown).enumerated()), id: \.offset) { _, block in
+                blockView(block)
+            }
+        }
+        .multilineTextAlignment(.leading)
+        .textSelection(.enabled)
+    }
+
+    @ViewBuilder
+    private func blockView(_ block: DailyMarkdownRenderer.Block) -> some View {
+        switch block {
+        case .heading(let level, let content):
+            inlineText(content)
+                .font(headingFont(for: level))
+                .fontWeight(.semibold)
+                .padding(.top, level == 1 ? 8 : 4)
+        case .paragraph(let content):
+            inlineText(content)
+                .font(.system(size: 16))
+                .lineSpacing(4)
+        case .bulletList(let items):
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .top, spacing: 10) {
+                        Text("\u{2022}")
+                            .font(.system(size: 16, weight: .semibold))
+                            .padding(.top, 1)
+                        inlineText(item)
+                            .font(.system(size: 16))
+                            .lineSpacing(4)
+                    }
+                }
+            }
+        case .orderedList(let items):
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .top, spacing: 10) {
+                        Text("\(item.index).")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        inlineText(item.content)
+                            .font(.system(size: 16))
+                            .lineSpacing(4)
+                    }
+                }
+            }
+        case .taskList(let items):
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: item.isCompleted ? "checkmark.square.fill" : "square")
+                            .foregroundStyle(item.isCompleted ? Color.accentColor : Color.secondary)
+                            .padding(.top, 2)
+                        inlineText(item.content)
+                            .font(.system(size: 16))
+                            .lineSpacing(4)
+                    }
+                }
+            }
+        case .quote(let items):
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    inlineText(item)
+                        .font(.system(size: 16))
+                        .italic()
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.leading, 14)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.35))
+                    .frame(width: 3)
+            }
+        case .codeBlock(let code):
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(verbatim: code)
+                    .font(.system(size: 13, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(12)
+            .background(Color.primary.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+
+    @ViewBuilder
+    private func inlineText(_ content: DailyMarkdownRenderer.InlineContent) -> some View {
+        if let attributed = content.attributed {
+            Text(attributed)
+        } else {
+            Text(verbatim: content.plainText)
+        }
+    }
+
+    private func headingFont(for level: Int) -> Font {
+        switch level {
+        case 1:
+            return .system(size: 26, weight: .semibold)
+        case 2:
+            return .system(size: 21, weight: .semibold)
+        case 3:
+            return .system(size: 17, weight: .semibold)
+        default:
+            return .system(size: 16, weight: .semibold)
+        }
     }
 }
 

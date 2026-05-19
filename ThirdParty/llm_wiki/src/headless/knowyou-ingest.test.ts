@@ -21,6 +21,7 @@ vi.mock("@/lib/llm-client", () => ({
   }),
 }))
 
+import { INGEST_CACHE_PIPELINE_VERSION } from "@/lib/ingest"
 import { runKnowYouIngest } from "./knowyou-ingest"
 
 beforeEach(() => {
@@ -29,6 +30,11 @@ beforeEach(() => {
 })
 
 describe("KnowYou headless ingest runner", () => {
+  it("uses a cache version that invalidates translated proper-noun outputs", () => {
+    expect(INGEST_CACHE_PIPELINE_VERSION).toContain("v2")
+    expect(INGEST_CACHE_PIPELINE_VERSION).toContain("preserve-proper-nouns")
+  })
+
   it("reuses autoIngest to materialize wiki pages from raw journal sources", async () => {
     const tmp = await createTempProject("knowyou-headless-ingest")
     try {
@@ -320,6 +326,12 @@ describe("KnowYou headless ingest runner", () => {
       })
 
       expect(useWikiStore.getState().outputLanguage).toBe("auto")
+      const promptText = streamedPrompts.join("\n\n")
+      expect(promptText).toContain("SOURCE LANGUAGE MODE: English")
+      expect(promptText).toContain("Preserve proper nouns")
+      expect(promptText).toContain("translations or explanations as aliases")
+      expect(promptText).not.toContain("MANDATORY OUTPUT LANGUAGE: Chinese")
+      expect(promptText).not.toContain("standard Chinese transliteration")
     } finally {
       await tmp.cleanup()
     }

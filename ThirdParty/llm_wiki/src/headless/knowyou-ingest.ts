@@ -1,7 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { autoIngest } from "@/lib/ingest"
-import { detectLanguage } from "@/lib/detect-language"
 import { useActivityStore } from "@/stores/activity-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useReviewStore } from "@/stores/review-store"
@@ -314,15 +313,7 @@ export async function runKnowYouIngest(options: IngestOptions): Promise<IngestSt
 
   let processed = 0
   for (const sourcePath of sources) {
-    const previousOutputLanguage = useWikiStore.getState().outputLanguage
-    const sourceContent = await fs.readFile(sourcePath, "utf-8")
-    useWikiStore.getState().setOutputLanguage(detectLanguage(sourceContent))
-    let written: string[]
-    try {
-      written = await autoIngest(projectPath, sourcePath, llmConfig)
-    } finally {
-      useWikiStore.getState().setOutputLanguage(previousOutputLanguage)
-    }
+    const written = await autoIngest(projectPath, sourcePath, llmConfig)
     written.forEach((filePath) => filesWritten.add(filePath))
     processed += 1
     await writeStatus(projectPath, {

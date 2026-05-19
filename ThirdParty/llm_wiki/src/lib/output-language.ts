@@ -20,8 +20,21 @@ export function getOutputLanguage(fallbackText: string = ""): string {
  * Build a strong language directive to inject into system prompts.
  */
 export function buildLanguageDirective(fallbackText: string = ""): string {
-  const lang = getOutputLanguage(fallbackText)
+  const configured = useWikiStore.getState().outputLanguage
+  const isExplicitLanguage = configured && configured !== "auto"
+  const lang = isExplicitLanguage ? configured : detectLanguage(fallbackText || "English")
   const promptLang = getLanguagePromptName(lang)
+  if (!isExplicitLanguage) {
+    return [
+      `## SOURCE LANGUAGE MODE: ${promptLang}`,
+      "",
+      `Write generated prose in the same primary language as the source material (${promptLang}).`,
+      "Preserve proper nouns exactly as they appear in the source, including examples like Adam, Token Hub, AI OS, Codex, Claude, OpenAI, Lenovo, product names, project names, acronyms, model names, and file names.",
+      "Use translations or explanations as aliases, tags, or short parenthetical clarifications only when useful.",
+      "Do not rename page titles by translating proper nouns; keep the source spelling as the canonical title unless the source itself gives a better canonical name.",
+      "If the source is multilingual, use the language of the relevant evidence while keeping source-specific terms intact.",
+    ].join("\n")
+  }
   return [
     `## ⚠️ MANDATORY OUTPUT LANGUAGE: ${promptLang}`,
     "",

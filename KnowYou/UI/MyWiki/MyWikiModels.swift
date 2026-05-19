@@ -153,7 +153,7 @@ struct MyWikiDetailPresentation: Equatable {
     let isMarkdownTruncated: Bool
     let showsMarkdownPage: Bool
 
-    init(entry: MyWikiEntry, markdownPreviewLimit: Int = 8_000, showsMarkdownPage: Bool = false) {
+    init(entry: MyWikiEntry, markdownPreviewLimit: Int = 100_000, showsMarkdownPage: Bool = true) {
         self.showsMarkdownPage = showsMarkdownPage
         let source = entry.markdownBody.isEmpty ? entry.summary : entry.markdownBody
         let limit = max(0, markdownPreviewLimit)
@@ -170,7 +170,14 @@ struct MyWikiDetailPresentation: Equatable {
 
 enum MyWikiIndexRowHitTargetPolicy {
     static let usesFullRowContentShape = true
-    static let minHeight: CGFloat = 58
+    static let showsSummary = false
+    static let showsCategoryBadge = false
+    static let minHeight: CGFloat = 34
+}
+
+enum MyWikiIndexNavigationPolicy {
+    static let usesInlineShowMore = true
+    static let usesFullListNavigation = false
 }
 
 enum MyWikiProgressRefreshPolicy {
@@ -192,6 +199,7 @@ enum MyWikiDuplicateDiscoveryPolicy {
 }
 
 enum MyWikiIndexPreviewPolicy {
+    static let defaultVisibleLimit = 10
     static let expandedEntityConceptLimit = 10
 
     static func previewLimit(for categoryID: String, fallback: Int) -> Int {
@@ -199,7 +207,7 @@ enum MyWikiIndexPreviewPolicy {
         case MyWikiCategory.entity.id, MyWikiCategory.concept.id:
             return expandedEntityConceptLimit
         default:
-            return fallback
+            return defaultVisibleLimit
         }
     }
 
@@ -222,14 +230,46 @@ struct MyWikiIndexSectionPresentation {
     let entries: [MyWikiEntry]
     let isExpanded: Bool
     let previewLimit: Int
+    let isShowingAll: Bool
+
+    init(
+        title: String,
+        entries: [MyWikiEntry],
+        isExpanded: Bool,
+        previewLimit: Int,
+        isShowingAll: Bool = false
+    ) {
+        self.title = title
+        self.entries = entries
+        self.isExpanded = isExpanded
+        self.previewLimit = previewLimit
+        self.isShowingAll = isShowingAll
+    }
 
     var visibleEntries: [MyWikiEntry] {
         guard isExpanded else { return [] }
+        guard isShowingAll == false else { return entries }
         return Array(entries.prefix(max(0, previewLimit)))
     }
 
     var canViewAll: Bool {
-        entries.count > previewLimit
+        canShowMore
+    }
+
+    var hiddenCount: Int {
+        max(0, entries.count - previewLimit)
+    }
+
+    var canShowMore: Bool {
+        isExpanded && isShowingAll == false && hiddenCount > 0
+    }
+
+    var canShowLess: Bool {
+        isExpanded && isShowingAll && hiddenCount > 0
+    }
+
+    var showMoreTitle: String {
+        isShowingAll ? "Show less" : "Show more (\(hiddenCount))"
     }
 }
 
@@ -247,6 +287,7 @@ struct MyWikiIndexSectionsBuilder {
         snapshot: MyWikiDashboardSnapshot,
         query: String,
         expandedCategoryIDs: Set<String>,
+        showingAllCategoryIDs: Set<String> = [],
         previewLimit: Int
     ) -> [MyWikiIndexCategorySection] {
         let orderedDefinitions = snapshot.categories.enumerated().sorted { lhs, rhs in
@@ -273,17 +314,11 @@ struct MyWikiIndexSectionsBuilder {
                     previewLimit: MyWikiIndexPreviewPolicy.previewLimit(
                         for: definition.id,
                         fallback: previewLimit
-                    )
+                    ),
+                    isShowingAll: showingAllCategoryIDs.contains(definition.id)
                 )
             )
         }
-    }
-
-    func recentEntries(snapshot: MyWikiDashboardSnapshot, query: String) -> [MyWikiEntry] {
-        filtered(snapshot.primaryEntries, query: query)
-            .sorted { lhs, rhs in
-                (lhs.mentions.first?.day ?? "").localizedStandardCompare(rhs.mentions.first?.day ?? "") == .orderedDescending
-            }
     }
 
     private func filtered(_ entries: [MyWikiEntry], query: String) -> [MyWikiEntry] {

@@ -41,7 +41,18 @@ describe("getOutputLanguage", () => {
 })
 
 describe("buildLanguageDirective", () => {
-  it("contains the MANDATORY OUTPUT LANGUAGE header", () => {
+  it("auto mode follows source language without forcing translated proper nouns", () => {
+    useWikiStore.getState().setOutputLanguage("auto")
+    const directive = buildLanguageDirective("这是中文材料，里面提到 Adam、Token Hub 和 AI OS。")
+    expect(directive).toContain("SOURCE LANGUAGE MODE")
+    expect(directive).toContain("Preserve proper nouns")
+    expect(directive).toContain("Adam")
+    expect(directive).not.toContain("IRRELEVANT to your output language")
+    expect(directive).not.toContain("Ignore the language of any source content")
+    expect(directive).not.toContain("transliteration")
+  })
+
+  it("contains the MANDATORY OUTPUT LANGUAGE header for explicit settings", () => {
     useWikiStore.getState().setOutputLanguage("Chinese")
     const directive = buildLanguageDirective()
     expect(directive).toContain("MANDATORY OUTPUT LANGUAGE: Chinese")
@@ -62,10 +73,10 @@ describe("buildLanguageDirective", () => {
     expect(directive).not.toContain("MANDATORY OUTPUT LANGUAGE: Chinese")
   })
 
-  it("uses detected language in auto mode", () => {
+  it("uses source-language mode in auto mode", () => {
     useWikiStore.getState().setOutputLanguage("auto")
     const directive = buildLanguageDirective("Xử lý nước thải là vấn đề quan trọng")
-    expect(directive).toContain("Vietnamese")
+    expect(directive).toContain("SOURCE LANGUAGE MODE: Vietnamese")
   })
 
   it("uses an explicit Persian/Farsi prompt name", () => {
@@ -74,7 +85,7 @@ describe("buildLanguageDirective", () => {
     expect(directive).toContain("MANDATORY OUTPUT LANGUAGE: Persian (Farsi / فارسی)")
   })
 
-  it("explicitly overrides source content language", () => {
+  it("explicitly overrides source content language when the user sets a language", () => {
     useWikiStore.getState().setOutputLanguage("English")
     const directive = buildLanguageDirective()
     expect(directive).toContain("IRRELEVANT to your output language")

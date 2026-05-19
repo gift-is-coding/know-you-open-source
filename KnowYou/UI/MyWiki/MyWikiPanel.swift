@@ -14,8 +14,8 @@ struct MyWikiPanel: View {
     @State private var statusMessage = "Ready"
     @State private var ingestProgress: MyWikiIngestProgress?
     @State private var isSyncing = false
-    @State private var fullListCategory: MyWikiCategory?
     @State private var expandedCategoryIDs: Set<String> = []
+    @State private var showingAllCategoryIDs: Set<String> = []
     @State private var editingEntry: MyWikiEntry?
     @State private var conflictMessage: String?
     @State private var isShowingStatus = false
@@ -102,19 +102,8 @@ struct MyWikiPanel: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
-                    section(
-                        title: "Recently active",
-                        category: MyWikiCategory(id: "recent", displayTitle: "Recent", singularTitle: "Recent item", frontmatterType: "recent"),
-                        entries: recentEntries,
-                        showsViewAll: false
-                    )
-
                     ForEach(indexSections) { sectionPresentation in
-                        section(
-                            title: sectionPresentation.presentation.title,
-                            category: sectionPresentation.category,
-                            entries: sectionPresentation.presentation.entries
-                        )
+                        section(sectionPresentation)
                     }
                 }
                 .padding(.bottom, 24)
@@ -134,16 +123,6 @@ struct MyWikiPanel: View {
                     },
                     onMerge: { canonicalID in
                         mergeSuggestion(suggestion, canonicalID: canonicalID)
-                    }
-                )
-            } else if let category = fullListCategory {
-                MyWikiFullListView(
-                    title: "All \(category.displayTitle)",
-                    entries: filtered(snapshot.entries(for: category)),
-                    selectedEntry: $selectedEntry,
-                    onSelect: {
-                        selectedEntry = $0
-                        fullListCategory = nil
                     }
                 )
             } else {
@@ -243,7 +222,6 @@ struct MyWikiPanel: View {
             Button {
                 if let first = duplicateSuggestions.first {
                     reviewingSuggestion = first
-                    fullListCategory = nil
                 }
             } label: {
                 HStack {
@@ -276,14 +254,9 @@ struct MyWikiPanel: View {
         }
     }
 
-    private func section(title: String, category: MyWikiCategory, entries: [MyWikiEntry], showsViewAll: Bool = true) -> some View {
-        let presentation = MyWikiIndexSectionPresentation(
-            title: title,
-            entries: entries,
-            isExpanded: expandedCategoryIDs.contains(category.id),
-            previewLimit: 4
-        )
-
+    private func section(_ sectionPresentation: MyWikiIndexCategorySection) -> some View {
+        let category = sectionPresentation.category
+        let presentation = sectionPresentation.presentation
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Button {
@@ -292,7 +265,7 @@ struct MyWikiPanel: View {
                     HStack(spacing: 6) {
                         Image(systemName: expandedCategoryIDs.contains(category.id) ? "chevron.down" : "chevron.right")
                             .font(.system(size: 10, weight: .bold))
-                        Text(title.uppercased())
+                        Text(presentation.title.uppercased())
                             .font(.system(size: 11, weight: .bold))
                             .tracking(0.8)
                     }
@@ -302,16 +275,7 @@ struct MyWikiPanel: View {
 
                 Spacer()
 
-                if showsViewAll && entries.isEmpty == false {
-                    Button("View all") {
-                        fullListCategory = category
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                }
-
-                Text("\(entries.count)")
+                Text("\(presentation.entries.count)")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
@@ -320,14 +284,22 @@ struct MyWikiPanel: View {
             ForEach(presentation.visibleEntries) { entry in
                 MyWikiIndexRow(entry: entry, isSelected: isSelected(entry)) {
                     selectedEntry = entry
-                    fullListCategory = nil
                 }
             }
-        }
-    }
 
-    private var recentEntries: [MyWikiEntry] {
-        MyWikiIndexSectionsBuilder().recentEntries(snapshot: snapshot, query: query)
+            if presentation.canShowMore || presentation.canShowLess {
+                Button {
+                    toggleShowAll(category)
+                } label: {
+                    Text(presentation.showMoreTitle)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+                        .padding(.horizontal, 10)
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private var indexSections: [MyWikiIndexCategorySection] {
@@ -335,18 +307,9 @@ struct MyWikiPanel: View {
             snapshot: snapshot,
             query: query,
             expandedCategoryIDs: expandedCategoryIDs,
-            previewLimit: 4
+            showingAllCategoryIDs: showingAllCategoryIDs,
+            previewLimit: MyWikiIndexPreviewPolicy.defaultVisibleLimit
         )
-    }
-
-    private func filtered(_ entries: [MyWikiEntry]) -> [MyWikiEntry] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false else { return entries }
-
-        return entries.filter { entry in
-            ([entry.title, entry.summary] + entry.aliases + entry.related)
-                .contains { $0.localizedCaseInsensitiveContains(trimmed) }
-        }
     }
 
     private func isSelected(_ entry: MyWikiEntry) -> Bool {
@@ -367,8 +330,17 @@ struct MyWikiPanel: View {
     private func toggle(_ category: MyWikiCategory) {
         if expandedCategoryIDs.contains(category.id) {
             expandedCategoryIDs.remove(category.id)
+            showingAllCategoryIDs.remove(category.id)
         } else {
             expandedCategoryIDs.insert(category.id)
+        }
+    }
+
+    private func toggleShowAll(_ category: MyWikiCategory) {
+        if showingAllCategoryIDs.contains(category.id) {
+            showingAllCategoryIDs.remove(category.id)
+        } else {
+            showingAllCategoryIDs.insert(category.id)
         }
     }
 
@@ -412,10 +384,10 @@ struct MyWikiPanel: View {
             snapshot = try MyWikiMarkdownStore().loadDashboard(projectRoot: projectRoot)
             loadIngestProgress()
             if expandedCategoryIDs.isEmpty {
-                expandedCategoryIDs = Set(snapshot.categories.map(\.id) + ["recent"])
+                expandedCategoryIDs = Set(snapshot.categories.map(\.id))
             }
             if selectedEntry == nil {
-                selectedEntry = recentEntries.first ?? snapshot.summaries.first
+                selectedEntry = snapshot.primaryEntries.first ?? snapshot.sources.first
             }
             if MyWikiDuplicateDiscoveryPolicy.scansOnDashboardLoad {
                 refreshDuplicateSuggestionsInBackground(projectRoot: projectRoot)
@@ -515,7 +487,6 @@ struct MyWikiPanel: View {
     private func openRelated(_ reference: String) {
         if let entry = MyWikiNavigationResolver().resolveRelatedEntry(reference, snapshot: snapshot) {
             selectedEntry = entry
-            fullListCategory = nil
             reviewingSuggestion = nil
         } else {
             statusMessage = "Related page not found: \(reference)"
@@ -551,24 +522,11 @@ private struct MyWikiIndexRow: View {
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(entry.title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .lineLimit(1)
-                    Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                Text(entry.category.singularTitle)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(entry.category.badgeForeground)
-                    .padding(.horizontal, 8)
-                    .frame(height: 22)
-                    .background(Capsule().fill(entry.category.badgeBackground))
+                Text(entry.title)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(isSelected ? .primary : .secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)
             .frame(maxWidth: .infinity, minHeight: MyWikiIndexRowHitTargetPolicy.minHeight, alignment: .leading)
@@ -583,49 +541,6 @@ private struct MyWikiIndexRow: View {
             )
         }
         .buttonStyle(.plain)
-    }
-}
-
-private struct MyWikiFullListView: View {
-    let title: String
-    let entries: [MyWikiEntry]
-    @Binding var selectedEntry: MyWikiEntry?
-    let onSelect: (MyWikiEntry) -> Void
-
-    @State private var localQuery = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text(title)
-                .font(.system(size: 34, weight: .semibold))
-            TextField("Filter this list...", text: $localQuery)
-                .textFieldStyle(.plain)
-                .padding(.horizontal, 12)
-                .frame(height: 40)
-                .background(RoundedRectangle(cornerRadius: 8).fill(MyWikiTheme.controlBackground))
-
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(filteredEntries) { entry in
-                        MyWikiIndexRow(entry: entry, isSelected: isSelected(entry)) {
-                            onSelect(entry)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private var filteredEntries: [MyWikiEntry] {
-        let trimmed = localQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false else { return entries }
-        return entries.filter { $0.title.localizedCaseInsensitiveContains(trimmed) || $0.summary.localizedCaseInsensitiveContains(trimmed) }
-    }
-
-    private func isSelected(_ entry: MyWikiEntry) -> Bool {
-        selectedEntry?.id == entry.id && selectedEntry?.category == entry.category
     }
 }
 

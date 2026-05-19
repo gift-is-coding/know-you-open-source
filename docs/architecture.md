@@ -651,11 +651,11 @@ My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责
 - `MyWikiRenameService` 负责 display name、aliases 与 summary 的保存；保存前会检查同分类内的标题或 slug 冲突，冲突时交给 UI 引导用户保留现名、另选名称或进入合并审核
 - `MyWikiDuplicateService` 负责主动发现疑似重复项，并在用户确认后合并 sources、aliases、related 与正文；合并前写入 `.llm-wiki/page-history/` 备份，合并后重写 wiki 内部引用并刷新 dashboard snapshot
 - [MyWikiPipelineBridge.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiPipelineBridge.swift) 复用 llm_wiki 的项目发现和启动边界；运行时调用 `ThirdParty/llm_wiki` headless ingest，并通过 Codex CLI provider 使用大模型语义能力。默认每次只处理 3 个 source，方便用户逐步重跑和检查质量。pipeline 不可用或失败时只写入 `.llm-wiki/last-ingest-status.json` 的 failed 状态，不生成 keyword/regex fallback 本体页，也不把降级结果标记为成功
-- [ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts) 读取 `mywiki.schema.json`；原生 `wiki/sources`、`wiki/entities`、`wiki/concepts` schema 直接走 llm_wiki 默认生成逻辑，非原生自定义目录才生成动态 My Wiki output contract。限定 `--max-sources` 时，headless runner 优先选择尚未生成 `wiki/sources/<source>.md` 的最新 raw source，再回退到已索引 source。[ingest.ts](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/ThirdParty/llm_wiki/src/lib/ingest.ts) 的 cache key 包含 source content、schema、purpose 和 pipeline version，避免 schema/prompt 改动后复用旧页面
+- [ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts) 读取 `mywiki.schema.json`；原生 `wiki/sources`、`wiki/entities`、`wiki/concepts` schema 直接走 llm_wiki 默认生成逻辑，非原生自定义目录才生成动态 My Wiki output contract。限定 `--max-sources` 时，headless runner 优先选择尚未生成 `wiki/sources/<source>.md` 的最新 raw source，再回退到已索引 source。KnowYou 不再把 `auto` 输出语言临时改成检测到的中文；auto 模式要求正文跟随 source 主语言，同时保留人名、产品名、工具名、缩写和英文术语原文，只把翻译或解释放入 aliases/tags/clarification。[ingest.ts](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/ThirdParty/llm_wiki/src/lib/ingest.ts) 的 cache key 包含 source content、schema、purpose 和 pipeline version，避免 schema/prompt 改动后复用旧页面
 - [MyWikiAgentContextProvider.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiAgentContextProvider.swift) 输出给 Codex、Claude、Cowork 等 agent 使用的最小必要背景摘要
 - [MyWikiSourceLibrary.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/Services/MyWiki/MyWikiSourceLibrary.swift) 与 [MyWikiSourceLibraryView.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiSourceLibraryView.swift) 提供轻量 source 管理入口，支持选择文件夹、多文件导入和拖拽导入，并把素材复制到 `raw/sources`
-- [MyWikiPanel.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底 My Wiki 工作区：左侧是高密度可折叠索引和 `View all`，右侧是全量列表、详情阅读、编辑 sheet 或重复项审核。默认索引优先展示 `Entities` 和 `Concepts`，展开时各显示最多 10 个条目，`Sources` 放在最后保持紧凑
-- [MyWikiDetailView.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiDetailView.swift) 提供 LLM Wiki 风格详情页，默认展示 Summary、Recent Mentions、Evidence Sources、Related 和 More 菜单；完整 Markdown 正文不再作为默认卡片占用详情页
+- [MyWikiPanel.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底 My Wiki 工作区：左侧是高密度可折叠索引，分类顺序为 `Entities`、`Concepts`、`Sources`，每个分类默认显示 10 个 name-only 条目；超过 10 个时用当前分类底部的 `Show more (N)` 原地展开，并用 `Show less` 收回，不再进入分类全量列表页
+- [MyWikiDetailView.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiDetailView.swift) 提供 LLM Wiki 风格详情页，默认展示完整 `markdownBody`，并保留 Summary、Recent Mentions、Related、Duplicate Suggestions 等 metadata 区；`Sources` 放在详情最后，仍可点击打开原 source
 
 数据流如下：
 
@@ -671,7 +671,7 @@ flowchart LR
     I["左侧栏 My Wiki"] --> G
 ```
 
-第一版只同步 KnowYou 已生成的每日 Markdown，不直接导出未经额外授权的 SQLite 原始事件。用户界面避免暴露内部工程术语，把复杂关系计算、结构化文件和 llm_wiki 开发入口留在底层；主界面保留 `My Wiki`、搜索、可折叠分类索引、全量列表、详情阅读、编辑和确认式合并。`Open Project`、journal count、last date 等维护信息不占主界面，而进入 `More` 菜单或状态弹窗。
+第一版只同步 KnowYou 已生成的每日 Markdown，不直接导出未经额外授权的 SQLite 原始事件。用户界面避免暴露内部工程术语，把复杂关系计算、结构化文件和 llm_wiki 开发入口留在底层；主界面保留 `My Wiki`、搜索、可折叠分类索引、详情阅读、编辑和确认式合并。`Open Project`、journal count、last date 等维护信息不占主界面，而进入 `More` 菜单或状态弹窗。
 
 ## 12. 当前架构约束
 

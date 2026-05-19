@@ -363,16 +363,15 @@ onboarding 的配置约束为：
 
 - 主窗口左侧栏必须提供 `My Wiki` 入口
 - 点击 `My Wiki` 后，主内容区必须切换到黑色背景的 My Wiki 首页，而不是打开旧式 toolbar sheet
-- My Wiki 首页必须优先展示用户可理解的内容：搜索、来源、实体、概念、近期活动和需要复核的线索
+- My Wiki 首页必须优先展示用户可理解的内容：搜索、来源、实体、概念、关系线索和需要复核的线索
 - 面向用户的 My Wiki 控件、按钮和栏目文案必须使用英文，例如 `Organize Journals`、`Sources`、`Entities`、`Concepts`
-- 点击 My Wiki 条目后，右侧详情栏必须显示该条目的标题、分类、摘要、近期提及、证据来源和相关项；不得停留在静态 placeholder，也不得默认用完整 Markdown 正文挤占 summary 阅读空间
+- 点击 My Wiki 条目后，右侧详情栏必须显示该条目的标题、分类、摘要、近期提及、相关项和完整 Markdown 正文；不得停留在静态 placeholder。`Sources` 必须放在详情内容最后，仍可点击打开 source
 - My Wiki 主界面不得重复显示分类 tabs 和分组标题；左侧只保留搜索与可展开分组
 - My Wiki 分类必须从项目级 `mywiki.schema.json` 读取，不得写死在 Swift UI enum 或固定 tabs 中
 - 默认推荐 schema 的用户可见分类必须是 llm_wiki 原生 `Sources`、`Entities`、`Concepts`，但用户项目中的 `mywiki.schema.json` 优先
-- 默认首页索引必须优先显示 `Entities`、`Concepts`，并把 `Sources` 放在最后；`Entities` 和 `Concepts` 展开时默认最多显示 10 个条目，`Sources` 保持紧凑预览
+- 默认首页索引必须按 `Entities`、`Concepts`、`Sources` 顺序显示；每个分类展开时默认最多显示 10 个 name-only 条目，不显示 summary 或 category badge
 - `Recent`、`Needs Review` 等必须作为 view 处理，不得作为 ontology category 生成对应 wiki 目录
-- 每个 schema 分类分组必须支持展开/折叠，首页仅显示少量高频条目，并提供 `View all` 进入该分类全量列表
-- 全量列表必须支持搜索、排序和点击选择条目；窗口放大时应把更多空间留给右侧详情内容
+- 每个 schema 分类分组必须支持展开/折叠；超过 10 个条目时必须在当前分类底部提供 `Show more (N)` 原地展开全部，并提供 `Show less` 收回。不得用 `View all` 或分类全量列表页作为默认展开方式
 - 用户可见分类名称必须来自 schema；默认不强行拆分 People/Projects/Topics 等细分类。旧 `wiki/people`、`wiki/organizations`、`wiki/projects`、`wiki/events` 必须读入 `Entities`，旧 `wiki/topics`、`wiki/decisions`、`wiki/preferences`、`wiki/follow-ups`、`wiki/summaries` 必须读入 `Concepts`
 - 主界面不得展示 `tag:` 一类内部字段；别名应展示为 `Also known as`，关系应展示为 `Related`
 - `Open Project`、journal count、last date 等维护信息必须进入 `More > Wiki Status / Reveal Wiki Folder`，不得占据主阅读界面
@@ -390,6 +389,7 @@ onboarding 的配置约束为：
 - My Wiki 必须尽量复用 `ThirdParty/llm_wiki` 的后端 pipeline，包括 LLM ingest、cache、search、page merge、source traceability、dedup/review 和 vector store；普通用户首页不得直接暴露复杂工作台
 - 默认 My Wiki pipeline 每次运行最多处理 3 个 source，并且在限定批量时优先选择还没有 `wiki/sources/<source>.md` 的最新 raw source；旧生成内容清理后重跑也必须按小批次逐步推进
 - LLM Wiki headless runner 对原生 `Sources / Entities / Concepts` schema 不得生成 KnowYou 自定义 output contract，必须尽量复用 llm_wiki 默认生成路径；只有非原生自定义目录才生成 output contract，并按 contract 中的目录和 frontmatter types 生成页面
+- LLM Wiki `auto` 输出语言模式必须跟随 source 主语言，但保留人名、产品名、工具名、缩写和英文术语原文；翻译或中文解释只能进入 aliases、tags 或正文说明。显式用户语言设置仍可强制输出语言
 - My Wiki 的正式本体抽取、关系发现、去重、总结和 agent context 必须使用 LLM 语义能力，不得用 keyword/regex/starter extractor 伪造可信本体页
 - bundled helper、`ThirdParty/llm_wiki` 开发源码或 Codex CLI pipeline 不可用时，系统必须写入失败/降级状态并保留已有页面，不得生成 keyword fallback 正式页面
 - 仓库中的旧 starter extractor 不得再作为产品代码或测试入口保留；读取层只允许过滤旧历史页面，不能生成新的 starter ontology 页面

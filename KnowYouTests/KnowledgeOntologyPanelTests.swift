@@ -32,7 +32,7 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertFalse(copy.localizedCaseInsensitiveContains("follow-ups"))
     }
 
-    func testIndexSectionPresentationSupportsCollapsedAndViewAllStates() {
+    func testIndexSectionPresentationSupportsInlineShowMoreStates() {
         let entries = (1...6).map { index in
             MyWikiEntry(
                 id: "person-\(index)",
@@ -47,19 +47,24 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
             title: "People",
             entries: entries,
             isExpanded: true,
-            previewLimit: 3
+            previewLimit: 3,
+            isShowingAll: false
         )
         XCTAssertEqual(expanded.visibleEntries.map(\.title), ["Person 1", "Person 2", "Person 3"])
-        XCTAssertTrue(expanded.canViewAll)
+        XCTAssertTrue(expanded.canShowMore)
+        XCTAssertEqual(expanded.hiddenCount, 3)
+        XCTAssertEqual(expanded.showMoreTitle, "Show more (3)")
 
-        let collapsed = MyWikiIndexSectionPresentation(
+        let showingAll = MyWikiIndexSectionPresentation(
             title: "People",
             entries: entries,
-            isExpanded: false,
-            previewLimit: 3
+            isExpanded: true,
+            previewLimit: 3,
+            isShowingAll: true
         )
-        XCTAssertTrue(collapsed.visibleEntries.isEmpty)
-        XCTAssertTrue(collapsed.canViewAll)
+        XCTAssertEqual(showingAll.visibleEntries.map(\.title), entries.map(\.title))
+        XCTAssertTrue(showingAll.canShowLess)
+        XCTAssertEqual(showingAll.showMoreTitle, "Show less")
     }
 
     func testIndexSectionsComeFromSchemaCategories() {
@@ -139,7 +144,7 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         ])
         XCTAssertEqual(sections[0].presentation.visibleEntries.count, 10)
         XCTAssertEqual(sections[1].presentation.visibleEntries.count, 10)
-        XCTAssertEqual(sections[2].presentation.visibleEntries.count, 4)
+        XCTAssertEqual(sections[2].presentation.visibleEntries.count, 10)
     }
 
     func testMyWikiPanelDoesNotRunPipelineOnAppear() {
@@ -153,7 +158,7 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertTrue(KnowYouMainWindowLaunchPolicy.usesAppKitPresenter)
     }
 
-    func testDetailPresentationDoesNotShowMarkdownPageByDefault() {
+    func testDetailPresentationShowsMarkdownPageByDefault() {
         let entry = MyWikiEntry(
             id: "adam-wu",
             title: "Adam Wu",
@@ -165,12 +170,20 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
 
         let presentation = MyWikiDetailPresentation(entry: entry)
 
-        XCTAssertFalse(presentation.showsMarkdownPage)
+        XCTAssertTrue(presentation.showsMarkdownPage)
+        XCTAssertEqual(presentation.markdownText, "# Adam Wu\n\nFull markdown body.")
     }
 
-    func testIndexRowUsesWholeRowHitTargetPolicy() {
+    func testIndexRowUsesSimpleNameOnlyPolicy() {
         XCTAssertTrue(MyWikiIndexRowHitTargetPolicy.usesFullRowContentShape)
-        XCTAssertEqual(MyWikiIndexRowHitTargetPolicy.minHeight, 58)
+        XCTAssertFalse(MyWikiIndexRowHitTargetPolicy.showsSummary)
+        XCTAssertFalse(MyWikiIndexRowHitTargetPolicy.showsCategoryBadge)
+        XCTAssertEqual(MyWikiIndexRowHitTargetPolicy.minHeight, 34)
+    }
+
+    func testIndexNavigationUsesInlineShowMoreInsteadOfFullListNavigation() {
+        XCTAssertTrue(MyWikiIndexNavigationPolicy.usesInlineShowMore)
+        XCTAssertFalse(MyWikiIndexNavigationPolicy.usesFullListNavigation)
     }
 
     func testDetailMoreMenuIncludesSourceManagementAction() {

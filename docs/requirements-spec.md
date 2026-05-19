@@ -99,7 +99,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 多设备同步
 - 云端账户系统
 - 团队协作与共享
-- 全文检索、标签系统、知识图谱界面
+- 通用全文检索、完整标签管理系统、知识图谱界面
 - 浏览器历史、邮件、日历等更多信号源
 - 主界面中的原始 Markdown 编辑模式
 - App Store 分发约束下的沙盒化方案
@@ -365,11 +365,12 @@ onboarding 的配置约束为：
 - 点击 `My Wiki` 后，主内容区必须切换到黑色背景的 My Wiki 首页，而不是打开旧式 toolbar sheet
 - My Wiki 首页必须优先展示用户可理解的内容：搜索、来源、实体、概念、关系线索和需要复核的线索
 - 面向用户的 My Wiki 控件、按钮和栏目文案必须使用英文，例如 `Organize Journals`、`Sources`、`Entities`、`Concepts`
-- 点击 My Wiki 条目后，右侧详情栏必须显示该条目的标题、分类、摘要、近期提及、相关项和完整 Markdown 正文；不得停留在静态 placeholder。`Sources` 必须放在详情内容最后，仍可点击打开 source
+- 点击 My Wiki 条目后，右侧详情栏必须显示该条目的标题、分类、摘要、近期提及、相关项和完整 Markdown 正文；不得停留在静态 placeholder。摘要只在顶部 header 中显示，不得再重复渲染一个独立 `Summary` 卡片。`Sources` 必须放在详情内容最后，仍可点击打开 source
 - My Wiki 主界面不得重复显示分类 tabs 和分组标题；左侧只保留搜索与可展开分组
 - My Wiki 分类必须从项目级 `mywiki.schema.json` 读取，不得写死在 Swift UI enum 或固定 tabs 中
 - 默认推荐 schema 的用户可见分类必须是 llm_wiki 原生 `Sources`、`Entities`、`Concepts`，但用户项目中的 `mywiki.schema.json` 优先
 - 默认首页索引必须按 `Entities`、`Concepts`、`Sources` 顺序显示；每个分类展开时默认最多显示 10 个 name-only 条目，不显示 summary 或 category badge
+- `Entities` 分类必须提供轻量标签筛选：`人物`、`项目`、`组织`、`其他`；筛选基于页面 frontmatter `tags`，不得把这些筛选项重新变成独立 ontology 目录
 - `Recent`、`Needs Review` 等必须作为 view 处理，不得作为 ontology category 生成对应 wiki 目录
 - 每个 schema 分类分组必须支持展开/折叠；超过 10 个条目时必须在当前分类底部提供 `Show more (N)` 原地展开全部，并提供 `Show less` 收回。不得用 `View all` 或分类全量列表页作为默认展开方式
 - 用户可见分类名称必须来自 schema；默认不强行拆分 People/Projects/Topics 等细分类。旧 `wiki/people`、`wiki/organizations`、`wiki/projects`、`wiki/events` 必须读入 `Entities`，旧 `wiki/topics`、`wiki/decisions`、`wiki/preferences`、`wiki/follow-ups`、`wiki/summaries` 必须读入 `Concepts`
@@ -388,9 +389,11 @@ onboarding 的配置约束为：
 - 重复同步同一天日记必须覆盖稳定文件名，不得生成重复文件
 - My Wiki 必须尽量复用 `ThirdParty/llm_wiki` 的后端 pipeline，包括 LLM ingest、cache、search、page merge、source traceability、dedup/review 和 vector store；普通用户首页不得直接暴露复杂工作台
 - 默认 My Wiki pipeline 每次运行最多处理 3 个 source，并且在限定批量时优先选择还没有 `wiki/sources/<source>.md` 的最新 raw source；旧生成内容清理后重跑也必须按小批次逐步推进
-- LLM Wiki headless runner 对原生 `Sources / Entities / Concepts` schema 不得生成 KnowYou 自定义 output contract，必须尽量复用 llm_wiki 默认生成路径；只有非原生自定义目录才生成 output contract，并按 contract 中的目录和 frontmatter types 生成页面
+- LLM Wiki headless runner 对原生 `Sources / Entities / Concepts` schema 不得生成 KnowYou 自定义 output contract，必须尽量复用 llm_wiki 默认生成路径；非原生自定义目录可把 schema 信息写入 guide，但默认 pipeline 不得因此替换 llm_wiki 原生 prompt
+- 默认 My Wiki 生成必须保留 LLM Wiki 原生 generation targets 和两阶段 `autoIngest` prompt；KnowYou 不得用动态 My Wiki generation target 或单独页面正文 prompt 替换原生 prompt。KnowYou 只允许在 schema/purpose 层追加轻量标签提示
 - LLM Wiki `auto` 输出语言模式必须跟随 source 主语言，但保留人名、产品名、工具名、缩写和英文术语原文；翻译或中文解释只能进入 aliases、tags 或正文说明。显式用户语言设置仍可强制输出语言
 - My Wiki 的正式本体抽取、关系发现、去重、总结和 agent context 必须使用 LLM 语义能力，不得用 keyword/regex/starter extractor 伪造可信本体页
+- 默认 entity 页应尽量在 `tags` 中包含一个宽标签：`person`、`project`、`organization` 或 `other`，并可继续追加更具体的标签用于自动拓展筛选
 - bundled helper、`ThirdParty/llm_wiki` 开发源码或 Codex CLI pipeline 不可用时，系统必须写入失败/降级状态并保留已有页面，不得生成 keyword fallback 正式页面
 - 仓库中的旧 starter extractor 不得再作为产品代码或测试入口保留；读取层只允许过滤旧历史页面，不能生成新的 starter ontology 页面
 - My Wiki 生成页的 frontmatter type 必须与 schema category 语义一致；默认生成 `source`、`entity`、`concept`。旧 `person`、`organization`、`project`、`event`、`topic`、`decision`、`preference`、`follow-up`、`summary` 页面必须读取兼容到当前 native schema

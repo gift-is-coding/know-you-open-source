@@ -78,6 +78,7 @@ struct MyWikiMarkdownStore {
             sourceNames: Self.array(from: parsed.frontmatter["sources"]),
             aliases: Self.array(from: parsed.frontmatter["aliases"]),
             related: Self.array(from: parsed.frontmatter["related"]),
+            tags: Self.array(from: parsed.frontmatter["tags"]),
             confidence: parsed.frontmatter["confidence"] ?? "",
             mentions: Self.mentions(from: parsed.body),
             markdownBody: parsed.body.trimmingCharacters(in: .whitespacesAndNewlines),

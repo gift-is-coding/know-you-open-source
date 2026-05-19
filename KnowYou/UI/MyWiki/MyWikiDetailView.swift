@@ -102,9 +102,11 @@ struct MyWikiDetailView: View {
         let presentation = MyWikiDetailPresentation(entry: entry)
 
         return VStack(alignment: .leading, spacing: 16) {
-            detailCard("Summary") {
-                Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
-                    .detailBodyStyle()
+            if MyWikiDetailLayoutPolicy.showsStandaloneSummaryCard {
+                detailCard("Summary") {
+                    Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
+                        .detailBodyStyle()
+                }
             }
 
             if entry.mentions.isEmpty == false {
@@ -350,7 +352,7 @@ private extension Text {
     }
 }
 
-private struct FlowLayout: Layout {
+struct FlowLayout: Layout {
     let spacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {

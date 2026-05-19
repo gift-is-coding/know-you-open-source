@@ -16,6 +16,7 @@ struct MyWikiPanel: View {
     @State private var isSyncing = false
     @State private var expandedCategoryIDs: Set<String> = []
     @State private var showingAllCategoryIDs: Set<String> = []
+    @State private var selectedEntityFacetID: String?
     @State private var editingEntry: MyWikiEntry?
     @State private var conflictMessage: String?
     @State private var isShowingStatus = false
@@ -281,6 +282,11 @@ struct MyWikiPanel: View {
             }
             .frame(height: 34)
 
+            if category == .entity && expandedCategoryIDs.contains(category.id) {
+                entityFacetChips()
+                    .padding(.bottom, 4)
+            }
+
             ForEach(presentation.visibleEntries) { entry in
                 MyWikiIndexRow(entry: entry, isSelected: isSelected(entry)) {
                     selectedEntry = entry
@@ -308,8 +314,39 @@ struct MyWikiPanel: View {
             query: query,
             expandedCategoryIDs: expandedCategoryIDs,
             showingAllCategoryIDs: showingAllCategoryIDs,
+            selectedEntityFacetID: selectedEntityFacetID,
             previewLimit: MyWikiIndexPreviewPolicy.defaultVisibleLimit
         )
+    }
+
+    private func entityFacetChips() -> some View {
+        FlowLayout(spacing: 6) {
+            entityFacetButton(title: "All", isSelected: selectedEntityFacetID == nil) {
+                selectedEntityFacetID = nil
+                showingAllCategoryIDs.remove(MyWikiCategory.entity.id)
+            }
+            ForEach(MyWikiEntityFacet.defaults) { facet in
+                entityFacetButton(title: facet.title, isSelected: selectedEntityFacetID == facet.id) {
+                    selectedEntityFacetID = selectedEntityFacetID == facet.id ? nil : facet.id
+                    showingAllCategoryIDs.remove(MyWikiCategory.entity.id)
+                }
+            }
+        }
+    }
+
+    private func entityFacetButton(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(isSelected ? Color.white : .secondary)
+                .padding(.horizontal, 10)
+                .frame(height: 26)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? Color.accentColor : MyWikiTheme.controlBackground)
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     private func isSelected(_ entry: MyWikiEntry) -> Bool {

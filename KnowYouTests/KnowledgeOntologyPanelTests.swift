@@ -174,11 +174,58 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertEqual(presentation.markdownText, "# Adam Wu\n\nFull markdown body.")
     }
 
+    func testDetailLayoutDoesNotRepeatStandaloneSummaryCard() {
+        XCTAssertFalse(MyWikiDetailLayoutPolicy.showsStandaloneSummaryCard)
+    }
+
     func testIndexRowUsesSimpleNameOnlyPolicy() {
         XCTAssertTrue(MyWikiIndexRowHitTargetPolicy.usesFullRowContentShape)
         XCTAssertFalse(MyWikiIndexRowHitTargetPolicy.showsSummary)
         XCTAssertFalse(MyWikiIndexRowHitTargetPolicy.showsCategoryBadge)
         XCTAssertEqual(MyWikiIndexRowHitTargetPolicy.minHeight, 34)
+    }
+
+    func testEntityFacetsUseUserFacingLabelsAndTagExamples() {
+        XCTAssertEqual(MyWikiEntityFacet.defaults.map(\.title), ["人物", "项目", "组织", "其他"])
+        XCTAssertTrue(MyWikiEntityFacet.people.matches(entity(tags: ["person"])))
+        XCTAssertTrue(MyWikiEntityFacet.people.matches(entity(tags: ["people", "leader"])))
+        XCTAssertTrue(MyWikiEntityFacet.projects.matches(entity(tags: ["project"])))
+        XCTAssertTrue(MyWikiEntityFacet.projects.matches(entity(tags: ["platform"])))
+        XCTAssertTrue(MyWikiEntityFacet.organizations.matches(entity(tags: ["organization"])))
+        XCTAssertTrue(MyWikiEntityFacet.organizations.matches(entity(tags: ["company"])))
+        XCTAssertTrue(MyWikiEntityFacet.other.matches(entity(tags: ["tool"])))
+    }
+
+    func testEntityFacetFilteringOnlyAppliesToEntities() throws {
+        let schema = try MyWikiSchemaConfig.defaultPersonalContext()
+        let people = entity(id: "adam", title: "Adam", tags: ["person"])
+        let project = entity(id: "token-hub", title: "Token Hub", tags: ["project"])
+        let concept = MyWikiEntry(
+            id: "strategy",
+            title: "Strategy",
+            category: .concept,
+            summary: "Concept summary",
+            sourceNames: [],
+            tags: ["person"]
+        )
+        let snapshot = MyWikiDashboardSnapshot(
+            schema: schema,
+            entriesByCategoryID: [
+                MyWikiCategory.entity.id: [people, project],
+                MyWikiCategory.concept.id: [concept],
+            ]
+        )
+
+        let sections = MyWikiIndexSectionsBuilder().categorySections(
+            snapshot: snapshot,
+            query: "",
+            expandedCategoryIDs: [MyWikiCategory.entity.id, MyWikiCategory.concept.id],
+            selectedEntityFacetID: MyWikiEntityFacet.people.id,
+            previewLimit: 10
+        )
+
+        XCTAssertEqual(sections.first { $0.category == .entity }?.presentation.visibleEntries.map(\.title), ["Adam"])
+        XCTAssertEqual(sections.first { $0.category == .concept }?.presentation.visibleEntries.map(\.title), ["Strategy"])
     }
 
     func testIndexNavigationUsesInlineShowMoreInsteadOfFullListNavigation() {
@@ -255,5 +302,16 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
                 sourceNames: []
             )
         }
+    }
+
+    private func entity(id: String = "entity", title: String = "Entity", tags: [String]) -> MyWikiEntry {
+        MyWikiEntry(
+            id: id,
+            title: title,
+            category: .entity,
+            summary: "Summary",
+            sourceNames: [],
+            tags: tags
+        )
     }
 }

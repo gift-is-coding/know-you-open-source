@@ -288,6 +288,28 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
         XCTAssertTrue(presentation.isMarkdownTruncated)
     }
 
+    func testLoadsTagsFromFrontmatterForEntityFacets() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let entities = root.appending(path: "wiki/entities", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: entities, withIntermediateDirectories: true)
+        try page(
+            title: "Token Hub",
+            aliases: [],
+            tags: ["project", "platform"],
+            body: "Token Hub is a platform project."
+        )
+            .write(to: entities.appending(path: "token-hub.md"), atomically: true, encoding: .utf8)
+
+        let snapshot = try MyWikiMarkdownStore().loadDashboard(projectRoot: root)
+        let tokenHub = try XCTUnwrap(snapshot.entities.first)
+
+        XCTAssertEqual(tokenHub.tags, ["project", "platform"])
+        XCTAssertTrue(MyWikiEntityFacet.projects.matches(tokenHub))
+    }
+
     func testRenameServiceUpdatesTitleAliasesAndDetectsNameConflict() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
@@ -405,6 +427,7 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
         aliases: [String] = [],
         related: [String] = [],
         sources: [String] = [],
+        tags: [String] = ["person"],
         body: String
     ) -> String {
         """
@@ -413,6 +436,7 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
         title: \(title)
         aliases: [\(aliases.map { "\"\($0)\"" }.joined(separator: ", "))]
         related: [\(related.map { "\"\($0)\"" }.joined(separator: ", "))]
+        tags: [\(tags.map { "\"\($0)\"" }.joined(separator: ", "))]
         sources: [\(sources.map { "\"\($0)\"" }.joined(separator: ", "))]
         confidence: medium
         ---

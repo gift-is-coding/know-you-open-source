@@ -35,7 +35,8 @@ final class MyWikiSchemaConfigTests: XCTestCase {
             "wiki/summaries"
         ])
         XCTAssertEqual(schema.categories.first?.displayName, "Sources")
-        XCTAssertTrue(schema.categories.first?.extractionGuidance.contains("KnowYou diary source") == true)
+        XCTAssertTrue(schema.categories.first?.extractionGuidance.contains("KnowYou diary") == true)
+        XCTAssertTrue(schema.categories.first(where: { $0.id == "entities" })?.extractionGuidance.contains("person, project, organization, other") == true)
     }
 
     func testRecentIsAViewNotAnOntologyCategory() throws {

@@ -112,6 +112,7 @@ struct MyWikiDashboardSnapshot: Equatable {
                 sourceNames: entry.sourceNames,
                 aliases: entry.aliases,
                 related: entry.related,
+                tags: entry.tags,
                 confidence: entry.confidence,
                 mentions: entry.mentions,
                 markdownBody: entry.markdownBody,
@@ -137,6 +138,7 @@ struct MyWikiEntry: Identifiable, Equatable {
     let sourceNames: [String]
     var aliases: [String] = []
     var related: [String] = []
+    var tags: [String] = []
     var confidence: String = ""
     var mentions: [MyWikiMention] = []
     var markdownBody: String = ""
@@ -168,11 +170,68 @@ struct MyWikiDetailPresentation: Equatable {
     }
 }
 
+enum MyWikiDetailLayoutPolicy {
+    static let showsStandaloneSummaryCard = false
+}
+
 enum MyWikiIndexRowHitTargetPolicy {
     static let usesFullRowContentShape = true
     static let showsSummary = false
     static let showsCategoryBadge = false
     static let minHeight: CGFloat = 34
+}
+
+struct MyWikiEntityFacet: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let matchingTags: Set<String>
+
+    static let people = MyWikiEntityFacet(
+        id: "people",
+        title: "人物",
+        matchingTags: [
+            "person", "people", "human", "individual", "founder", "leader",
+            "manager", "owner", "interviewer", "participant", "stakeholder"
+        ]
+    )
+    static let projects = MyWikiEntityFacet(
+        id: "projects",
+        title: "项目",
+        matchingTags: [
+            "project", "program", "initiative", "platform", "product",
+            "app", "workflow", "poc", "workstream"
+        ]
+    )
+    static let organizations = MyWikiEntityFacet(
+        id: "organizations",
+        title: "组织",
+        matchingTags: [
+            "organization", "organisation", "org", "company", "team",
+            "department", "institution", "enterprise", "vendor", "customer"
+        ]
+    )
+    static let other = MyWikiEntityFacet(id: "other", title: "其他", matchingTags: [])
+    static let defaults = [people, projects, organizations, other]
+
+    static func facet(id: String?) -> MyWikiEntityFacet? {
+        guard let id else { return nil }
+        return defaults.first { $0.id == id }
+    }
+
+    static func facet(for entry: MyWikiEntry) -> MyWikiEntityFacet {
+        defaults.first { $0 != other && $0.matches(entry) } ?? other
+    }
+
+    func matches(_ entry: MyWikiEntry) -> Bool {
+        guard entry.category == .entity else { return false }
+        let normalizedTags = Set(entry.tags.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+        if self == Self.other {
+            return Self.defaults
+                .filter { $0 != Self.other }
+                .contains { $0.matches(entry) } == false
+        }
+        return normalizedTags.isDisjoint(with: matchingTags) == false
+    }
 }
 
 enum MyWikiIndexNavigationPolicy {
@@ -288,6 +347,7 @@ struct MyWikiIndexSectionsBuilder {
         query: String,
         expandedCategoryIDs: Set<String>,
         showingAllCategoryIDs: Set<String> = [],
+        selectedEntityFacetID: String? = nil,
         previewLimit: Int
     ) -> [MyWikiIndexCategorySection] {
         let orderedDefinitions = snapshot.categories.enumerated().sorted { lhs, rhs in
@@ -301,7 +361,11 @@ struct MyWikiIndexSectionsBuilder {
 
         return orderedDefinitions.compactMap { definition in
             let category = MyWikiCategory(definition: definition)
-            let entries = filtered(snapshot.entries(for: definition.id), query: query)
+            let entries = entityFacetFiltered(
+                filtered(snapshot.entries(for: definition.id), query: query),
+                categoryID: definition.id,
+                selectedEntityFacetID: selectedEntityFacetID
+            )
             guard entries.isEmpty == false || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 return nil
             }
@@ -321,12 +385,25 @@ struct MyWikiIndexSectionsBuilder {
         }
     }
 
+    private func entityFacetFiltered(
+        _ entries: [MyWikiEntry],
+        categoryID: String,
+        selectedEntityFacetID: String?
+    ) -> [MyWikiEntry] {
+        guard categoryID == MyWikiCategory.entity.id,
+              let facet = MyWikiEntityFacet.facet(id: selectedEntityFacetID)
+        else {
+            return entries
+        }
+        return entries.filter(facet.matches)
+    }
+
     private func filtered(_ entries: [MyWikiEntry], query: String) -> [MyWikiEntry] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.isEmpty == false else { return entries }
 
         return entries.filter { entry in
-            ([entry.title, entry.summary] + entry.aliases + entry.related)
+            ([entry.title, entry.summary] + entry.aliases + entry.related + entry.tags)
                 .contains { $0.localizedCaseInsensitiveContains(trimmed) }
         }
     }

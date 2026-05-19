@@ -23,13 +23,13 @@ describe("buildAnalysisPrompt language directive", () => {
   it("auto mode falls back to detecting source content language", () => {
     useWikiStore.getState().setOutputLanguage("auto")
     const prompt = buildAnalysisPrompt("", "", "これは日本語の文章です")
-    expect(prompt).toContain("MANDATORY OUTPUT LANGUAGE: Japanese")
+    expect(prompt).toContain("SOURCE LANGUAGE MODE: Japanese")
   })
 
   it("auto mode with empty source defaults to English", () => {
     useWikiStore.getState().setOutputLanguage("auto")
     const prompt = buildAnalysisPrompt("", "", "")
-    expect(prompt).toContain("MANDATORY OUTPUT LANGUAGE: English")
+    expect(prompt).toContain("SOURCE LANGUAGE MODE: English")
   })
 
   it("contains structural analysis sections", () => {
@@ -57,7 +57,7 @@ describe("buildGenerationPrompt language directive", () => {
   it("auto mode detects from source content", () => {
     useWikiStore.getState().setOutputLanguage("auto")
     const prompt = buildGenerationPrompt("", "", "", "file.pdf", undefined, "这是中文源文档内容")
-    expect(prompt).toContain("MANDATORY OUTPUT LANGUAGE: Chinese")
+    expect(prompt).toContain("SOURCE LANGUAGE MODE: Chinese")
   })
 
   it("includes the source filename in output instructions", () => {
@@ -65,37 +65,29 @@ describe("buildGenerationPrompt language directive", () => {
     expect(prompt).toContain("my-paper.pdf")
   })
 
-  it("uses My Wiki category directories instead of generic entity/concept pages when KnowYou contract is present", () => {
+  it("keeps the upstream LLM Wiki generation targets for KnowYou native schema text", () => {
     const prompt = buildGenerationPrompt(
       [
-        "<!-- KNOWYOU_MY_WIKI_OUTPUT_CONTRACT -->",
-        "## My Wiki Output Contract",
-        "| Category | Directory | Frontmatter types | Use |",
+        "# My Wiki Schema",
+        "| Category | Directory | Frontmatter types | Guidance |",
         "| --- | --- | --- | --- |",
-        "| People | `wiki/people` | `person` | Real people. |",
-        "| Projects | `wiki/projects` | `project` | Named efforts. |",
-        "| Events | `wiki/events` | `event` | Bounded happenings. |",
-        "| Topics | `wiki/topics` | `topic` | Recurring subjects. |",
-        "| Preferences | `wiki/preferences` | `preference` | Stable preferences. |",
-        "| Follow-ups | `wiki/follow-ups` | `follow-up` | Unresolved items. |",
+        "| Sources | `wiki/sources` | `source` | Source summaries. |",
+        "| Entities | `wiki/entities` | `entity` | Concrete entities. |",
+        "| Concepts | `wiki/concepts` | `concept` | Durable concepts. |",
       ].join("\n"),
       "purpose",
       "index",
       "knowyou-diary-2026-05-15.md",
     )
 
-    expect(prompt).toContain("Pages for People in wiki/people/")
-    expect(prompt).toContain("Pages for Projects in wiki/projects/")
-    expect(prompt).toContain("Pages for Events in wiki/events/")
-    expect(prompt).toContain("Pages for Topics in wiki/topics/")
-    expect(prompt).toContain("Pages for Preferences in wiki/preferences/")
-    expect(prompt).toContain("Pages for Follow-ups in wiki/follow-ups/")
-    expect(prompt).toContain("Do NOT create `wiki/people/codex.md`")
-    expect(prompt).not.toContain("Entity pages in wiki/entities/")
-    expect(prompt).not.toContain("Concept pages in wiki/concepts/")
+    expect(prompt).toContain("Entity pages in wiki/entities/")
+    expect(prompt).toContain("Concept pages in wiki/concepts/")
+    expect(prompt).toContain("type     — one of: source | entity | concept | comparison | query | synthesis")
+    expect(prompt).not.toContain("My Wiki categorization rules")
+    expect(prompt).not.toContain("Do NOT create `wiki/people/codex.md`")
   })
 
-  it("builds My Wiki generation targets from schema categories instead of hardcoded Swift categories", () => {
+  it("does not replace the upstream prompt with dynamic My Wiki category targets", () => {
     const prompt = buildGenerationPrompt(
       [
         "<!-- KNOWYOU_MY_WIKI_OUTPUT_CONTRACT -->",
@@ -109,12 +101,12 @@ describe("buildGenerationPrompt language directive", () => {
       "knowyou-diary-2026-05-15.md",
     )
 
-    expect(prompt).toContain("Pages for Relationships in wiki/relationships/")
-    expect(prompt).toContain("one of: source | relationship")
-    expect(prompt).not.toContain("People pages in wiki/people/")
-    expect(prompt).not.toContain("Project pages in wiki/projects/")
-    expect(prompt).not.toContain("Topic pages in wiki/themes/")
-    expect(prompt).not.toContain("Follow-up pages in wiki/open-loops/")
+    expect(prompt).toContain("Entity pages in wiki/entities/")
+    expect(prompt).toContain("Concept pages in wiki/concepts/")
+    expect(prompt).toContain("type     — one of: source | entity | concept | comparison | query | synthesis")
+    expect(prompt).toContain("`relationship`")
+    expect(prompt).not.toContain("Pages for Relationships in wiki/relationships/")
+    expect(prompt).not.toContain("My Wiki categorization rules")
   })
 
   it("respects user setting regardless of source content language", () => {
@@ -141,7 +133,7 @@ describe("analysis + generation prompt consistency", () => {
     const korean = "이것은 한국어 문장입니다"
     const analysis = buildAnalysisPrompt("", "", korean)
     const generation = buildGenerationPrompt("", "", "", "f.pdf", undefined, korean)
-    expect(analysis).toContain("MANDATORY OUTPUT LANGUAGE: Korean")
-    expect(generation).toContain("MANDATORY OUTPUT LANGUAGE: Korean")
+    expect(analysis).toContain("SOURCE LANGUAGE MODE: Korean")
+    expect(generation).toContain("SOURCE LANGUAGE MODE: Korean")
   })
 })

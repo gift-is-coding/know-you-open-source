@@ -178,12 +178,13 @@ struct MyWikiProjectExporter {
     1. 最近哪些 Sources 已经被整理，哪些还没有进入 My Wiki？
     2. 哪些 Entities（人、组织、工具、产品、项目或其他具体对象）值得长期保留？
     3. 哪些 Concepts（主题、偏好、决策、问题、工作模式和开放事项）能帮助后续 agent 理解背景？
+    4. Entity 页面可以用宽标签帮助筛选：person、project、organization、other；需要时再追加更具体的标签。
 
     ## 范围
 
     **In scope:**
     - KnowYou 每日日记
-    - 用 llm_wiki 原生 Sources、Entities、Concepts 结构整理高信号内容
+    - 用 llm_wiki 原生 Sources、Entities、Concepts 结构整理可读、可追溯的内容
     - 可读页面、搜索索引、agent 可调用摘要
 
     **Out of scope:**

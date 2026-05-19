@@ -49,7 +49,7 @@ import { buildLanguageDirective } from "@/lib/output-language"
 import { detectLanguage } from "@/lib/detect-language"
 import { sameScriptFamily } from "@/lib/language-metadata"
 
-export const INGEST_CACHE_PIPELINE_VERSION = "knowyou-native-llm-wiki-schema-v2-preserve-proper-nouns"
+export const INGEST_CACHE_PIPELINE_VERSION = "knowyou-native-llm-wiki-schema-v3-native-prompt-tags"
 
 // Legacy export kept for backward compatibility with existing diagnostic
 // tests. The live pipeline goes through parseFileBlocks() below, which
@@ -249,108 +249,6 @@ export function parseFileBlocks(text: string): ParseFileBlocksResult {
  */
 export function languageRule(sourceContent: string = ""): string {
   return buildLanguageDirective(sourceContent)
-}
-
-interface MyWikiPromptCategory {
-  displayName: string
-  directory: string
-  frontmatterTypes: string[]
-  guidance: string
-}
-
-function normalizePromptDirectory(directory: string): string {
-  const trimmed = directory.trim().replace(/^`|`$/g, "").replace(/\\/g, "/")
-  return trimmed.endsWith("/") ? trimmed : `${trimmed}/`
-}
-
-function unquoteMarkdownCell(value: string): string {
-  return value
-    .trim()
-    .replace(/^`|`$/g, "")
-    .trim()
-}
-
-function extractFrontmatterTypes(cell: string, displayName: string): string[] {
-  const backticked = [...cell.matchAll(/`([^`]+)`/g)]
-    .map((match) => match[1].trim())
-    .filter(Boolean)
-  if (backticked.length > 0) return [...new Set(backticked)]
-
-  const commaSeparated = cell
-    .split(",")
-    .map((value) => unquoteMarkdownCell(value))
-    .filter((value) => value.length > 0)
-  if (commaSeparated.length > 0) return [...new Set(commaSeparated)]
-
-  return [displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")]
-}
-
-function parseMyWikiPromptCategories(schema: string): MyWikiPromptCategory[] {
-  if (!/KNOWYOU_MY_WIKI_OUTPUT_CONTRACT|My Wiki Output Contract/i.test(schema)) {
-    return []
-  }
-
-  const rows = schema
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("|") && line.endsWith("|"))
-
-  const categories: MyWikiPromptCategory[] = []
-  for (const row of rows) {
-    const cells = row
-      .slice(1, -1)
-      .split("|")
-      .map((cell) => cell.trim())
-    if (cells.length < 3) continue
-
-    const displayName = unquoteMarkdownCell(cells[0])
-    const directory = unquoteMarkdownCell(cells[1])
-    const typeCell = cells.length >= 4 ? cells[2] : ""
-    const guidance = cells.length >= 4 ? cells.slice(3).join(" | ").trim() : cells.slice(2).join(" | ").trim()
-
-    if (!displayName || /^category$/i.test(displayName)) continue
-    if (/^-+$/.test(displayName.replace(/\s/g, ""))) continue
-    if (!directory.startsWith("wiki/")) continue
-
-    categories.push({
-      displayName,
-      directory: normalizePromptDirectory(directory),
-      frontmatterTypes: extractFrontmatterTypes(typeCell, displayName),
-      guidance: unquoteMarkdownCell(guidance),
-    })
-  }
-
-  return categories
-}
-
-function buildMyWikiGenerationTargets(
-  sourceBaseName: string,
-  categories: MyWikiPromptCategory[],
-): string[] {
-  const targets = [
-    `1. A source summary page at **wiki/sources/${sourceBaseName}.md** (MUST use this exact path)`,
-  ]
-
-  categories
-    .filter((category) => category.directory !== "wiki/sources/")
-    .forEach((category, index) => {
-      targets.push(
-        `${index + 2}. Pages for ${category.displayName} in ${category.directory}${category.guidance ? ` — ${category.guidance}` : "."}`,
-      )
-    })
-
-  const next = targets.length + 1
-  const indexGroups = categories
-    .map((category) => category.displayName)
-    .filter((name) => name.length > 0)
-    .join(", ")
-  targets.push(
-    `${next}. An updated wiki/index.md — group entries under ${indexGroups || "the configured My Wiki categories"}; preserve existing entries.`,
-    `${next + 1}. A log entry for wiki/log.md (just the new entry to append, format: ## [YYYY-MM-DD] ingest | Title)`,
-    `${next + 2}. An updated wiki/overview.md — a high-level summary of what the entire wiki covers, updated to reflect the newly ingested source.`,
-  )
-
-  return targets
 }
 
 /**
@@ -1115,33 +1013,6 @@ export function buildAnalysisPrompt(purpose: string, index: string, sourceConten
 export function buildGenerationPrompt(schema: string, purpose: string, index: string, sourceFileName: string, overview?: string, sourceContent: string = ""): string {
   // Use original filename (without extension) as the source summary page name
   const sourceBaseName = sourceFileName.replace(/\.[^.]+$/, "")
-  const isKnowYouMyWiki = /KNOWYOU_MY_WIKI_OUTPUT_CONTRACT|My Wiki Output Contract/i.test(schema)
-  const myWikiCategories = parseMyWikiPromptCategories(schema)
-  const generationTargets = isKnowYouMyWiki
-    ? buildMyWikiGenerationTargets(sourceBaseName, myWikiCategories)
-    : [
-        `1. A source summary page at **wiki/sources/${sourceBaseName}.md** (MUST use this exact path)`,
-        "2. Entity pages in wiki/entities/ for key entities identified in the analysis",
-        "3. Concept pages in wiki/concepts/ for key concepts identified in the analysis",
-        "4. An updated wiki/index.md — add new entries to existing categories, preserve all existing entries",
-        "5. A log entry for wiki/log.md (just the new entry to append, format: ## [YYYY-MM-DD] ingest | Title)",
-        "6. An updated wiki/overview.md — a high-level summary of what the entire wiki covers, updated to reflect the newly ingested source. This should be a comprehensive 2-5 paragraph overview of ALL topics in the wiki, not just the new source.",
-      ]
-  const myWikiTypes = [
-    "source",
-    ...myWikiCategories.flatMap((category) => category.frontmatterTypes),
-    "summary",
-    "overview",
-  ].filter((type, index, all) => type && all.indexOf(type) === index)
-  const requiredTypes = isKnowYouMyWiki
-    ? myWikiTypes.join(" | ")
-    : "source | entity | concept | comparison | query | synthesis"
-  const exampleType = isKnowYouMyWiki
-    ? myWikiCategories.flatMap((category) => category.frontmatterTypes)[0] ?? "source"
-    : "entity"
-  const peopleCategory = myWikiCategories.find((category) =>
-    category.frontmatterTypes.includes("person") || /^people$/i.test(category.displayName)
-  )
 
   return [
     "You are a wiki maintainer. Based on the analysis provided, generate wiki files.",
@@ -1155,21 +1026,12 @@ export function buildGenerationPrompt(schema: string, purpose: string, index: st
     "",
     "## What to generate",
     "",
-    ...generationTargets,
-    ...(isKnowYouMyWiki ? [
-      "",
-      "## My Wiki categorization rules",
-      "",
-      "- Follow the configured schema categories above. Do not invent folders or frontmatter types outside the contract unless the schema explicitly allows them.",
-      "- Codex, Claude, ChatGPT, Gemini, Openclaw, Cowork, and similar names are AI tools, agents, CLIs, or workflows unless the source clearly identifies a real human with that name.",
-      ...(peopleCategory ? [
-        `- Do NOT create \`${peopleCategory.directory}codex.md\`, \`${peopleCategory.directory}claude.md\`, \`${peopleCategory.directory}cowork.md\`, or similar tool-as-person pages.`,
-        "- A single mention is not enough for a People page unless that person is central to the source.",
-      ] : []),
-      "- If an AI tool or agent matters, represent it in the most appropriate configured category only when the source describes concrete user context around it.",
-      "- Prefer fewer, high-signal pages over broad keyword pages.",
-      "- Do not write `wiki/entities/` or `wiki/concepts/` in My Wiki mode.",
-    ] : []),
+    `1. A source summary page at **wiki/sources/${sourceBaseName}.md** (MUST use this exact path)`,
+    "2. Entity pages in wiki/entities/ for key entities identified in the analysis",
+    "3. Concept pages in wiki/concepts/ for key concepts identified in the analysis",
+    "4. An updated wiki/index.md — add new entries to existing categories, preserve all existing entries",
+    "5. A log entry for wiki/log.md (just the new entry to append, format: ## [YYYY-MM-DD] ingest | Title)",
+    "6. An updated wiki/overview.md — a high-level summary of what the entire wiki covers, updated to reflect the newly ingested source. This should be a comprehensive 2-5 paragraph overview of ALL topics in the wiki, not just the new source.",
     "",
     "## Frontmatter Rules (CRITICAL — parser is strict)",
     "",
@@ -1186,7 +1048,7 @@ export function buildGenerationPrompt(schema: string, purpose: string, index: st
     "   write `related: [a, b]` with bare slugs.",
     "",
     "Required fields and types:",
-    `  • type     — one of: ${requiredTypes}`,
+    "  • type     — one of: source | entity | concept | comparison | query | synthesis",
     "  • title    — string (quote it if it contains a colon, e.g. `title: \"Foo: Bar\"`)",
     "  • created  — date in YYYY-MM-DD form (no quotes)",
     "  • updated  — same as created",
@@ -1199,7 +1061,7 @@ export function buildGenerationPrompt(schema: string, purpose: string, index: st
     "is the frontmatter; the heading and prose below are the body):",
     "",
     "    ---",
-    `    type: ${exampleType}`,
+    "    type: entity",
     "    title: Example Entity",
     "    created: 2026-04-29",
     "    updated: 2026-04-29",

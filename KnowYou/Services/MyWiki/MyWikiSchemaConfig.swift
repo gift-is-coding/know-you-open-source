@@ -22,7 +22,7 @@ struct MyWikiSchemaConfig: Codable, Equatable {
           "singularName": "Source",
           "directory": "wiki/sources",
           "frontmatterTypes": ["source", "knowyou-diary"],
-          "extractionGuidance": "Represent KnowYou diary source materials and source indexes. Do not duplicate raw secrets or credentials.",
+          "extractionGuidance": "Source summary pages for KnowYou diary materials. Keep them readable and traceable; do not duplicate raw secrets or credentials.",
           "detailSections": ["Summary", "Markdown Page"]
         },
         {
@@ -33,7 +33,7 @@ struct MyWikiSchemaConfig: Codable, Equatable {
           "legacyDirectories": ["wiki/people", "wiki/organizations", "wiki/projects", "wiki/events"],
           "frontmatterTypes": ["entity"],
           "legacyTypes": ["person", "organization", "company", "team", "project", "event"],
-          "extractionGuidance": "Extract high-signal people, organizations, tools, products, projects, and other concrete entities that matter across the journal sources.",
+          "extractionGuidance": "Concrete people, organizations, tools, products, projects, and other objects that matter across the journal sources. For filtering, include one of these broad tags when it fits: person, project, organization, other; add more specific tags after that.",
           "detailSections": ["Summary", "Recent Mentions", "Sources", "Related", "Markdown Page"]
         },
         {
@@ -44,7 +44,7 @@ struct MyWikiSchemaConfig: Codable, Equatable {
           "legacyDirectories": ["wiki/topics", "wiki/decisions", "wiki/preferences", "wiki/follow-ups", "wiki/summaries"],
           "frontmatterTypes": ["concept"],
           "legacyTypes": ["topic", "decision", "preference", "follow-up", "summary", "overview"],
-          "extractionGuidance": "Extract high-signal topics, working patterns, preferences, decisions, open loops, questions, and long-term context from the journals.",
+          "extractionGuidance": "Durable topics, working patterns, preferences, decisions, open loops, questions, and long-term context from the journals.",
           "detailSections": ["Summary", "Evidence", "Sources", "Related", "Markdown Page"]
         }
       ],
@@ -154,25 +154,26 @@ struct MyWikiSchemaMarkdownRenderer {
         return """
         # My Wiki Schema
 
-        Generated from `mywiki.schema.json`. Treat it as the source of truth for ontology extraction and page organization.
+        Generated from `mywiki.schema.json`. Treat it as a light project schema for page organization.
 
         ## Categories
 
-        | Category | Directory | Frontmatter types | Extraction guidance |
+        | Category | Directory | Frontmatter types | Guidance |
         |---|---|---|---|
         \(categoryRows)
 
-        ## Extraction Contract
+        ## Category Notes
 
         \(guidance)
 
         ## Shared Rules
 
-        - Use llm_wiki's native source, entity, and concept pages for extraction, relationship discovery, deduplication, summarization, search ranking, and agent context generation.
-        - Prefer a small number of high-signal entity and concept pages over many low-confidence category pages.
+        - Use llm_wiki's native source, entity, and concept pages for relationship discovery, deduplication, summarization, search ranking, and agent context generation.
+        - Write pages as direct wiki summaries for the reader.
         - Every generated page must cite sources using source filenames or source days.
         - Use aliases for alternate spellings and translations; use rename only for the display title.
-        - Mark uncertain facts as low confidence or needs review instead of writing them as certain.
+        - Entity pages can use broad filter tags: `person`, `project`, `organization`, or `other`; add more specific tags after that when useful.
+        - Use cautious wording for uncertain facts instead of turning the page body into an extraction rationale.
         - Do not copy secrets, API keys, tokens, passwords, or complete account identifiers.
         """
     }

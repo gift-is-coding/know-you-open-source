@@ -30,9 +30,9 @@ beforeEach(() => {
 })
 
 describe("KnowYou headless ingest runner", () => {
-  it("uses a cache version that invalidates translated proper-noun outputs", () => {
-    expect(INGEST_CACHE_PIPELINE_VERSION).toContain("v2")
-    expect(INGEST_CACHE_PIPELINE_VERSION).toContain("preserve-proper-nouns")
+  it("uses a cache version that invalidates pre-tag native-schema outputs", () => {
+    expect(INGEST_CACHE_PIPELINE_VERSION).toContain("v3")
+    expect(INGEST_CACHE_PIPELINE_VERSION).toContain("native-prompt-tags")
   })
 
   it("reuses autoIngest to materialize wiki pages from raw journal sources", async () => {
@@ -330,6 +330,7 @@ describe("KnowYou headless ingest runner", () => {
       expect(promptText).toContain("SOURCE LANGUAGE MODE: English")
       expect(promptText).toContain("Preserve proper nouns")
       expect(promptText).toContain("translations or explanations as aliases")
+      expect(promptText).toContain("person, project, organization, or other")
       expect(promptText).not.toContain("MANDATORY OUTPUT LANGUAGE: Chinese")
       expect(promptText).not.toContain("standard Chinese transliteration")
     } finally {

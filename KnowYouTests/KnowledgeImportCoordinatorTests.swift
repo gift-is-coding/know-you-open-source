@@ -20,7 +20,7 @@ final class KnowledgeImportCoordinatorTests: XCTestCase {
         let failingConnector = StubKnowledgeImportConnector(
             connectorInstanceID: "notion-main",
             connectorID: .notionImport,
-            error: StubConnectorError.failed
+            error: KnowledgeImportConnectorError.unavailable("Notion is unavailable")
         )
 
         let result = await fixture.coordinator.sync(connectors: [failingConnector, goodConnector])
@@ -29,7 +29,10 @@ final class KnowledgeImportCoordinatorTests: XCTestCase {
         XCTAssertEqual(result.failedConnectorInstanceIDs, ["notion-main"])
         XCTAssertEqual(result.changedDocumentCount, 1)
         XCTAssertEqual(result.connectorResults.first { $0.connectorInstanceID == "local-main" }?.changedDocumentCount, 1)
-        XCTAssertNotNil(result.connectorResults.first { $0.connectorInstanceID == "notion-main" }?.errorMessage)
+        XCTAssertEqual(
+            result.connectorResults.first { $0.connectorInstanceID == "notion-main" }?.errorMessage,
+            "Connector unavailable: Notion is unavailable"
+        )
 
         let documents = try fixture.databaseWriter.fetchImportedKnowledgeDocuments(connectorInstanceID: "local-main")
         XCTAssertEqual(documents.map(\.remoteID), ["docs/good.md"])
@@ -165,6 +168,44 @@ final class KnowledgeImportCoordinatorTests: XCTestCase {
         XCTAssertEqual(secondResult.connectorResults.first?.changedDocumentCount, 0)
     }
 
+    func testSyncRehydratesMissingDatabaseRowFromFresherStoreMetadataWithoutCountingChange() async throws {
+        let fixture = try makeFixture(now: Date(timeIntervalSince1970: 1_778_100_900))
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let newerSnapshot = Self.makeSnapshot(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "docs/rehydrate.md",
+            title: "Newer",
+            contentMarkdown: "# Newer on disk",
+            remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_100_800)
+        )
+        _ = try fixture.store.save(newerSnapshot, now: Date(timeIntervalSince1970: 1_778_100_850))
+        let staleSnapshot = Self.makeSnapshot(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "docs/rehydrate.md",
+            title: "Stale",
+            contentMarkdown: "# Stale incoming",
+            remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_100_700)
+        )
+        let connector = StubKnowledgeImportConnector(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            snapshots: [staleSnapshot]
+        )
+
+        let result = await fixture.coordinator.sync(connectors: [connector])
+
+        XCTAssertEqual(result.succeededConnectorInstanceIDs, ["local-main"])
+        XCTAssertEqual(result.failedConnectorInstanceIDs, [])
+        XCTAssertEqual(result.changedDocumentCount, 0)
+
+        let document = try XCTUnwrap(fixture.databaseWriter.fetchImportedKnowledgeDocuments(connectorInstanceID: "local-main").first)
+        XCTAssertEqual(document.title, "Newer")
+        XCTAssertEqual(document.remoteUpdatedAt, newerSnapshot.remoteUpdatedAt)
+        XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: document.localContentPath), encoding: .utf8), "# Newer on disk")
+    }
+
     private func makeFixture(now: Date) throws -> CoordinatorFixture {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
@@ -174,7 +215,7 @@ final class KnowledgeImportCoordinatorTests: XCTestCase {
             databaseWriter: databaseWriter,
             now: { now }
         )
-        return CoordinatorFixture(root: root, databaseWriter: databaseWriter, coordinator: coordinator)
+        return CoordinatorFixture(root: root, store: store, databaseWriter: databaseWriter, coordinator: coordinator)
     }
 
     private static func makeSnapshot(
@@ -232,12 +273,9 @@ final class KnowledgeImportCoordinatorTests: XCTestCase {
 
 private struct CoordinatorFixture {
     var root: URL
+    var store: KnowledgeImportStore
     var databaseWriter: DatabaseWriter
     var coordinator: KnowledgeImportCoordinator
-}
-
-private enum StubConnectorError: Error {
-    case failed
 }
 
 private struct StubKnowledgeImportConnector: KnowledgeImportConnector {

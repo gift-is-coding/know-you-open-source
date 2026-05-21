@@ -37,10 +37,7 @@ struct KnowledgeImportStore {
             connectorInstanceID: snapshot.connectorInstanceID,
             remoteID: snapshot.remoteID
         )
-        let directory = rootDirectory
-            .appending(path: snapshot.connectorID.rawValue, directoryHint: .isDirectory)
-            .appending(path: Self.safePathComponent(snapshot.connectorInstanceID), directoryHint: .isDirectory)
-            .appending(path: Self.safePathComponent(documentID), directoryHint: .isDirectory)
+        let directory = Self.documentDirectory(for: snapshot, in: rootDirectory)
         let writeLock = Self.writeLocks.lock(for: directory.path)
         writeLock.lock()
         defer { writeLock.unlock() }
@@ -108,8 +105,44 @@ struct KnowledgeImportStore {
         return document
     }
 
+    func authoritativeDocument(
+        for snapshot: KnowledgeImportSnapshot,
+        existingDocument: ImportedKnowledgeDocument? = nil
+    ) throws -> ImportedKnowledgeDocument? {
+        if let existingDocument {
+            try Self.validateExistingDocument(existingDocument, matches: snapshot)
+        }
+
+        let metadataURL = Self.documentDirectory(for: snapshot, in: rootDirectory)
+            .appending(path: "metadata.json")
+        let metadataDocument: ImportedKnowledgeDocument?
+        do {
+            metadataDocument = try existingMetadataDocument(at: metadataURL)
+        } catch {
+            guard let existingDocument else {
+                throw error
+            }
+            metadataDocument = existingDocument
+        }
+        return Self.authorityDocument(
+            metadataDocument: metadataDocument,
+            existingDocument: existingDocument
+        )
+    }
+
     static func documentID(connectorInstanceID: String, remoteID: String) -> String {
         "ci:\(connectorInstanceID.count):\(connectorInstanceID)|remote:\(remoteID.count):\(remoteID)"
+    }
+
+    private static func documentDirectory(for snapshot: KnowledgeImportSnapshot, in rootDirectory: URL) -> URL {
+        let documentID = Self.documentID(
+            connectorInstanceID: snapshot.connectorInstanceID,
+            remoteID: snapshot.remoteID
+        )
+        return rootDirectory
+            .appending(path: snapshot.connectorID.rawValue, directoryHint: .isDirectory)
+            .appending(path: Self.safePathComponent(snapshot.connectorInstanceID), directoryHint: .isDirectory)
+            .appending(path: Self.safePathComponent(documentID), directoryHint: .isDirectory)
     }
 
     private static func validateExistingDocument(

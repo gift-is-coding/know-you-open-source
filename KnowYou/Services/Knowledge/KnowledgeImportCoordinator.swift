@@ -71,12 +71,16 @@ struct KnowledgeImportCoordinator {
 
                 for snapshot in uniqueSnapshots {
                     let existingDocument = existingDocumentsByRemoteID[snapshot.remoteID]
+                    let authoritativeDocument = try store.authoritativeDocument(
+                        for: snapshot,
+                        existingDocument: existingDocument
+                    )
                     let document = try store.save(
                         snapshot,
                         now: now(),
                         existingDocument: existingDocument
                     )
-                    if Self.didChange(document, comparedTo: existingDocument) {
+                    if Self.didChange(document, comparedTo: authoritativeDocument) {
                         changedDocumentCount += 1
                     }
                     try databaseWriter.upsertImportedKnowledgeDocument(document)

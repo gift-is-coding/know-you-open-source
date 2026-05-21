@@ -269,6 +269,49 @@ final class KnowledgeImportCoordinatorTests: XCTestCase {
         XCTAssertEqual(secondResult.connectorResults.first?.changedDocumentCount, 0)
     }
 
+    func testSyncCountsTitleOnlyResyncAsChanged() async throws {
+        let fixture = try makeFixture(now: Date(timeIntervalSince1970: 1_778_100_650))
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let remoteUpdatedAt = Date(timeIntervalSince1970: 1_778_100_625)
+        let originalSnapshot = Self.makeSnapshot(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "docs/renamed.md",
+            title: "Original",
+            contentMarkdown: "# Same",
+            remoteUpdatedAt: remoteUpdatedAt
+        )
+        let renamedSnapshot = Self.makeSnapshot(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "docs/renamed.md",
+            title: "Renamed",
+            contentMarkdown: "# Same",
+            remoteUpdatedAt: remoteUpdatedAt
+        )
+        let originalConnector = StubKnowledgeImportConnector(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            snapshots: [originalSnapshot]
+        )
+        let renamedConnector = StubKnowledgeImportConnector(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            snapshots: [renamedSnapshot]
+        )
+
+        _ = await fixture.coordinator.sync(connectors: [originalConnector])
+        let result = await fixture.coordinator.sync(connectors: [renamedConnector])
+
+        XCTAssertEqual(result.succeededConnectorInstanceIDs, ["local-main"])
+        XCTAssertEqual(result.failedConnectorInstanceIDs, [])
+        XCTAssertEqual(result.changedDocumentCount, 1)
+        XCTAssertEqual(result.connectorResults.first?.changedDocumentCount, 1)
+        let document = try XCTUnwrap(fixture.databaseWriter.fetchImportedKnowledgeDocuments(connectorInstanceID: "local-main").first)
+        XCTAssertEqual(document.title, "Renamed")
+        XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: document.localContentPath), encoding: .utf8), "# Same")
+    }
+
     func testSyncRehydratesMissingDatabaseRowFromFresherStoreMetadataWithoutCountingChange() async throws {
         let fixture = try makeFixture(now: Date(timeIntervalSince1970: 1_778_100_900))
         defer { try? FileManager.default.removeItem(at: fixture.root) }

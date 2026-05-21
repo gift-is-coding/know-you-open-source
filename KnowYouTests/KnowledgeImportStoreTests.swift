@@ -93,6 +93,34 @@ final class KnowledgeImportStoreTests: XCTestCase {
         XCTAssertEqual(result.document.remoteUpdatedAt, Date(timeIntervalSince1970: 1_778_000_200))
     }
 
+    func testSaveWithResultReportsTitleOnlyUpdateAsChanged() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let remoteUpdatedAt = Date(timeIntervalSince1970: 1_778_000_100)
+        _ = try store.save(
+            Self.makeSnapshot(
+                title: "Original",
+                contentMarkdown: "# Same",
+                remoteUpdatedAt: remoteUpdatedAt
+            ),
+            now: Date(timeIntervalSince1970: 1_778_000_150)
+        )
+
+        let result = try store.saveWithResult(
+            Self.makeSnapshot(
+                title: "Renamed",
+                contentMarkdown: "# Same",
+                remoteUpdatedAt: remoteUpdatedAt
+            ),
+            now: Date(timeIntervalSince1970: 1_778_000_200)
+        )
+
+        XCTAssertTrue(result.didChange)
+        XCTAssertEqual(result.document.title, "Renamed")
+        XCTAssertEqual(result.document.contentHash, sha256Hex("# Same"))
+    }
+
     func testSaveWithResultReportsClearedDeletionAsChanged() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -735,6 +763,7 @@ final class KnowledgeImportStoreTests: XCTestCase {
     private static func makeSnapshot(
         connectorInstanceID: String = "local-main",
         remoteID: String = "docs/readme.md",
+        title: String = "Readme",
         contentMarkdown: String = "# Hello",
         remoteUpdatedAt: Date? = Date(timeIntervalSince1970: 1_778_000_000)
     ) -> KnowledgeImportSnapshot {
@@ -742,7 +771,7 @@ final class KnowledgeImportStoreTests: XCTestCase {
             connectorInstanceID: connectorInstanceID,
             connectorID: .localFolderImport,
             remoteID: remoteID,
-            title: "Readme",
+            title: title,
             sourcePath: "/Users/test/docs/readme.md",
             remoteURL: nil,
             mimeType: "text/markdown",

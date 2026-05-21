@@ -246,9 +246,17 @@ struct KnowledgeImportStore {
             return true
         }
 
-        return document.contentHash != existingDocument.contentHash
+        return document.title != existingDocument.title
+            || document.sourcePath != existingDocument.sourcePath
+            || document.remoteURL != existingDocument.remoteURL
+            || document.mimeType != existingDocument.mimeType
+            || document.contentHash != existingDocument.contentHash
             || document.remoteUpdatedAt != existingDocument.remoteUpdatedAt
             || document.deletedAt != existingDocument.deletedAt
+            || document.localContentPath != existingDocument.localContentPath
+            || document.localMetadataPath != existingDocument.localMetadataPath
+            || document.normalizationVersion != existingDocument.normalizationVersion
+            || document.originKind != existingDocument.originKind
     }
 
     private func normalizedStaleDocument(

@@ -1053,7 +1053,7 @@ git commit -m "Add local knowledge import connectors"
 - Modify: `KnowYou/Services/SyncMemory/SyncMemoryCoordinator.swift`
 - Test: `KnowYouTests/SyncMemoryCoordinatorTests.swift`
 
-**Status:** Completed in commits `f1e34ae` through `68f9e5c`. Daily Memory export now writes a `knowyou_export: daily_memory` frontmatter marker idempotently, preserves and augments existing frontmatter, treats body-only marker text as normal content, and keeps Obsidian import loop-safe by skipping only exact KnowYou export paths, exact export frontmatter markers, or valid JSON sidecars.
+**Status:** Completed in commits `f1e34ae` through `91e653d`. Daily Memory export now writes a `knowyou_export: daily_memory` frontmatter marker idempotently, preserves and augments existing frontmatter, treats body-only or nested marker text as normal content, and keeps Obsidian import loop-safe by skipping only exact KnowYou export paths or exact top-level export frontmatter markers. JSON-like note content is imported normally because this scanner does not ingest `.json` sidecars.
 
 - [x] **Step 1: Add failing export marker test**
 

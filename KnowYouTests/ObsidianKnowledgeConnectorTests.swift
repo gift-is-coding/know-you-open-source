@@ -147,6 +147,111 @@ final class ObsidianKnowledgeConnectorTests: XCTestCase {
 
         XCTAssertEqual(snapshots.map(\.remoteID), ["Archive/Legitimate.md"])
     }
+
+    func testFetchSnapshotsKeepsLegitimateNoteWithBodyOnlyExportMarkerText() async throws {
+        let vault = try makeObsidianTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: vault) }
+        _ = try writeObsidianFile(
+            """
+            # Debugging note
+
+            The exported files contain this line:
+            knowyou_export: daily_memory
+            """,
+            at: "Archive/BodyMarkerReference.md",
+            in: vault
+        )
+        _ = try writeObsidianFile(
+            """
+            ---
+            knowyou_export: daily_memory
+            ---
+            # Exported daily memory
+            """,
+            at: "Archive/FrontmatterExport.md",
+            in: vault
+        )
+
+        let connector = ObsidianKnowledgeConnector(
+            connectorInstanceID: "obsidian-main",
+            vaultURL: vault
+        )
+
+        let snapshots = try await connector.fetchSnapshots()
+
+        XCTAssertEqual(snapshots.map(\.remoteID), ["Archive/BodyMarkerReference.md"])
+    }
+
+    func testFetchSnapshotsKeepsLegitimateNoteWithThematicBreakBodyExportMarkerText() async throws {
+        let vault = try makeObsidianTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: vault) }
+        _ = try writeObsidianFile(
+            """
+            ---
+            This note is documenting the export marker:
+            knowyou_export: daily_memory
+            ---
+            # Body
+            """,
+            at: "Archive/ThematicBodyMarkerReference.md",
+            in: vault
+        )
+
+        let connector = ObsidianKnowledgeConnector(
+            connectorInstanceID: "obsidian-main",
+            vaultURL: vault
+        )
+
+        let snapshots = try await connector.fetchSnapshots()
+
+        XCTAssertEqual(snapshots.map(\.remoteID), ["Archive/ThematicBodyMarkerReference.md"])
+    }
+
+    func testFetchSnapshotsKeepsLegitimateNoteWhenOpeningFenceIsNotExactFrontmatterFence() async throws {
+        let vault = try makeObsidianTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: vault) }
+        _ = try writeObsidianFile(
+            """
+            ----
+            knowyou_export: daily_memory
+            ---
+            # Legit note
+            """,
+            at: "Archive/LongDashOpening.md",
+            in: vault
+        )
+
+        let connector = ObsidianKnowledgeConnector(
+            connectorInstanceID: "obsidian-main",
+            vaultURL: vault
+        )
+
+        let snapshots = try await connector.fetchSnapshots()
+
+        XCTAssertEqual(snapshots.map(\.remoteID), ["Archive/LongDashOpening.md"])
+    }
+
+    func testFetchSnapshotsKeepsLegitimateNoteWithJsonMarkerReferenceInBody() async throws {
+        let vault = try makeObsidianTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: vault) }
+        _ = try writeObsidianFile(
+            """
+            {"originKind":"daily_memory_export"}
+            # This is documentation, not a JSON sidecar
+            """,
+            at: "Archive/JsonMarkerReference.md",
+            in: vault
+        )
+
+        let connector = ObsidianKnowledgeConnector(
+            connectorInstanceID: "obsidian-main",
+            vaultURL: vault
+        )
+
+        let snapshots = try await connector.fetchSnapshots()
+
+        XCTAssertEqual(snapshots.map(\.remoteID), ["Archive/JsonMarkerReference.md"])
+    }
 }
 
 private func makeObsidianTemporaryDirectory() throws -> URL {

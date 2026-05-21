@@ -62,7 +62,7 @@ enum Migrations {
                 table.column("localMetadataPath", .text).notNull()
                 table.column("normalizationVersion", .integer).notNull()
                 table.column("originKind", .text).notNull()
-                table.uniqueKey(["connectorInstanceID", "remoteID"], onConflict: .replace)
+                table.uniqueKey(["connectorInstanceID", "remoteID"])
             }
 
             try db.create(table: "knowledge_import_status", ifNotExists: true) { table in

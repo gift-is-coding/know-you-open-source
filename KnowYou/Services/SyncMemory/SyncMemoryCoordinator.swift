@@ -25,8 +25,35 @@ struct SyncMemoryCoordinator {
     ---
     """ + "\n"
     private static let dailyMemoryExportMarkerPattern = #"(?i)^\s*knowyou_export\s*:\s*daily_memory\s*$"#
-    private static let yamlKeyValueLinePattern = #"^\s*[a-z0-9_-]+\s*:\s*.*$"#
-    private static let yamlListItemPattern = #"^\s*-\s+\S.*$"#
+    private static let trustedFrontmatterKeys: Set<String> = [
+        "alias",
+        "aliases",
+        "author",
+        "categories",
+        "category",
+        "created",
+        "createdat",
+        "date",
+        "description",
+        "draft",
+        "id",
+        "layout",
+        "modified",
+        "modifiedat",
+        "cssclass",
+        "cssclasses",
+        "source",
+        "status",
+        "summary",
+        "tag",
+        "tags",
+        "title",
+        "type",
+        "uid",
+        "updated",
+        "updatedat",
+        "uuid",
+    ]
 
     private struct FrontmatterBlock {
         let contentRange: Range<String.Index>
@@ -105,8 +132,12 @@ struct SyncMemoryCoordinator {
 
         let contentStart = markdown.index(after: openingLineEnd)
         var lineStart = contentStart
-        var hasMetadataLookingLine = false
+        var keyValueLineCount = 0
+        var hasTrustedMetadataKey = false
+        var hasStructuredYAMLValue = false
+        var hasDailyMemoryExportMarker = false
         var previousLineAllowsListItem = false
+        var isInsideBlockScalar = false
 
         while lineStart < markdown.endIndex {
             let lineEnd = markdown[lineStart...].firstIndex(of: "\n") ?? markdown.endIndex
@@ -114,7 +145,12 @@ struct SyncMemoryCoordinator {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
 
             if line == "---" {
-                guard hasMetadataLookingLine else {
+                // A leading thematic break can look like frontmatter; require a metadata confidence signal.
+                guard hasDailyMemoryExportMarker
+                    || hasTrustedMetadataKey
+                    || hasStructuredYAMLValue
+                    || keyValueLineCount > 1
+                else {
                     return nil
                 }
                 return FrontmatterBlock(contentRange: contentStart..<lineStart, insertionIndex: contentStart)
@@ -129,13 +165,21 @@ struct SyncMemoryCoordinator {
             }
 
             if rawLine.range(of: Self.dailyMemoryExportMarkerPattern, options: .regularExpression) != nil {
-                hasMetadataLookingLine = true
+                hasDailyMemoryExportMarker = true
                 previousLineAllowsListItem = false
-            } else if isYAMLKeyValueLine(rawLine) {
-                hasMetadataLookingLine = true
-                previousLineAllowsListItem = true
+                isInsideBlockScalar = false
+            } else if isInsideBlockScalar && startsWithIndent(rawLine) {
+                hasStructuredYAMLValue = true
             } else if previousLineAllowsListItem && isYAMLListItemLine(rawLine) {
+                hasStructuredYAMLValue = true
                 previousLineAllowsListItem = true
+                isInsideBlockScalar = false
+            } else if let keyValue = yamlKeyValue(in: rawLine) {
+                keyValueLineCount += 1
+                hasTrustedMetadataKey = hasTrustedMetadataKey || isTrustedFrontmatterKey(keyValue.key)
+                hasStructuredYAMLValue = hasStructuredYAMLValue || isYAMLBlockScalarIndicator(keyValue.value)
+                previousLineAllowsListItem = keyValue.value.isEmpty
+                isInsideBlockScalar = isYAMLBlockScalarIndicator(keyValue.value)
             } else {
                 return nil
             }
@@ -149,12 +193,43 @@ struct SyncMemoryCoordinator {
         return nil
     }
 
-    private func isYAMLKeyValueLine(_ line: String) -> Bool {
-        line.range(of: Self.yamlKeyValueLinePattern, options: .regularExpression) != nil
+    private func yamlKeyValue(in line: String) -> (key: String, value: String)? {
+        let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let colonIndex = trimmedLine.firstIndex(of: ":") else {
+            return nil
+        }
+
+        let key = String(trimmedLine[..<colonIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty, key.allSatisfy(isYAMLKeyCharacter) else {
+            return nil
+        }
+
+        let valueStart = trimmedLine.index(after: colonIndex)
+        let value = String(trimmedLine[valueStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return (key, value)
+    }
+
+    private func isYAMLKeyCharacter(_ character: Character) -> Bool {
+        character.isLetter || character.isNumber || character == "_" || character == "-"
+    }
+
+    private func isTrustedFrontmatterKey(_ key: String) -> Bool {
+        let normalizedKey = key
+            .lowercased()
+            .filter { $0 != "_" && $0 != "-" }
+        return Self.trustedFrontmatterKeys.contains(normalizedKey)
     }
 
     private func isYAMLListItemLine(_ line: String) -> Bool {
-        line.range(of: Self.yamlListItemPattern, options: .regularExpression) != nil
+        line.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("- ")
+    }
+
+    private func isYAMLBlockScalarIndicator(_ value: String) -> Bool {
+        ["|", "|-", "|+", ">", ">-", ">+"].contains(value)
+    }
+
+    private func startsWithIndent(_ line: String) -> Bool {
+        line.first == " " || line.first == "\t"
     }
 
     private func hasDailyMemoryExportMarker(in markdown: String, frontmatterBlock: FrontmatterBlock) -> Bool {

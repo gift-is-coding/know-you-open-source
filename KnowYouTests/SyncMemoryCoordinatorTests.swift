@@ -338,6 +338,43 @@ final class SyncMemoryCoordinatorTests: XCTestCase {
         )
     }
 
+    func testSyncDiariesMergesExportMarkerIntoCommonExternalFrontmatterKeys() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceVault = root.appendingPathComponent("source", isDirectory: true)
+        let obsidianTarget = root.appendingPathComponent("obsidian/KnowYou/Daily Memories", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceVault, withIntermediateDirectories: true)
+        try """
+        ---
+        layout: post
+        cssclass: daily
+        ---
+        # With External Metadata
+        """.write(
+            to: sourceVault.appendingPathComponent("2026-04-14.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let coordinator = SyncMemoryCoordinator(fileManager: .default)
+        _ = try coordinator.syncDiaries(
+            sourceVault: sourceVault,
+            destinations: [.obsidian: obsidianTarget]
+        )
+
+        XCTAssertEqual(
+            try String(contentsOf: obsidianTarget.appendingPathComponent("2026-04-14.md"), encoding: .utf8),
+            """
+            ---
+            knowyou_export: daily_memory
+            layout: post
+            cssclass: daily
+            ---
+            # With External Metadata
+            """
+        )
+    }
+
     func testSyncDiariesMergesExportMarkerIntoFrontmatterWithPunctuationInScalar() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let sourceVault = root.appendingPathComponent("source", isDirectory: true)
@@ -441,6 +478,119 @@ final class SyncMemoryCoordinatorTests: XCTestCase {
             ---
             ---
             Note: plain text, not YAML frontmatter
+            ---
+            # Body
+            """
+        )
+    }
+
+    func testSyncDiariesDoesNotTreatLowercaseColonProseAsFrontmatter() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceVault = root.appendingPathComponent("source", isDirectory: true)
+        let obsidianTarget = root.appendingPathComponent("obsidian/KnowYou/Daily Memories", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceVault, withIntermediateDirectories: true)
+        try """
+        ---
+        note: plain text, not metadata
+        ---
+        # Body
+        """.write(
+            to: sourceVault.appendingPathComponent("2026-04-14.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let coordinator = SyncMemoryCoordinator(fileManager: .default)
+        _ = try coordinator.syncDiaries(
+            sourceVault: sourceVault,
+            destinations: [.obsidian: obsidianTarget]
+        )
+
+        XCTAssertEqual(
+            try String(contentsOf: obsidianTarget.appendingPathComponent("2026-04-14.md"), encoding: .utf8),
+            """
+            ---
+            knowyou_export: daily_memory
+            ---
+            ---
+            note: plain text, not metadata
+            ---
+            # Body
+            """
+        )
+    }
+
+    func testSyncDiariesMergesExportMarkerIntoFrontmatterWithBlockScalar() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceVault = root.appendingPathComponent("source", isDirectory: true)
+        let obsidianTarget = root.appendingPathComponent("obsidian/KnowYou/Daily Memories", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceVault, withIntermediateDirectories: true)
+        try """
+        ---
+        summary: |
+          First line
+          Second line
+        ---
+        # Body
+        """.write(
+            to: sourceVault.appendingPathComponent("2026-04-14.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let coordinator = SyncMemoryCoordinator(fileManager: .default)
+        _ = try coordinator.syncDiaries(
+            sourceVault: sourceVault,
+            destinations: [.obsidian: obsidianTarget]
+        )
+
+        XCTAssertEqual(
+            try String(contentsOf: obsidianTarget.appendingPathComponent("2026-04-14.md"), encoding: .utf8),
+            """
+            ---
+            knowyou_export: daily_memory
+            summary: |
+              First line
+              Second line
+            ---
+            # Body
+            """
+        )
+    }
+
+    func testSyncDiariesMergesExportMarkerIntoFrontmatterWithUppercaseAndCamelCaseKeys() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceVault = root.appendingPathComponent("source", isDirectory: true)
+        let obsidianTarget = root.appendingPathComponent("obsidian/KnowYou/Daily Memories", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceVault, withIntermediateDirectories: true)
+        try """
+        ---
+        Title: Existing Metadata
+        createdAt: 2026-04-14
+        ---
+        # Body
+        """.write(
+            to: sourceVault.appendingPathComponent("2026-04-14.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let coordinator = SyncMemoryCoordinator(fileManager: .default)
+        _ = try coordinator.syncDiaries(
+            sourceVault: sourceVault,
+            destinations: [.obsidian: obsidianTarget]
+        )
+
+        XCTAssertEqual(
+            try String(contentsOf: obsidianTarget.appendingPathComponent("2026-04-14.md"), encoding: .utf8),
+            """
+            ---
+            knowyou_export: daily_memory
+            Title: Existing Metadata
+            createdAt: 2026-04-14
             ---
             # Body
             """

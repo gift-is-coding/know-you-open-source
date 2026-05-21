@@ -35,19 +35,34 @@ struct KnowledgeImportConnectorRunResult: Equatable {
     var errorMessage: String?
 }
 
-struct KnowledgeImportCoordinator {
+struct KnowledgeImportCoordinatorApplyHooks: Sendable {
+    var beforeDatabaseUpsert: @Sendable (_ connectorInstanceID: String, _ documents: [ImportedKnowledgeDocument]) -> Void
+
+    init(
+        beforeDatabaseUpsert: @escaping @Sendable (_ connectorInstanceID: String, _ documents: [ImportedKnowledgeDocument]) -> Void = { _, _ in }
+    ) {
+        self.beforeDatabaseUpsert = beforeDatabaseUpsert
+    }
+}
+
+struct KnowledgeImportCoordinator: @unchecked Sendable {
+    private static let applyLocks = KnowledgeImportCoordinatorApplyLocks()
+
     let store: KnowledgeImportStore
     let databaseWriter: DatabaseWriter
-    let now: () -> Date
+    let now: @Sendable () -> Date
+    let applyHooks: KnowledgeImportCoordinatorApplyHooks
 
     init(
         store: KnowledgeImportStore,
         databaseWriter: DatabaseWriter,
-        now: @escaping () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init,
+        applyHooks: KnowledgeImportCoordinatorApplyHooks = KnowledgeImportCoordinatorApplyHooks()
     ) {
         self.store = store
         self.databaseWriter = databaseWriter
         self.now = now
+        self.applyHooks = applyHooks
     }
 
     func sync(connectors: [any KnowledgeImportConnector]) async -> KnowledgeImportRunResult {
@@ -60,29 +75,7 @@ struct KnowledgeImportCoordinator {
                 try Self.validate(snapshots: snapshots, match: connector)
 
                 let uniqueSnapshots = Self.newestSnapshotsByRemoteID(from: snapshots)
-                let existingDocuments = try databaseWriter.fetchImportedKnowledgeDocuments(
-                    connectorInstanceID: connector.connectorInstanceID,
-                    includeDeleted: true
-                )
-                var existingDocumentsByRemoteID = Dictionary(
-                    uniqueKeysWithValues: existingDocuments.map { ($0.remoteID, $0) }
-                )
-                var saveResults = [KnowledgeImportSaveResult]()
-
-                for snapshot in uniqueSnapshots {
-                    let existingDocument = existingDocumentsByRemoteID[snapshot.remoteID]
-                    let saveResult = try store.saveWithResult(
-                        snapshot,
-                        now: now(),
-                        existingDocument: existingDocument
-                    )
-                    let document = saveResult.document
-                    saveResults.append(saveResult)
-                    existingDocumentsByRemoteID[snapshot.remoteID] = document
-                }
-
-                try databaseWriter.upsertImportedKnowledgeDocuments(saveResults.map(\.document))
-                let changedDocumentCount = saveResults.filter(\.didChange).count
+                let changedDocumentCount = try apply(uniqueSnapshots, for: connector)
 
                 connectorResults.append(
                     KnowledgeImportConnectorRunResult(
@@ -111,6 +104,41 @@ struct KnowledgeImportCoordinator {
             finishedAt: now(),
             connectorResults: connectorResults
         )
+    }
+
+    private func apply(
+        _ snapshots: [KnowledgeImportSnapshot],
+        for connector: any KnowledgeImportConnector
+    ) throws -> Int {
+        let applyLock = Self.applyLocks.lock(for: connector.connectorInstanceID)
+        applyLock.lock()
+        defer { applyLock.unlock() }
+
+        let existingDocuments = try databaseWriter.fetchImportedKnowledgeDocuments(
+            connectorInstanceID: connector.connectorInstanceID,
+            includeDeleted: true
+        )
+        var existingDocumentsByRemoteID = Dictionary(
+            uniqueKeysWithValues: existingDocuments.map { ($0.remoteID, $0) }
+        )
+        var saveResults = [KnowledgeImportSaveResult]()
+
+        for snapshot in snapshots {
+            let existingDocument = existingDocumentsByRemoteID[snapshot.remoteID]
+            let saveResult = try store.saveWithResult(
+                snapshot,
+                now: now(),
+                existingDocument: existingDocument
+            )
+            let document = saveResult.document
+            saveResults.append(saveResult)
+            existingDocumentsByRemoteID[snapshot.remoteID] = document
+        }
+
+        let documents = saveResults.map(\.document)
+        applyHooks.beforeDatabaseUpsert(connector.connectorInstanceID, documents)
+        try databaseWriter.upsertImportedKnowledgeDocuments(documents)
+        return saveResults.filter(\.didChange).count
     }
 
     private static func validate(
@@ -176,6 +204,24 @@ struct KnowledgeImportCoordinator {
             return errorDescription
         }
         return String(describing: error)
+    }
+}
+
+private final class KnowledgeImportCoordinatorApplyLocks: @unchecked Sendable {
+    private let lock = NSLock()
+    private var locksByConnectorInstanceID = [String: NSLock]()
+
+    func lock(for connectorInstanceID: String) -> NSLock {
+        lock.lock()
+        defer { lock.unlock() }
+
+        if let existingLock = locksByConnectorInstanceID[connectorInstanceID] {
+            return existingLock
+        }
+
+        let newLock = NSLock()
+        locksByConnectorInstanceID[connectorInstanceID] = newLock
+        return newLock
     }
 }
 

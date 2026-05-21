@@ -351,6 +351,70 @@ final class KnowledgeImportCoordinatorTests: XCTestCase {
         XCTAssertEqual(document.normalizationVersion, 1)
     }
 
+    func testConcurrentSyncsForSameConnectorKeepDatabaseAndDiskOnNewestSnapshot() async throws {
+        let staleApplyPaused = DispatchSemaphore(value: 0)
+        let releaseStaleApply = DispatchSemaphore(value: 0)
+        let newerApplyReached = DispatchSemaphore(value: 0)
+        let applyHooks = KnowledgeImportCoordinatorApplyHooks(
+            beforeDatabaseUpsert: { _, documents in
+                if documents.contains(where: { $0.title == "Stale" }) {
+                    staleApplyPaused.signal()
+                    releaseStaleApply.wait()
+                }
+                if documents.contains(where: { $0.title == "Newer" }) {
+                    newerApplyReached.signal()
+                }
+            }
+        )
+        let fixture = try makeFixture(
+            now: Date(timeIntervalSince1970: 1_778_100_750),
+            applyHooks: applyHooks
+        )
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let staleSnapshot = Self.makeSnapshot(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "docs/concurrent.md",
+            title: "Stale",
+            contentMarkdown: "# Stale",
+            remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_100_700)
+        )
+        let newerSnapshot = Self.makeSnapshot(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "docs/concurrent.md",
+            title: "Newer",
+            contentMarkdown: "# Newer",
+            remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_100_725)
+        )
+        let staleConnector = StubKnowledgeImportConnector(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            snapshots: [staleSnapshot]
+        )
+        let newerConnector = StubKnowledgeImportConnector(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            snapshots: [newerSnapshot]
+        )
+        let coordinator = fixture.coordinator
+
+        async let staleResult = coordinator.sync(connectors: [staleConnector])
+        let stalePauseResult = await wait(for: staleApplyPaused, timeout: .now() + 2)
+        XCTAssertEqual(stalePauseResult, .success)
+        async let newerResult = coordinator.sync(connectors: [newerConnector])
+        let newerBlockedResult = await wait(for: newerApplyReached, timeout: .now() + 0.5)
+        XCTAssertEqual(newerBlockedResult, .timedOut)
+        releaseStaleApply.signal()
+        let results = await [staleResult, newerResult]
+
+        XCTAssertEqual(results.flatMap(\.failedConnectorInstanceIDs), [])
+        let document = try XCTUnwrap(fixture.databaseWriter.fetchImportedKnowledgeDocuments(connectorInstanceID: "local-main").first)
+        XCTAssertEqual(document.title, "Newer")
+        XCTAssertEqual(document.remoteUpdatedAt, newerSnapshot.remoteUpdatedAt)
+        XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: document.localContentPath), encoding: .utf8), "# Newer")
+    }
+
     func testSyncRehydratesMissingDatabaseRowFromFresherStoreMetadataWithoutCountingChange() async throws {
         let fixture = try makeFixture(now: Date(timeIntervalSince1970: 1_778_100_900))
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -389,14 +453,18 @@ final class KnowledgeImportCoordinatorTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: document.localContentPath), encoding: .utf8), "# Newer on disk")
     }
 
-    private func makeFixture(now: Date) throws -> CoordinatorFixture {
+    private func makeFixture(
+        now: Date,
+        applyHooks: KnowledgeImportCoordinatorApplyHooks = KnowledgeImportCoordinatorApplyHooks()
+    ) throws -> CoordinatorFixture {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
         let databaseWriter = try DatabaseWriter.inMemory()
         let coordinator = KnowledgeImportCoordinator(
             store: store,
             databaseWriter: databaseWriter,
-            now: { now }
+            now: { now },
+            applyHooks: applyHooks
         )
         return CoordinatorFixture(root: root, store: store, databaseWriter: databaseWriter, coordinator: coordinator)
     }
@@ -465,6 +533,17 @@ final class KnowledgeImportCoordinatorTests: XCTestCase {
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO-8601 date: \(value)")
         }
         return try decoder.decode(ImportedKnowledgeDocument.self, from: data)
+    }
+
+    private func wait(
+        for semaphore: DispatchSemaphore,
+        timeout: DispatchTime
+    ) async -> DispatchTimeoutResult {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                continuation.resume(returning: semaphore.wait(timeout: timeout))
+            }
+        }
     }
 
     private static func iso8601WithFractionalSeconds() -> ISO8601DateFormatter {

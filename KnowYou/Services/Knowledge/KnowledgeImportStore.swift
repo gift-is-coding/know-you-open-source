@@ -47,11 +47,26 @@ struct KnowledgeImportStore {
 
         let contentURL = directory.appending(path: "content.md")
         let metadataURL = directory.appending(path: "metadata.json")
+        let existingMetadata: ImportedKnowledgeDocument?
+        do {
+            existingMetadata = try existingMetadataDocument(at: metadataURL)
+        } catch {
+            if existingDocument == nil {
+                throw error
+            }
+            existingMetadata = nil
+        }
+
+        if let existingMetadata,
+           Self.isExistingDocument(existingMetadata, newerThan: snapshot, now: now) {
+            return existingMetadata
+        }
+
         let firstImportedAt: Date
         if let existingDocument {
             firstImportedAt = existingDocument.firstImportedAt
         } else {
-            firstImportedAt = try existingMetadataDocument(at: metadataURL)?.firstImportedAt ?? now
+            firstImportedAt = existingMetadata?.firstImportedAt ?? now
         }
         let metadataDocumentID = existingDocument?.id ?? documentID
         let contentHash = SHA256Hasher.hash(snapshot.contentMarkdown)
@@ -99,6 +114,21 @@ struct KnowledgeImportStore {
                 actualRemoteID: existingDocument.remoteID
             )
         }
+    }
+
+    private static func isExistingDocument(
+        _ existingDocument: ImportedKnowledgeDocument,
+        newerThan snapshot: KnowledgeImportSnapshot,
+        now: Date
+    ) -> Bool {
+        if let existingRemoteUpdatedAt = existingDocument.remoteUpdatedAt,
+           let snapshotRemoteUpdatedAt = snapshot.remoteUpdatedAt {
+            return existingRemoteUpdatedAt > snapshotRemoteUpdatedAt
+                || (existingRemoteUpdatedAt == snapshotRemoteUpdatedAt && existingDocument.lastSyncedAt > now)
+        }
+
+        return existingDocument.remoteUpdatedAt == snapshot.remoteUpdatedAt
+            && existingDocument.lastSyncedAt > now
     }
 
     private func existingMetadataDocument(at metadataURL: URL) throws -> ImportedKnowledgeDocument? {

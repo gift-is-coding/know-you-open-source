@@ -199,6 +199,60 @@ final class KnowledgeImportStoreTests: XCTestCase {
         )
     }
 
+    func testSaveSnapshotSkipsOlderRemoteUpdateWhenNewerMetadataExists() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let newerSnapshot = Self.makeSnapshot(
+            contentMarkdown: "# Newer",
+            remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_200)
+        )
+        let newerDocument = try store.save(
+            newerSnapshot,
+            now: Date(timeIntervalSince1970: 1_778_000_300)
+        )
+
+        let returnedDocument = try store.save(
+            Self.makeSnapshot(
+                contentMarkdown: "# Older",
+                remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_100)
+            ),
+            now: Date(timeIntervalSince1970: 1_778_000_150)
+        )
+        let metadataDocument = try decodeDocument(atPath: returnedDocument.localMetadataPath)
+
+        XCTAssertEqual(returnedDocument, newerDocument)
+        XCTAssertEqual(metadataDocument, newerDocument)
+        XCTAssertEqual(
+            try String(contentsOf: URL(fileURLWithPath: returnedDocument.localContentPath), encoding: .utf8),
+            "# Newer"
+        )
+    }
+
+    func testSaveSnapshotSkipsOlderSyncWhenRemoteUpdateIsUnchanged() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let remoteUpdatedAt = Date(timeIntervalSince1970: 1_778_000_100)
+        let newerDocument = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# Synced Later", remoteUpdatedAt: remoteUpdatedAt),
+            now: Date(timeIntervalSince1970: 1_778_000_300)
+        )
+
+        let returnedDocument = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# Synced Earlier", remoteUpdatedAt: remoteUpdatedAt),
+            now: Date(timeIntervalSince1970: 1_778_000_200)
+        )
+        let metadataDocument = try decodeDocument(atPath: returnedDocument.localMetadataPath)
+
+        XCTAssertEqual(returnedDocument, newerDocument)
+        XCTAssertEqual(metadataDocument.lastSyncedAt, newerDocument.lastSyncedAt)
+        XCTAssertEqual(
+            try String(contentsOf: URL(fileURLWithPath: returnedDocument.localContentPath), encoding: .utf8),
+            "# Synced Later"
+        )
+    }
+
     func testDocumentIDIsCollisionSafeForColonSeparatedInputs() throws {
         let firstID = KnowledgeImportStore.documentID(connectorInstanceID: "a:b", remoteID: "c")
         let secondID = KnowledgeImportStore.documentID(connectorInstanceID: "a", remoteID: "b:c")
@@ -262,15 +316,19 @@ final class KnowledgeImportStoreTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
         let count = 50
-        let snapshot = Self.makeSnapshot(contentMarkdown: "# Shared")
+        let baseRemoteUpdatedAt = Date(timeIntervalSince1970: 1_778_000_000)
+        let baseSyncedAt = Date(timeIntervalSince1970: 1_778_000_100)
 
         let documents = try await withThrowingTaskGroup(of: ImportedKnowledgeDocument.self) { group in
             for index in 0..<count {
                 group.addTask {
                     let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
                     return try store.save(
-                        snapshot,
-                        now: Date(timeIntervalSince1970: 1_778_000_100 + Double(index))
+                        Self.makeSnapshot(
+                            contentMarkdown: "# Shared \(index)",
+                            remoteUpdatedAt: baseRemoteUpdatedAt.addingTimeInterval(Double(index))
+                        ),
+                        now: baseSyncedAt.addingTimeInterval(Double(index))
                     )
                 }
             }
@@ -283,12 +341,14 @@ final class KnowledgeImportStoreTests: XCTestCase {
         }
 
         XCTAssertEqual(documents.count, count)
-        let finalDocument = try XCTUnwrap(documents.last)
+        let finalDocument = try decodeDocument(atPath: try XCTUnwrap(documents.last).localMetadataPath)
         XCTAssertEqual(
             try String(contentsOf: URL(fileURLWithPath: finalDocument.localContentPath), encoding: .utf8),
-            "# Shared"
+            "# Shared 49"
         )
-        XCTAssertEqual(try decodeDocument(atPath: finalDocument.localMetadataPath).contentHash, sha256Hex("# Shared"))
+        XCTAssertEqual(finalDocument.contentHash, sha256Hex("# Shared 49"))
+        XCTAssertEqual(finalDocument.remoteUpdatedAt, baseRemoteUpdatedAt.addingTimeInterval(49))
+        XCTAssertEqual(finalDocument.lastSyncedAt, baseSyncedAt.addingTimeInterval(49))
     }
 
     private static func makeSnapshot(

@@ -520,12 +520,14 @@ git commit -m "Add knowledge import database index"
 
 ### Task 3: Local Markdown Cache Store
 
+**Status:** Completed in commits `e41050d` through `f9cb6e8`. The final implementation keeps the planned local Markdown cache shape and adds durability hardening for DB-authoritative resyncs, corrupt metadata recovery, fractional date preservation, path normalization, and same-document concurrent/stale-write protection.
+
 **Files:**
 - Create: `KnowYou/Services/Knowledge/KnowledgeImportStore.swift`
 - Test: `KnowYouTests/KnowledgeImportStoreTests.swift`
 - Modify: `KnowYou.xcodeproj/project.pbxproj`
 
-- [ ] **Step 1: Write failing store tests**
+- [x] **Step 1: Write failing store tests**
 
 ```swift
 import XCTest
@@ -558,7 +560,7 @@ final class KnowledgeImportStoreTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run store tests and verify failure**
+- [x] **Step 2: Run store tests and verify failure**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/KnowledgeImportStoreTests
@@ -566,7 +568,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: compile fails because `KnowledgeImportStore` and `KnowledgeImportSnapshot` do not exist.
 
-- [ ] **Step 3: Implement store**
+- [x] **Step 3: Implement store**
 
 Create `KnowYou/Services/Knowledge/KnowledgeImportStore.swift`:
 
@@ -654,7 +656,7 @@ private extension JSONEncoder {
 }
 ```
 
-- [ ] **Step 4: Run store tests**
+- [x] **Step 4: Run store tests**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/KnowledgeImportStoreTests
@@ -662,7 +664,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add KnowYou/Services/Knowledge/KnowledgeImportStore.swift KnowYouTests/KnowledgeImportStoreTests.swift KnowYou.xcodeproj/project.pbxproj

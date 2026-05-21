@@ -150,4 +150,14 @@ final class KnowledgeImportModelTests: XCTestCase {
 
         XCTAssertNil(store.bearerToken(connectorInstanceID: "local-main"))
     }
+
+    func testCredentialStoreClearsLegacyWhitespaceBearerTokenOnRead() {
+        let keychain = InMemoryKeychainStore()
+        let store = KnowledgeImportCredentialStore(keychain: keychain, service: "test-service")
+        let key = "knowledge-import.local-main.bearer-token"
+        keychain.save(" \n\t ", forKey: key, service: "test-service")
+
+        XCTAssertNil(store.bearerToken(connectorInstanceID: "local-main"))
+        XCTAssertNil(keychain.load(forKey: key, service: "test-service"))
+    }
 }

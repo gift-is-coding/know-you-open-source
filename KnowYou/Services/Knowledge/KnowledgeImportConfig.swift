@@ -52,7 +52,14 @@ struct KnowledgeImportCredentialStore: Sendable {
     }
 
     func bearerToken(connectorInstanceID: String) -> String? {
-        keychain.load(forKey: "knowledge-import.\(connectorInstanceID).bearer-token", service: service)
+        let key = "knowledge-import.\(connectorInstanceID).bearer-token"
+        guard let token = keychain.load(forKey: key, service: service) else { return nil }
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedToken.isEmpty {
+            keychain.delete(forKey: key, service: service)
+            return nil
+        }
+        return trimmedToken
     }
 
     func deleteBearerToken(connectorInstanceID: String) {

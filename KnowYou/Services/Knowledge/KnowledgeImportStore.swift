@@ -29,14 +29,11 @@ struct KnowledgeImportStore {
         )
         let directory = rootDirectory
             .appending(path: snapshot.connectorID.rawValue, directoryHint: .isDirectory)
-            .appending(path: snapshot.connectorInstanceID, directoryHint: .isDirectory)
+            .appending(path: Self.safePathComponent(snapshot.connectorInstanceID), directoryHint: .isDirectory)
             .appending(path: Self.safePathComponent(documentID), directoryHint: .isDirectory)
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-
         let contentURL = directory.appending(path: "content.md")
-        try snapshot.markdown.write(to: contentURL, atomically: true, encoding: .utf8)
-
         let metadataURL = directory.appending(path: "metadata.json")
+        let firstImportedAt = try existingDocument(at: metadataURL)?.firstImportedAt ?? now
         let contentHash = SHA256Hasher.hash(snapshot.markdown)
         let document = ImportedKnowledgeDocument(
             id: documentID,
@@ -49,7 +46,7 @@ struct KnowledgeImportStore {
             mimeType: snapshot.mimeType,
             contentHash: contentHash,
             remoteUpdatedAt: snapshot.remoteUpdatedAt,
-            firstImportedAt: now,
+            firstImportedAt: firstImportedAt,
             lastSyncedAt: now,
             deletedAt: nil,
             localContentPath: contentURL.path,
@@ -58,12 +55,41 @@ struct KnowledgeImportStore {
             originKind: snapshot.originKind
         )
         let data = try JSONEncoder.knowledgeImport.encode(document)
-        try data.write(to: metadataURL, options: .atomic)
+        try writePreparedDocument(markdown: snapshot.markdown, metadata: data, to: directory)
         return document
     }
 
     static func documentID(connectorInstanceID: String, remoteID: String) -> String {
-        "\(connectorInstanceID):\(remoteID)"
+        "ci:\(connectorInstanceID.count):\(connectorInstanceID)|remote:\(remoteID.count):\(remoteID)"
+    }
+
+    private func existingDocument(at metadataURL: URL) throws -> ImportedKnowledgeDocument? {
+        guard fileManager.fileExists(atPath: metadataURL.path) else {
+            return nil
+        }
+
+        let data = try Data(contentsOf: metadataURL)
+        return try JSONDecoder.knowledgeImport.decode(ImportedKnowledgeDocument.self, from: data)
+    }
+
+    private func writePreparedDocument(markdown: String, metadata: Data, to directory: URL) throws {
+        let parentDirectory = directory.deletingLastPathComponent()
+        let temporaryDirectory = parentDirectory.appending(
+            path: ".\(directory.lastPathComponent).tmp-\(UUID().uuidString)",
+            directoryHint: .isDirectory
+        )
+        try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        do {
+            try markdown.write(to: temporaryDirectory.appending(path: "content.md"), atomically: true, encoding: .utf8)
+            try metadata.write(to: temporaryDirectory.appending(path: "metadata.json"), options: .atomic)
+            if fileManager.fileExists(atPath: directory.path) {
+                try fileManager.removeItem(at: directory)
+            }
+            try fileManager.moveItem(at: temporaryDirectory, to: directory)
+        } catch {
+            try? fileManager.removeItem(at: temporaryDirectory)
+            throw error
+        }
     }
 
     private static func safePathComponent(_ value: String) -> String {
@@ -77,5 +103,13 @@ private extension JSONEncoder {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         return encoder
+    }()
+}
+
+private extension JSONDecoder {
+    static let knowledgeImport: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
     }()
 }

@@ -67,7 +67,7 @@ struct KnowledgeImportCoordinator {
                 var existingDocumentsByRemoteID = Dictionary(
                     uniqueKeysWithValues: existingDocuments.map { ($0.remoteID, $0) }
                 )
-                var changedDocumentCount = 0
+                var saveResults = [KnowledgeImportSaveResult]()
 
                 for snapshot in uniqueSnapshots {
                     let existingDocument = existingDocumentsByRemoteID[snapshot.remoteID]
@@ -77,12 +77,12 @@ struct KnowledgeImportCoordinator {
                         existingDocument: existingDocument
                     )
                     let document = saveResult.document
-                    if saveResult.didChange {
-                        changedDocumentCount += 1
-                    }
-                    try databaseWriter.upsertImportedKnowledgeDocument(document)
+                    saveResults.append(saveResult)
                     existingDocumentsByRemoteID[snapshot.remoteID] = document
                 }
+
+                try databaseWriter.upsertImportedKnowledgeDocuments(saveResults.map(\.document))
+                let changedDocumentCount = saveResults.filter(\.didChange).count
 
                 connectorResults.append(
                     KnowledgeImportConnectorRunResult(

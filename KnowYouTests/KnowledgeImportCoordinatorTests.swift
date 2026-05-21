@@ -107,6 +107,45 @@ final class KnowledgeImportCoordinatorTests: XCTestCase {
         XCTAssertTrue(try fixture.databaseWriter.fetchImportedKnowledgeDocuments(connectorInstanceID: "local-main").isEmpty)
     }
 
+    func testSyncDoesNotPartiallyUpsertDocumentsWhenLaterStoreSaveFails() async throws {
+        let fixture = try makeFixture(now: Date(timeIntervalSince1970: 1_778_100_450))
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let firstSnapshot = Self.makeSnapshot(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "docs/first.md",
+            title: "First",
+            contentMarkdown: "# First"
+        )
+        let failingSnapshot = Self.makeSnapshot(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "docs/failing.md",
+            title: "Failing",
+            contentMarkdown: "# Failing"
+        )
+        let corruptDocument = try fixture.store.save(
+            failingSnapshot,
+            now: Date(timeIntervalSince1970: 1_778_100_440)
+        )
+        try Data("{not-json".utf8).write(
+            to: URL(fileURLWithPath: corruptDocument.localMetadataPath),
+            options: .atomic
+        )
+        let connector = StubKnowledgeImportConnector(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            snapshots: [firstSnapshot, failingSnapshot]
+        )
+
+        let result = await fixture.coordinator.sync(connectors: [connector])
+
+        XCTAssertEqual(result.succeededConnectorInstanceIDs, [])
+        XCTAssertEqual(result.failedConnectorInstanceIDs, ["local-main"])
+        XCTAssertEqual(result.changedDocumentCount, 0)
+        XCTAssertTrue(try fixture.databaseWriter.fetchImportedKnowledgeDocuments(connectorInstanceID: "local-main").isEmpty)
+    }
+
     func testSyncUsesNewestSnapshotWhenConnectorEmitsDuplicateRemoteIDs() async throws {
         let fixture = try makeFixture(now: Date(timeIntervalSince1970: 1_778_100_500))
         defer { try? FileManager.default.removeItem(at: fixture.root) }

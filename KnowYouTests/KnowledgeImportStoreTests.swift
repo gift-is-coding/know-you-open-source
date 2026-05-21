@@ -68,6 +68,52 @@ final class KnowledgeImportStoreTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: result.document.localContentPath), encoding: .utf8), "# Newer")
     }
 
+    func testSaveWithResultReportsNewerRemoteUpdateAsChangedEvenWhenContentIsUnchanged() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        _ = try store.save(
+            Self.makeSnapshot(
+                contentMarkdown: "# Same",
+                remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_100)
+            ),
+            now: Date(timeIntervalSince1970: 1_778_000_150)
+        )
+
+        let result = try store.saveWithResult(
+            Self.makeSnapshot(
+                contentMarkdown: "# Same",
+                remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_200)
+            ),
+            now: Date(timeIntervalSince1970: 1_778_000_250)
+        )
+
+        XCTAssertTrue(result.didChange)
+        XCTAssertEqual(result.document.contentHash, sha256Hex("# Same"))
+        XCTAssertEqual(result.document.remoteUpdatedAt, Date(timeIntervalSince1970: 1_778_000_200))
+    }
+
+    func testSaveWithResultReportsClearedDeletionAsChanged() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let snapshot = Self.makeSnapshot(contentMarkdown: "# Restored")
+        let original = try store.save(snapshot, now: Date(timeIntervalSince1970: 1_778_000_100))
+        try FileManager.default.removeItem(at: URL(fileURLWithPath: original.localMetadataPath))
+        var deletedDocument = original
+        deletedDocument.deletedAt = Date(timeIntervalSince1970: 1_778_000_150)
+
+        let result = try store.saveWithResult(
+            snapshot,
+            now: Date(timeIntervalSince1970: 1_778_000_200),
+            existingDocument: deletedDocument
+        )
+
+        XCTAssertTrue(result.didChange)
+        XCTAssertNil(result.document.deletedAt)
+        XCTAssertEqual(result.document.contentHash, original.contentHash)
+    }
+
     func testSaveSnapshotPreservesFirstImportedAtAcrossResync() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }

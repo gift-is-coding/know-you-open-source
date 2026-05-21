@@ -25,6 +25,22 @@ final class KnowledgeImportDatabaseTests: XCTestCase {
         XCTAssertEqual(documents[0].firstImportedAt, first.firstImportedAt)
     }
 
+    func testBatchUpsertImportedDocumentsRollsBackWhenAnyDocumentFails() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let first = makeDocument(remoteID: "remote-batch-1", contentHash: "hash-a", title: "First")
+        let duplicatePrimaryKey = makeDocument(
+            id: first.id,
+            remoteID: "remote-batch-2",
+            contentHash: "hash-b",
+            title: "Second"
+        )
+
+        XCTAssertThrowsError(try writer.upsertImportedKnowledgeDocuments([first, duplicatePrimaryKey]))
+
+        let documents = try writer.fetchImportedKnowledgeDocuments(connectorInstanceID: "local-main")
+        XCTAssertTrue(documents.isEmpty)
+    }
+
     func testMarkDeletedRecordsTombstoneWithoutRemovingRow() throws {
         let writer = try DatabaseWriter.inMemory()
         let document = makeDocument(remoteID: "remote-2", contentHash: "hash-c", title: "Deleted")

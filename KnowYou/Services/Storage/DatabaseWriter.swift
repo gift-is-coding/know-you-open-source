@@ -97,48 +97,15 @@ final class DatabaseWriter: EventWriting {
     }
 
     func upsertImportedKnowledgeDocument(_ document: ImportedKnowledgeDocument) throws {
-        try dbQueue.write { db in
-            try db.execute(
-                sql: """
-                INSERT INTO knowledge_import_documents
-                (id, connectorInstanceID, connectorID, remoteID, title, sourcePath, remoteURL, mimeType, contentHash,
-                 remoteUpdatedAt, firstImportedAt, lastSyncedAt, deletedAt, localContentPath, localMetadataPath,
-                 normalizationVersion, originKind)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(connectorInstanceID, remoteID) DO UPDATE SET
-                    title = excluded.title,
-                    sourcePath = excluded.sourcePath,
-                    remoteURL = excluded.remoteURL,
-                    mimeType = excluded.mimeType,
-                    contentHash = excluded.contentHash,
-                    remoteUpdatedAt = excluded.remoteUpdatedAt,
-                    lastSyncedAt = excluded.lastSyncedAt,
-                    deletedAt = excluded.deletedAt,
-                    localContentPath = excluded.localContentPath,
-                    localMetadataPath = excluded.localMetadataPath,
-                    normalizationVersion = excluded.normalizationVersion,
-                    originKind = excluded.originKind
-                """,
-                arguments: [
-                    document.id,
-                    document.connectorInstanceID,
-                    document.connectorID.rawValue,
-                    document.remoteID,
-                    document.title,
-                    document.sourcePath,
-                    document.remoteURL,
-                    document.mimeType,
-                    document.contentHash,
-                    document.remoteUpdatedAt,
-                    document.firstImportedAt,
-                    document.lastSyncedAt,
-                    document.deletedAt,
-                    document.localContentPath,
-                    document.localMetadataPath,
-                    document.normalizationVersion,
-                    document.originKind,
-                ]
-            )
+        try upsertImportedKnowledgeDocuments([document])
+    }
+
+    func upsertImportedKnowledgeDocuments(_ documents: [ImportedKnowledgeDocument]) throws {
+        try dbQueue.inTransaction { db in
+            for document in documents {
+                try Self.upsertImportedKnowledgeDocument(document, into: db)
+            }
+            return .commit
         }
     }
 
@@ -310,6 +277,53 @@ final class DatabaseWriter: EventWriting {
             localMetadataPath: row["localMetadataPath"],
             normalizationVersion: row["normalizationVersion"],
             originKind: row["originKind"]
+        )
+    }
+
+    private static func upsertImportedKnowledgeDocument(
+        _ document: ImportedKnowledgeDocument,
+        into db: Database
+    ) throws {
+        try db.execute(
+            sql: """
+            INSERT INTO knowledge_import_documents
+            (id, connectorInstanceID, connectorID, remoteID, title, sourcePath, remoteURL, mimeType, contentHash,
+             remoteUpdatedAt, firstImportedAt, lastSyncedAt, deletedAt, localContentPath, localMetadataPath,
+             normalizationVersion, originKind)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(connectorInstanceID, remoteID) DO UPDATE SET
+                title = excluded.title,
+                sourcePath = excluded.sourcePath,
+                remoteURL = excluded.remoteURL,
+                mimeType = excluded.mimeType,
+                contentHash = excluded.contentHash,
+                remoteUpdatedAt = excluded.remoteUpdatedAt,
+                lastSyncedAt = excluded.lastSyncedAt,
+                deletedAt = excluded.deletedAt,
+                localContentPath = excluded.localContentPath,
+                localMetadataPath = excluded.localMetadataPath,
+                normalizationVersion = excluded.normalizationVersion,
+                originKind = excluded.originKind
+            """,
+            arguments: [
+                document.id,
+                document.connectorInstanceID,
+                document.connectorID.rawValue,
+                document.remoteID,
+                document.title,
+                document.sourcePath,
+                document.remoteURL,
+                document.mimeType,
+                document.contentHash,
+                document.remoteUpdatedAt,
+                document.firstImportedAt,
+                document.lastSyncedAt,
+                document.deletedAt,
+                document.localContentPath,
+                document.localMetadataPath,
+                document.normalizationVersion,
+                document.originKind,
+            ]
         )
     }
 }

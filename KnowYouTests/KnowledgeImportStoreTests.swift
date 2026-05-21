@@ -135,6 +135,31 @@ final class KnowledgeImportStoreTests: XCTestCase {
         XCTAssertEqual(metadataDocument, savedDocument)
     }
 
+    func testSaveSnapshotPreservesExistingDocumentIDWhenProvided() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let snapshot = makeSnapshot()
+        let computedID = KnowledgeImportStore.documentID(
+            connectorInstanceID: snapshot.connectorInstanceID,
+            remoteID: snapshot.remoteID
+        )
+        var existingDocument = try store.save(snapshot, now: Date(timeIntervalSince1970: 1_778_000_100))
+        existingDocument.id = "legacy-db-row-id"
+
+        let savedDocument = try store.save(
+            makeSnapshot(contentMarkdown: "# Existing ID"),
+            now: Date(timeIntervalSince1970: 1_778_000_300),
+            existingDocument: existingDocument
+        )
+        let metadataDocument = try decodeDocument(atPath: savedDocument.localMetadataPath)
+
+        XCTAssertNotEqual(existingDocument.id, computedID)
+        XCTAssertEqual(savedDocument.id, existingDocument.id)
+        XCTAssertEqual(metadataDocument.id, existingDocument.id)
+        XCTAssertEqual(metadataDocument, savedDocument)
+    }
+
     func testSaveSnapshotExistingDocumentRecoversCorruptMetadata() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }

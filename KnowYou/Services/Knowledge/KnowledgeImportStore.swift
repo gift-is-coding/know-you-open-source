@@ -43,9 +43,10 @@ struct KnowledgeImportStore {
         } else {
             firstImportedAt = try existingMetadataDocument(at: metadataURL)?.firstImportedAt ?? now
         }
+        let metadataDocumentID = existingDocument?.id ?? documentID
         let contentHash = SHA256Hasher.hash(snapshot.contentMarkdown)
         let document = ImportedKnowledgeDocument(
-            id: documentID,
+            id: metadataDocumentID,
             connectorInstanceID: snapshot.connectorInstanceID,
             connectorID: snapshot.connectorID,
             remoteID: snapshot.remoteID,

@@ -24,7 +24,7 @@ struct SyncMemoryCoordinator {
     knowyou_export: daily_memory
     ---
     """ + "\n"
-    private static let dailyMemoryExportMarkerPattern = #"(?i)^knowyou_export\s*:\s*daily_memory\s*$"#
+    private static let dailyMemoryExportMarkerPattern = #"(?i)^\s*knowyou_export\s*:\s*daily_memory\s*$"#
     private static let trustedFrontmatterKeys: Set<String> = [
         "alias",
         "aliases",
@@ -164,15 +164,15 @@ struct SyncMemoryCoordinator {
                 continue
             }
 
-            if rawLine.range(of: Self.dailyMemoryExportMarkerPattern, options: .regularExpression) != nil {
-                hasDailyMemoryExportMarker = true
-                previousLineAllowsListItem = false
-                isInsideBlockScalar = false
-            } else if isInsideBlockScalar && startsWithIndent(rawLine) {
+            if isInsideBlockScalar && startsWithIndent(rawLine) {
                 hasStructuredYAMLValue = true
             } else if previousLineAllowsListItem && isYAMLListItemLine(rawLine) {
                 hasStructuredYAMLValue = true
                 previousLineAllowsListItem = true
+                isInsideBlockScalar = false
+            } else if rawLine.range(of: Self.dailyMemoryExportMarkerPattern, options: .regularExpression) != nil {
+                hasDailyMemoryExportMarker = true
+                previousLineAllowsListItem = false
                 isInsideBlockScalar = false
             } else if let keyValue = yamlKeyValue(in: rawLine) {
                 keyValueLineCount += 1
@@ -233,13 +233,35 @@ struct SyncMemoryCoordinator {
     }
 
     private func hasDailyMemoryExportMarker(in markdown: String, frontmatterBlock: FrontmatterBlock) -> Bool {
-        markdown[frontmatterBlock.contentRange]
-            .split(whereSeparator: \.isNewline)
-            .contains { line in
-                String(line).range(
-                    of: Self.dailyMemoryExportMarkerPattern,
-                    options: .regularExpression
-                ) != nil
+        var previousLineAllowsNestedYAML = false
+        var isInsideBlockScalar = false
+        for rawLine in markdown[frontmatterBlock.contentRange].split(separator: "\n", omittingEmptySubsequences: false) {
+            let rawLine = String(rawLine)
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if line.isEmpty || line.hasPrefix("#") {
+                previousLineAllowsNestedYAML = false
+            } else if isInsideBlockScalar && startsWithIndent(rawLine) {
+                continue
+            } else if previousLineAllowsNestedYAML && isNestedYAMLLine(rawLine) {
+                previousLineAllowsNestedYAML = true
+                isInsideBlockScalar = false
+            } else if rawLine.range(of: Self.dailyMemoryExportMarkerPattern, options: .regularExpression) != nil {
+                return true
+            } else if let keyValue = yamlKeyValue(in: rawLine) {
+                previousLineAllowsNestedYAML = keyValue.value.isEmpty || isYAMLBlockScalarIndicator(keyValue.value)
+                isInsideBlockScalar = isYAMLBlockScalarIndicator(keyValue.value)
+            } else {
+                previousLineAllowsNestedYAML = false
+                isInsideBlockScalar = false
             }
+        }
+
+        return false
+    }
+
+    private func isNestedYAMLLine(_ line: String) -> Bool {
+        let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        return startsWithIndent(line) || trimmedLine.hasPrefix("- ")
     }
 }

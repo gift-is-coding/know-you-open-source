@@ -140,6 +140,16 @@ final class ObsidianKnowledgeConnectorTests: XCTestCase {
             at: "Archive/Legitimate.md",
             in: vault
         )
+        _ = try writeObsidianFile(
+            """
+            ---
+              KnowYou_Export : Daily_Memory
+            ---
+            # Exported daily memory
+            """,
+            at: "Archive/IndentedFrontmatter.md",
+            in: vault
+        )
 
         let connector = ObsidianKnowledgeConnector(
             connectorInstanceID: "obsidian-main",

@@ -53,14 +53,16 @@ struct ObsidianKnowledgeConnector: KnowledgeImportConnector {
                 return hasMarker
             }
 
-            let frontmatterMarker = #"^knowyou_export\s*:\s*daily_memory\s*$"#
-            if rawLine.range(of: frontmatterMarker, options: [.regularExpression, .caseInsensitive]) != nil {
-                hasMarker = true
-                previousLineAllowsNestedYAML = false
-            } else if line.isEmpty || line.hasPrefix("#") {
+            if line.isEmpty || line.hasPrefix("#") {
                 previousLineAllowsNestedYAML = false
             } else if previousLineAllowsNestedYAML && isNestedYAMLLine(rawLine) {
                 previousLineAllowsNestedYAML = true
+            } else if rawLine.range(
+                of: #"^\s*knowyou_export\s*:\s*daily_memory\s*$"#,
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil {
+                hasMarker = true
+                previousLineAllowsNestedYAML = false
             } else if let keyValue = yamlKeyValue(in: rawLine) {
                 previousLineAllowsNestedYAML = keyValue.value.isEmpty || isYAMLBlockScalarIndicator(keyValue.value)
             } else {

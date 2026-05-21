@@ -1,4 +1,5 @@
 import XCTest
+import GRDB
 @testable import KnowYou
 
 final class KnowledgeImportDatabaseTests: XCTestCase {
@@ -47,6 +48,58 @@ final class KnowledgeImportDatabaseTests: XCTestCase {
         XCTAssertEqual(deletedDocuments[0].deletedAt, deletedAt)
     }
 
+    func testMigrationRepairsLegacyReplacingUniqueKeyWithoutLosingRows() throws {
+        let databaseURL = URL.temporaryDirectory.appending(path: "\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: databaseURL) }
+
+        let first = makeDocument(remoteID: "remote-3", contentHash: "hash-d", title: "Legacy")
+        let replacement = makeDocument(
+            id: "replacement-id",
+            remoteID: "remote-3",
+            contentHash: "hash-e",
+            title: "Replacement",
+            firstImportedAt: Date(timeIntervalSince1970: 1_778_000_100)
+        )
+        let legacyQueue = try DatabaseQueue(path: databaseURL.path)
+        try legacyQueue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE knowledge_import_documents (
+                    id TEXT PRIMARY KEY,
+                    connectorInstanceID TEXT NOT NULL,
+                    connectorID TEXT NOT NULL,
+                    remoteID TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    sourcePath TEXT,
+                    remoteURL TEXT,
+                    mimeType TEXT NOT NULL,
+                    contentHash TEXT NOT NULL,
+                    remoteUpdatedAt DATETIME,
+                    firstImportedAt DATETIME NOT NULL,
+                    lastSyncedAt DATETIME NOT NULL,
+                    deletedAt DATETIME,
+                    localContentPath TEXT NOT NULL,
+                    localMetadataPath TEXT NOT NULL,
+                    normalizationVersion INTEGER NOT NULL,
+                    originKind TEXT NOT NULL,
+                    UNIQUE (connectorInstanceID, remoteID) ON CONFLICT REPLACE
+                )
+                """)
+            try Self.insertImportedKnowledgeDocument(first, into: db)
+        }
+
+        let writer = try DatabaseWriter(path: databaseURL.path)
+        let repairedQueue = try DatabaseQueue(path: databaseURL.path)
+        try repairedQueue.write { db in
+            XCTAssertThrowsError(try Self.insertImportedKnowledgeDocument(replacement, into: db))
+        }
+
+        let documents = try writer.fetchImportedKnowledgeDocuments(connectorInstanceID: "local-main")
+        XCTAssertEqual(documents.count, 1)
+        XCTAssertEqual(documents[0].id, first.id)
+        XCTAssertEqual(documents[0].firstImportedAt, first.firstImportedAt)
+        XCTAssertEqual(documents[0].title, first.title)
+    }
+
     private func makeDocument(
         id: String? = nil,
         remoteID: String,
@@ -72,6 +125,37 @@ final class KnowledgeImportDatabaseTests: XCTestCase {
             localMetadataPath: "/cache/\(remoteID)/metadata.json",
             normalizationVersion: 1,
             originKind: "local-file"
+        )
+    }
+
+    private static func insertImportedKnowledgeDocument(_ document: ImportedKnowledgeDocument, into db: Database) throws {
+        try db.execute(
+            sql: """
+            INSERT INTO knowledge_import_documents
+            (id, connectorInstanceID, connectorID, remoteID, title, sourcePath, remoteURL, mimeType, contentHash,
+             remoteUpdatedAt, firstImportedAt, lastSyncedAt, deletedAt, localContentPath, localMetadataPath,
+             normalizationVersion, originKind)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            arguments: [
+                document.id,
+                document.connectorInstanceID,
+                document.connectorID.rawValue,
+                document.remoteID,
+                document.title,
+                document.sourcePath,
+                document.remoteURL,
+                document.mimeType,
+                document.contentHash,
+                document.remoteUpdatedAt,
+                document.firstImportedAt,
+                document.lastSyncedAt,
+                document.deletedAt,
+                document.localContentPath,
+                document.localMetadataPath,
+                document.normalizationVersion,
+                document.originKind,
+            ]
         )
     }
 }

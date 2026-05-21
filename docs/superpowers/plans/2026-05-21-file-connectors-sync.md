@@ -1584,7 +1584,7 @@ git commit -m "Wire knowledge imports into app state"
 - Test: `KnowYouTests/ConnectorsPanelTests.swift`
 - Modify: `KnowYou.xcodeproj/project.pbxproj`
 
-- [ ] **Step 1: Write failing presentation tests**
+- [x] **Step 1: Write failing presentation tests**
 
 ```swift
 import XCTest
@@ -1625,7 +1625,7 @@ final class ConnectorsPanelTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run panel tests and verify failure**
+- [x] **Step 2: Run panel tests and verify failure**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/ConnectorsPanelTests
@@ -1633,7 +1633,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: compile fails because panel presentation does not exist.
 
-- [ ] **Step 3: Implement presentation model**
+- [x] **Step 3: Implement presentation model**
 
 Create `ConnectorsPanel.swift`:
 
@@ -1738,7 +1738,7 @@ struct ConnectorsPanel: View {
 }
 ```
 
-- [ ] **Step 4: Wire MainWindowView menu and panel state**
+- [x] **Step 4: Wire MainWindowView menu and panel state**
 
 Replace the menu entry currently opening `SyncMemoryPanel` with a `Connectors` label, and present `ConnectorsPanel` using existing `isShowingSyncMemoryPanel` state or rename that state to `isShowingConnectorsPanel` in a single mechanical pass.
 
@@ -1760,7 +1760,7 @@ onExportNow: { appState.syncMemoryNow() }
 onImportNow: { Task { await appState.importKnowledgeNow() } }
 ```
 
-- [ ] **Step 5: Run panel tests**
+- [x] **Step 5: Run panel tests**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/ConnectorsPanelTests

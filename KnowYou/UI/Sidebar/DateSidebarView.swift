@@ -38,7 +38,7 @@ struct DateSidebarView: View {
 
             HStack(spacing: 4) {
                 Menu {
-                    Button("Sync Memory", action: onOpenSyncMemory)
+                    Button("Connectors", action: onOpenSyncMemory)
                     Button("Settings") {
                         openSettings()
                     }

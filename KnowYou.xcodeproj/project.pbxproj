@@ -60,6 +60,8 @@
 		A10000010000000000000048 /* LaunchAgentManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000048 /* LaunchAgentManager.swift */; };
 		A10000010000000000000049 /* SyncMemoryPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000049 /* SyncMemoryPanel.swift */; };
 		A1000001000000000000004A /* SyncMemoryPanelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004A /* SyncMemoryPanelTests.swift */; };
+		D80000010000000000000002 /* ConnectorsPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D80001010000000000000002 /* ConnectorsPanel.swift */; };
+		D80000010000000000000001 /* ConnectorsPanelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D80001010000000000000001 /* ConnectorsPanelTests.swift */; };
 		A1000001000000000000004B /* UpdateChannelResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004B /* UpdateChannelResolverTests.swift */; };
 		A1000001000000000000004C /* UpdateServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004C /* UpdateServiceTests.swift */; };
 		A10000010000000000000053 /* UpdatePresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000053 /* UpdatePresentationTests.swift */; };
@@ -179,6 +181,8 @@
 		A10001010000000000000048 /* LaunchAgentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAgentManager.swift; sourceTree = "<group>"; };
 		A10001010000000000000049 /* SyncMemoryPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryPanel.swift; sourceTree = "<group>"; };
 		A1000101000000000000004A /* SyncMemoryPanelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryPanelTests.swift; sourceTree = "<group>"; };
+		D80001010000000000000002 /* ConnectorsPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorsPanel.swift; sourceTree = "<group>"; };
+		D80001010000000000000001 /* ConnectorsPanelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorsPanelTests.swift; sourceTree = "<group>"; };
 		A1000101000000000000004B /* UpdateChannelResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChannelResolverTests.swift; sourceTree = "<group>"; };
 		A1000101000000000000004C /* UpdateServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateServiceTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000053 /* UpdatePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatePresentationTests.swift; sourceTree = "<group>"; };
@@ -340,6 +344,7 @@
 				A10001010000000000000057 /* EngineConfigurationSection.swift */,
 				A10001010000000000000008 /* SettingsView.swift */,
 				A10001010000000000000049 /* SyncMemoryPanel.swift */,
+				D80001010000000000000002 /* ConnectorsPanel.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -368,6 +373,7 @@
 				A10001010000000000000042 /* SyncMemoryConfigTests.swift */,
 				A10001010000000000000045 /* SyncMemoryCoordinatorTests.swift */,
 				A1000101000000000000004A /* SyncMemoryPanelTests.swift */,
+				D80001010000000000000001 /* ConnectorsPanelTests.swift */,
 				A10001010000000000000046 /* LaunchAgentManagerTests.swift */,
 				A1000101000000000000004B /* UpdateChannelResolverTests.swift */,
 				A1000101000000000000004C /* UpdateServiceTests.swift */,
@@ -765,6 +771,7 @@
 				A10000010000000000000050 /* UpdatePillView.swift in Sources */,
 				A10000010000000000000051 /* UpdateSheet.swift in Sources */,
 				A10000010000000000000049 /* SyncMemoryPanel.swift in Sources */,
+				D80000010000000000000002 /* ConnectorsPanel.swift in Sources */,
 				A10000010000000000000034 /* DiaryEngineSelectorButton.swift in Sources */,
 				A1000001000000000000000C /* PrivacyFilter.swift in Sources */,
 				A1000001000000000000000F /* Migrations.swift in Sources */,
@@ -807,6 +814,7 @@
 				A10000010000000000000042 /* SyncMemoryConfigTests.swift in Sources */,
 				A10000010000000000000045 /* SyncMemoryCoordinatorTests.swift in Sources */,
 				A1000001000000000000004A /* SyncMemoryPanelTests.swift in Sources */,
+				D80000010000000000000001 /* ConnectorsPanelTests.swift in Sources */,
 				A10000010000000000000046 /* LaunchAgentManagerTests.swift in Sources */,
 				A1000001000000000000004B /* UpdateChannelResolverTests.swift in Sources */,
 				A1000001000000000000004C /* UpdateServiceTests.swift in Sources */,

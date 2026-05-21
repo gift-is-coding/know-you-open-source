@@ -188,39 +188,20 @@ struct MainWindowView: View {
                 }
             )
         ) {
-            SyncMemoryPanel(
-                obsidianPath: appState.syncMemoryConfig.obsidian.resolvedPath,
-                openClawPath: appState.syncMemoryConfig.openClaw.resolvedPath,
-                statusMessage: appState.syncMemoryStatusMessage,
-                isAutoSyncDailyEnabled: Binding(
-                    get: { appState.syncMemoryConfig.autoSyncEnabled },
-                    set: { isEnabled in
-                        var config = appState.syncMemoryConfig
-                        config.autoSyncEnabled = isEnabled
-                        appState.saveSyncMemoryConfig(config)
-                    }
+            ConnectorsPanel(
+                presentation: ConnectorsPanelPresentation(
+                    syncMemoryConfig: appState.syncMemoryConfig,
+                    knowledgeImportConfig: appState.knowledgeImportConfig,
+                    syncMemoryStatusMessage: appState.syncMemoryStatusMessage,
+                    knowledgeImportStatusMessage: appState.knowledgeImportStatusMessage
                 ),
-                dailySyncTime: Binding(
-                    get: {
-                        var components = DateComponents()
-                        components.hour = appState.syncMemoryConfig.dailySyncHour
-                        components.minute = appState.syncMemoryConfig.dailySyncMinute
-                        return Calendar.current.date(from: components) ?? Date()
-                    },
-                    set: { date in
-                        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
-                        var config = appState.syncMemoryConfig
-                        config.dailySyncHour = components.hour ?? 21
-                        config.dailySyncMinute = components.minute ?? 0
-                        appState.saveSyncMemoryConfig(config)
-                    }
-                ),
-                onChooseObsidian: { chooseSyncMemoryFolder(for: .obsidian) },
-                onChooseOpenClaw: { chooseSyncMemoryFolder(for: .openClaw) },
-                onOpenObsidian: { openSyncMemoryFolder(at: appState.syncMemoryConfig.obsidian.resolvedPath) },
-                onOpenOpenClaw: { openSyncMemoryFolder(at: appState.syncMemoryConfig.openClaw.resolvedPath) },
-                onSyncNow: {
+                onExportNow: {
                     appState.syncMemoryNow()
+                },
+                onImportNow: {
+                    Task { @MainActor in
+                        await appState.importKnowledgeNow()
+                    }
                 },
                 onClose: {
                     appState.closeSyncMemoryPanel()

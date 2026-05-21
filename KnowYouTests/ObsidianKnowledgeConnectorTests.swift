@@ -30,7 +30,7 @@ final class ObsidianKnowledgeConnectorTests: XCTestCase {
         XCTAssertEqual(note.sourcePath, vault.appending(path: "Inbox/Note.md").path)
     }
 
-    func testFetchSnapshotsSkipsKnowYouExportMarkersButKeepsLegitimateNotesOutsideExportDirectory() async throws {
+    func testFetchSnapshotsSkipsKnowYouExportFrontmatterButKeepsLegitimateNotesOutsideExportDirectory() async throws {
         let vault = try makeObsidianTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: vault) }
         _ = try writeObsidianFile(
@@ -66,8 +66,11 @@ final class ObsidianKnowledgeConnectorTests: XCTestCase {
 
         let snapshots = try await connector.fetchSnapshots()
 
-        XCTAssertEqual(snapshots.map(\.remoteID), ["Archive/Legitimate.md"])
-        let legitimate = try XCTUnwrap(snapshots.first)
+        XCTAssertEqual(
+            snapshots.map(\.remoteID),
+            ["Archive/Legitimate.md", "Archive/SidecarCompact.md", "Archive/SidecarSpaced.md"]
+        )
+        let legitimate = try XCTUnwrap(snapshots.first { $0.remoteID == "Archive/Legitimate.md" })
         XCTAssertEqual(legitimate.connectorID, .obsidianImport)
         XCTAssertEqual(legitimate.originKind, "obsidian-vault")
         XCTAssertEqual(legitimate.contentMarkdown, "# Legitimate note\nThis is not a KnowYou export.")
@@ -145,7 +148,10 @@ final class ObsidianKnowledgeConnectorTests: XCTestCase {
 
         let snapshots = try await connector.fetchSnapshots()
 
-        XCTAssertEqual(snapshots.map(\.remoteID), ["Archive/Legitimate.md"])
+        XCTAssertEqual(
+            snapshots.map(\.remoteID),
+            ["Archive/Legitimate.md", "Archive/UppercaseJSONKey.md", "Archive/UppercaseJSONValue.md"]
+        )
     }
 
     func testFetchSnapshotsKeepsLegitimateNoteWithBodyOnlyExportMarkerText() async throws {
@@ -207,6 +213,32 @@ final class ObsidianKnowledgeConnectorTests: XCTestCase {
         XCTAssertEqual(snapshots.map(\.remoteID), ["Archive/ThematicBodyMarkerReference.md"])
     }
 
+    func testFetchSnapshotsKeepsLegitimateNoteWithNestedFrontmatterMarkerReference() async throws {
+        let vault = try makeObsidianTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: vault) }
+        _ = try writeObsidianFile(
+            """
+            ---
+            summary: |
+              Example export marker:
+              knowyou_export: daily_memory
+            ---
+            # Legit note
+            """,
+            at: "Archive/NestedMarkerReference.md",
+            in: vault
+        )
+
+        let connector = ObsidianKnowledgeConnector(
+            connectorInstanceID: "obsidian-main",
+            vaultURL: vault
+        )
+
+        let snapshots = try await connector.fetchSnapshots()
+
+        XCTAssertEqual(snapshots.map(\.remoteID), ["Archive/NestedMarkerReference.md"])
+    }
+
     func testFetchSnapshotsKeepsLegitimateNoteWhenOpeningFenceIsNotExactFrontmatterFence() async throws {
         let vault = try makeObsidianTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: vault) }
@@ -242,6 +274,11 @@ final class ObsidianKnowledgeConnectorTests: XCTestCase {
             at: "Archive/JsonMarkerReference.md",
             in: vault
         )
+        _ = try writeObsidianFile(
+            #"{"originKind":"daily_memory_export"}"#,
+            at: "Archive/JsonOnlyDataNote.md",
+            in: vault
+        )
 
         let connector = ObsidianKnowledgeConnector(
             connectorInstanceID: "obsidian-main",
@@ -250,7 +287,7 @@ final class ObsidianKnowledgeConnectorTests: XCTestCase {
 
         let snapshots = try await connector.fetchSnapshots()
 
-        XCTAssertEqual(snapshots.map(\.remoteID), ["Archive/JsonMarkerReference.md"])
+        XCTAssertEqual(snapshots.map(\.remoteID), ["Archive/JsonMarkerReference.md", "Archive/JsonOnlyDataNote.md"])
     }
 }
 

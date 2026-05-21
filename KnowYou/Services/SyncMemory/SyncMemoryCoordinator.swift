@@ -24,7 +24,7 @@ struct SyncMemoryCoordinator {
     knowyou_export: daily_memory
     ---
     """ + "\n"
-    private static let dailyMemoryExportMarkerPattern = #"(?i)^\s*knowyou_export\s*:\s*daily_memory\s*$"#
+    private static let dailyMemoryExportMarkerPattern = #"(?i)^knowyou_export\s*:\s*daily_memory\s*$"#
     private static let trustedFrontmatterKeys: Set<String> = [
         "alias",
         "aliases",

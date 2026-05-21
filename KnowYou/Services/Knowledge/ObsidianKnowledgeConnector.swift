@@ -27,11 +27,7 @@ struct ObsidianKnowledgeConnector: KnowledgeImportConnector {
     }
 
     private static func containsKnowYouExportMarker(remoteID: String, contentMarkdown: String) -> Bool {
-        if frontmatterContainsKnowYouExportMarker(contentMarkdown) {
-            return true
-        }
-
-        return jsonContainsKnowYouExportMarker(contentMarkdown)
+        frontmatterContainsKnowYouExportMarker(contentMarkdown)
     }
 
     private static func frontmatterContainsKnowYouExportMarker(_ contentMarkdown: String) -> Bool {
@@ -57,7 +53,7 @@ struct ObsidianKnowledgeConnector: KnowledgeImportConnector {
                 return hasMarker
             }
 
-            let frontmatterMarker = #"^\s*knowyou_export\s*:\s*daily_memory\s*$"#
+            let frontmatterMarker = #"^knowyou_export\s*:\s*daily_memory\s*$"#
             if rawLine.range(of: frontmatterMarker, options: [.regularExpression, .caseInsensitive]) != nil {
                 hasMarker = true
                 previousLineAllowsNestedYAML = false
@@ -78,21 +74,6 @@ struct ObsidianKnowledgeConnector: KnowledgeImportConnector {
         }
 
         return false
-    }
-
-    private static func jsonContainsKnowYouExportMarker(_ contentMarkdown: String) -> Bool {
-        let trimmedContent = contentMarkdown.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard
-            let data = trimmedContent.data(using: .utf8),
-            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            return false
-        }
-
-        return object.contains { key, value in
-            key.caseInsensitiveCompare("originKind") == .orderedSame
-                && (value as? String)?.caseInsensitiveCompare("daily_memory_export") == .orderedSame
-        }
     }
 
     private static func yamlKeyValue(in line: String) -> (key: String, value: String)? {

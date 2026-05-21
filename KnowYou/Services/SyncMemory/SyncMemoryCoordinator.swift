@@ -18,11 +18,17 @@ enum SyncMemoryCoordinatorError: LocalizedError {
 
 struct SyncMemoryCoordinator {
     private static let dailyMemoryExportMarker = "knowyou_export: daily_memory"
+    private static let dailyMemoryExportMarkerLine = dailyMemoryExportMarker + "\n"
     private static let dailyMemoryExportFrontmatter = """
     ---
     knowyou_export: daily_memory
     ---
     """ + "\n"
+
+    private struct FrontmatterBlock {
+        let contentRange: Range<String.Index>
+        let insertionIndex: String.Index
+    }
 
     let fileManager: FileManager
 
@@ -71,17 +77,52 @@ struct SyncMemoryCoordinator {
     }
 
     private func exportMarkdown(_ markdown: String) -> String {
-        guard !hasDailyMemoryExportMarker(markdown) else {
-            return markdown
+        if let frontmatterBlock = frontmatterBlock(in: markdown) {
+            guard !hasDailyMemoryExportMarker(in: markdown, frontmatterBlock: frontmatterBlock) else {
+                return markdown
+            }
+
+            return String(markdown[..<frontmatterBlock.insertionIndex])
+                + Self.dailyMemoryExportMarkerLine
+                + String(markdown[frontmatterBlock.insertionIndex...])
         }
 
         return Self.dailyMemoryExportFrontmatter + markdown
     }
 
-    private func hasDailyMemoryExportMarker(_ markdown: String) -> Bool {
-        markdown
+    private func frontmatterBlock(in markdown: String) -> FrontmatterBlock? {
+        guard markdown.hasPrefix("---"), let openingLineEnd = markdown.firstIndex(of: "\n") else {
+            return nil
+        }
+
+        let openingLine = markdown[..<openingLineEnd].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard openingLine == "---" else {
+            return nil
+        }
+
+        let contentStart = markdown.index(after: openingLineEnd)
+        var lineStart = contentStart
+
+        while lineStart < markdown.endIndex {
+            let lineEnd = markdown[lineStart...].firstIndex(of: "\n") ?? markdown.endIndex
+            let line = markdown[lineStart..<lineEnd].trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if line == "---" {
+                return FrontmatterBlock(contentRange: contentStart..<lineStart, insertionIndex: contentStart)
+            }
+
+            guard lineEnd < markdown.endIndex else {
+                break
+            }
+            lineStart = markdown.index(after: lineEnd)
+        }
+
+        return nil
+    }
+
+    private func hasDailyMemoryExportMarker(in markdown: String, frontmatterBlock: FrontmatterBlock) -> Bool {
+        markdown[frontmatterBlock.contentRange]
             .split(whereSeparator: \.isNewline)
-            .prefix(20)
             .contains { $0.trimmingCharacters(in: .whitespaces) == Self.dailyMemoryExportMarker }
     }
 }

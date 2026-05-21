@@ -82,7 +82,7 @@ final class SyncMemoryCoordinatorTests: XCTestCase {
         )
     }
 
-    func testSyncDiariesDoesNotDuplicateExistingDailyMemoryExportMarker() throws {
+    func testSyncDiariesDoesNotDuplicateExistingDailyMemoryExportMarkerInFrontmatter() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let sourceVault = root.appendingPathComponent("source", isDirectory: true)
         let obsidianTarget = root.appendingPathComponent("obsidian/KnowYou/Daily Memories", isDirectory: true)
@@ -94,16 +94,6 @@ final class SyncMemoryCoordinatorTests: XCTestCase {
         # Already Exported
         """.write(
             to: sourceVault.appendingPathComponent("2026-04-14.md"),
-            atomically: true,
-            encoding: .utf8
-        )
-        try """
-        # Already Exported
-        knowyou_export: daily_memory
-
-        Original body.
-        """.write(
-            to: sourceVault.appendingPathComponent("2026-04-13.md"),
             atomically: true,
             encoding: .utf8
         )
@@ -132,15 +122,42 @@ final class SyncMemoryCoordinatorTests: XCTestCase {
             exportedMarkdown.components(separatedBy: "knowyou_export: daily_memory").count - 1,
             1
         )
+    }
+
+    func testSyncDiariesPrependsExportMarkerWhenMarkerAppearsOnlyInBody() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceVault = root.appendingPathComponent("source", isDirectory: true)
+        let obsidianTarget = root.appendingPathComponent("obsidian/KnowYou/Daily Memories", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceVault, withIntermediateDirectories: true)
+        try """
+        # Body Marker
+        knowyou_export: daily_memory
+
+        Original body.
+        """.write(
+            to: sourceVault.appendingPathComponent("2026-04-14.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let coordinator = SyncMemoryCoordinator(fileManager: .default)
+        _ = try coordinator.syncDiaries(
+            sourceVault: sourceVault,
+            destinations: [.obsidian: obsidianTarget]
+        )
 
         let exportedMarkdownWithContentMarker = try String(
-            contentsOf: obsidianTarget.appendingPathComponent("2026-04-13.md"),
+            contentsOf: obsidianTarget.appendingPathComponent("2026-04-14.md"),
             encoding: .utf8
         )
         XCTAssertEqual(
             exportedMarkdownWithContentMarker,
             """
-            # Already Exported
+            ---
+            knowyou_export: daily_memory
+            ---
+            # Body Marker
             knowyou_export: daily_memory
 
             Original body.
@@ -148,7 +165,46 @@ final class SyncMemoryCoordinatorTests: XCTestCase {
         )
         XCTAssertEqual(
             exportedMarkdownWithContentMarker.components(separatedBy: "knowyou_export: daily_memory").count - 1,
-            1
+            2
+        )
+    }
+
+    func testSyncDiariesMergesExportMarkerIntoExistingFrontmatter() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceVault = root.appendingPathComponent("source", isDirectory: true)
+        let obsidianTarget = root.appendingPathComponent("obsidian/KnowYou/Daily Memories", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceVault, withIntermediateDirectories: true)
+        try """
+        ---
+        title: Existing Metadata
+        tags:
+          - daily
+        ---
+        # With Metadata
+        """.write(
+            to: sourceVault.appendingPathComponent("2026-04-14.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let coordinator = SyncMemoryCoordinator(fileManager: .default)
+        _ = try coordinator.syncDiaries(
+            sourceVault: sourceVault,
+            destinations: [.obsidian: obsidianTarget]
+        )
+
+        XCTAssertEqual(
+            try String(contentsOf: obsidianTarget.appendingPathComponent("2026-04-14.md"), encoding: .utf8),
+            """
+            ---
+            knowyou_export: daily_memory
+            title: Existing Metadata
+            tags:
+              - daily
+            ---
+            # With Metadata
+            """
         )
     }
 

@@ -17,6 +17,13 @@ enum SyncMemoryCoordinatorError: LocalizedError {
 }
 
 struct SyncMemoryCoordinator {
+    private static let dailyMemoryExportMarker = "knowyou_export: daily_memory"
+    private static let dailyMemoryExportFrontmatter = """
+    ---
+    knowyou_export: daily_memory
+    ---
+    """ + "\n"
+
     let fileManager: FileManager
 
     init(fileManager: FileManager = .default) {
@@ -34,10 +41,8 @@ struct SyncMemoryCoordinator {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
             for diaryFile in diaryFiles {
                 let destinationFile = directory.appendingPathComponent(diaryFile.lastPathComponent)
-                if fileManager.fileExists(atPath: destinationFile.path) {
-                    try fileManager.removeItem(at: destinationFile)
-                }
-                try fileManager.copyItem(at: diaryFile, to: destinationFile)
+                let markdown = try String(contentsOf: diaryFile, encoding: .utf8)
+                try exportMarkdown(markdown).write(to: destinationFile, atomically: true, encoding: .utf8)
             }
             results[channel] = SyncMemoryCopyResult(
                 copiedFileNames: diaryFiles.map(\.lastPathComponent),
@@ -63,5 +68,20 @@ struct SyncMemoryCoordinator {
         }
 
         return markdownFiles
+    }
+
+    private func exportMarkdown(_ markdown: String) -> String {
+        guard !hasDailyMemoryExportMarker(markdown) else {
+            return markdown
+        }
+
+        return Self.dailyMemoryExportFrontmatter + markdown
+    }
+
+    private func hasDailyMemoryExportMarker(_ markdown: String) -> Bool {
+        markdown
+            .split(whereSeparator: \.isNewline)
+            .prefix(20)
+            .contains { $0.trimmingCharacters(in: .whitespaces) == Self.dailyMemoryExportMarker }
     }
 }

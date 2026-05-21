@@ -124,6 +124,50 @@ final class SyncMemoryCoordinatorTests: XCTestCase {
         )
     }
 
+    func testSyncDiariesDoesNotDuplicateSpacingAndCaseVariantExportMarkerInFrontmatter() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceVault = root.appendingPathComponent("source", isDirectory: true)
+        let obsidianTarget = root.appendingPathComponent("obsidian/KnowYou/Daily Memories", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceVault, withIntermediateDirectories: true)
+        try """
+        ---
+        KnowYou_Export : Daily_Memory
+        title: Already Exported
+        ---
+        # Already Exported
+        """.write(
+            to: sourceVault.appendingPathComponent("2026-04-14.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let coordinator = SyncMemoryCoordinator(fileManager: .default)
+        _ = try coordinator.syncDiaries(
+            sourceVault: sourceVault,
+            destinations: [.obsidian: obsidianTarget]
+        )
+
+        let exportedMarkdown = try String(
+            contentsOf: obsidianTarget.appendingPathComponent("2026-04-14.md"),
+            encoding: .utf8
+        )
+        XCTAssertEqual(
+            exportedMarkdown,
+            """
+            ---
+            KnowYou_Export : Daily_Memory
+            title: Already Exported
+            ---
+            # Already Exported
+            """
+        )
+        XCTAssertEqual(
+            exportedMarkdown.localizedCaseInsensitiveContains("knowyou_export: daily_memory"),
+            false
+        )
+    }
+
     func testSyncDiariesPrependsExportMarkerWhenMarkerAppearsOnlyInBody() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let sourceVault = root.appendingPathComponent("source", isDirectory: true)
@@ -204,6 +248,43 @@ final class SyncMemoryCoordinatorTests: XCTestCase {
               - daily
             ---
             # With Metadata
+            """
+        )
+    }
+
+    func testSyncDiariesDoesNotTreatThematicBreakBlockAsFrontmatter() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceVault = root.appendingPathComponent("source", isDirectory: true)
+        let obsidianTarget = root.appendingPathComponent("obsidian/KnowYou/Daily Memories", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceVault, withIntermediateDirectories: true)
+        try """
+        ---
+        Intro paragraph without YAML.
+        ---
+        # Body
+        """.write(
+            to: sourceVault.appendingPathComponent("2026-04-14.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let coordinator = SyncMemoryCoordinator(fileManager: .default)
+        _ = try coordinator.syncDiaries(
+            sourceVault: sourceVault,
+            destinations: [.obsidian: obsidianTarget]
+        )
+
+        XCTAssertEqual(
+            try String(contentsOf: obsidianTarget.appendingPathComponent("2026-04-14.md"), encoding: .utf8),
+            """
+            ---
+            knowyou_export: daily_memory
+            ---
+            ---
+            Intro paragraph without YAML.
+            ---
+            # Body
             """
         )
     }

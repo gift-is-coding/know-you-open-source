@@ -24,6 +24,8 @@ struct SyncMemoryCoordinator {
     knowyou_export: daily_memory
     ---
     """ + "\n"
+    private static let dailyMemoryExportMarkerPattern = #"(?i)^\s*knowyou_export\s*:\s*daily_memory\s*$"#
+    private static let yamlKeyValuePattern = #"^\s*[A-Za-z0-9_-]+\s*:"#
 
     private struct FrontmatterBlock {
         let contentRange: Range<String.Index>
@@ -102,13 +104,22 @@ struct SyncMemoryCoordinator {
 
         let contentStart = markdown.index(after: openingLineEnd)
         var lineStart = contentStart
+        var hasYAMLKeyValue = false
 
         while lineStart < markdown.endIndex {
             let lineEnd = markdown[lineStart...].firstIndex(of: "\n") ?? markdown.endIndex
-            let line = markdown[lineStart..<lineEnd].trimmingCharacters(in: .whitespacesAndNewlines)
+            let rawLine = String(markdown[lineStart..<lineEnd])
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
 
             if line == "---" {
+                guard hasYAMLKeyValue else {
+                    return nil
+                }
                 return FrontmatterBlock(contentRange: contentStart..<lineStart, insertionIndex: contentStart)
+            }
+
+            if rawLine.range(of: Self.yamlKeyValuePattern, options: .regularExpression) != nil {
+                hasYAMLKeyValue = true
             }
 
             guard lineEnd < markdown.endIndex else {
@@ -123,6 +134,11 @@ struct SyncMemoryCoordinator {
     private func hasDailyMemoryExportMarker(in markdown: String, frontmatterBlock: FrontmatterBlock) -> Bool {
         markdown[frontmatterBlock.contentRange]
             .split(whereSeparator: \.isNewline)
-            .contains { $0.trimmingCharacters(in: .whitespaces) == Self.dailyMemoryExportMarker }
+            .contains { line in
+                String(line).range(
+                    of: Self.dailyMemoryExportMarkerPattern,
+                    options: .regularExpression
+                ) != nil
+            }
     }
 }

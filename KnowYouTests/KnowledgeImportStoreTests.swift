@@ -42,6 +42,27 @@ final class KnowledgeImportStoreTests: XCTestCase {
         )
     }
 
+    func testSaveSnapshotPreservesFractionalSecondDatesAcrossMetadataFallback() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let firstImportedAt = Date(timeIntervalSince1970: 1_778_000_100.123)
+        let secondSyncedAt = Date(timeIntervalSince1970: 1_778_000_200.789)
+        let remoteUpdatedAt = Date(timeIntervalSince1970: 1_778_000_000.456)
+        let snapshot = makeSnapshot(remoteUpdatedAt: remoteUpdatedAt)
+
+        _ = try store.save(snapshot, now: firstImportedAt)
+        let secondDocument = try store.save(snapshot, now: secondSyncedAt)
+        let metadataDocument = try decodeDocument(atPath: secondDocument.localMetadataPath)
+
+        XCTAssertEqual(secondDocument.firstImportedAt.timeIntervalSince1970, firstImportedAt.timeIntervalSince1970, accuracy: 0.000_001)
+        XCTAssertEqual(secondDocument.lastSyncedAt.timeIntervalSince1970, secondSyncedAt.timeIntervalSince1970, accuracy: 0.000_001)
+        XCTAssertEqual(try XCTUnwrap(secondDocument.remoteUpdatedAt).timeIntervalSince1970, remoteUpdatedAt.timeIntervalSince1970, accuracy: 0.000_001)
+        XCTAssertEqual(metadataDocument.firstImportedAt.timeIntervalSince1970, firstImportedAt.timeIntervalSince1970, accuracy: 0.000_001)
+        XCTAssertEqual(metadataDocument.lastSyncedAt.timeIntervalSince1970, secondSyncedAt.timeIntervalSince1970, accuracy: 0.000_001)
+        XCTAssertEqual(try XCTUnwrap(metadataDocument.remoteUpdatedAt).timeIntervalSince1970, remoteUpdatedAt.timeIntervalSince1970, accuracy: 0.000_001)
+    }
+
     func testSaveSnapshotUsesExistingDocumentFirstImportedAtWhenMetadataIsMissing() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -143,7 +164,8 @@ final class KnowledgeImportStoreTests: XCTestCase {
     private func makeSnapshot(
         connectorInstanceID: String = "local-main",
         remoteID: String = "docs/readme.md",
-        contentMarkdown: String = "# Hello"
+        contentMarkdown: String = "# Hello",
+        remoteUpdatedAt: Date? = Date(timeIntervalSince1970: 1_778_000_000)
     ) -> KnowledgeImportSnapshot {
         KnowledgeImportSnapshot(
             connectorInstanceID: connectorInstanceID,
@@ -154,7 +176,7 @@ final class KnowledgeImportStoreTests: XCTestCase {
             remoteURL: nil,
             mimeType: "text/markdown",
             contentMarkdown: contentMarkdown,
-            remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            remoteUpdatedAt: remoteUpdatedAt,
             originKind: "local-file"
         )
     }
@@ -162,8 +184,27 @@ final class KnowledgeImportStoreTests: XCTestCase {
     private func decodeDocument(atPath path: String) throws -> ImportedKnowledgeDocument {
         let data = try Data(contentsOf: URL(fileURLWithPath: path))
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            if let date = Self.iso8601WithFractionalSeconds().date(from: value) ?? Self.iso8601().date(from: value) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO-8601 date: \(value)")
+        }
         return try decoder.decode(ImportedKnowledgeDocument.self, from: data)
+    }
+
+    private static func iso8601WithFractionalSeconds() -> ISO8601DateFormatter {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }
+
+    private static func iso8601() -> ISO8601DateFormatter {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
     }
 
     private func sha256Hex(_ value: String) -> String {

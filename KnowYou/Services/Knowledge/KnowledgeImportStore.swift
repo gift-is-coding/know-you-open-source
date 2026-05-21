@@ -116,7 +116,7 @@ private extension JSONEncoder {
     static let knowledgeImport: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = KnowledgeImportDateCoding.encodingStrategy
         return encoder
     }()
 }
@@ -124,7 +124,35 @@ private extension JSONEncoder {
 private extension JSONDecoder {
     static let knowledgeImport: JSONDecoder = {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = KnowledgeImportDateCoding.decodingStrategy
         return decoder
     }()
+}
+
+private enum KnowledgeImportDateCoding {
+    static let encodingStrategy: JSONEncoder.DateEncodingStrategy = .custom { date, encoder in
+        var container = encoder.singleValueContainer()
+        try container.encode(iso8601WithFractionalSeconds().string(from: date))
+    }
+
+    static let decodingStrategy: JSONDecoder.DateDecodingStrategy = .custom { decoder in
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+        if let date = iso8601WithFractionalSeconds().date(from: value) ?? iso8601().date(from: value) {
+            return date
+        }
+        throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO-8601 date: \(value)")
+    }
+
+    private static func iso8601WithFractionalSeconds() -> ISO8601DateFormatter {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }
+
+    private static func iso8601() -> ISO8601DateFormatter {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }
 }

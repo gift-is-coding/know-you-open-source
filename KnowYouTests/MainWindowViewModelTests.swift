@@ -6183,19 +6183,39 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertEqual(
             try String(contentsOf: obsidianURL.appending(path: "2026-04-10.md"), encoding: .utf8),
-            "# Older"
+            """
+            ---
+            knowyou_export: daily_memory
+            ---
+            # Older
+            """
         )
         XCTAssertEqual(
             try String(contentsOf: obsidianURL.appending(path: "2026-04-11.md"), encoding: .utf8),
-            "# Latest"
+            """
+            ---
+            knowyou_export: daily_memory
+            ---
+            # Latest
+            """
         )
         XCTAssertEqual(
             try String(contentsOf: openClawURL.appending(path: "2026-04-10.md"), encoding: .utf8),
-            "# Older"
+            """
+            ---
+            knowyou_export: daily_memory
+            ---
+            # Older
+            """
         )
         XCTAssertEqual(
             try String(contentsOf: openClawURL.appending(path: "2026-04-11.md"), encoding: .utf8),
-            "# Latest"
+            """
+            ---
+            knowyou_export: daily_memory
+            ---
+            # Latest
+            """
         )
         XCTAssertEqual(appState.statusMessage, "Synced 2 notes to 2 destinations")
         XCTAssertEqual(appState.syncMemoryStatusMessage, "Synced 2 notes to 2 destinations")

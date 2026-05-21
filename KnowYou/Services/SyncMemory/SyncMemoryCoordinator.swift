@@ -25,7 +25,7 @@ struct SyncMemoryCoordinator {
     ---
     """ + "\n"
     private static let dailyMemoryExportMarkerPattern = #"(?i)^\s*knowyou_export\s*:\s*daily_memory\s*$"#
-    private static let yamlKeyValueLinePattern = #"^\s*[A-Za-z0-9_-]+\s*:\s*.*$"#
+    private static let yamlKeyValueLinePattern = #"^\s*[a-z0-9_-]+\s*:\s*.*$"#
     private static let yamlListItemPattern = #"^\s*-\s+\S.*$"#
 
     private struct FrontmatterBlock {
@@ -132,9 +132,6 @@ struct SyncMemoryCoordinator {
                 hasMetadataLookingLine = true
                 previousLineAllowsListItem = false
             } else if isYAMLKeyValueLine(rawLine) {
-                guard !hasProseLikeUnquotedScalarValue(in: rawLine) else {
-                    return nil
-                }
                 hasMetadataLookingLine = true
                 previousLineAllowsListItem = true
             } else if previousLineAllowsListItem && isYAMLListItemLine(rawLine) {
@@ -158,30 +155,6 @@ struct SyncMemoryCoordinator {
 
     private func isYAMLListItemLine(_ line: String) -> Bool {
         line.range(of: Self.yamlListItemPattern, options: .regularExpression) != nil
-    }
-
-    private func hasProseLikeUnquotedScalarValue(in line: String) -> Bool {
-        guard let colonIndex = line.firstIndex(of: ":") else {
-            return false
-        }
-
-        let value = line[line.index(after: colonIndex)...]
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty else {
-            return false
-        }
-
-        guard let firstCharacter = value.first,
-              firstCharacter != "\"",
-              firstCharacter != "'",
-              firstCharacter != "[",
-              firstCharacter != "{" else {
-            return false
-        }
-
-        return value.contains { character in
-            character == "," || character == "." || character == "!" || character == "?" || character == ";"
-        }
     }
 
     private func hasDailyMemoryExportMarker(in markdown: String, frontmatterBlock: FrontmatterBlock) -> Bool {

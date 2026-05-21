@@ -253,9 +253,6 @@ struct KnowledgeImportStore {
             || document.contentHash != existingDocument.contentHash
             || document.remoteUpdatedAt != existingDocument.remoteUpdatedAt
             || document.deletedAt != existingDocument.deletedAt
-            || document.localContentPath != existingDocument.localContentPath
-            || document.localMetadataPath != existingDocument.localMetadataPath
-            || document.normalizationVersion != existingDocument.normalizationVersion
             || document.originKind != existingDocument.originKind
     }
 

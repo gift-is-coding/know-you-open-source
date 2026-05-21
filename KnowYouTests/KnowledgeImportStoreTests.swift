@@ -121,6 +121,33 @@ final class KnowledgeImportStoreTests: XCTestCase {
         XCTAssertEqual(result.document.contentHash, sha256Hex("# Same"))
     }
 
+    func testSaveWithResultDoesNotReportInternalNormalizationOnlyUpdateAsChanged() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let snapshot = Self.makeSnapshot(contentMarkdown: "# Same")
+        let original = try store.save(snapshot, now: Date(timeIntervalSince1970: 1_778_000_100))
+        try FileManager.default.removeItem(at: URL(fileURLWithPath: original.localMetadataPath))
+        let currentDirectory = URL(fileURLWithPath: original.localMetadataPath).deletingLastPathComponent()
+        var legacyDocument = original
+        legacyDocument.localContentPath = "/legacy/cache/content.md"
+        legacyDocument.localMetadataPath = "/legacy/cache/metadata.json"
+        legacyDocument.normalizationVersion = 0
+
+        let result = try store.saveWithResult(
+            snapshot,
+            now: Date(timeIntervalSince1970: 1_778_000_200),
+            existingDocument: legacyDocument
+        )
+        let metadataDocument = try decodeDocument(atPath: result.document.localMetadataPath)
+
+        XCTAssertFalse(result.didChange)
+        XCTAssertEqual(result.document.localContentPath, currentDirectory.appending(path: "content.md").path)
+        XCTAssertEqual(result.document.localMetadataPath, currentDirectory.appending(path: "metadata.json").path)
+        XCTAssertEqual(result.document.normalizationVersion, 1)
+        XCTAssertEqual(metadataDocument, result.document)
+    }
+
     func testSaveWithResultReportsClearedDeletionAsChanged() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }

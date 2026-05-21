@@ -253,6 +253,68 @@ final class KnowledgeImportStoreTests: XCTestCase {
         )
     }
 
+    func testSaveSnapshotSkipsNilRemoteUpdateWhenMetadataHasRemoteUpdate() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let remoteUpdatedAt = Date(timeIntervalSince1970: 1_778_000_100)
+        let originalDocument = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# Has Remote Date", remoteUpdatedAt: remoteUpdatedAt),
+            now: Date(timeIntervalSince1970: 1_778_000_200)
+        )
+
+        let returnedDocument = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# Missing Remote Date", remoteUpdatedAt: nil),
+            now: Date(timeIntervalSince1970: 1_778_000_200)
+        )
+        let metadataDocument = try decodeDocument(atPath: returnedDocument.localMetadataPath)
+
+        XCTAssertEqual(returnedDocument, originalDocument)
+        XCTAssertEqual(metadataDocument.remoteUpdatedAt, remoteUpdatedAt)
+        XCTAssertEqual(
+            try String(contentsOf: URL(fileURLWithPath: returnedDocument.localContentPath), encoding: .utf8),
+            "# Has Remote Date"
+        )
+    }
+
+    func testSaveSnapshotNormalizesExistingDocumentFieldsWhenSkippingStaleWrite() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let metadataRemoteUpdatedAt = Date(timeIntervalSince1970: 1_778_000_300)
+        let originalDocument = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# Metadata Wins", remoteUpdatedAt: metadataRemoteUpdatedAt),
+            now: Date(timeIntervalSince1970: 1_778_000_400)
+        )
+        var nonAuthoritativeMetadata = originalDocument
+        nonAuthoritativeMetadata.id = "metadata-legacy-id"
+        nonAuthoritativeMetadata.firstImportedAt = Date(timeIntervalSince1970: 1_777_000_000)
+        try encodeDocument(nonAuthoritativeMetadata).write(
+            to: URL(fileURLWithPath: originalDocument.localMetadataPath),
+            options: .atomic
+        )
+        var existingDocument = originalDocument
+        existingDocument.id = "db-authoritative-id"
+        existingDocument.firstImportedAt = Date(timeIntervalSince1970: 1_776_000_000)
+
+        let returnedDocument = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# Stale Incoming", remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_200)),
+            now: Date(timeIntervalSince1970: 1_778_000_250),
+            existingDocument: existingDocument
+        )
+        let metadataDocument = try decodeDocument(atPath: returnedDocument.localMetadataPath)
+
+        XCTAssertEqual(returnedDocument.id, existingDocument.id)
+        XCTAssertEqual(returnedDocument.firstImportedAt, existingDocument.firstImportedAt)
+        XCTAssertEqual(returnedDocument.contentHash, originalDocument.contentHash)
+        XCTAssertEqual(returnedDocument.remoteUpdatedAt, metadataRemoteUpdatedAt)
+        XCTAssertEqual(metadataDocument, returnedDocument)
+        XCTAssertEqual(
+            try String(contentsOf: URL(fileURLWithPath: returnedDocument.localContentPath), encoding: .utf8),
+            "# Metadata Wins"
+        )
+    }
+
     func testDocumentIDIsCollisionSafeForColonSeparatedInputs() throws {
         let firstID = KnowledgeImportStore.documentID(connectorInstanceID: "a:b", remoteID: "c")
         let secondID = KnowledgeImportStore.documentID(connectorInstanceID: "a", remoteID: "b:c")
@@ -383,6 +445,16 @@ final class KnowledgeImportStoreTests: XCTestCase {
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO-8601 date: \(value)")
         }
         return try decoder.decode(ImportedKnowledgeDocument.self, from: data)
+    }
+
+    private func encodeDocument(_ document: ImportedKnowledgeDocument) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(Self.iso8601WithFractionalSeconds().string(from: date))
+        }
+        return try encoder.encode(document)
     }
 
     private func metadataDictionary(atPath path: String) throws -> [String: Any] {

@@ -59,7 +59,11 @@ struct KnowledgeImportStore {
 
         if let existingMetadata,
            Self.isExistingDocument(existingMetadata, newerThan: snapshot, now: now) {
-            return existingMetadata
+            return try normalizedStaleDocument(
+                existingMetadata,
+                using: existingDocument,
+                metadataURL: metadataURL
+            )
         }
 
         let firstImportedAt: Date
@@ -127,8 +131,31 @@ struct KnowledgeImportStore {
                 || (existingRemoteUpdatedAt == snapshotRemoteUpdatedAt && existingDocument.lastSyncedAt > now)
         }
 
+        if existingDocument.remoteUpdatedAt != nil && snapshot.remoteUpdatedAt == nil {
+            return true
+        }
+
         return existingDocument.remoteUpdatedAt == snapshot.remoteUpdatedAt
             && existingDocument.lastSyncedAt > now
+    }
+
+    private func normalizedStaleDocument(
+        _ metadataDocument: ImportedKnowledgeDocument,
+        using existingDocument: ImportedKnowledgeDocument?,
+        metadataURL: URL
+    ) throws -> ImportedKnowledgeDocument {
+        guard let existingDocument else {
+            return metadataDocument
+        }
+
+        var normalizedDocument = metadataDocument
+        normalizedDocument.id = existingDocument.id
+        normalizedDocument.firstImportedAt = existingDocument.firstImportedAt
+        if normalizedDocument != metadataDocument {
+            let data = try JSONEncoder.knowledgeImport().encode(normalizedDocument)
+            try data.write(to: metadataURL, options: .atomic)
+        }
+        return normalizedDocument
     }
 
     private func existingMetadataDocument(at metadataURL: URL) throws -> ImportedKnowledgeDocument? {

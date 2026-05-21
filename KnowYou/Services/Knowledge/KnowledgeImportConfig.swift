@@ -10,7 +10,7 @@ struct KnowledgeImportConfig: Codable, Equatable, Sendable {
     private static let storageKey = "knowledgeImportConfig"
 
     func save(to defaults: UserDefaults = .standard) {
-        if let data = try? JSONEncoder().encode(self) {
+        if let data = try? JSONEncoder().encode(importOnly()) {
             defaults.set(data, forKey: Self.storageKey)
         }
     }
@@ -22,7 +22,13 @@ struct KnowledgeImportConfig: Codable, Equatable, Sendable {
         else {
             return .default
         }
-        return decoded
+        return decoded.importOnly()
+    }
+
+    private func importOnly() -> KnowledgeImportConfig {
+        var config = self
+        config.connectorInstances = connectorInstances.filter { $0.connectorID.isImport }
+        return config
     }
 }
 
@@ -36,7 +42,13 @@ struct KnowledgeImportCredentialStore: Sendable {
     }
 
     func saveBearerToken(_ token: String, connectorInstanceID: String) {
-        keychain.save(token, forKey: "knowledge-import.\(connectorInstanceID).bearer-token", service: service)
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = "knowledge-import.\(connectorInstanceID).bearer-token"
+        if trimmedToken.isEmpty {
+            keychain.delete(forKey: key, service: service)
+        } else {
+            keychain.save(trimmedToken, forKey: key, service: service)
+        }
     }
 
     func bearerToken(connectorInstanceID: String) -> String? {

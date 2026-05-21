@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import KnowYou
 
@@ -6,14 +7,17 @@ final class KnowledgeImportStoreTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
-        let snapshot = makeSnapshot(markdown: "# Hello")
+        let snapshot = makeSnapshot(contentMarkdown: "# Hello")
 
         let document = try store.save(snapshot, now: Date(timeIntervalSince1970: 1_778_000_100))
 
         XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: document.localContentPath), encoding: .utf8), "# Hello")
         let metadataDocument = try decodeDocument(atPath: document.localMetadataPath)
         XCTAssertEqual(metadataDocument, document)
-        XCTAssertEqual(document.contentHash.count, 64)
+        XCTAssertEqual(document.contentHash, sha256Hex("# Hello"))
+
+        let secondDocument = try store.save(snapshot, now: Date(timeIntervalSince1970: 1_778_000_200))
+        XCTAssertEqual(secondDocument.contentHash, document.contentHash)
     }
 
     func testSaveSnapshotPreservesFirstImportedAtAcrossResync() throws {
@@ -23,8 +27,8 @@ final class KnowledgeImportStoreTests: XCTestCase {
         let firstImportedAt = Date(timeIntervalSince1970: 1_778_000_100)
         let secondSyncedAt = Date(timeIntervalSince1970: 1_778_000_200)
 
-        _ = try store.save(makeSnapshot(markdown: "# Hello"), now: firstImportedAt)
-        let secondDocument = try store.save(makeSnapshot(markdown: "# Updated"), now: secondSyncedAt)
+        _ = try store.save(makeSnapshot(contentMarkdown: "# Hello"), now: firstImportedAt)
+        let secondDocument = try store.save(makeSnapshot(contentMarkdown: "# Updated"), now: secondSyncedAt)
         let metadataDocument = try decodeDocument(atPath: secondDocument.localMetadataPath)
 
         XCTAssertEqual(secondDocument.firstImportedAt, firstImportedAt)
@@ -49,7 +53,7 @@ final class KnowledgeImportStoreTests: XCTestCase {
         existingDocument.firstImportedAt = dbFirstImportedAt
 
         let savedDocument = try store.save(
-            makeSnapshot(markdown: "# From DB"),
+            makeSnapshot(contentMarkdown: "# From DB"),
             now: Date(timeIntervalSince1970: 1_778_000_300),
             existingDocument: existingDocument
         )
@@ -71,7 +75,7 @@ final class KnowledgeImportStoreTests: XCTestCase {
         existingDocument.firstImportedAt = dbFirstImportedAt
 
         let savedDocument = try store.save(
-            makeSnapshot(markdown: "# Existing Wins"),
+            makeSnapshot(contentMarkdown: "# Existing Wins"),
             now: Date(timeIntervalSince1970: 1_778_000_300),
             existingDocument: existingDocument
         )
@@ -91,7 +95,7 @@ final class KnowledgeImportStoreTests: XCTestCase {
         let later = Date(timeIntervalSince1970: 1_778_000_400)
 
         let savedDocument = try store.save(
-            makeSnapshot(markdown: "# Recovered"),
+            makeSnapshot(contentMarkdown: "# Recovered"),
             now: later,
             existingDocument: original
         )
@@ -139,7 +143,7 @@ final class KnowledgeImportStoreTests: XCTestCase {
     private func makeSnapshot(
         connectorInstanceID: String = "local-main",
         remoteID: String = "docs/readme.md",
-        markdown: String = "# Hello"
+        contentMarkdown: String = "# Hello"
     ) -> KnowledgeImportSnapshot {
         KnowledgeImportSnapshot(
             connectorInstanceID: connectorInstanceID,
@@ -149,7 +153,7 @@ final class KnowledgeImportStoreTests: XCTestCase {
             sourcePath: "/Users/test/docs/readme.md",
             remoteURL: nil,
             mimeType: "text/markdown",
-            markdown: markdown,
+            contentMarkdown: contentMarkdown,
             remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_000),
             originKind: "local-file"
         )
@@ -160,5 +164,10 @@ final class KnowledgeImportStoreTests: XCTestCase {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(ImportedKnowledgeDocument.self, from: data)
+    }
+
+    private func sha256Hex(_ value: String) -> String {
+        let digest = SHA256.hash(data: Data(value.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 }

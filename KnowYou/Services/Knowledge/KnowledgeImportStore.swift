@@ -8,7 +8,7 @@ struct KnowledgeImportSnapshot: Equatable, Sendable {
     var sourcePath: String?
     var remoteURL: String?
     var mimeType: String
-    var markdown: String
+    var contentMarkdown: String
     var remoteUpdatedAt: Date?
     var originKind: String
 }
@@ -43,7 +43,7 @@ struct KnowledgeImportStore {
         } else {
             firstImportedAt = try existingMetadataDocument(at: metadataURL)?.firstImportedAt ?? now
         }
-        let contentHash = SHA256Hasher.hash(snapshot.markdown)
+        let contentHash = SHA256Hasher.hash(snapshot.contentMarkdown)
         let document = ImportedKnowledgeDocument(
             id: documentID,
             connectorInstanceID: snapshot.connectorInstanceID,
@@ -64,7 +64,7 @@ struct KnowledgeImportStore {
             originKind: snapshot.originKind
         )
         let data = try JSONEncoder.knowledgeImport.encode(document)
-        try writePreparedDocument(markdown: snapshot.markdown, metadata: data, to: directory)
+        try writePreparedDocument(markdown: snapshot.contentMarkdown, metadata: data, to: directory)
         return document
     }
 

@@ -17,7 +17,7 @@ enum KnowledgeImportConnectorError: LocalizedError, Equatable {
     }
 }
 
-protocol KnowledgeImportConnector {
+protocol KnowledgeImportConnector: Sendable {
     var connectorInstanceID: String { get }
     var connectorID: KnowledgeConnectorID { get }
 

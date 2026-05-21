@@ -1345,11 +1345,14 @@ git commit -m "Add API knowledge import connectors"
 **Files:**
 - Modify: `KnowYou/App/AppEnvironment.swift`
 - Modify: `KnowYou/App/AppState.swift`
+- Modify: `KnowYou/KnowYouApp.swift`
 - Modify: `KnowYou/Services/SyncMemory/LaunchAgentManager.swift`
 - Test: `KnowYouTests/MainWindowViewModelTests.swift`
 - Test: `KnowYouTests/LaunchAgentManagerTests.swift`
 
-- [ ] **Step 1: Add failing AppState test**
+**Status:** Implemented. AppState now loads/saves Knowledge Import config independently from Sync Memory export, builds enabled local/Obsidian/API connectors from config and Keychain-backed bearer tokens, imports through `KnowledgeImportCoordinator` into the local KnowledgeSources cache, and registers a separate `--import-knowledge-now` LaunchAgent. `KnowYouApp` also handles the new launch argument and terminates after the import run.
+
+- [x] **Step 1: Add failing AppState test**
 
 Add to `MainWindowViewModelTests`:
 
@@ -1380,7 +1383,7 @@ func testImportKnowledgeNowRunsEnabledConnectorsWithoutChangingSyncMemoryExportC
 }
 ```
 
-- [ ] **Step 2: Add failing LaunchAgent test**
+- [x] **Step 2: Add failing LaunchAgent test**
 
 Add to `LaunchAgentManagerTests`:
 
@@ -1410,7 +1413,7 @@ func testKnowledgeImportRegistrationUsesSeparateArgument() throws {
 }
 ```
 
-- [ ] **Step 3: Run targeted tests and verify failure**
+- [x] **Step 3: Run targeted tests and verify failure**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/MainWindowViewModelTests/testImportKnowledgeNowRunsEnabledConnectorsWithoutChangingSyncMemoryExportConfig -only-testing:KnowYouTests/LaunchAgentManagerTests/testKnowledgeImportRegistrationUsesSeparateArgument
@@ -1418,7 +1421,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: compile fails because AppState and LaunchAgent methods do not exist.
 
-- [ ] **Step 4: Add AppEnvironment knowledge directory**
+- [x] **Step 4: Add AppEnvironment knowledge directory**
 
 In `AppEnvironment`, add:
 
@@ -1429,7 +1432,7 @@ var knowledgeSourcesDirectoryURL: URL {
 }
 ```
 
-- [ ] **Step 5: Add LaunchAgent registration method**
+- [x] **Step 5: Add LaunchAgent registration method**
 
 In `LaunchAgentManager`, add:
 
@@ -1451,7 +1454,7 @@ func knowledgeImportRegistration(
 }
 ```
 
-- [ ] **Step 6: Add AppState import state and actions**
+- [x] **Step 6: Add AppState import state and actions**
 
 Add AppState properties:
 
@@ -1533,7 +1536,7 @@ private func makeKnowledgeImportConnectors(from config: KnowledgeImportConfig) -
 }
 ```
 
-- [ ] **Step 7: Wire API connector factory through credentials**
+- [x] **Step 7: Wire API connector factory through credentials**
 
 Extend the factory for API connectors:
 
@@ -1556,7 +1559,7 @@ case .googleDriveImport:
     return GoogleDriveKnowledgeConnector(instanceID: instance.id, bearerToken: token, client: KnowledgeHTTPClient())
 ```
 
-- [ ] **Step 8: Run targeted tests**
+- [x] **Step 8: Run targeted tests**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/MainWindowViewModelTests/testImportKnowledgeNowRunsEnabledConnectorsWithoutChangingSyncMemoryExportConfig -only-testing:KnowYouTests/LaunchAgentManagerTests/testKnowledgeImportRegistrationUsesSeparateArgument
@@ -1564,7 +1567,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: tests pass.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add KnowYou/App/AppEnvironment.swift KnowYou/App/AppState.swift KnowYou/Services/SyncMemory/LaunchAgentManager.swift KnowYouTests/MainWindowViewModelTests.swift KnowYouTests/LaunchAgentManagerTests.swift

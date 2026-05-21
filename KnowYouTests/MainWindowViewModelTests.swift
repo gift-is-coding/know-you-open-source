@@ -6254,6 +6254,42 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.syncMemoryStatusMessage, "Synced 1 note to 1 destination")
     }
 
+    func testImportKnowledgeNowRunsEnabledConnectorsWithoutChangingSyncMemoryExportConfig() async throws {
+        let environment = try makeEngineEnvironment()
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try "# Imported".write(
+            to: root.appending(path: "imported.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        var importConfig = KnowledgeImportConfig.default
+        importConfig.connectorInstances = [
+            KnowledgeConnectorInstanceConfig(
+                id: "local-main",
+                connectorID: .localFolderImport,
+                displayName: "Docs",
+                sourcePath: root.path,
+                isEnabled: true
+            )
+        ]
+        appState.saveKnowledgeImportConfig(importConfig)
+
+        await appState.importKnowledgeNow()
+
+        XCTAssertEqual(appState.knowledgeImportStatusMessage, "Imported 1 document")
+        XCTAssertEqual(appState.statusMessage, "Imported 1 document")
+        XCTAssertFalse(appState.syncMemoryConfig.autoSyncEnabled)
+    }
+
     func testSavingSyncMemoryConfigPublishesAutoSyncStatusMessage() {
         let appState = AppState(
             bootstrapServices: false,

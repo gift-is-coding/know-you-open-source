@@ -21,9 +21,9 @@ struct LocalFolderKnowledgeConnector: KnowledgeImportConnector {
     }
 }
 
-struct FileKnowledgeSnapshotScanner {
-    typealias RemoteIDPredicate = (String) -> Bool
-    typealias ContentPredicate = (String, String) -> Bool
+struct FileKnowledgeSnapshotScanner: @unchecked Sendable {
+    typealias RemoteIDPredicate = @Sendable (String) -> Bool
+    typealias ContentPredicate = @Sendable (String, String) -> Bool
 
     let connectorInstanceID: String
     let connectorID: KnowledgeConnectorID

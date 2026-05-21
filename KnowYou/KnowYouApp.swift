@@ -133,6 +133,8 @@ private struct AppRootView: View {
         Group {
             if launchMode == .syncMemory {
                 SyncMemoryLaunchView()
+            } else if launchMode == .importKnowledge {
+                ImportKnowledgeLaunchView()
             } else if launchMode == .endOfDayReminder {
                 EndOfDayReminderLaunchView()
             } else if appState.shouldShowOnboarding {
@@ -175,11 +177,14 @@ private struct AppRootView: View {
 private enum LaunchMode {
     case interactive
     case syncMemory
+    case importKnowledge
     case endOfDayReminder
 
     init(arguments: [String]) {
         if arguments.contains("--sync-memory-now") {
             self = .syncMemory
+        } else if arguments.contains("--import-knowledge-now") {
+            self = .importKnowledge
         } else if arguments.contains("--end-of-day-reminder-now") {
             self = .endOfDayReminder
         } else {
@@ -196,6 +201,19 @@ private struct SyncMemoryLaunchView: View {
             .hidden()
             .task {
                 appState.syncMemoryNow()
+                NSApp.terminate(nil)
+            }
+    }
+}
+
+private struct ImportKnowledgeLaunchView: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        Text("Import Knowledge")
+            .hidden()
+            .task {
+                await appState.importKnowledgeNow()
                 NSApp.terminate(nil)
             }
     }

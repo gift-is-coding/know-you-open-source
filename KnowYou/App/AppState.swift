@@ -541,6 +541,7 @@ final class AppState {
     var statusMessage: String?
     var endOfDayReminderTestStatusMessage: String?
     var syncMemoryStatusMessage: String?
+    var knowledgeImportStatusMessage: String?
     var isShowingSyncMemoryPanel = false
     var lastAutomationRunAt: Date?
     var lastImportedNotificationCount = 0
@@ -550,6 +551,7 @@ final class AppState {
     var notificationStatus = NotificationImportStatus()
     var dayRefreshStatus = DayRefreshStatus()
     var syncMemoryConfig: SyncMemoryConfig
+    var knowledgeImportConfig: KnowledgeImportConfig
     var endOfDayReminderConfig: EndOfDayReminderConfig
     var engineStatuses: [DiaryEngine: EngineRuntimeStatus]
     var defaultEngine: DiaryEngine
@@ -598,6 +600,7 @@ final class AppState {
     @ObservationIgnored private let onRefreshStageChange: RefreshStageChangeHandler?
     @ObservationIgnored private let notifyOnboardingBootstrapCompletion: @MainActor @Sendable ([String]) -> Void
     @ObservationIgnored private let launchAgentManager: LaunchAgentManager
+    @ObservationIgnored private let knowledgeImportLaunchAgentManager: LaunchAgentManager
     @ObservationIgnored private let loginItemManager: any LoginItemManaging
     @ObservationIgnored private let endOfDayReminderLaunchAgentManager: LaunchAgentManager
     @ObservationIgnored private let endOfDayReminderPlanner: EndOfDayReminderPlanner
@@ -661,6 +664,9 @@ final class AppState {
         keychain: KeychainStoring = KeychainHelper.shared,
         keychainService: String = KeychainHelper.service,
         launchAgentManager: LaunchAgentManager = LaunchAgentManager(),
+        knowledgeImportLaunchAgentManager: LaunchAgentManager = LaunchAgentManager(
+            label: "dev.knowyou.knowledge-import"
+        ),
         loginItemManager: any LoginItemManaging = MainAppLoginItemManager(),
         endOfDayReminderLaunchAgentManager: LaunchAgentManager = LaunchAgentManager(
             label: "dev.knowyou.end-of-day-reminder"
@@ -679,6 +685,7 @@ final class AppState {
         self.onRefreshStageChange = onRefreshStageChange
         self.notifyOnboardingBootstrapCompletion = notifyOnboardingBootstrapCompletion
         self.launchAgentManager = launchAgentManager
+        self.knowledgeImportLaunchAgentManager = knowledgeImportLaunchAgentManager
         self.loginItemManager = loginItemManager
         self.endOfDayReminderLaunchAgentManager = endOfDayReminderLaunchAgentManager
         self.endOfDayReminderPlanner = endOfDayReminderPlanner
@@ -692,6 +699,7 @@ final class AppState {
             startingFrom: SyncMemoryConfig.load(from: userDefaults),
             userDefaults: userDefaults
         )
+        self.knowledgeImportConfig = KnowledgeImportConfig.load(from: userDefaults)
         self.endOfDayReminderConfig = EndOfDayReminderConfig.load(from: userDefaults)
         self.dayReviewStates = Self.loadDayReviewStates(from: userDefaults)
         let persistedSuppression = userDefaults.object(
@@ -1104,6 +1112,49 @@ final class AppState {
         }
     }
 
+    func saveKnowledgeImportConfig(_ config: KnowledgeImportConfig) {
+        knowledgeImportConfig = config
+        knowledgeImportConfig.save(to: userDefaults)
+        do {
+            try knowledgeImportLaunchAgentManager.knowledgeImportRegistration(
+                executablePath: Bundle.main.executableURL?.path,
+                hour: config.dailyImportHour,
+                minute: config.dailyImportMinute,
+                isEnabled: config.isImportEnabled
+            )
+            if config.isImportEnabled {
+                let timeSummary = String(format: "%02d:%02d", config.dailyImportHour, config.dailyImportMinute)
+                setKnowledgeImportStatus("Knowledge import enabled for \(timeSummary)")
+            } else {
+                setKnowledgeImportStatus("Knowledge import disabled")
+            }
+        } catch {
+            setKnowledgeImportStatus("Knowledge import setup failed: \(error.localizedDescription)")
+        }
+    }
+
+    func importKnowledgeNow() async {
+        guard let environment else {
+            setKnowledgeImportStatus("Knowledge import unavailable")
+            return
+        }
+
+        let connectors = makeKnowledgeImportConnectors(from: knowledgeImportConfig)
+        guard !connectors.isEmpty else {
+            setKnowledgeImportStatus("No Knowledge Imports enabled")
+            return
+        }
+
+        let coordinator = KnowledgeImportCoordinator(
+            store: KnowledgeImportStore(rootDirectory: environment.knowledgeSourcesDirectoryURL),
+            databaseWriter: environment.databaseWriter,
+            now: currentDate
+        )
+        let result = await coordinator.sync(connectors: connectors)
+        let noun = result.changedDocumentCount == 1 ? "document" : "documents"
+        setKnowledgeImportStatus("Imported \(result.changedDocumentCount) \(noun)")
+    }
+
     private func normalizedSyncMemoryPath(_ path: String?) -> String? {
         guard let path else { return nil }
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1113,6 +1164,73 @@ final class AppState {
     private func setSyncMemoryStatus(_ message: String) {
         syncMemoryStatusMessage = message
         statusMessage = message
+    }
+
+    private func setKnowledgeImportStatus(_ message: String) {
+        knowledgeImportStatusMessage = message
+        statusMessage = message
+    }
+
+    private func makeKnowledgeImportConnectors(from config: KnowledgeImportConfig) -> [any KnowledgeImportConnector] {
+        let credentialStore = KnowledgeImportCredentialStore(keychain: keychain, service: keychainService)
+        return config.connectorInstances.compactMap { instance -> (any KnowledgeImportConnector)? in
+            guard instance.isEnabled else {
+                return nil
+            }
+
+            switch instance.connectorID {
+            case .localFolderImport:
+                guard let path = normalizedKnowledgeImportValue(instance.sourcePath) else {
+                    return nil
+                }
+                return LocalFolderKnowledgeConnector(
+                    connectorInstanceID: instance.id,
+                    rootURL: URL(fileURLWithPath: path, isDirectory: true)
+                )
+            case .obsidianImport:
+                guard let path = normalizedKnowledgeImportValue(instance.sourcePath) else {
+                    return nil
+                }
+                return ObsidianKnowledgeConnector(
+                    connectorInstanceID: instance.id,
+                    vaultURL: URL(fileURLWithPath: path, isDirectory: true)
+                )
+            case .feishuImport:
+                guard let token = credentialStore.bearerToken(connectorInstanceID: instance.id),
+                      let docToken = normalizedKnowledgeImportValue(instance.sourcePath) else {
+                    return nil
+                }
+                return FeishuKnowledgeConnector(
+                    connectorInstanceID: instance.id,
+                    docToken: docToken,
+                    bearerToken: token
+                )
+            case .notionImport:
+                guard let token = credentialStore.bearerToken(connectorInstanceID: instance.id) else {
+                    return nil
+                }
+                return NotionKnowledgeConnector(
+                    connectorInstanceID: instance.id,
+                    bearerToken: token
+                )
+            case .googleDriveImport:
+                guard let token = credentialStore.bearerToken(connectorInstanceID: instance.id) else {
+                    return nil
+                }
+                return GoogleDriveKnowledgeConnector(
+                    connectorInstanceID: instance.id,
+                    bearerToken: token
+                )
+            case .obsidianExport, .openClawExport:
+                return nil
+            }
+        }
+    }
+
+    private func normalizedKnowledgeImportValue(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     func completeOnboarding(vaultURL: URL, preferredEngine: DiaryEngine) {

@@ -18,6 +18,9 @@ final class AppEnvironment {
     var refreshLogsDirectoryURL: URL {
         databaseURL.deletingLastPathComponent().appending(path: "RefreshLogs", directoryHint: .isDirectory)
     }
+    var knowledgeSourcesDirectoryURL: URL {
+        databaseURL.deletingLastPathComponent().appending(path: "KnowledgeSources", directoryHint: .isDirectory)
+    }
 
     convenience init(
         databasePath: String,

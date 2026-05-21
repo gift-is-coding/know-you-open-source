@@ -100,4 +100,33 @@ final class LaunchAgentManagerTests: XCTestCase {
             "/bin/launchctl", "bootout", "gui/501", plistURL.path,
         ]])
     }
+
+    func testKnowledgeImportRegistrationUsesSeparateArgument() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var recordedCommands: [[String]] = []
+        let manager = LaunchAgentManager(
+            fileManager: .default,
+            label: "dev.knowyou.knowledge-import",
+            homeDirectoryURL: root,
+            commandRunner: { command in
+                recordedCommands.append(command)
+            },
+            userIDProvider: { 501 }
+        )
+
+        try manager.knowledgeImportRegistration(
+            executablePath: "/Applications/KnowYou.app/Contents/MacOS/KnowYou",
+            hour: 7,
+            minute: 30,
+            isEnabled: true
+        )
+
+        let plist = try String(contentsOf: manager.defaultPlistURL(), encoding: .utf8)
+        XCTAssertTrue(plist.contains("--import-knowledge-now"))
+        XCTAssertTrue(plist.contains("dev.knowyou.knowledge-import"))
+        XCTAssertFalse(plist.contains("--sync-memory-now"))
+        XCTAssertFalse(recordedCommands.isEmpty)
+    }
 }

@@ -25,7 +25,8 @@ struct SyncMemoryCoordinator {
     ---
     """ + "\n"
     private static let dailyMemoryExportMarkerPattern = #"(?i)^\s*knowyou_export\s*:\s*daily_memory\s*$"#
-    private static let frontmatterMetadataKeyPattern = #"(?i)^\s*(title|tags|date|created|updated|aliases|type|id)\s*:"#
+    private static let yamlKeyValueLinePattern = #"^\s*[A-Za-z0-9_-]+\s*:\s*.*$"#
+    private static let yamlListItemPattern = #"^\s*-\s+\S.*$"#
 
     private struct FrontmatterBlock {
         let contentRange: Range<String.Index>
@@ -104,7 +105,8 @@ struct SyncMemoryCoordinator {
 
         let contentStart = markdown.index(after: openingLineEnd)
         var lineStart = contentStart
-        var hasFrontmatterSignal = false
+        var hasMetadataLookingLine = false
+        var previousLineAllowsListItem = false
 
         while lineStart < markdown.endIndex {
             let lineEnd = markdown[lineStart...].firstIndex(of: "\n") ?? markdown.endIndex
@@ -112,15 +114,33 @@ struct SyncMemoryCoordinator {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
 
             if line == "---" {
-                guard hasFrontmatterSignal else {
+                guard hasMetadataLookingLine else {
                     return nil
                 }
                 return FrontmatterBlock(contentRange: contentStart..<lineStart, insertionIndex: contentStart)
             }
 
-            if rawLine.range(of: Self.dailyMemoryExportMarkerPattern, options: .regularExpression) != nil
-                || rawLine.range(of: Self.frontmatterMetadataKeyPattern, options: .regularExpression) != nil {
-                hasFrontmatterSignal = true
+            if line.isEmpty || line.hasPrefix("#") {
+                guard lineEnd < markdown.endIndex else {
+                    break
+                }
+                lineStart = markdown.index(after: lineEnd)
+                continue
+            }
+
+            if rawLine.range(of: Self.dailyMemoryExportMarkerPattern, options: .regularExpression) != nil {
+                hasMetadataLookingLine = true
+                previousLineAllowsListItem = false
+            } else if isYAMLKeyValueLine(rawLine) {
+                guard !hasProseLikeUnquotedScalarValue(in: rawLine) else {
+                    return nil
+                }
+                hasMetadataLookingLine = true
+                previousLineAllowsListItem = true
+            } else if previousLineAllowsListItem && isYAMLListItemLine(rawLine) {
+                previousLineAllowsListItem = true
+            } else {
+                return nil
             }
 
             guard lineEnd < markdown.endIndex else {
@@ -130,6 +150,38 @@ struct SyncMemoryCoordinator {
         }
 
         return nil
+    }
+
+    private func isYAMLKeyValueLine(_ line: String) -> Bool {
+        line.range(of: Self.yamlKeyValueLinePattern, options: .regularExpression) != nil
+    }
+
+    private func isYAMLListItemLine(_ line: String) -> Bool {
+        line.range(of: Self.yamlListItemPattern, options: .regularExpression) != nil
+    }
+
+    private func hasProseLikeUnquotedScalarValue(in line: String) -> Bool {
+        guard let colonIndex = line.firstIndex(of: ":") else {
+            return false
+        }
+
+        let value = line[line.index(after: colonIndex)...]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else {
+            return false
+        }
+
+        guard let firstCharacter = value.first,
+              firstCharacter != "\"",
+              firstCharacter != "'",
+              firstCharacter != "[",
+              firstCharacter != "{" else {
+            return false
+        }
+
+        return value.contains { character in
+            character == "," || character == "." || character == "!" || character == "?" || character == ";"
+        }
     }
 
     private func hasDailyMemoryExportMarker(in markdown: String, frontmatterBlock: FrontmatterBlock) -> Bool {

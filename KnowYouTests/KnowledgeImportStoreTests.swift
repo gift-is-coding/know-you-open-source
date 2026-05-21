@@ -258,6 +258,39 @@ final class KnowledgeImportStoreTests: XCTestCase {
         }
     }
 
+    func testConcurrentSavesToSameDocumentIdentitySucceed() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let count = 50
+        let snapshot = Self.makeSnapshot(contentMarkdown: "# Shared")
+
+        let documents = try await withThrowingTaskGroup(of: ImportedKnowledgeDocument.self) { group in
+            for index in 0..<count {
+                group.addTask {
+                    let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+                    return try store.save(
+                        snapshot,
+                        now: Date(timeIntervalSince1970: 1_778_000_100 + Double(index))
+                    )
+                }
+            }
+
+            var documents = [ImportedKnowledgeDocument]()
+            for try await document in group {
+                documents.append(document)
+            }
+            return documents
+        }
+
+        XCTAssertEqual(documents.count, count)
+        let finalDocument = try XCTUnwrap(documents.last)
+        XCTAssertEqual(
+            try String(contentsOf: URL(fileURLWithPath: finalDocument.localContentPath), encoding: .utf8),
+            "# Shared"
+        )
+        XCTAssertEqual(try decodeDocument(atPath: finalDocument.localMetadataPath).contentHash, sha256Hex("# Shared"))
+    }
+
     private static func makeSnapshot(
         connectorInstanceID: String = "local-main",
         remoteID: String = "docs/readme.md",

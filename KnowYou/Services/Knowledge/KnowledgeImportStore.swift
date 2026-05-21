@@ -14,6 +14,8 @@ struct KnowledgeImportSnapshot: Equatable, Sendable {
 }
 
 struct KnowledgeImportStore {
+    private static let writeLocks = KnowledgeImportStoreWriteLocks()
+
     let rootDirectory: URL
     let fileManager: FileManager
 
@@ -39,6 +41,10 @@ struct KnowledgeImportStore {
             .appending(path: snapshot.connectorID.rawValue, directoryHint: .isDirectory)
             .appending(path: Self.safePathComponent(snapshot.connectorInstanceID), directoryHint: .isDirectory)
             .appending(path: Self.safePathComponent(documentID), directoryHint: .isDirectory)
+        let writeLock = Self.writeLocks.lock(for: directory.path)
+        writeLock.lock()
+        defer { writeLock.unlock() }
+
         let contentURL = directory.appending(path: "content.md")
         let metadataURL = directory.appending(path: "metadata.json")
         let firstImportedAt: Date
@@ -132,6 +138,24 @@ struct KnowledgeImportStore {
 
     private static func safePathComponent(_ value: String) -> String {
         SHA256Hasher.hash(value)
+    }
+}
+
+private final class KnowledgeImportStoreWriteLocks: @unchecked Sendable {
+    private let lock = NSLock()
+    private var locksByPath = [String: NSLock]()
+
+    func lock(for path: String) -> NSLock {
+        lock.lock()
+        defer { lock.unlock() }
+
+        if let existingLock = locksByPath[path] {
+            return existingLock
+        }
+
+        let newLock = NSLock()
+        locksByPath[path] = newLock
+        return newLock
     }
 }
 

@@ -78,6 +78,7 @@
 		A10000010000000000000062 /* KnowledgeImportModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000062 /* KnowledgeImportModelTests.swift */; };
 		A10000010000000000000063 /* KnowledgeImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000063 /* KnowledgeImport.swift */; };
 		A10000010000000000000064 /* KnowledgeImportConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000064 /* KnowledgeImportConfig.swift */; };
+		A10000010000000000000065 /* KnowledgeImportDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000065 /* KnowledgeImportDatabaseTests.swift */; };
 		B20000010000000000000001 /* CodexJWTTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000001 /* CodexJWTTests.swift */; };
 		B20000010000000000000002 /* CodexAuthStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000002 /* CodexAuthStoreTests.swift */; };
 		B20000010000000000000003 /* CodexJWT.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000003 /* CodexJWT.swift */; };
@@ -182,6 +183,7 @@
 		A10001010000000000000062 /* KnowledgeImportModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportModelTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000063 /* KnowledgeImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImport.swift; sourceTree = "<group>"; };
 		A10001010000000000000064 /* KnowledgeImportConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportConfig.swift; sourceTree = "<group>"; };
+		A10001010000000000000065 /* KnowledgeImportDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportDatabaseTests.swift; sourceTree = "<group>"; };
 		B20001010000000000000001 /* CodexJWTTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexJWTTests.swift; sourceTree = "<group>"; };
 		B20001010000000000000002 /* CodexAuthStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAuthStoreTests.swift; sourceTree = "<group>"; };
 		B20001010000000000000003 /* CodexJWT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexJWT.swift; sourceTree = "<group>"; };
@@ -347,6 +349,7 @@
 				A1000101000000000000005D /* EndOfDayReminderAppStateTests.swift */,
 				A10001010000000000000061 /* EndOfDayReminderRunnerTests.swift */,
 				A10001010000000000000062 /* KnowledgeImportModelTests.swift */,
+				A10001010000000000000065 /* KnowledgeImportDatabaseTests.swift */,
 				A1000101000000000000002A /* OnboardingContentTests.swift */,
 				A1000101000000000000002B /* OnboardingViewLayoutTests.swift */,
 				A10001010000000000000055 /* OnboardingProgressTests.swift */,
@@ -762,6 +765,7 @@
 				A1000001000000000000005D /* EndOfDayReminderAppStateTests.swift in Sources */,
 				A10000010000000000000061 /* EndOfDayReminderRunnerTests.swift in Sources */,
 				A10000010000000000000062 /* KnowledgeImportModelTests.swift in Sources */,
+				A10000010000000000000065 /* KnowledgeImportDatabaseTests.swift in Sources */,
 				A10000010000000000000028 /* OnboardingContentTests.swift in Sources */,
 				A10000010000000000000029 /* OnboardingViewLayoutTests.swift in Sources */,
 				A10000010000000000000055 /* OnboardingProgressTests.swift in Sources */,

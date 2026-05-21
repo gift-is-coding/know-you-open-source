@@ -96,6 +96,94 @@ final class DatabaseWriter: EventWriting {
         }
     }
 
+    func upsertImportedKnowledgeDocument(_ document: ImportedKnowledgeDocument) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO knowledge_import_documents
+                (id, connectorInstanceID, connectorID, remoteID, title, sourcePath, remoteURL, mimeType, contentHash,
+                 remoteUpdatedAt, firstImportedAt, lastSyncedAt, deletedAt, localContentPath, localMetadataPath,
+                 normalizationVersion, originKind)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(connectorInstanceID, remoteID) DO UPDATE SET
+                    title = excluded.title,
+                    sourcePath = excluded.sourcePath,
+                    remoteURL = excluded.remoteURL,
+                    mimeType = excluded.mimeType,
+                    contentHash = excluded.contentHash,
+                    remoteUpdatedAt = excluded.remoteUpdatedAt,
+                    lastSyncedAt = excluded.lastSyncedAt,
+                    deletedAt = excluded.deletedAt,
+                    localContentPath = excluded.localContentPath,
+                    localMetadataPath = excluded.localMetadataPath,
+                    normalizationVersion = excluded.normalizationVersion,
+                    originKind = excluded.originKind
+                """,
+                arguments: [
+                    document.id,
+                    document.connectorInstanceID,
+                    document.connectorID.rawValue,
+                    document.remoteID,
+                    document.title,
+                    document.sourcePath,
+                    document.remoteURL,
+                    document.mimeType,
+                    document.contentHash,
+                    document.remoteUpdatedAt,
+                    document.firstImportedAt,
+                    document.lastSyncedAt,
+                    document.deletedAt,
+                    document.localContentPath,
+                    document.localMetadataPath,
+                    document.normalizationVersion,
+                    document.originKind,
+                ]
+            )
+        }
+    }
+
+    func fetchImportedKnowledgeDocuments(
+        connectorInstanceID: String? = nil,
+        includeDeleted: Bool = false
+    ) throws -> [ImportedKnowledgeDocument] {
+        try dbQueue.read { db in
+            var clauses: [String] = []
+            var arguments: [DatabaseValueConvertible?] = []
+            if let connectorInstanceID {
+                clauses.append("connectorInstanceID = ?")
+                arguments.append(connectorInstanceID)
+            }
+            if !includeDeleted {
+                clauses.append("deletedAt IS NULL")
+            }
+
+            let whereSQL = clauses.isEmpty ? "" : " WHERE " + clauses.joined(separator: " AND ")
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM knowledge_import_documents\(whereSQL) ORDER BY title ASC",
+                arguments: StatementArguments(arguments)
+            )
+            return try rows.map(Self.importedKnowledgeDocument(from:))
+        }
+    }
+
+    func markImportedKnowledgeDocumentDeleted(
+        connectorInstanceID: String,
+        remoteID: String,
+        deletedAt: Date
+    ) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                UPDATE knowledge_import_documents
+                SET deletedAt = ?, lastSyncedAt = ?
+                WHERE connectorInstanceID = ? AND remoteID = ?
+                """,
+                arguments: [deletedAt, deletedAt, connectorInstanceID, remoteID]
+            )
+        }
+    }
+
     func startRun(runType: String, dayKey: String?) throws -> UUID {
         let runID = UUID()
         try dbQueue.write { db in
@@ -193,5 +281,35 @@ final class DatabaseWriter: EventWriting {
                 )
             }
         }
+    }
+
+    private static func importedKnowledgeDocument(from row: Row) throws -> ImportedKnowledgeDocument {
+        let connectorIDString: String = row["connectorID"]
+        guard let connectorID = KnowledgeConnectorID(rawValue: connectorIDString) else {
+            throw DatabaseWriterRowError.invalidValue(
+                field: "knowledge_import_documents.connectorID",
+                value: connectorIDString
+            )
+        }
+
+        return ImportedKnowledgeDocument(
+            id: row["id"],
+            connectorInstanceID: row["connectorInstanceID"],
+            connectorID: connectorID,
+            remoteID: row["remoteID"],
+            title: row["title"],
+            sourcePath: row["sourcePath"],
+            remoteURL: row["remoteURL"],
+            mimeType: row["mimeType"],
+            contentHash: row["contentHash"],
+            remoteUpdatedAt: row["remoteUpdatedAt"],
+            firstImportedAt: row["firstImportedAt"],
+            lastSyncedAt: row["lastSyncedAt"],
+            deletedAt: row["deletedAt"],
+            localContentPath: row["localContentPath"],
+            localMetadataPath: row["localMetadataPath"],
+            normalizationVersion: row["normalizationVersion"],
+            originKind: row["originKind"]
+        )
     }
 }

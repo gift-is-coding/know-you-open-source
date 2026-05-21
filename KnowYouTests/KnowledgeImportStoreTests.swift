@@ -359,6 +359,71 @@ final class KnowledgeImportStoreTests: XCTestCase {
         )
     }
 
+    func testSaveSnapshotWritesStaleMetadataWhenCurrentDirectoryIsAbsent() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let original = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# DB Newer", remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_300)),
+            now: Date(timeIntervalSince1970: 1_778_000_400)
+        )
+        let currentDirectory = URL(fileURLWithPath: original.localMetadataPath).deletingLastPathComponent()
+        try FileManager.default.removeItem(at: currentDirectory)
+        var existingDocument = original
+        existingDocument.id = "db-row-id"
+        existingDocument.firstImportedAt = Date(timeIntervalSince1970: 1_777_000_000)
+        existingDocument.localContentPath = "/legacy/cache/content.md"
+        existingDocument.localMetadataPath = "/legacy/cache/metadata.json"
+
+        let returnedDocument = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# Incoming Stale", remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_200)),
+            now: Date(timeIntervalSince1970: 1_778_000_250),
+            existingDocument: existingDocument
+        )
+        let metadataDocument = try decodeDocument(atPath: returnedDocument.localMetadataPath)
+
+        XCTAssertEqual(returnedDocument.id, existingDocument.id)
+        XCTAssertEqual(returnedDocument.firstImportedAt, existingDocument.firstImportedAt)
+        XCTAssertEqual(returnedDocument.localContentPath, currentDirectory.appending(path: "content.md").path)
+        XCTAssertEqual(returnedDocument.localMetadataPath, currentDirectory.appending(path: "metadata.json").path)
+        XCTAssertEqual(metadataDocument, returnedDocument)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: returnedDocument.localMetadataPath))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: returnedDocument.localContentPath))
+    }
+
+    func testSaveSnapshotNormalizesCurrentLocalPathsWhenSkippingStaleWrite() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let original = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# Metadata Newer", remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_300)),
+            now: Date(timeIntervalSince1970: 1_778_000_400)
+        )
+        let currentDirectory = URL(fileURLWithPath: original.localMetadataPath).deletingLastPathComponent()
+        var legacyMetadata = original
+        legacyMetadata.localContentPath = "/legacy/cache/content.md"
+        legacyMetadata.localMetadataPath = "/legacy/cache/metadata.json"
+        try encodeDocument(legacyMetadata).write(to: URL(fileURLWithPath: original.localMetadataPath), options: .atomic)
+        var existingDocument = original
+        existingDocument.id = "db-row-id"
+        existingDocument.firstImportedAt = Date(timeIntervalSince1970: 1_777_000_000)
+        existingDocument.localContentPath = "/db/cache/content.md"
+        existingDocument.localMetadataPath = "/db/cache/metadata.json"
+
+        let returnedDocument = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# Incoming Stale", remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_200)),
+            now: Date(timeIntervalSince1970: 1_778_000_250),
+            existingDocument: existingDocument
+        )
+        let metadataDocument = try decodeDocument(atPath: returnedDocument.localMetadataPath)
+
+        XCTAssertEqual(returnedDocument.id, existingDocument.id)
+        XCTAssertEqual(returnedDocument.firstImportedAt, existingDocument.firstImportedAt)
+        XCTAssertEqual(returnedDocument.localContentPath, currentDirectory.appending(path: "content.md").path)
+        XCTAssertEqual(returnedDocument.localMetadataPath, currentDirectory.appending(path: "metadata.json").path)
+        XCTAssertEqual(metadataDocument, returnedDocument)
+    }
+
     func testSaveSnapshotSkipsOlderRemoteUpdateWhenNewerMetadataExists() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }

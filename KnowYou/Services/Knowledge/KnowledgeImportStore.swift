@@ -70,6 +70,7 @@ struct KnowledgeImportStore {
             return try normalizedStaleDocument(
                 authorityDocument,
                 using: existingDocument,
+                contentURL: contentURL,
                 metadataURL: metadataURL,
                 forceMetadataRewrite: shouldRewriteAuthorityMetadata
             )
@@ -188,18 +189,20 @@ struct KnowledgeImportStore {
     private func normalizedStaleDocument(
         _ metadataDocument: ImportedKnowledgeDocument,
         using existingDocument: ImportedKnowledgeDocument?,
+        contentURL: URL,
         metadataURL: URL,
         forceMetadataRewrite: Bool
     ) throws -> ImportedKnowledgeDocument {
-        guard let existingDocument else {
-            return metadataDocument
-        }
-
         var normalizedDocument = metadataDocument
-        normalizedDocument.id = existingDocument.id
-        normalizedDocument.firstImportedAt = existingDocument.firstImportedAt
+        normalizedDocument.localContentPath = contentURL.path
+        normalizedDocument.localMetadataPath = metadataURL.path
+        if let existingDocument {
+            normalizedDocument.id = existingDocument.id
+            normalizedDocument.firstImportedAt = existingDocument.firstImportedAt
+        }
         if forceMetadataRewrite || normalizedDocument != metadataDocument {
             let data = try JSONEncoder.knowledgeImport().encode(normalizedDocument)
+            try fileManager.createDirectory(at: metadataURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: metadataURL, options: .atomic)
         }
         return normalizedDocument

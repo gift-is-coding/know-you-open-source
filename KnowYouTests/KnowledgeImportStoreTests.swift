@@ -82,6 +82,30 @@ final class KnowledgeImportStoreTests: XCTestCase {
         XCTAssertEqual(metadataDocument, savedDocument)
     }
 
+    func testSaveSnapshotExistingDocumentRecoversCorruptMetadata() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let original = try store.save(makeSnapshot(), now: Date(timeIntervalSince1970: 1_778_000_100))
+        try Data("{not-json".utf8).write(to: URL(fileURLWithPath: original.localMetadataPath), options: .atomic)
+        let later = Date(timeIntervalSince1970: 1_778_000_400)
+
+        let savedDocument = try store.save(
+            makeSnapshot(markdown: "# Recovered"),
+            now: later,
+            existingDocument: original
+        )
+        let metadataDocument = try decodeDocument(atPath: savedDocument.localMetadataPath)
+
+        XCTAssertEqual(savedDocument.firstImportedAt, original.firstImportedAt)
+        XCTAssertEqual(savedDocument.lastSyncedAt, later)
+        XCTAssertEqual(metadataDocument, savedDocument)
+        XCTAssertEqual(
+            try String(contentsOf: URL(fileURLWithPath: savedDocument.localContentPath), encoding: .utf8),
+            "# Recovered"
+        )
+    }
+
     func testDocumentIDIsCollisionSafeForColonSeparatedInputs() throws {
         let firstID = KnowledgeImportStore.documentID(connectorInstanceID: "a:b", remoteID: "c")
         let secondID = KnowledgeImportStore.documentID(connectorInstanceID: "a", remoteID: "b:c")

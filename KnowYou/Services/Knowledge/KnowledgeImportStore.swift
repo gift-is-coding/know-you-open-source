@@ -37,8 +37,12 @@ struct KnowledgeImportStore {
             .appending(path: Self.safePathComponent(documentID), directoryHint: .isDirectory)
         let contentURL = directory.appending(path: "content.md")
         let metadataURL = directory.appending(path: "metadata.json")
-        let metadataDocument = try existingMetadataDocument(at: metadataURL)
-        let firstImportedAt = existingDocument?.firstImportedAt ?? metadataDocument?.firstImportedAt ?? now
+        let firstImportedAt: Date
+        if let existingDocument {
+            firstImportedAt = existingDocument.firstImportedAt
+        } else {
+            firstImportedAt = try existingMetadataDocument(at: metadataURL)?.firstImportedAt ?? now
+        }
         let contentHash = SHA256Hasher.hash(snapshot.markdown)
         let document = ImportedKnowledgeDocument(
             id: documentID,

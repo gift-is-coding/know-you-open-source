@@ -25,7 +25,7 @@ struct SyncMemoryCoordinator {
     ---
     """ + "\n"
     private static let dailyMemoryExportMarkerPattern = #"(?i)^\s*knowyou_export\s*:\s*daily_memory\s*$"#
-    private static let yamlKeyValuePattern = #"^\s*[A-Za-z0-9_-]+\s*:"#
+    private static let frontmatterMetadataKeyPattern = #"(?i)^\s*(title|tags|date|created|updated|aliases|type|id)\s*:"#
 
     private struct FrontmatterBlock {
         let contentRange: Range<String.Index>
@@ -104,7 +104,7 @@ struct SyncMemoryCoordinator {
 
         let contentStart = markdown.index(after: openingLineEnd)
         var lineStart = contentStart
-        var hasYAMLKeyValue = false
+        var hasFrontmatterSignal = false
 
         while lineStart < markdown.endIndex {
             let lineEnd = markdown[lineStart...].firstIndex(of: "\n") ?? markdown.endIndex
@@ -112,14 +112,15 @@ struct SyncMemoryCoordinator {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
 
             if line == "---" {
-                guard hasYAMLKeyValue else {
+                guard hasFrontmatterSignal else {
                     return nil
                 }
                 return FrontmatterBlock(contentRange: contentStart..<lineStart, insertionIndex: contentStart)
             }
 
-            if rawLine.range(of: Self.yamlKeyValuePattern, options: .regularExpression) != nil {
-                hasYAMLKeyValue = true
+            if rawLine.range(of: Self.dailyMemoryExportMarkerPattern, options: .regularExpression) != nil
+                || rawLine.range(of: Self.frontmatterMetadataKeyPattern, options: .regularExpression) != nil {
+                hasFrontmatterSignal = true
             }
 
             guard lineEnd < markdown.endIndex else {

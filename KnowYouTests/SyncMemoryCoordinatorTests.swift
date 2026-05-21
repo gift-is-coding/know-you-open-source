@@ -331,6 +331,43 @@ final class SyncMemoryCoordinatorTests: XCTestCase {
         )
     }
 
+    func testSyncDiariesDoesNotTreatThematicBreakBlockWithColonProseAsFrontmatter() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceVault = root.appendingPathComponent("source", isDirectory: true)
+        let obsidianTarget = root.appendingPathComponent("obsidian/KnowYou/Daily Memories", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceVault, withIntermediateDirectories: true)
+        try """
+        ---
+        Note: plain text, not YAML frontmatter
+        ---
+        # Body
+        """.write(
+            to: sourceVault.appendingPathComponent("2026-04-14.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let coordinator = SyncMemoryCoordinator(fileManager: .default)
+        _ = try coordinator.syncDiaries(
+            sourceVault: sourceVault,
+            destinations: [.obsidian: obsidianTarget]
+        )
+
+        XCTAssertEqual(
+            try String(contentsOf: obsidianTarget.appendingPathComponent("2026-04-14.md"), encoding: .utf8),
+            """
+            ---
+            knowyou_export: daily_memory
+            ---
+            ---
+            Note: plain text, not YAML frontmatter
+            ---
+            # Body
+            """
+        )
+    }
+
     func testSyncDiariesThrowsWhenNoMarkdownExists() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

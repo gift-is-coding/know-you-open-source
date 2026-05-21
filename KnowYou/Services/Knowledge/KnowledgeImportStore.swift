@@ -22,7 +22,11 @@ struct KnowledgeImportStore {
         self.fileManager = fileManager
     }
 
-    func save(_ snapshot: KnowledgeImportSnapshot, now: Date = Date()) throws -> ImportedKnowledgeDocument {
+    func save(
+        _ snapshot: KnowledgeImportSnapshot,
+        now: Date = Date(),
+        existingDocument: ImportedKnowledgeDocument? = nil
+    ) throws -> ImportedKnowledgeDocument {
         let documentID = Self.documentID(
             connectorInstanceID: snapshot.connectorInstanceID,
             remoteID: snapshot.remoteID
@@ -33,7 +37,8 @@ struct KnowledgeImportStore {
             .appending(path: Self.safePathComponent(documentID), directoryHint: .isDirectory)
         let contentURL = directory.appending(path: "content.md")
         let metadataURL = directory.appending(path: "metadata.json")
-        let firstImportedAt = try existingDocument(at: metadataURL)?.firstImportedAt ?? now
+        let metadataDocument = try existingMetadataDocument(at: metadataURL)
+        let firstImportedAt = existingDocument?.firstImportedAt ?? metadataDocument?.firstImportedAt ?? now
         let contentHash = SHA256Hasher.hash(snapshot.markdown)
         let document = ImportedKnowledgeDocument(
             id: documentID,
@@ -63,7 +68,7 @@ struct KnowledgeImportStore {
         "ci:\(connectorInstanceID.count):\(connectorInstanceID)|remote:\(remoteID.count):\(remoteID)"
     }
 
-    private func existingDocument(at metadataURL: URL) throws -> ImportedKnowledgeDocument? {
+    private func existingMetadataDocument(at metadataURL: URL) throws -> ImportedKnowledgeDocument? {
         guard fileManager.fileExists(atPath: metadataURL.path) else {
             return nil
         }
@@ -83,7 +88,13 @@ struct KnowledgeImportStore {
             try markdown.write(to: temporaryDirectory.appending(path: "content.md"), atomically: true, encoding: .utf8)
             try metadata.write(to: temporaryDirectory.appending(path: "metadata.json"), options: .atomic)
             if fileManager.fileExists(atPath: directory.path) {
-                try fileManager.removeItem(at: directory)
+                _ = try fileManager.replaceItemAt(
+                    directory,
+                    withItemAt: temporaryDirectory,
+                    backupItemName: nil,
+                    options: []
+                )
+                return
             }
             try fileManager.moveItem(at: temporaryDirectory, to: directory)
         } catch {

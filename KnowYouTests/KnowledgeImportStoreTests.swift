@@ -38,6 +38,50 @@ final class KnowledgeImportStoreTests: XCTestCase {
         )
     }
 
+    func testSaveSnapshotUsesExistingDocumentFirstImportedAtWhenMetadataIsMissing() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let original = try store.save(makeSnapshot(), now: Date(timeIntervalSince1970: 1_778_000_100))
+        try FileManager.default.removeItem(at: URL(fileURLWithPath: original.localMetadataPath))
+        let dbFirstImportedAt = Date(timeIntervalSince1970: 1_777_999_000)
+        var existingDocument = original
+        existingDocument.firstImportedAt = dbFirstImportedAt
+
+        let savedDocument = try store.save(
+            makeSnapshot(markdown: "# From DB"),
+            now: Date(timeIntervalSince1970: 1_778_000_300),
+            existingDocument: existingDocument
+        )
+        let metadataDocument = try decodeDocument(atPath: savedDocument.localMetadataPath)
+
+        XCTAssertEqual(savedDocument.firstImportedAt, dbFirstImportedAt)
+        XCTAssertEqual(metadataDocument.firstImportedAt, dbFirstImportedAt)
+        XCTAssertEqual(metadataDocument, savedDocument)
+    }
+
+    func testSaveSnapshotExistingDocumentFirstImportedAtWinsOverMetadata() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let metadataFirstImportedAt = Date(timeIntervalSince1970: 1_778_000_100)
+        let dbFirstImportedAt = Date(timeIntervalSince1970: 1_777_999_000)
+        let original = try store.save(makeSnapshot(), now: metadataFirstImportedAt)
+        var existingDocument = original
+        existingDocument.firstImportedAt = dbFirstImportedAt
+
+        let savedDocument = try store.save(
+            makeSnapshot(markdown: "# Existing Wins"),
+            now: Date(timeIntervalSince1970: 1_778_000_300),
+            existingDocument: existingDocument
+        )
+        let metadataDocument = try decodeDocument(atPath: savedDocument.localMetadataPath)
+
+        XCTAssertEqual(savedDocument.firstImportedAt, dbFirstImportedAt)
+        XCTAssertEqual(metadataDocument.firstImportedAt, dbFirstImportedAt)
+        XCTAssertEqual(metadataDocument, savedDocument)
+    }
+
     func testDocumentIDIsCollisionSafeForColonSeparatedInputs() throws {
         let firstID = KnowledgeImportStore.documentID(connectorInstanceID: "a:b", remoteID: "c")
         let secondID = KnowledgeImportStore.documentID(connectorInstanceID: "a", remoteID: "b:c")

@@ -675,13 +675,15 @@ git commit -m "Add knowledge import local store"
 
 ### Task 4: Import Connector Protocol And Coordinator
 
+**Status:** Completed in commits `05ff643` through `0e0e53d`. The final implementation keeps the planned connector/coordinator shape and adds connector errors, store-backed save results, per-connector apply serialization, transactional DB batch upserts, deterministic duplicate handling, rehydration/no-op changed-count semantics, and connector-level failure isolation.
+
 **Files:**
 - Create: `KnowYou/Services/Knowledge/KnowledgeImportConnector.swift`
 - Create: `KnowYou/Services/Knowledge/KnowledgeImportCoordinator.swift`
 - Test: `KnowYouTests/KnowledgeImportCoordinatorTests.swift`
 - Modify: `KnowYou.xcodeproj/project.pbxproj`
 
-- [ ] **Step 1: Write failing coordinator tests**
+- [x] **Step 1: Write failing coordinator tests**
 
 ```swift
 import XCTest
@@ -734,7 +736,7 @@ private struct FailingConnector: KnowledgeImportConnector {
 }
 ```
 
-- [ ] **Step 2: Run coordinator tests and verify failure**
+- [x] **Step 2: Run coordinator tests and verify failure**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/KnowledgeImportCoordinatorTests
@@ -742,7 +744,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: compile fails because coordinator/protocol types do not exist.
 
-- [ ] **Step 3: Implement protocol and coordinator**
+- [x] **Step 3: Implement protocol and coordinator**
 
 Create `KnowledgeImportConnector.swift`:
 
@@ -804,7 +806,7 @@ struct KnowledgeImportCoordinator {
 }
 ```
 
-- [ ] **Step 4: Run coordinator tests**
+- [x] **Step 4: Run coordinator tests**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/KnowledgeImportCoordinatorTests
@@ -812,7 +814,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add KnowYou/Services/Knowledge/KnowledgeImportConnector.swift KnowYou/Services/Knowledge/KnowledgeImportCoordinator.swift KnowYouTests/KnowledgeImportCoordinatorTests.swift KnowYou.xcodeproj/project.pbxproj

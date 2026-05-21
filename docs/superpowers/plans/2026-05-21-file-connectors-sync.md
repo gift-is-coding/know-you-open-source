@@ -1053,7 +1053,7 @@ git commit -m "Add local knowledge import connectors"
 - Modify: `KnowYou/Services/SyncMemory/SyncMemoryCoordinator.swift`
 - Test: `KnowYouTests/SyncMemoryCoordinatorTests.swift`
 
-**Status:** Completed in commits `f1e34ae` through `91e653d`. Daily Memory export now writes a `knowyou_export: daily_memory` frontmatter marker idempotently, preserves and augments existing frontmatter, treats body-only or nested marker text as normal content, and keeps Obsidian import loop-safe by skipping only exact KnowYou export paths or exact top-level export frontmatter markers. JSON-like note content is imported normally because this scanner does not ingest `.json` sidecars.
+**Status:** Completed in commits `f1e34ae` through `a6a940d`. Daily Memory export now writes a `knowyou_export: daily_memory` frontmatter marker idempotently, preserves and augments existing frontmatter, treats body-only or nested marker text as normal content, preserves compatibility with indented top-level marker variants, and keeps Obsidian import loop-safe by skipping only exact KnowYou export paths or exact top-level export frontmatter markers. JSON-like note content is imported normally because this scanner does not ingest `.json` sidecars.
 
 - [x] **Step 1: Add failing export marker test**
 
@@ -1158,7 +1158,9 @@ git commit -m "Mark daily memory exports"
 - Test: `KnowYouTests/KnowledgeAPIConnectorTests.swift`
 - Modify: `KnowYou.xcodeproj/project.pbxproj`
 
-- [ ] **Step 1: Write failing API connector tests**
+**Status:** Implemented. API connectors now share a bearer-token HTTP client, import Feishu/Lark document Markdown, recursively convert Notion page blocks to Markdown, and import Google Drive Google Docs/Markdown/text files into `KnowledgeImportSnapshot` values. Verified with `KnowledgeAPIConnectorTests` and the combined Task 6/7 targeted test slice.
+
+- [x] **Step 1: Write failing API connector tests**
 
 ```swift
 import XCTest
@@ -1220,7 +1222,7 @@ final class KnowledgeAPIConnectorTests: XCTestCase {
 
 Add `KnowledgeAPIStubURLProtocol` in the same test file using the existing pattern from `CodexOAuthRefresherTests`: static `responses`, static `lastRequest`, `startLoading()`, and `makeSession()`.
 
-- [ ] **Step 2: Run API tests and verify failure**
+- [x] **Step 2: Run API tests and verify failure**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/KnowledgeAPIConnectorTests
@@ -1228,7 +1230,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: compile fails because API connector types do not exist.
 
-- [ ] **Step 3: Implement HTTP client**
+- [x] **Step 3: Implement HTTP client**
 
 Create `KnowledgeHTTPClient.swift`:
 
@@ -1265,7 +1267,7 @@ struct KnowledgeHTTPClient: Sendable {
 }
 ```
 
-- [ ] **Step 4: Implement Feishu connector**
+- [x] **Step 4: Implement Feishu connector**
 
 Use `https://open.feishu.cn/open-apis/docs/v1/content?document_id=<id>` and parse `data.content`:
 
@@ -1307,11 +1309,11 @@ private struct FeishuContentResponse: Decodable {
 }
 ```
 
-- [ ] **Step 5: Implement Notion connector**
+- [x] **Step 5: Implement Notion connector**
 
 Implement `POST https://api.notion.com/v1/search` and `GET https://api.notion.com/v1/blocks/{id}/children`, with `Notion-Version: 2026-03-11`. Convert `heading_1`, `heading_2`, `heading_3`, `paragraph`, `bulleted_list_item`, `numbered_list_item`, `to_do`, and `code` to Markdown. Unsupported blocks produce no line but do not fail the document.
 
-- [ ] **Step 6: Implement Google Drive connector**
+- [x] **Step 6: Implement Google Drive connector**
 
 Implement `GET https://www.googleapis.com/drive/v3/files?q=trashed=false&fields=files(id,name,mimeType,modifiedTime,webViewLink),nextPageToken` and export Google Docs with:
 
@@ -1321,7 +1323,7 @@ https://www.googleapis.com/drive/v3/files/<fileID>/export?mimeType=text/markdown
 
 For `text/markdown` and `text/plain` Drive files, call `GET https://www.googleapis.com/drive/v3/files/<fileID>?alt=media` and save bytes as UTF-8 text.
 
-- [ ] **Step 7: Run API connector tests**
+- [x] **Step 7: Run API connector tests**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/KnowledgeAPIConnectorTests
@@ -1329,7 +1331,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: tests pass without real network calls.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add KnowYou/Services/Knowledge/KnowledgeHTTPClient.swift KnowYou/Services/Knowledge/FeishuKnowledgeConnector.swift KnowYou/Services/Knowledge/NotionKnowledgeConnector.swift KnowYou/Services/Knowledge/GoogleDriveKnowledgeConnector.swift KnowYouTests/KnowledgeAPIConnectorTests.swift KnowYou.xcodeproj/project.pbxproj

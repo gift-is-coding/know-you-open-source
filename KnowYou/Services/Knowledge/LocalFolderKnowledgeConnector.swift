@@ -52,7 +52,7 @@ struct FileKnowledgeSnapshotScanner {
     }
 
     func fetchSnapshots() throws -> [KnowledgeImportSnapshot] {
-        let rootURL = rootURL.standardizedFileURL
+        let rootURL = Self.canonicalFileURL(rootURL)
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: rootURL.path, isDirectory: &isDirectory),
               isDirectory.boolValue else {
@@ -74,13 +74,14 @@ struct FileKnowledgeSnapshotScanner {
 
         var snapshots: [KnowledgeImportSnapshot] = []
         for case let fileURL as URL in enumerator {
+            let fileURL = Self.canonicalFileURL(fileURL)
             let resourceValues = try fileURL.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey])
             guard resourceValues.isRegularFile == true,
                   let mimeType = Self.mimeType(for: fileURL) else {
                 continue
             }
 
-            let remoteID = Self.relativePath(from: rootURL, to: fileURL)
+            let remoteID = try Self.relativePath(from: rootURL, to: fileURL)
             guard !shouldSkipRemoteID(remoteID) else {
                 continue
             }
@@ -131,13 +132,24 @@ struct FileKnowledgeSnapshotScanner {
         }
     }
 
-    private static func relativePath(from rootURL: URL, to fileURL: URL) -> String {
-        let rootPath = rootURL.standardizedFileURL.path
-        let filePath = fileURL.standardizedFileURL.path
+    private static func canonicalFileURL(_ url: URL) -> URL {
+        url.standardizedFileURL.resolvingSymlinksInPath()
+    }
+
+    private static func relativePath(from rootURL: URL, to fileURL: URL) throws -> String {
+        let rootPath = rootURL.path
+        let filePath = fileURL.path
         let prefix = rootPath.hasSuffix("/") ? rootPath : "\(rootPath)/"
-        guard filePath.hasPrefix(prefix) else {
-            return fileURL.lastPathComponent
+        if filePath.hasPrefix(prefix) {
+            return String(filePath.dropFirst(prefix.count))
         }
-        return String(filePath.dropFirst(prefix.count))
+
+        if filePath.lowercased().hasPrefix(prefix.lowercased()) {
+            return String(filePath.dropFirst(prefix.count))
+        }
+
+        throw KnowledgeImportConnectorError.invalidResponse(
+            "Enumerated file \(filePath) is outside scan root \(rootPath)"
+        )
     }
 }

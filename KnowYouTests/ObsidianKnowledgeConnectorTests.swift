@@ -89,6 +89,26 @@ final class ObsidianKnowledgeConnectorTests: XCTestCase {
         XCTAssertEqual(snapshots.map(\.remoteID), ["Notes/Legit.md"])
     }
 
+    func testFetchSnapshotsSkipsKnowYouDailyMemoryExportDirectoryFromSymlinkedVaultRoot() async throws {
+        let container = try makeObsidianTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: container) }
+        let vault = container.appending(path: "ActualVault", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        let symlinkVault = container.appending(path: "LinkedVault", directoryHint: .isDirectory)
+        try FileManager.default.createSymbolicLink(at: symlinkVault, withDestinationURL: vault)
+        _ = try writeObsidianFile("# Mirror", at: "KnowYou/Daily Memories/2026-05-22.md", in: vault)
+        _ = try writeObsidianFile("# Legit note", at: "Notes/Legit.md", in: vault)
+
+        let connector = ObsidianKnowledgeConnector(
+            connectorInstanceID: "obsidian-main",
+            vaultURL: symlinkVault
+        )
+
+        let snapshots = try await connector.fetchSnapshots()
+
+        XCTAssertEqual(snapshots.map(\.remoteID), ["Notes/Legit.md"])
+    }
+
     func testFetchSnapshotsSkipsKnowYouExportMarkersCaseInsensitively() async throws {
         let vault = try makeObsidianTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: vault) }

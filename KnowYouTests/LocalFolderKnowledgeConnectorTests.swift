@@ -85,6 +85,49 @@ final class LocalFolderKnowledgeConnectorTests: XCTestCase {
         XCTAssertEqual(note.sourcePath, noteURL.standardizedFileURL.path)
     }
 
+    func testFetchSnapshotsUsesSymlinkRootForNestedRelativeRemoteID() async throws {
+        let container = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: container) }
+        let root = try makeDirectory("ActualRoot", in: container)
+        let symlinkRoot = container.appending(path: "LinkedRoot", directoryHint: .isDirectory)
+        try FileManager.default.createSymbolicLink(at: symlinkRoot, withDestinationURL: root)
+        let noteURL = try writeFile("# Nested", at: "Projects/Notes/Nested.md", in: root)
+
+        let connector = LocalFolderKnowledgeConnector(
+            connectorInstanceID: "local-main",
+            rootURL: symlinkRoot
+        )
+
+        let snapshots = try await connector.fetchSnapshots()
+
+        let note = try XCTUnwrap(snapshots.first)
+        XCTAssertEqual(note.remoteID, "Projects/Notes/Nested.md")
+        XCTAssertEqual(note.sourcePath, noteURL.resolvingSymlinksInPath().standardizedFileURL.path)
+    }
+
+    func testFetchSnapshotsPreservesNestedRemoteIDForMixedCaseRootPathOnCaseInsensitiveVolume() async throws {
+        let container = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: container) }
+        let root = try makeDirectory("CaseRoot", in: container)
+        _ = try writeFile("# Case", at: "Nested/Case.md", in: root)
+        let lowercasedRoot = URL(fileURLWithPath: root.path.lowercased(), isDirectory: true)
+
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: lowercasedRoot.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            throw XCTSkip("Temporary filesystem is case-sensitive")
+        }
+
+        let connector = LocalFolderKnowledgeConnector(
+            connectorInstanceID: "local-main",
+            rootURL: lowercasedRoot
+        )
+
+        let snapshots = try await connector.fetchSnapshots()
+
+        XCTAssertEqual(snapshots.map(\.remoteID), ["Nested/Case.md"])
+    }
+
     func testFetchSnapshotsWrapsUnreadableTextFileErrorWithFileContext() async throws {
         let root = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

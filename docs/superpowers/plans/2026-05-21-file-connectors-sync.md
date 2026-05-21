@@ -825,6 +825,8 @@ git commit -m "Add knowledge import coordinator"
 
 ### Task 5: Local Folder And Obsidian Import Connectors
 
+**Status:** Completed in commits `1a36183` through `f1d89a6`. The final implementation adds local and Obsidian import connectors with canonical root/path handling, deterministic relative remote IDs, contextual read errors, case-insensitive KnowYou export marker detection, and Obsidian daily export directory loop prevention.
+
 **Files:**
 - Create: `KnowYou/Services/Knowledge/LocalFolderKnowledgeConnector.swift`
 - Create: `KnowYou/Services/Knowledge/ObsidianKnowledgeConnector.swift`
@@ -832,7 +834,7 @@ git commit -m "Add knowledge import coordinator"
 - Test: `KnowYouTests/ObsidianKnowledgeConnectorTests.swift`
 - Modify: `KnowYou.xcodeproj/project.pbxproj`
 
-- [ ] **Step 1: Write failing local folder tests**
+- [x] **Step 1: Write failing local folder tests**
 
 ```swift
 import XCTest
@@ -856,7 +858,7 @@ final class LocalFolderKnowledgeConnectorTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Write failing Obsidian loop-skip tests**
+- [x] **Step 2: Write failing Obsidian loop-skip tests**
 
 ```swift
 import XCTest
@@ -882,7 +884,7 @@ final class ObsidianKnowledgeConnectorTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 3: Run connector tests and verify failure**
+- [x] **Step 3: Run connector tests and verify failure**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/LocalFolderKnowledgeConnectorTests -only-testing:KnowYouTests/ObsidianKnowledgeConnectorTests
@@ -890,7 +892,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: compile fails because connector types do not exist.
 
-- [ ] **Step 4: Implement local folder connector**
+- [x] **Step 4: Implement local folder connector**
 
 Create `LocalFolderKnowledgeConnector.swift`:
 
@@ -962,7 +964,7 @@ struct LocalFolderKnowledgeConnector: KnowledgeImportConnector {
 }
 ```
 
-- [ ] **Step 5: Implement Obsidian connector**
+- [x] **Step 5: Implement Obsidian connector**
 
 Create `ObsidianKnowledgeConnector.swift`:
 
@@ -1028,7 +1030,7 @@ struct ObsidianKnowledgeConnector: KnowledgeImportConnector {
 }
 ```
 
-- [ ] **Step 6: Run connector tests**
+- [x] **Step 6: Run connector tests**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/LocalFolderKnowledgeConnectorTests -only-testing:KnowYouTests/ObsidianKnowledgeConnectorTests
@@ -1036,7 +1038,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add KnowYou/Services/Knowledge/LocalFolderKnowledgeConnector.swift KnowYou/Services/Knowledge/ObsidianKnowledgeConnector.swift KnowYouTests/LocalFolderKnowledgeConnectorTests.swift KnowYouTests/ObsidianKnowledgeConnectorTests.swift KnowYou.xcodeproj/project.pbxproj

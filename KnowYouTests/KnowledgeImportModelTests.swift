@@ -32,6 +32,15 @@ final class KnowledgeImportModelTests: XCTestCase {
         XCTAssertTrue(loaded.isImportEnabled)
         XCTAssertEqual(loaded.dailyImportHour, 7)
         XCTAssertEqual(loaded.dailyImportMinute, 45)
-        XCTAssertEqual(loaded.connectorInstances.first?.connectorID, .localFolderImport)
+        XCTAssertEqual(loaded.connectorInstances.count, 1)
+
+        let loadedInstance = loaded.connectorInstances.first
+        XCTAssertEqual(loadedInstance?.id, "local-main")
+        XCTAssertEqual(loadedInstance?.connectorID, .localFolderImport)
+        XCTAssertEqual(loadedInstance?.displayName, "Docs")
+        XCTAssertEqual(loadedInstance?.sourcePath, "/Users/test/Documents")
+        XCTAssertTrue(loadedInstance?.isEnabled == true)
+        XCTAssertNil(loadedInstance?.accountID)
+        XCTAssertNil(loadedInstance?.workspaceID)
     }
 }

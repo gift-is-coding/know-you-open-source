@@ -7,7 +7,7 @@ final class KnowledgeImportStoreTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
-        let snapshot = makeSnapshot(contentMarkdown: "# Hello")
+        let snapshot = Self.makeSnapshot(contentMarkdown: "# Hello")
 
         let document = try store.save(snapshot, now: Date(timeIntervalSince1970: 1_778_000_100))
 
@@ -27,8 +27,8 @@ final class KnowledgeImportStoreTests: XCTestCase {
         let firstImportedAt = Date(timeIntervalSince1970: 1_778_000_100)
         let secondSyncedAt = Date(timeIntervalSince1970: 1_778_000_200)
 
-        _ = try store.save(makeSnapshot(contentMarkdown: "# Hello"), now: firstImportedAt)
-        let secondDocument = try store.save(makeSnapshot(contentMarkdown: "# Updated"), now: secondSyncedAt)
+        _ = try store.save(Self.makeSnapshot(contentMarkdown: "# Hello"), now: firstImportedAt)
+        let secondDocument = try store.save(Self.makeSnapshot(contentMarkdown: "# Updated"), now: secondSyncedAt)
         let metadataDocument = try decodeDocument(atPath: secondDocument.localMetadataPath)
 
         XCTAssertEqual(secondDocument.firstImportedAt, firstImportedAt)
@@ -49,7 +49,7 @@ final class KnowledgeImportStoreTests: XCTestCase {
         let firstImportedAt = Date(timeIntervalSince1970: 1_778_000_100.123)
         let secondSyncedAt = Date(timeIntervalSince1970: 1_778_000_200.789)
         let remoteUpdatedAt = Date(timeIntervalSince1970: 1_778_000_000.456)
-        let snapshot = makeSnapshot(remoteUpdatedAt: remoteUpdatedAt)
+        let snapshot = Self.makeSnapshot(remoteUpdatedAt: remoteUpdatedAt)
 
         _ = try store.save(snapshot, now: firstImportedAt)
         let secondDocument = try store.save(snapshot, now: secondSyncedAt)
@@ -69,7 +69,7 @@ final class KnowledgeImportStoreTests: XCTestCase {
         let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
         let legacyFirstImportedAt = Date(timeIntervalSince1970: 1_778_000_100)
         let legacyRemoteUpdatedAt = Date(timeIntervalSince1970: 1_778_000_000)
-        let snapshot = makeSnapshot(remoteUpdatedAt: legacyRemoteUpdatedAt)
+        let snapshot = Self.makeSnapshot(remoteUpdatedAt: legacyRemoteUpdatedAt)
         let originalDocument = try store.save(snapshot, now: Date(timeIntervalSince1970: 1_778_000_050))
         try legacyMetadata(
             from: originalDocument,
@@ -95,14 +95,14 @@ final class KnowledgeImportStoreTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
-        let original = try store.save(makeSnapshot(), now: Date(timeIntervalSince1970: 1_778_000_100))
+        let original = try store.save(Self.makeSnapshot(), now: Date(timeIntervalSince1970: 1_778_000_100))
         try FileManager.default.removeItem(at: URL(fileURLWithPath: original.localMetadataPath))
         let dbFirstImportedAt = Date(timeIntervalSince1970: 1_777_999_000)
         var existingDocument = original
         existingDocument.firstImportedAt = dbFirstImportedAt
 
         let savedDocument = try store.save(
-            makeSnapshot(contentMarkdown: "# From DB"),
+            Self.makeSnapshot(contentMarkdown: "# From DB"),
             now: Date(timeIntervalSince1970: 1_778_000_300),
             existingDocument: existingDocument
         )
@@ -119,12 +119,12 @@ final class KnowledgeImportStoreTests: XCTestCase {
         let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
         let metadataFirstImportedAt = Date(timeIntervalSince1970: 1_778_000_100)
         let dbFirstImportedAt = Date(timeIntervalSince1970: 1_777_999_000)
-        let original = try store.save(makeSnapshot(), now: metadataFirstImportedAt)
+        let original = try store.save(Self.makeSnapshot(), now: metadataFirstImportedAt)
         var existingDocument = original
         existingDocument.firstImportedAt = dbFirstImportedAt
 
         let savedDocument = try store.save(
-            makeSnapshot(contentMarkdown: "# Existing Wins"),
+            Self.makeSnapshot(contentMarkdown: "# Existing Wins"),
             now: Date(timeIntervalSince1970: 1_778_000_300),
             existingDocument: existingDocument
         )
@@ -139,7 +139,7 @@ final class KnowledgeImportStoreTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
-        let snapshot = makeSnapshot()
+        let snapshot = Self.makeSnapshot()
         let computedID = KnowledgeImportStore.documentID(
             connectorInstanceID: snapshot.connectorInstanceID,
             remoteID: snapshot.remoteID
@@ -148,7 +148,7 @@ final class KnowledgeImportStoreTests: XCTestCase {
         existingDocument.id = "legacy-db-row-id"
 
         let savedDocument = try store.save(
-            makeSnapshot(contentMarkdown: "# Existing ID"),
+            Self.makeSnapshot(contentMarkdown: "# Existing ID"),
             now: Date(timeIntervalSince1970: 1_778_000_300),
             existingDocument: existingDocument
         )
@@ -160,16 +160,31 @@ final class KnowledgeImportStoreTests: XCTestCase {
         XCTAssertEqual(metadataDocument, savedDocument)
     }
 
+    func testSaveSnapshotRejectsMismatchedExistingDocumentIdentity() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let snapshot = Self.makeSnapshot()
+        var existingDocument = try store.save(snapshot, now: Date(timeIntervalSince1970: 1_778_000_100))
+        existingDocument.remoteID = "docs/other.md"
+
+        XCTAssertThrowsError(
+            try store.save(snapshot, now: Date(timeIntervalSince1970: 1_778_000_200), existingDocument: existingDocument)
+        ) { error in
+            XCTAssertTrue(String(describing: error).contains("Existing document identity mismatch"))
+        }
+    }
+
     func testSaveSnapshotExistingDocumentRecoversCorruptMetadata() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
-        let original = try store.save(makeSnapshot(), now: Date(timeIntervalSince1970: 1_778_000_100))
+        let original = try store.save(Self.makeSnapshot(), now: Date(timeIntervalSince1970: 1_778_000_100))
         try Data("{not-json".utf8).write(to: URL(fileURLWithPath: original.localMetadataPath), options: .atomic)
         let later = Date(timeIntervalSince1970: 1_778_000_400)
 
         let savedDocument = try store.save(
-            makeSnapshot(contentMarkdown: "# Recovered"),
+            Self.makeSnapshot(contentMarkdown: "# Recovered"),
             now: later,
             existingDocument: original
         )
@@ -193,8 +208,8 @@ final class KnowledgeImportStoreTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
-        let firstDocument = try store.save(makeSnapshot(connectorInstanceID: "a:b", remoteID: "c"))
-        let secondDocument = try store.save(makeSnapshot(connectorInstanceID: "a", remoteID: "b:c"))
+        let firstDocument = try store.save(Self.makeSnapshot(connectorInstanceID: "a:b", remoteID: "c"))
+        let secondDocument = try store.save(Self.makeSnapshot(connectorInstanceID: "a", remoteID: "b:c"))
         let firstDirectory = URL(fileURLWithPath: firstDocument.localContentPath).deletingLastPathComponent()
         let secondDirectory = URL(fileURLWithPath: secondDocument.localContentPath).deletingLastPathComponent()
 
@@ -205,7 +220,7 @@ final class KnowledgeImportStoreTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
-        let document = try store.save(makeSnapshot(connectorInstanceID: "local/main"))
+        let document = try store.save(Self.makeSnapshot(connectorInstanceID: "local/main"))
 
         let relativePath = URL(fileURLWithPath: document.localContentPath).pathComponents.dropFirst(root.pathComponents.count)
 
@@ -214,7 +229,36 @@ final class KnowledgeImportStoreTests: XCTestCase {
         XCTAssertFalse(document.localContentPath.contains("/local/main/"))
     }
 
-    private func makeSnapshot(
+    func testConcurrentSavesProduceReadableMetadata() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let count = 12
+
+        let documents = try await withThrowingTaskGroup(of: ImportedKnowledgeDocument.self) { group in
+            for index in 0..<count {
+                group.addTask {
+                    let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+                    return try store.save(
+                        Self.makeSnapshot(remoteID: "docs/readme-\(index).md", contentMarkdown: "# Hello \(index)"),
+                        now: Date(timeIntervalSince1970: 1_778_000_100 + Double(index))
+                    )
+                }
+            }
+
+            var documents = [ImportedKnowledgeDocument]()
+            for try await document in group {
+                documents.append(document)
+            }
+            return documents
+        }
+
+        XCTAssertEqual(documents.count, count)
+        for document in documents {
+            XCTAssertEqual(try decodeDocument(atPath: document.localMetadataPath), document)
+        }
+    }
+
+    private static func makeSnapshot(
         connectorInstanceID: String = "local-main",
         remoteID: String = "docs/readme.md",
         contentMarkdown: String = "# Hello",

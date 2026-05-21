@@ -27,6 +27,10 @@ struct KnowledgeImportStore {
         now: Date = Date(),
         existingDocument: ImportedKnowledgeDocument? = nil
     ) throws -> ImportedKnowledgeDocument {
+        if let existingDocument {
+            try Self.validateExistingDocument(existingDocument, matches: snapshot)
+        }
+
         let documentID = Self.documentID(
             connectorInstanceID: snapshot.connectorInstanceID,
             remoteID: snapshot.remoteID
@@ -64,7 +68,7 @@ struct KnowledgeImportStore {
             normalizationVersion: 1,
             originKind: snapshot.originKind
         )
-        let data = try JSONEncoder.knowledgeImport.encode(document)
+        let data = try JSONEncoder.knowledgeImport().encode(document)
         try writePreparedDocument(markdown: snapshot.contentMarkdown, metadata: data, to: directory)
         return document
     }
@@ -73,13 +77,31 @@ struct KnowledgeImportStore {
         "ci:\(connectorInstanceID.count):\(connectorInstanceID)|remote:\(remoteID.count):\(remoteID)"
     }
 
+    private static func validateExistingDocument(
+        _ existingDocument: ImportedKnowledgeDocument,
+        matches snapshot: KnowledgeImportSnapshot
+    ) throws {
+        guard existingDocument.connectorInstanceID == snapshot.connectorInstanceID,
+              existingDocument.connectorID == snapshot.connectorID,
+              existingDocument.remoteID == snapshot.remoteID else {
+            throw KnowledgeImportStoreError.existingDocumentIdentityMismatch(
+                expectedConnectorInstanceID: snapshot.connectorInstanceID,
+                expectedConnectorID: snapshot.connectorID,
+                expectedRemoteID: snapshot.remoteID,
+                actualConnectorInstanceID: existingDocument.connectorInstanceID,
+                actualConnectorID: existingDocument.connectorID,
+                actualRemoteID: existingDocument.remoteID
+            )
+        }
+    }
+
     private func existingMetadataDocument(at metadataURL: URL) throws -> ImportedKnowledgeDocument? {
         guard fileManager.fileExists(atPath: metadataURL.path) else {
             return nil
         }
 
         let data = try Data(contentsOf: metadataURL)
-        return try JSONDecoder.knowledgeImport.decode(ImportedKnowledgeDocument.self, from: data)
+        return try JSONDecoder.knowledgeImport().decode(ImportedKnowledgeDocument.self, from: data)
     }
 
     private func writePreparedDocument(markdown: String, metadata: Data, to directory: URL) throws {
@@ -114,20 +136,49 @@ struct KnowledgeImportStore {
 }
 
 private extension JSONEncoder {
-    static let knowledgeImport: JSONEncoder = {
+    static func knowledgeImport() -> JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = KnowledgeImportDateCoding.encodingStrategy
         return encoder
-    }()
+    }
 }
 
 private extension JSONDecoder {
-    static let knowledgeImport: JSONDecoder = {
+    static func knowledgeImport() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = KnowledgeImportDateCoding.decodingStrategy
         return decoder
-    }()
+    }
+}
+
+private enum KnowledgeImportStoreError: Error, CustomStringConvertible {
+    case existingDocumentIdentityMismatch(
+        expectedConnectorInstanceID: String,
+        expectedConnectorID: KnowledgeConnectorID,
+        expectedRemoteID: String,
+        actualConnectorInstanceID: String,
+        actualConnectorID: KnowledgeConnectorID,
+        actualRemoteID: String
+    )
+
+    var description: String {
+        switch self {
+        case let .existingDocumentIdentityMismatch(
+            expectedConnectorInstanceID,
+            expectedConnectorID,
+            expectedRemoteID,
+            actualConnectorInstanceID,
+            actualConnectorID,
+            actualRemoteID
+        ):
+            return """
+            Existing document identity mismatch: expected \
+            connectorInstanceID=\(expectedConnectorInstanceID), connectorID=\(expectedConnectorID.rawValue), remoteID=\(expectedRemoteID); \
+            got connectorInstanceID=\(actualConnectorInstanceID), connectorID=\(actualConnectorID.rawValue), remoteID=\(actualRemoteID)
+            """
+        }
+    }
 }
 
 private enum KnowledgeImportDateCoding {

@@ -59,14 +59,19 @@ struct KnowledgeImportStore {
             existingMetadata = existingDocument
             shouldRewriteStaleMetadata = true
         }
+        let authorityDocument = Self.authorityDocument(
+            metadataDocument: existingMetadata,
+            existingDocument: existingDocument
+        )
+        let shouldRewriteAuthorityMetadata = shouldRewriteStaleMetadata || existingMetadata != authorityDocument
 
-        if let existingMetadata,
-           Self.isExistingDocument(existingMetadata, newerThan: snapshot, now: now) {
+        if let authorityDocument,
+           Self.isExistingDocument(authorityDocument, newerThan: snapshot, now: now) {
             return try normalizedStaleDocument(
-                existingMetadata,
+                authorityDocument,
                 using: existingDocument,
                 metadataURL: metadataURL,
-                forceMetadataRewrite: shouldRewriteStaleMetadata
+                forceMetadataRewrite: shouldRewriteAuthorityMetadata
             )
         }
 
@@ -141,6 +146,43 @@ struct KnowledgeImportStore {
 
         return existingDocument.remoteUpdatedAt == snapshot.remoteUpdatedAt
             && existingDocument.lastSyncedAt > now
+    }
+
+    private static func authorityDocument(
+        metadataDocument: ImportedKnowledgeDocument?,
+        existingDocument: ImportedKnowledgeDocument?
+    ) -> ImportedKnowledgeDocument? {
+        guard let metadataDocument else {
+            return existingDocument
+        }
+        guard let existingDocument else {
+            return metadataDocument
+        }
+
+        if isDocument(existingDocument, fresherThan: metadataDocument) {
+            return existingDocument
+        }
+        return metadataDocument
+    }
+
+    private static func isDocument(
+        _ candidate: ImportedKnowledgeDocument,
+        fresherThan other: ImportedKnowledgeDocument
+    ) -> Bool {
+        if let candidateRemoteUpdatedAt = candidate.remoteUpdatedAt,
+           let otherRemoteUpdatedAt = other.remoteUpdatedAt {
+            return candidateRemoteUpdatedAt > otherRemoteUpdatedAt
+                || (candidateRemoteUpdatedAt == otherRemoteUpdatedAt && candidate.lastSyncedAt > other.lastSyncedAt)
+        }
+
+        if candidate.remoteUpdatedAt != nil && other.remoteUpdatedAt == nil {
+            return true
+        }
+        if candidate.remoteUpdatedAt == nil && other.remoteUpdatedAt != nil {
+            return false
+        }
+
+        return candidate.lastSyncedAt > other.lastSyncedAt
     }
 
     private func normalizedStaleDocument(

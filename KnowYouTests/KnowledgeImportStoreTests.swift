@@ -258,6 +258,107 @@ final class KnowledgeImportStoreTests: XCTestCase {
         )
     }
 
+    func testSaveSnapshotUsesExistingDocumentAsAuthorityWhenMetadataIsMissing() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let original = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# DB Newer", remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_300)),
+            now: Date(timeIntervalSince1970: 1_778_000_400)
+        )
+        try FileManager.default.removeItem(at: URL(fileURLWithPath: original.localMetadataPath))
+        var existingDocument = original
+        existingDocument.id = "db-row-id"
+        existingDocument.firstImportedAt = Date(timeIntervalSince1970: 1_777_000_000)
+
+        let returnedDocument = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# Incoming Stale", remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_200)),
+            now: Date(timeIntervalSince1970: 1_778_000_250),
+            existingDocument: existingDocument
+        )
+        let metadataDocument = try decodeDocument(atPath: returnedDocument.localMetadataPath)
+
+        XCTAssertEqual(returnedDocument.id, existingDocument.id)
+        XCTAssertEqual(returnedDocument.firstImportedAt, existingDocument.firstImportedAt)
+        XCTAssertEqual(returnedDocument.contentHash, original.contentHash)
+        XCTAssertEqual(returnedDocument.remoteUpdatedAt, original.remoteUpdatedAt)
+        XCTAssertEqual(returnedDocument.lastSyncedAt, original.lastSyncedAt)
+        XCTAssertEqual(metadataDocument, returnedDocument)
+        XCTAssertEqual(
+            try String(contentsOf: URL(fileURLWithPath: returnedDocument.localContentPath), encoding: .utf8),
+            "# DB Newer"
+        )
+    }
+
+    func testSaveSnapshotUsesFresherExistingDocumentOverOlderMetadataForStaleComparison() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let original = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# DB Newer", remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_300)),
+            now: Date(timeIntervalSince1970: 1_778_000_400)
+        )
+        var olderMetadata = original
+        olderMetadata.contentHash = sha256Hex("# Older Metadata")
+        olderMetadata.remoteUpdatedAt = Date(timeIntervalSince1970: 1_778_000_100)
+        olderMetadata.lastSyncedAt = Date(timeIntervalSince1970: 1_778_000_200)
+        try encodeDocument(olderMetadata).write(to: URL(fileURLWithPath: original.localMetadataPath), options: .atomic)
+        var existingDocument = original
+        existingDocument.id = "db-row-id"
+        existingDocument.firstImportedAt = Date(timeIntervalSince1970: 1_777_000_000)
+
+        let returnedDocument = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# Incoming Stale", remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_250)),
+            now: Date(timeIntervalSince1970: 1_778_000_300),
+            existingDocument: existingDocument
+        )
+        let metadataDocument = try decodeDocument(atPath: returnedDocument.localMetadataPath)
+
+        XCTAssertEqual(returnedDocument.id, existingDocument.id)
+        XCTAssertEqual(returnedDocument.firstImportedAt, existingDocument.firstImportedAt)
+        XCTAssertEqual(returnedDocument.contentHash, original.contentHash)
+        XCTAssertEqual(returnedDocument.remoteUpdatedAt, original.remoteUpdatedAt)
+        XCTAssertEqual(returnedDocument.lastSyncedAt, original.lastSyncedAt)
+        XCTAssertEqual(metadataDocument, returnedDocument)
+        XCTAssertEqual(
+            try String(contentsOf: URL(fileURLWithPath: returnedDocument.localContentPath), encoding: .utf8),
+            "# DB Newer"
+        )
+    }
+
+    func testSaveSnapshotUsesFresherMetadataOverOlderExistingDocumentForStaleComparison() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let original = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# Metadata Newer", remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_300)),
+            now: Date(timeIntervalSince1970: 1_778_000_400)
+        )
+        var existingDocument = original
+        existingDocument.id = "db-row-id"
+        existingDocument.firstImportedAt = Date(timeIntervalSince1970: 1_777_000_000)
+        existingDocument.remoteUpdatedAt = Date(timeIntervalSince1970: 1_778_000_100)
+        existingDocument.lastSyncedAt = Date(timeIntervalSince1970: 1_778_000_200)
+
+        let returnedDocument = try store.save(
+            Self.makeSnapshot(contentMarkdown: "# Incoming Stale", remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_250)),
+            now: Date(timeIntervalSince1970: 1_778_000_300),
+            existingDocument: existingDocument
+        )
+        let metadataDocument = try decodeDocument(atPath: returnedDocument.localMetadataPath)
+
+        XCTAssertEqual(returnedDocument.id, existingDocument.id)
+        XCTAssertEqual(returnedDocument.firstImportedAt, existingDocument.firstImportedAt)
+        XCTAssertEqual(returnedDocument.contentHash, original.contentHash)
+        XCTAssertEqual(returnedDocument.remoteUpdatedAt, original.remoteUpdatedAt)
+        XCTAssertEqual(returnedDocument.lastSyncedAt, original.lastSyncedAt)
+        XCTAssertEqual(metadataDocument, returnedDocument)
+        XCTAssertEqual(
+            try String(contentsOf: URL(fileURLWithPath: returnedDocument.localContentPath), encoding: .utf8),
+            "# Metadata Newer"
+        )
+    }
+
     func testSaveSnapshotSkipsOlderRemoteUpdateWhenNewerMetadataExists() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }

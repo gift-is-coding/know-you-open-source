@@ -65,6 +65,44 @@ final class LocalFolderKnowledgeConnectorTests: XCTestCase {
             }
         }
     }
+
+    func testFetchSnapshotsUsesStandardizedSourcePathWhenRootContainsDotDotComponents() async throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let nestedRoot = try makeDirectory("Library", in: root)
+        let noteURL = try writeFile("# Stable", at: "Note.md", in: nestedRoot)
+        let nonstandardRoot = URL(fileURLWithPath: "\(root.path)/Library/../Library")
+
+        let connector = LocalFolderKnowledgeConnector(
+            connectorInstanceID: "local-main",
+            rootURL: nonstandardRoot
+        )
+
+        let snapshots = try await connector.fetchSnapshots()
+
+        let note = try XCTUnwrap(snapshots.first)
+        XCTAssertEqual(note.remoteID, "Note.md")
+        XCTAssertEqual(note.sourcePath, noteURL.standardizedFileURL.path)
+    }
+
+    func testFetchSnapshotsWrapsUnreadableTextFileErrorWithFileContext() async throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try writeData(Data([0xff, 0xfe, 0xfd]), at: "BadEncoding.md", in: root)
+
+        let connector = LocalFolderKnowledgeConnector(
+            connectorInstanceID: "local-main",
+            rootURL: root
+        )
+
+        do {
+            _ = try await connector.fetchSnapshots()
+            XCTFail("Expected fetchSnapshots to throw")
+        } catch let error as KnowledgeImportConnectorError {
+            let description = try XCTUnwrap(error.errorDescription)
+            XCTAssertTrue(description.contains("BadEncoding.md"), description)
+        }
+    }
 }
 
 private func makeTemporaryDirectory() throws -> URL {
@@ -72,6 +110,14 @@ private func makeTemporaryDirectory() throws -> URL {
         .appending(path: "KnowYouTests-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     return root
+}
+
+private func makeDirectory(_ relativePath: String, in root: URL) throws -> URL {
+    let url = relativePath
+        .split(separator: "/")
+        .reduce(root) { $0.appending(path: String($1), directoryHint: .isDirectory) }
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
 }
 
 @discardableResult
@@ -91,4 +137,21 @@ private func writeFile(
     try contents.write(to: url, atomically: true, encoding: .utf8)
     try FileManager.default.setAttributes([.modificationDate: modifiedAt], ofItemAtPath: url.path)
     return url
+}
+
+private func writeData(
+    _ data: Data,
+    at relativePath: String,
+    in root: URL,
+    modifiedAt: Date = Date(timeIntervalSince1970: 1_778_200_000)
+) throws {
+    let url = relativePath
+        .split(separator: "/")
+        .reduce(root) { $0.appending(path: String($1)) }
+    try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try data.write(to: url)
+    try FileManager.default.setAttributes([.modificationDate: modifiedAt], ofItemAtPath: url.path)
 }

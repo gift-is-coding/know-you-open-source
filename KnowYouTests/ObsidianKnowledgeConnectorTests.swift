@@ -72,6 +72,61 @@ final class ObsidianKnowledgeConnectorTests: XCTestCase {
         XCTAssertEqual(legitimate.originKind, "obsidian-vault")
         XCTAssertEqual(legitimate.contentMarkdown, "# Legitimate note\nThis is not a KnowYou export.")
     }
+
+    func testFetchSnapshotsSkipsKnowYouDailyMemoryExportDirectoryCaseInsensitively() async throws {
+        let vault = try makeObsidianTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: vault) }
+        _ = try writeObsidianFile("# Mixed case mirror", at: "knOwYoU/dAiLy MeMoRiEs/2026-05-22.md", in: vault)
+        _ = try writeObsidianFile("# Legit note", at: "Notes/Legit.md", in: vault)
+
+        let connector = ObsidianKnowledgeConnector(
+            connectorInstanceID: "obsidian-main",
+            vaultURL: vault
+        )
+
+        let snapshots = try await connector.fetchSnapshots()
+
+        XCTAssertEqual(snapshots.map(\.remoteID), ["Notes/Legit.md"])
+    }
+
+    func testFetchSnapshotsSkipsKnowYouExportMarkersCaseInsensitively() async throws {
+        let vault = try makeObsidianTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: vault) }
+        _ = try writeObsidianFile(
+            """
+            ---
+            KnowYou_Export: Daily_Memory
+            ---
+            # Exported daily memory
+            """,
+            at: "Archive/MixedFrontmatter.md",
+            in: vault
+        )
+        _ = try writeObsidianFile(
+            #"{"ORIGINKIND":"daily_memory_export"}"#,
+            at: "Archive/UppercaseJSONKey.md",
+            in: vault
+        )
+        _ = try writeObsidianFile(
+            #"{"originKind": "DAILY_MEMORY_EXPORT"}"#,
+            at: "Archive/UppercaseJSONValue.md",
+            in: vault
+        )
+        _ = try writeObsidianFile(
+            "# Legitimate note",
+            at: "Archive/Legitimate.md",
+            in: vault
+        )
+
+        let connector = ObsidianKnowledgeConnector(
+            connectorInstanceID: "obsidian-main",
+            vaultURL: vault
+        )
+
+        let snapshots = try await connector.fetchSnapshots()
+
+        XCTAssertEqual(snapshots.map(\.remoteID), ["Archive/Legitimate.md"])
+    }
 }
 
 private func makeObsidianTemporaryDirectory() throws -> URL {

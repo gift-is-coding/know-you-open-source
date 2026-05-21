@@ -23,16 +23,16 @@ struct ObsidianKnowledgeConnector: KnowledgeImportConnector {
     }
 
     private static func isKnowYouDailyMemoryExportPath(_ remoteID: String) -> Bool {
-        remoteID.hasPrefix("KnowYou/Daily Memories/")
+        remoteID.lowercased().hasPrefix("knowyou/daily memories/")
     }
 
     private static func containsKnowYouExportMarker(remoteID: String, contentMarkdown: String) -> Bool {
         let frontmatterMarker = #"(?m)^\s*knowyou_export\s*:\s*daily_memory\s*$"#
-        if contentMarkdown.range(of: frontmatterMarker, options: .regularExpression) != nil {
+        if contentMarkdown.range(of: frontmatterMarker, options: [.regularExpression, .caseInsensitive]) != nil {
             return true
         }
 
         let jsonOriginMarker = #""originKind"\s*:\s*"daily_memory_export""#
-        return contentMarkdown.range(of: jsonOriginMarker, options: .regularExpression) != nil
+        return contentMarkdown.range(of: jsonOriginMarker, options: [.regularExpression, .caseInsensitive]) != nil
     }
 }

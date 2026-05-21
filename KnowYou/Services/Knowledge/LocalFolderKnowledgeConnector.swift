@@ -52,7 +52,7 @@ struct FileKnowledgeSnapshotScanner {
     }
 
     func fetchSnapshots() throws -> [KnowledgeImportSnapshot] {
-        let rootURL = rootURL.absoluteURL
+        let rootURL = rootURL.standardizedFileURL
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: rootURL.path, isDirectory: &isDirectory),
               isDirectory.boolValue else {
@@ -85,7 +85,14 @@ struct FileKnowledgeSnapshotScanner {
                 continue
             }
 
-            let contentMarkdown = try String(contentsOf: fileURL, encoding: .utf8)
+            let contentMarkdown: String
+            do {
+                contentMarkdown = try String(contentsOf: fileURL, encoding: .utf8)
+            } catch {
+                throw KnowledgeImportConnectorError.invalidResponse(
+                    "Cannot read \(remoteID) at \(fileURL.standardizedFileURL.path): \(error.localizedDescription)"
+                )
+            }
             guard !shouldSkipContent(remoteID, contentMarkdown) else {
                 continue
             }
@@ -96,7 +103,7 @@ struct FileKnowledgeSnapshotScanner {
                     connectorID: connectorID,
                     remoteID: remoteID,
                     title: fileURL.deletingPathExtension().lastPathComponent,
-                    sourcePath: Self.sourcePath(from: rootURL, remoteID: remoteID),
+                    sourcePath: fileURL.standardizedFileURL.path,
                     remoteURL: nil,
                     mimeType: mimeType,
                     contentMarkdown: contentMarkdown,
@@ -132,9 +139,5 @@ struct FileKnowledgeSnapshotScanner {
             return fileURL.lastPathComponent
         }
         return String(filePath.dropFirst(prefix.count))
-    }
-
-    private static func sourcePath(from rootURL: URL, remoteID: String) -> String {
-        (rootURL.absoluteURL.path as NSString).appendingPathComponent(remoteID)
     }
 }

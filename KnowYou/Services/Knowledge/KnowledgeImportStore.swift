@@ -48,13 +48,16 @@ struct KnowledgeImportStore {
         let contentURL = directory.appending(path: "content.md")
         let metadataURL = directory.appending(path: "metadata.json")
         let existingMetadata: ImportedKnowledgeDocument?
+        let shouldRewriteStaleMetadata: Bool
         do {
             existingMetadata = try existingMetadataDocument(at: metadataURL)
+            shouldRewriteStaleMetadata = false
         } catch {
-            if existingDocument == nil {
+            guard let existingDocument else {
                 throw error
             }
-            existingMetadata = nil
+            existingMetadata = existingDocument
+            shouldRewriteStaleMetadata = true
         }
 
         if let existingMetadata,
@@ -62,7 +65,8 @@ struct KnowledgeImportStore {
             return try normalizedStaleDocument(
                 existingMetadata,
                 using: existingDocument,
-                metadataURL: metadataURL
+                metadataURL: metadataURL,
+                forceMetadataRewrite: shouldRewriteStaleMetadata
             )
         }
 
@@ -142,7 +146,8 @@ struct KnowledgeImportStore {
     private func normalizedStaleDocument(
         _ metadataDocument: ImportedKnowledgeDocument,
         using existingDocument: ImportedKnowledgeDocument?,
-        metadataURL: URL
+        metadataURL: URL,
+        forceMetadataRewrite: Bool
     ) throws -> ImportedKnowledgeDocument {
         guard let existingDocument else {
             return metadataDocument
@@ -151,7 +156,7 @@ struct KnowledgeImportStore {
         var normalizedDocument = metadataDocument
         normalizedDocument.id = existingDocument.id
         normalizedDocument.firstImportedAt = existingDocument.firstImportedAt
-        if normalizedDocument != metadataDocument {
+        if forceMetadataRewrite || normalizedDocument != metadataDocument {
             let data = try JSONEncoder.knowledgeImport().encode(normalizedDocument)
             try data.write(to: metadataURL, options: .atomic)
         }

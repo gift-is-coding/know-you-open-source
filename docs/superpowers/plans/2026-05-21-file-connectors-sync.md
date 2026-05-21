@@ -1053,7 +1053,9 @@ git commit -m "Add local knowledge import connectors"
 - Modify: `KnowYou/Services/SyncMemory/SyncMemoryCoordinator.swift`
 - Test: `KnowYouTests/SyncMemoryCoordinatorTests.swift`
 
-- [ ] **Step 1: Add failing export marker test**
+**Status:** Completed in commits `f1e34ae` through `68f9e5c`. Daily Memory export now writes a `knowyou_export: daily_memory` frontmatter marker idempotently, preserves and augments existing frontmatter, treats body-only marker text as normal content, and keeps Obsidian import loop-safe by skipping only exact KnowYou export paths, exact export frontmatter markers, or valid JSON sidecars.
+
+- [x] **Step 1: Add failing export marker test**
 
 Add to `SyncMemoryCoordinatorTests`:
 
@@ -1079,7 +1081,7 @@ func testSyncDiariesAddsKnowYouExportMarker() throws {
 }
 ```
 
-- [ ] **Step 2: Run sync memory tests and verify failure**
+- [x] **Step 2: Run sync memory tests and verify failure**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/SyncMemoryCoordinatorTests
@@ -1087,7 +1089,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: new marker test fails because copied files do not contain frontmatter.
 
-- [ ] **Step 3: Write marker during export**
+- [x] **Step 3: Write marker during export**
 
 In `SyncMemoryCoordinator`, replace direct `copyItem` with marker-aware write:
 
@@ -1116,7 +1118,7 @@ static func markedDailyMemoryExport(_ markdown: String) -> String {
 
 Remove the old `removeItem` before copy branch; `String.write(..., atomically: true)` safely overwrites the destination file.
 
-- [ ] **Step 4: Update overwrite expectation**
+- [x] **Step 4: Update overwrite expectation**
 
 In `testSyncDiariesOverwritesPreviouslySyncedFileWithSameName`, change expected content to:
 
@@ -1129,7 +1131,7 @@ knowyou_export: daily_memory
 """
 ```
 
-- [ ] **Step 5: Run sync memory tests**
+- [x] **Step 5: Run sync memory tests**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/SyncMemoryCoordinatorTests
@@ -1137,7 +1139,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add KnowYou/Services/SyncMemory/SyncMemoryCoordinator.swift KnowYouTests/SyncMemoryCoordinatorTests.swift

@@ -19,15 +19,16 @@ KnowYou 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 
 ## 2. 系统总览
 
-当前系统由 5 层组成：
+当前运行时系统由 6 层组成，另有一条独立的分发链路：
 
 1. 采集层：剪贴板监听、通知数据库读取与导入
 2. 存储与调度层：SQLite、run 记录、刷新日志、today-only 定时自动化
 3. 生成层：本地 fallback story 生成、可选云端/CLI 总结器、Markdown 组合
-4. 记忆同步层：Obsidian / OpenClaw 目标探测、文件复制、LaunchAgent 定时注册
+4. 连接器层：Daily Memory Export 单向导出、Knowledge Imports 单向导入、本地缓存、API 连接器、LaunchAgent 定时运行
 5. 提醒层：晚间回顾 planner、本地通知权限与调度
 6. 界面层：真实三栏阅读器上的 onboarding coachmarks、设置页、菜单栏状态入口、About & Community 对外入口
-7. 分发层：Developer ID release archive、notarytool notarization、stapled app 验证、drag-to-Applications DMG 发布
+
+分发链路包括 Developer ID release archive、notarytool notarization、stapled app 验证与 drag-to-Applications DMG 发布。
 
 ```mermaid
 flowchart LR
@@ -53,8 +54,11 @@ flowchart LR
     F --> R[SyncMemoryCoordinator]
     R --> S[Obsidian Vault/KnowYou/Daily Memories]
     R --> T[OpenClaw Workspace/know-you-memory]
-    F --> U[LaunchAgentManager]
-    V[build-release.sh] --> W[KnowYou.xcarchive]
+    F --> U[KnowledgeImportCoordinator]
+    U --> V[KnowledgeSources content.md/metadata.json]
+    U --> E
+    F --> UA[LaunchAgentManager]
+    VA[build-release.sh] --> W[KnowYou.xcarchive]
     W --> X[KnowYou.app zip]
     X --> Y[notarytool submit]
     Y --> Z[stapler / spctl verify]
@@ -128,6 +132,21 @@ flowchart LR
 - 暴露 `openSyncMemoryPanel()`、`closeSyncMemoryPanel()`、`syncMemoryNow()`
 - 在用户修改自动同步配置时注册或移除用户级 `LaunchAgent`
 - 通过 `SyncMemoryCoordinator` 把全部 `YYYY-MM-DD.md` 复制到外部记忆目录，并以同名覆盖方式做增量修正
+
+当前 `AppState` 也负责 Knowledge Imports 编排：
+
+- 持有并持久化 `KnowledgeImportConfig`
+- 暴露 `importKnowledgeNow()` 和导入状态文案
+- 从连接器实例配置创建 Local Folder、Obsidian、Feishu/Lark、Notion、Google Drive 导入器
+- 通过 `KnowledgeImportCredentialStore` 从 Keychain 读取 API 连接器 bearer token
+- 在用户修改每日导入配置时注册或移除独立的导入 `LaunchAgent`
+- 通过 `KnowledgeImportCoordinator` 把外部资料导入 KnowYou 自有本地缓存，而不是在 UI 中动态读取远端链接
+
+### 3.3 Knowledge Imports
+
+Knowledge Imports 与 Daily Memory Export 是两个方向相反的能力。Daily Memory Export 把 KnowYou 生成的每日日记复制到外部工具；Knowledge Imports 把用户选择的外部资料导入 KnowYou 本地缓存。
+
+导入内容存放在 `Application Support/KnowYou/KnowledgeSources/`，每个文档写为 `content.md` 和 `metadata.json`，并在 SQLite 中记录 connector instance、remote identity、content hash、同步状态和 tombstone。Obsidian 导入默认跳过 `<vault>/KnowYou/Daily Memories/`，并跳过带有 `knowyou_export: daily_memory` marker 的文件，避免把 KnowYou 自己导出的日记再导入回来。
 
 当前 `AppState` 也负责晚间回顾提醒配置与通知后的前台路由：
 
@@ -273,6 +292,7 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 - 数据库：`~/Library/Application Support/KnowYou/events.sqlite`
 - Vault：`~/Library/Application Support/KnowYou/Vault`
 - 刷新日志：`~/Library/Application Support/KnowYou/RefreshLogs`
+- Knowledge Imports 缓存：`~/Library/Application Support/KnowYou/KnowledgeSources`
 
 每一天会写出两份文件：
 

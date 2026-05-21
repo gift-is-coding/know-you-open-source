@@ -253,7 +253,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add KnowYou/Domain/KnowledgeImport.swift KnowYou/Services/Knowledge/KnowledgeImportConfig.swift KnowYouTests/KnowledgeImportModelTests.swift KnowYou.xcodeproj/project.pbxproj
@@ -509,7 +509,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add KnowYou/Services/Storage/Migrations.swift KnowYou/Services/Storage/DatabaseWriter.swift KnowYouTests/KnowledgeImportDatabaseTests.swift KnowYou.xcodeproj/project.pbxproj
@@ -1768,7 +1768,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add KnowYou/UI/Settings/ConnectorsPanel.swift KnowYou/UI/MainWindowView.swift KnowYouTests/ConnectorsPanelTests.swift KnowYou.xcodeproj/project.pbxproj
@@ -1783,7 +1783,7 @@ git commit -m "Add connectors panel presentation"
 - Modify: `docs/architecture.md`
 - Modify: `docs/requirements-spec.md`
 
-- [ ] **Step 1: Update architecture documentation**
+- [x] **Step 1: Update architecture documentation**
 
 In `docs/architecture.md`, update the system overview to describe six runtime layers:
 
@@ -1801,7 +1801,7 @@ Knowledge Imports 与 Daily Memory Export 是两个方向相反的能力。Daily
 导入内容存放在 `Application Support/KnowYou/KnowledgeSources/`，每个文档写为 `content.md` 和 `metadata.json`，并在 SQLite 中记录 connector instance、remote identity、content hash、同步状态和 tombstone。Obsidian 导入默认跳过 `<vault>/KnowYou/Daily Memories/`，并跳过带有 `knowyou_export: daily_memory` marker 的文件，避免把 KnowYou 自己导出的日记再导入回来。
 ```
 
-- [ ] **Step 2: Update requirements documentation**
+- [x] **Step 2: Update requirements documentation**
 
 In `docs/requirements-spec.md`, replace the current product boundary that says external knowledge-base sync is out of scope with:
 
@@ -1820,7 +1820,7 @@ Add functional requirements:
 - API 连接器凭据必须存放在 Keychain 或等价安全存储中。
 ```
 
-- [ ] **Step 3: Run targeted test suite**
+- [x] **Step 3: Run targeted test suite**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/KnowledgeImportModelTests -only-testing:KnowYouTests/KnowledgeImportDatabaseTests -only-testing:KnowYouTests/KnowledgeImportStoreTests -only-testing:KnowYouTests/KnowledgeImportCoordinatorTests -only-testing:KnowYouTests/LocalFolderKnowledgeConnectorTests -only-testing:KnowYouTests/ObsidianKnowledgeConnectorTests -only-testing:KnowYouTests/KnowledgeAPIConnectorTests -only-testing:KnowYouTests/ConnectorsPanelTests -only-testing:KnowYouTests/SyncMemoryCoordinatorTests
@@ -1828,7 +1828,7 @@ xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:Know
 
 Expected: targeted tests pass.
 
-- [ ] **Step 4: Run full verification**
+- [x] **Step 4: Run full verification**
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS'
@@ -1837,7 +1837,7 @@ xcodebuild build -scheme KnowYou -destination 'platform=macOS'
 
 Expected: both commands succeed. CoreSimulator warnings are acceptable for macOS destination if the command exits successfully.
 
-- [ ] **Step 5: Review diff**
+- [x] **Step 5: Review diff**
 
 ```bash
 git diff --stat HEAD
@@ -1846,7 +1846,7 @@ git diff -- docs/architecture.md docs/requirements-spec.md
 
 Expected: docs reflect one-way Knowledge Imports and no bidirectional editing claim.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/architecture.md docs/requirements-spec.md

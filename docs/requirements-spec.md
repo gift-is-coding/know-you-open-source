@@ -22,6 +22,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 每日 Markdown 文件
 - 每日结构化 `.story.json` 文件
 - 外部 memory 渠道同步（Obsidian / OpenClaw）
+- 外部知识源导入后的本地 Markdown 缓存
 
 其中：
 
@@ -81,7 +82,9 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - story-first 三栏阅读器
 - 段落级 source link
 - 真实阅读器上的 onboarding coachmarks 与 settings 配置
-- 左下角 `...` 二级菜单中的 `Sync Memory`
+- 左下角 `...` 二级菜单中的 `Connectors`
+- Daily Memory Export 到 Obsidian / OpenClaw
+- Knowledge Imports 从 Local Folder / Obsidian / Feishu(Lark) / Notion / Google Drive 单向导入本地缓存
 - 顶部 diary engine selector
 - 左上标题栏更新提醒胶囊与更新 sheet
 - 晚间回顾本地通知提醒
@@ -103,7 +106,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 浏览器历史、邮件、日历等更多信号源
 - 主界面中的原始 Markdown 编辑模式
 - App Store 分发约束下的沙盒化方案
-- 双向外部知识库同步
+- 支持外部知识源到本地缓存的单向导入，但不支持双向外部知识库编辑
 
 当前版本的对外分发方式是 Developer ID + notarization，不是 Mac App Store。
 
@@ -173,9 +176,20 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - OpenClaw 目标目录固定为 `<workspace>/know-you-memory/`
 - 系统不得覆盖 OpenClaw 原生 daily memory 文件
 - 同步时必须覆盖 KnowYou 在目标目录中已有的同名日记文件，但不得删除目标目录中的其他历史文件
-- 用户必须能手动触发 `Sync Memory`
+- 用户必须能在 `Connectors` 面板里手动触发 Daily Memory Export
 - 用户必须能开启 `Auto Sync Daily`
 - 当启用 `Auto Sync Daily` 时，系统必须安装用户级 `LaunchAgent`，在用户登录后按固定时间执行同步
+- 系统必须把 Knowledge Imports 和 Daily Memory Export 分开建模。
+- Knowledge Imports 必须把导入内容保存到本地缓存，而不是依赖动态远端链接。
+- Knowledge Imports 必须支持 Local Folder、Obsidian、Feishu/Lark、Notion 和 Google Drive 类型的导入连接器。
+- Knowledge Imports 导入的 Markdown 或类似文本内容必须在本地规范化为 `content.md` 和 `metadata.json`。
+- Obsidian 导入必须默认跳过 `<vault>/KnowYou/Daily Memories/`。
+- 导入器必须跳过带有 `knowyou_export: daily_memory` 的 KnowYou 导出文件。
+- 导入器必须通过 connector instance、remote identity 和 content hash 做幂等去重。
+- 单个导入连接器失败不得阻塞其他连接器。
+- API 连接器凭据必须存放在 Keychain 或等价安全存储中。
+- 用户必须能手动触发 Knowledge Imports。
+- 当启用每日 Knowledge Imports 时，系统必须安装独立于 Daily Memory Export 的用户级 `LaunchAgent`。
 - 系统必须支持一个可开启/关闭的 `Evening review reminder`
 - 当 `Evening review reminder` 开启且系统通知权限允许时，产品必须安装一个用户级后台提醒任务，而不是依赖当天前台 app 是否开过
 - 晚间提醒必须使用用户本地时区，在每天固定 `20:30` 运行后台判断
@@ -264,7 +278,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 配置入口包括：
 
 - 首次 onboarding 中的 Demo Day + coachmark 流程
-- 主窗口左下角 `...` 菜单中的 `Sync Memory`
+- 主窗口左下角 `...` 菜单中的 `Connectors`
 - 主窗口右上角 diary engine selector
 - Settings 页面中的次级状态入口
 - Settings 页面中的作者联系、社区与法律文档入口

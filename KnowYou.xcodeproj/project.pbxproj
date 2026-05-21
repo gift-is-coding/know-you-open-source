@@ -81,6 +81,9 @@
 		A10000010000000000000065 /* KnowledgeImportDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000065 /* KnowledgeImportDatabaseTests.swift */; };
 		A10000010000000000000066 /* KnowledgeImportStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000066 /* KnowledgeImportStoreTests.swift */; };
 		A10000010000000000000067 /* KnowledgeImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000067 /* KnowledgeImportStore.swift */; };
+		C40000010000000000000002 /* KnowledgeImportConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40001010000000000000002 /* KnowledgeImportConnector.swift */; };
+		C40000010000000000000003 /* KnowledgeImportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40001010000000000000003 /* KnowledgeImportCoordinator.swift */; };
+		C40000010000000000000001 /* KnowledgeImportCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40001010000000000000001 /* KnowledgeImportCoordinatorTests.swift */; };
 		B20000010000000000000001 /* CodexJWTTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000001 /* CodexJWTTests.swift */; };
 		B20000010000000000000002 /* CodexAuthStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000002 /* CodexAuthStoreTests.swift */; };
 		B20000010000000000000003 /* CodexJWT.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000003 /* CodexJWT.swift */; };
@@ -188,6 +191,9 @@
 		A10001010000000000000065 /* KnowledgeImportDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportDatabaseTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000066 /* KnowledgeImportStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportStoreTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000067 /* KnowledgeImportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportStore.swift; sourceTree = "<group>"; };
+		C40001010000000000000002 /* KnowledgeImportConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportConnector.swift; sourceTree = "<group>"; };
+		C40001010000000000000003 /* KnowledgeImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportCoordinator.swift; sourceTree = "<group>"; };
+		C40001010000000000000001 /* KnowledgeImportCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportCoordinatorTests.swift; sourceTree = "<group>"; };
 		B20001010000000000000001 /* CodexJWTTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexJWTTests.swift; sourceTree = "<group>"; };
 		B20001010000000000000002 /* CodexAuthStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAuthStoreTests.swift; sourceTree = "<group>"; };
 		B20001010000000000000003 /* CodexJWT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexJWT.swift; sourceTree = "<group>"; };
@@ -355,6 +361,7 @@
 				A10001010000000000000062 /* KnowledgeImportModelTests.swift */,
 				A10001010000000000000065 /* KnowledgeImportDatabaseTests.swift */,
 				A10001010000000000000066 /* KnowledgeImportStoreTests.swift */,
+				C40001010000000000000001 /* KnowledgeImportCoordinatorTests.swift */,
 				A1000101000000000000002A /* OnboardingContentTests.swift */,
 				A1000101000000000000002B /* OnboardingViewLayoutTests.swift */,
 				A10001010000000000000055 /* OnboardingProgressTests.swift */,
@@ -543,6 +550,8 @@
 			isa = PBXGroup;
 			children = (
 				A10001010000000000000064 /* KnowledgeImportConfig.swift */,
+				C40001010000000000000002 /* KnowledgeImportConnector.swift */,
+				C40001010000000000000003 /* KnowledgeImportCoordinator.swift */,
 				A10001010000000000000067 /* KnowledgeImportStore.swift */,
 			);
 			path = Knowledge;
@@ -712,6 +721,8 @@
 				A10000010000000000000043 /* SyncMemoryChannel.swift in Sources */,
 				A10000010000000000000044 /* SyncMemoryConfig.swift in Sources */,
 				A10000010000000000000064 /* KnowledgeImportConfig.swift in Sources */,
+				C40000010000000000000002 /* KnowledgeImportConnector.swift in Sources */,
+				C40000010000000000000003 /* KnowledgeImportCoordinator.swift in Sources */,
 				A10000010000000000000067 /* KnowledgeImportStore.swift in Sources */,
 				A10000010000000000000047 /* SyncMemoryCoordinator.swift in Sources */,
 				A10000010000000000000048 /* LaunchAgentManager.swift in Sources */,
@@ -774,6 +785,7 @@
 				A10000010000000000000062 /* KnowledgeImportModelTests.swift in Sources */,
 				A10000010000000000000065 /* KnowledgeImportDatabaseTests.swift in Sources */,
 				A10000010000000000000066 /* KnowledgeImportStoreTests.swift in Sources */,
+				C40000010000000000000001 /* KnowledgeImportCoordinatorTests.swift in Sources */,
 				A10000010000000000000028 /* OnboardingContentTests.swift in Sources */,
 				A10000010000000000000029 /* OnboardingViewLayoutTests.swift in Sources */,
 				A10000010000000000000055 /* OnboardingProgressTests.swift in Sources */,

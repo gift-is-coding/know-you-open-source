@@ -63,6 +63,34 @@ final class KnowledgeImportStoreTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(metadataDocument.remoteUpdatedAt).timeIntervalSince1970, remoteUpdatedAt.timeIntervalSince1970, accuracy: 0.000_001)
     }
 
+    func testSaveSnapshotReadsLegacyNonFractionalMetadataDates() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let legacyFirstImportedAt = Date(timeIntervalSince1970: 1_778_000_100)
+        let legacyRemoteUpdatedAt = Date(timeIntervalSince1970: 1_778_000_000)
+        let snapshot = makeSnapshot(remoteUpdatedAt: legacyRemoteUpdatedAt)
+        let originalDocument = try store.save(snapshot, now: Date(timeIntervalSince1970: 1_778_000_050))
+        try legacyMetadata(
+            from: originalDocument,
+            firstImportedAt: Self.iso8601().string(from: legacyFirstImportedAt),
+            lastSyncedAt: Self.iso8601().string(from: Date(timeIntervalSince1970: 1_778_000_130)),
+            remoteUpdatedAt: Self.iso8601().string(from: legacyRemoteUpdatedAt)
+        )
+        .write(to: URL(fileURLWithPath: originalDocument.localMetadataPath), options: .atomic)
+
+        let savedDocument = try store.save(snapshot, now: Date(timeIntervalSince1970: 1_778_000_200), existingDocument: nil)
+        let metadataDocument = try decodeDocument(atPath: savedDocument.localMetadataPath)
+        let rewrittenMetadata = try metadataDictionary(atPath: savedDocument.localMetadataPath)
+
+        XCTAssertEqual(savedDocument.firstImportedAt, legacyFirstImportedAt)
+        XCTAssertEqual(savedDocument.remoteUpdatedAt, legacyRemoteUpdatedAt)
+        XCTAssertEqual(metadataDocument.firstImportedAt, legacyFirstImportedAt)
+        XCTAssertEqual(metadataDocument.remoteUpdatedAt, legacyRemoteUpdatedAt)
+        XCTAssertTrue(try XCTUnwrap(rewrittenMetadata["firstImportedAt"] as? String).contains(".000Z"))
+        XCTAssertTrue(try XCTUnwrap(rewrittenMetadata["remoteUpdatedAt"] as? String).contains(".000Z"))
+    }
+
     func testSaveSnapshotUsesExistingDocumentFirstImportedAtWhenMetadataIsMissing() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -193,6 +221,39 @@ final class KnowledgeImportStoreTests: XCTestCase {
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO-8601 date: \(value)")
         }
         return try decoder.decode(ImportedKnowledgeDocument.self, from: data)
+    }
+
+    private func metadataDictionary(atPath path: String) throws -> [String: Any] {
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func legacyMetadata(
+        from document: ImportedKnowledgeDocument,
+        firstImportedAt: String,
+        lastSyncedAt: String,
+        remoteUpdatedAt: String
+    ) throws -> Data {
+        let metadata: [String: Any] = [
+            "id": document.id,
+            "connectorInstanceID": document.connectorInstanceID,
+            "connectorID": document.connectorID.rawValue,
+            "remoteID": document.remoteID,
+            "title": document.title,
+            "sourcePath": document.sourcePath as Any,
+            "remoteURL": document.remoteURL as Any,
+            "mimeType": document.mimeType,
+            "contentHash": document.contentHash,
+            "remoteUpdatedAt": remoteUpdatedAt,
+            "firstImportedAt": firstImportedAt,
+            "lastSyncedAt": lastSyncedAt,
+            "deletedAt": document.deletedAt as Any,
+            "localContentPath": document.localContentPath,
+            "localMetadataPath": document.localMetadataPath,
+            "normalizationVersion": document.normalizationVersion,
+            "originKind": document.originKind
+        ]
+        return try JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted, .sortedKeys])
     }
 
     private static func iso8601WithFractionalSeconds() -> ISO8601DateFormatter {

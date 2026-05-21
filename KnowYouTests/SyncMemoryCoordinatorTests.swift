@@ -252,6 +252,48 @@ final class SyncMemoryCoordinatorTests: XCTestCase {
         )
     }
 
+    func testSyncDiariesMergesExportMarkerWhenBodyAlsoContainsMarkerText() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceVault = root.appendingPathComponent("source", isDirectory: true)
+        let obsidianTarget = root.appendingPathComponent("obsidian/KnowYou/Daily Memories", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceVault, withIntermediateDirectories: true)
+        try """
+        ---
+        title: Existing Metadata
+        ---
+        # Body Marker
+        knowyou_export: daily_memory
+        """.write(
+            to: sourceVault.appendingPathComponent("2026-04-14.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let coordinator = SyncMemoryCoordinator(fileManager: .default)
+        _ = try coordinator.syncDiaries(
+            sourceVault: sourceVault,
+            destinations: [.obsidian: obsidianTarget]
+        )
+
+        let exportedMarkdown = try String(
+            contentsOf: obsidianTarget.appendingPathComponent("2026-04-14.md"),
+            encoding: .utf8
+        )
+        XCTAssertEqual(
+            exportedMarkdown,
+            """
+            ---
+            knowyou_export: daily_memory
+            title: Existing Metadata
+            ---
+            # Body Marker
+            knowyou_export: daily_memory
+            """
+        )
+        XCTAssertEqual(exportedMarkdown.components(separatedBy: "knowyou_export: daily_memory").count - 1, 2)
+    }
+
     func testSyncDiariesDoesNotTreatThematicBreakBlockAsFrontmatter() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let sourceVault = root.appendingPathComponent("source", isDirectory: true)
@@ -296,6 +338,8 @@ final class SyncMemoryCoordinatorTests: XCTestCase {
 
         let coordinator = SyncMemoryCoordinator(fileManager: .default)
 
-        XCTAssertThrowsError(try coordinator.syncDiaries(sourceVault: root, destinations: [:]))
+        XCTAssertThrowsError(try coordinator.syncDiaries(sourceVault: root, destinations: [:])) { error in
+            XCTAssertEqual(error as? SyncMemoryCoordinatorError, .noDiaryMarkdownFound)
+        }
     }
 }

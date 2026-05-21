@@ -71,16 +71,13 @@ struct KnowledgeImportCoordinator {
 
                 for snapshot in uniqueSnapshots {
                     let existingDocument = existingDocumentsByRemoteID[snapshot.remoteID]
-                    let authoritativeDocument = try store.authoritativeDocument(
-                        for: snapshot,
-                        existingDocument: existingDocument
-                    )
-                    let document = try store.save(
+                    let saveResult = try store.saveWithResult(
                         snapshot,
                         now: now(),
                         existingDocument: existingDocument
                     )
-                    if Self.didChange(document, comparedTo: authoritativeDocument) {
+                    let document = saveResult.document
+                    if saveResult.didChange {
                         changedDocumentCount += 1
                     }
                     try databaseWriter.upsertImportedKnowledgeDocument(document)
@@ -171,19 +168,6 @@ struct KnowledgeImportCoordinator {
         }
 
         return true
-    }
-
-    private static func didChange(
-        _ document: ImportedKnowledgeDocument,
-        comparedTo existingDocument: ImportedKnowledgeDocument?
-    ) -> Bool {
-        guard let existingDocument else {
-            return true
-        }
-
-        return document.contentHash != existingDocument.contentHash
-            || document.remoteUpdatedAt != existingDocument.remoteUpdatedAt
-            || document.deletedAt != existingDocument.deletedAt
     }
 
     private static func errorMessage(from error: Error) -> String {

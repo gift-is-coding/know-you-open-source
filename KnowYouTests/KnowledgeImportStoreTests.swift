@@ -20,6 +20,54 @@ final class KnowledgeImportStoreTests: XCTestCase {
         XCTAssertEqual(secondDocument.contentHash, document.contentHash)
     }
 
+    func testSaveWithResultReportsFreshWriteAsChanged() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+
+        let result = try store.saveWithResult(
+            Self.makeSnapshot(contentMarkdown: "# Hello"),
+            now: Date(timeIntervalSince1970: 1_778_000_100)
+        )
+
+        XCTAssertTrue(result.didChange)
+        XCTAssertEqual(try decodeDocument(atPath: result.document.localMetadataPath), result.document)
+    }
+
+    func testSaveWithResultDoesNotReportMetadataOnlyResyncAsChanged() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let snapshot = Self.makeSnapshot(contentMarkdown: "# Same")
+        _ = try store.save(snapshot, now: Date(timeIntervalSince1970: 1_778_000_100))
+
+        let result = try store.saveWithResult(snapshot, now: Date(timeIntervalSince1970: 1_778_000_200))
+
+        XCTAssertFalse(result.didChange)
+        XCTAssertEqual(result.document.contentHash, sha256Hex("# Same"))
+        XCTAssertEqual(result.document.lastSyncedAt, Date(timeIntervalSince1970: 1_778_000_200))
+    }
+
+    func testSaveWithResultDoesNotReportStaleIncomingSnapshotAsChanged() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let newerSnapshot = Self.makeSnapshot(
+            contentMarkdown: "# Newer",
+            remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_300)
+        )
+        _ = try store.save(newerSnapshot, now: Date(timeIntervalSince1970: 1_778_000_400))
+
+        let result = try store.saveWithResult(
+            Self.makeSnapshot(contentMarkdown: "# Stale", remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_200)),
+            now: Date(timeIntervalSince1970: 1_778_000_250)
+        )
+
+        XCTAssertFalse(result.didChange)
+        XCTAssertEqual(result.document.remoteUpdatedAt, newerSnapshot.remoteUpdatedAt)
+        XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: result.document.localContentPath), encoding: .utf8), "# Newer")
+    }
+
     func testSaveSnapshotPreservesFirstImportedAtAcrossResync() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }

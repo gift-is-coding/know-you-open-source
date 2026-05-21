@@ -77,6 +77,9 @@ final class KnowledgeImportCoordinatorTests: XCTestCase {
         XCTAssertEqual(document.id, "db-row-id")
         XCTAssertEqual(document.firstImportedAt, firstImportedAt)
         XCTAssertEqual(document.title, "Resynced")
+        let metadataDocument = try decodeDocument(atPath: document.localMetadataPath)
+        XCTAssertEqual(metadataDocument.id, "db-row-id")
+        XCTAssertEqual(metadataDocument.firstImportedAt, firstImportedAt)
         XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: document.localContentPath), encoding: .utf8), "# Resynced")
     }
 
@@ -126,7 +129,7 @@ final class KnowledgeImportCoordinatorTests: XCTestCase {
         let connector = StubKnowledgeImportConnector(
             connectorInstanceID: "local-main",
             connectorID: .localFolderImport,
-            snapshots: [newerSnapshot, olderSnapshot]
+            snapshots: [olderSnapshot, newerSnapshot]
         )
 
         let result = await fixture.coordinator.sync(connectors: [connector])
@@ -140,6 +143,65 @@ final class KnowledgeImportCoordinatorTests: XCTestCase {
         XCTAssertEqual(document.title, "Newer")
         XCTAssertEqual(document.remoteUpdatedAt, newerSnapshot.remoteUpdatedAt)
         XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: document.localContentPath), encoding: .utf8), "# Newer")
+    }
+
+    func testSyncUsesLastDuplicateWhenRemoteUpdatedAtTiesOrIsNil() async throws {
+        let fixture = try makeFixture(now: Date(timeIntervalSince1970: 1_778_100_550))
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let equalRemoteUpdatedAt = Date(timeIntervalSince1970: 1_778_100_500)
+        let firstEqualSnapshot = Self.makeSnapshot(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "docs/equal.md",
+            title: "First Equal",
+            contentMarkdown: "# First Equal",
+            remoteUpdatedAt: equalRemoteUpdatedAt
+        )
+        let secondEqualSnapshot = Self.makeSnapshot(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "docs/equal.md",
+            title: "Second Equal",
+            contentMarkdown: "# Second Equal",
+            remoteUpdatedAt: equalRemoteUpdatedAt
+        )
+        let firstNilSnapshot = Self.makeSnapshot(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "docs/nil.md",
+            title: "First Nil",
+            contentMarkdown: "# First Nil",
+            remoteUpdatedAt: nil
+        )
+        let secondNilSnapshot = Self.makeSnapshot(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "docs/nil.md",
+            title: "Second Nil",
+            contentMarkdown: "# Second Nil",
+            remoteUpdatedAt: nil
+        )
+        let connector = StubKnowledgeImportConnector(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            snapshots: [firstEqualSnapshot, secondEqualSnapshot, firstNilSnapshot, secondNilSnapshot]
+        )
+
+        let result = await fixture.coordinator.sync(connectors: [connector])
+
+        XCTAssertEqual(result.succeededConnectorInstanceIDs, ["local-main"])
+        XCTAssertEqual(result.failedConnectorInstanceIDs, [])
+        XCTAssertEqual(result.changedDocumentCount, 2)
+
+        let documents = try fixture.databaseWriter.fetchImportedKnowledgeDocuments(connectorInstanceID: "local-main")
+        let documentsByRemoteID = Dictionary(uniqueKeysWithValues: documents.map { ($0.remoteID, $0) })
+        let equalDocument = try XCTUnwrap(documentsByRemoteID["docs/equal.md"])
+        let nilDocument = try XCTUnwrap(documentsByRemoteID["docs/nil.md"])
+        XCTAssertEqual(equalDocument.title, "Second Equal")
+        XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: equalDocument.localContentPath), encoding: .utf8), "# Second Equal")
+        XCTAssertEqual(nilDocument.title, "Second Nil")
+        XCTAssertNil(nilDocument.remoteUpdatedAt)
+        XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: nilDocument.localContentPath), encoding: .utf8), "# Second Nil")
     }
 
     func testSyncDoesNotCountUnchangedResyncAsChanged() async throws {
@@ -268,6 +330,32 @@ final class KnowledgeImportCoordinatorTests: XCTestCase {
             normalizationVersion: 1,
             originKind: "test"
         )
+    }
+
+    private func decodeDocument(atPath path: String) throws -> ImportedKnowledgeDocument {
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            if let date = Self.iso8601WithFractionalSeconds().date(from: value) ?? Self.iso8601().date(from: value) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO-8601 date: \(value)")
+        }
+        return try decoder.decode(ImportedKnowledgeDocument.self, from: data)
+    }
+
+    private static func iso8601WithFractionalSeconds() -> ISO8601DateFormatter {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }
+
+    private static func iso8601() -> ISO8601DateFormatter {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
     }
 }
 

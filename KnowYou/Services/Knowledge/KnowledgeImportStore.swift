@@ -13,6 +13,11 @@ struct KnowledgeImportSnapshot: Equatable, Sendable {
     var originKind: String
 }
 
+struct KnowledgeImportSaveResult: Equatable, Sendable {
+    var document: ImportedKnowledgeDocument
+    var didChange: Bool
+}
+
 struct KnowledgeImportStore {
     private static let writeLocks = KnowledgeImportStoreWriteLocks()
 
@@ -29,6 +34,14 @@ struct KnowledgeImportStore {
         now: Date = Date(),
         existingDocument: ImportedKnowledgeDocument? = nil
     ) throws -> ImportedKnowledgeDocument {
+        try saveWithResult(snapshot, now: now, existingDocument: existingDocument).document
+    }
+
+    func saveWithResult(
+        _ snapshot: KnowledgeImportSnapshot,
+        now: Date = Date(),
+        existingDocument: ImportedKnowledgeDocument? = nil
+    ) throws -> KnowledgeImportSaveResult {
         if let existingDocument {
             try Self.validateExistingDocument(existingDocument, matches: snapshot)
         }
@@ -64,13 +77,14 @@ struct KnowledgeImportStore {
 
         if let authorityDocument,
            Self.isExistingDocument(authorityDocument, newerThan: snapshot, now: now) {
-            return try normalizedStaleDocument(
+            let document = try normalizedStaleDocument(
                 authorityDocument,
                 using: existingDocument,
                 contentURL: contentURL,
                 metadataURL: metadataURL,
                 forceMetadataRewrite: shouldRewriteAuthorityMetadata
             )
+            return KnowledgeImportSaveResult(document: document, didChange: false)
         }
 
         let firstImportedAt: Date
@@ -102,9 +116,14 @@ struct KnowledgeImportStore {
         )
         let data = try JSONEncoder.knowledgeImport().encode(document)
         try writePreparedDocument(markdown: snapshot.contentMarkdown, metadata: data, to: directory)
-        return document
+        return KnowledgeImportSaveResult(
+            document: document,
+            didChange: Self.didChange(document, comparedTo: authorityDocument)
+        )
     }
 
+    // Advisory only. Callers that need the save/change decision should use saveWithResult,
+    // which computes authority and didChange under the per-document lock.
     func authoritativeDocument(
         for snapshot: KnowledgeImportSnapshot,
         existingDocument: ImportedKnowledgeDocument? = nil
@@ -217,6 +236,19 @@ struct KnowledgeImportStore {
         }
 
         return candidate.lastSyncedAt > other.lastSyncedAt
+    }
+
+    private static func didChange(
+        _ document: ImportedKnowledgeDocument,
+        comparedTo existingDocument: ImportedKnowledgeDocument?
+    ) -> Bool {
+        guard let existingDocument else {
+            return true
+        }
+
+        return document.contentHash != existingDocument.contentHash
+            || document.remoteUpdatedAt != existingDocument.remoteUpdatedAt
+            || document.deletedAt != existingDocument.deletedAt
     }
 
     private func normalizedStaleDocument(

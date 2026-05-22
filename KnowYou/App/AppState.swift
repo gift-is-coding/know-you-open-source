@@ -1133,6 +1133,16 @@ final class AppState {
         }
     }
 
+    func saveKnowledgeImportBearerToken(_ token: String, connectorInstanceID: String) {
+        KnowledgeImportCredentialStore(keychain: keychain, service: keychainService)
+            .saveBearerToken(token, connectorInstanceID: connectorInstanceID)
+    }
+
+    func deleteKnowledgeImportBearerToken(connectorInstanceID: String) {
+        KnowledgeImportCredentialStore(keychain: keychain, service: keychainService)
+            .deleteBearerToken(connectorInstanceID: connectorInstanceID)
+    }
+
     func importKnowledgeNow() async {
         guard let environment else {
             setKnowledgeImportStatus("Knowledge import unavailable")

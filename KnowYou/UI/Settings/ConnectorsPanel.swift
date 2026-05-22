@@ -59,9 +59,27 @@ struct ConnectorsPanelPresentation: Equatable {
 
 struct ConnectorsPanel: View {
     let presentation: ConnectorsPanelPresentation
+    @Binding var isAutoImportEnabled: Bool
+    @Binding var dailyImportTime: Date
+    let onChooseObsidianExport: () -> Void
+    let onChooseOpenClawExport: () -> Void
+    let onOpenObsidianExport: () -> Void
+    let onOpenOpenClawExport: () -> Void
+    let onAddLocalFolderImport: () -> Void
+    let onAddObsidianImport: () -> Void
+    let onAddAPIImportConnector: (KnowledgeConnectorID, String, String?, String?, String) -> Void
+    let onSetImportConnectorEnabled: (String, Bool) -> Void
+    let onDeleteImportConnector: (String) -> Void
     let onExportNow: () -> Void
     let onImportNow: () -> Void
     let onClose: () -> Void
+
+    @State private var apiConnectorID: KnowledgeConnectorID = .feishuImport
+    @State private var apiDisplayName = ""
+    @State private var apiSource = ""
+    @State private var apiAccount = ""
+    @State private var apiBearerToken = ""
+    @State private var isShowingAPIConnectorForm = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -78,16 +96,11 @@ struct ConnectorsPanel: View {
                 rows: presentation.exportRows,
                 statusMessage: presentation.syncMemoryStatusMessage,
                 actionTitle: "Export Now",
-                action: onExportNow
+                action: onExportNow,
+                rowActions: exportRowActions
             )
 
-            connectorSection(
-                title: "Knowledge Imports",
-                rows: presentation.importRows,
-                statusMessage: presentation.knowledgeImportStatusMessage,
-                actionTitle: "Import Now",
-                action: onImportNow
-            )
+            importSection
 
             HStack {
                 Spacer()
@@ -104,7 +117,8 @@ struct ConnectorsPanel: View {
         rows: [ConnectorPanelRow],
         statusMessage: String?,
         actionTitle: String,
-        action: @escaping () -> Void
+        action: @escaping () -> Void,
+        @ViewBuilder rowActions: @escaping (ConnectorPanelRow) -> some View = { _ in EmptyView() }
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -118,7 +132,9 @@ struct ConnectorsPanel: View {
                 emptyRow
             } else {
                 ForEach(rows) { row in
-                    connectorRow(row)
+                    connectorRow(row) {
+                        rowActions(row)
+                    }
                 }
             }
 
@@ -140,7 +156,10 @@ struct ConnectorsPanel: View {
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
-    private func connectorRow(_ row: ConnectorPanelRow) -> some View {
+    private func connectorRow<Actions: View>(
+        _ row: ConnectorPanelRow,
+        @ViewBuilder actions: () -> Actions
+    ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(row.title)
@@ -161,10 +180,160 @@ struct ConnectorsPanel: View {
             Text(row.status)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(row.status == "Ready" ? .green : .secondary)
+
+            actions()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func exportRowActions(_ row: ConnectorPanelRow) -> some View {
+        let hasFolder = row.detail != "Not connected"
+        if row.id == "obsidian-export" {
+            Button(action: onChooseObsidianExport) {
+                Label("Change", systemImage: "folder")
+            }
+            if hasFolder {
+                Button(action: onOpenObsidianExport) {
+                    Label("Open", systemImage: "arrow.up.forward.app")
+                }
+            }
+        } else if row.id == "openclaw-export" {
+            Button(action: onChooseOpenClawExport) {
+                Label("Change", systemImage: "folder")
+            }
+            if hasFolder {
+                Button(action: onOpenOpenClawExport) {
+                    Label("Open", systemImage: "arrow.up.forward.app")
+                }
+            }
+        }
+    }
+
+    private var importSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Knowledge Imports")
+                    .font(.headline)
+                Spacer()
+                Button("Import Now", action: onImportNow)
+            }
+
+            HStack(spacing: 12) {
+                Button(action: onAddLocalFolderImport) {
+                    Label("Add Folder", systemImage: "folder.badge.plus")
+                }
+                Button(action: onAddObsidianImport) {
+                    Label("Add Obsidian", systemImage: "square.stack.3d.up")
+                }
+                Button {
+                    isShowingAPIConnectorForm.toggle()
+                } label: {
+                    Label("Add API", systemImage: "network")
+                }
+            }
+
+            if isShowingAPIConnectorForm {
+                apiConnectorForm
+            }
+
+            HStack {
+                Toggle("Daily Import", isOn: $isAutoImportEnabled)
+                DatePicker(
+                    "Import Time",
+                    selection: $dailyImportTime,
+                    displayedComponents: .hourAndMinute
+                )
+                .disabled(!isAutoImportEnabled)
+            }
+
+            if presentation.importRows.isEmpty {
+                emptyRow
+            } else {
+                ForEach(presentation.importRows) { row in
+                    connectorRow(row) {
+                        Toggle(
+                            "",
+                            isOn: Binding(
+                                get: { row.status == "Ready" },
+                                set: { onSetImportConnectorEnabled(row.id, $0) }
+                            )
+                        )
+                        .labelsHidden()
+
+                        Button(role: .destructive) {
+                            onDeleteImportConnector(row.id)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+                }
+            }
+
+            if let statusMessage = presentation.knowledgeImportStatusMessage, statusMessage.isEmpty == false {
+                Text(statusMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var apiConnectorForm: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Type", selection: $apiConnectorID) {
+                Text("Feishu / Lark").tag(KnowledgeConnectorID.feishuImport)
+                Text("Notion").tag(KnowledgeConnectorID.notionImport)
+                Text("Google Drive").tag(KnowledgeConnectorID.googleDriveImport)
+            }
+            .pickerStyle(.segmented)
+
+            TextField("Display Name", text: $apiDisplayName)
+
+            if apiConnectorID == .feishuImport {
+                TextField("Document Token", text: $apiSource)
+            } else {
+                TextField("Account or Workspace", text: $apiAccount)
+            }
+
+            SecureField("Bearer Token", text: $apiBearerToken)
+
+            HStack {
+                Spacer()
+                Button("Add") {
+                    onAddAPIImportConnector(
+                        apiConnectorID,
+                        apiDisplayName,
+                        apiConnectorID == .feishuImport ? apiSource : nil,
+                        apiConnectorID == .feishuImport ? nil : apiAccount,
+                        apiBearerToken
+                    )
+                    resetAPIForm()
+                }
+                .disabled(!canSubmitAPIConnector)
+            }
+        }
+        .padding(12)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var canSubmitAPIConnector: Bool {
+        let hasName = apiDisplayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        let hasToken = apiBearerToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        if apiConnectorID == .feishuImport {
+            return hasName && hasToken && apiSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+        return hasName && hasToken && apiAccount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+
+    private func resetAPIForm() {
+        apiDisplayName = ""
+        apiSource = ""
+        apiAccount = ""
+        apiBearerToken = ""
+        isShowingAPIConnectorForm = false
     }
 }

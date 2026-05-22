@@ -195,6 +195,38 @@ struct MainWindowView: View {
                     syncMemoryStatusMessage: appState.syncMemoryStatusMessage,
                     knowledgeImportStatusMessage: appState.knowledgeImportStatusMessage
                 ),
+                isAutoImportEnabled: Binding(
+                    get: { appState.knowledgeImportConfig.isImportEnabled },
+                    set: { isEnabled in
+                        var config = appState.knowledgeImportConfig
+                        config.isImportEnabled = isEnabled
+                        appState.saveKnowledgeImportConfig(config)
+                    }
+                ),
+                dailyImportTime: Binding(
+                    get: {
+                        var components = DateComponents()
+                        components.hour = appState.knowledgeImportConfig.dailyImportHour
+                        components.minute = appState.knowledgeImportConfig.dailyImportMinute
+                        return Calendar.current.date(from: components) ?? Date()
+                    },
+                    set: { date in
+                        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+                        var config = appState.knowledgeImportConfig
+                        config.dailyImportHour = components.hour ?? 7
+                        config.dailyImportMinute = components.minute ?? 30
+                        appState.saveKnowledgeImportConfig(config)
+                    }
+                ),
+                onChooseObsidianExport: { chooseSyncMemoryFolder(for: .obsidian) },
+                onChooseOpenClawExport: { chooseSyncMemoryFolder(for: .openClaw) },
+                onOpenObsidianExport: { openSyncMemoryFolder(at: appState.syncMemoryConfig.obsidian.resolvedPath) },
+                onOpenOpenClawExport: { openSyncMemoryFolder(at: appState.syncMemoryConfig.openClaw.resolvedPath) },
+                onAddLocalFolderImport: { chooseKnowledgeImportFolder(for: .localFolderImport) },
+                onAddObsidianImport: { chooseKnowledgeImportFolder(for: .obsidianImport) },
+                onAddAPIImportConnector: addAPIKnowledgeImportConnector,
+                onSetImportConnectorEnabled: setKnowledgeImportConnectorEnabled,
+                onDeleteImportConnector: deleteKnowledgeImportConnector,
                 onExportNow: {
                     appState.syncMemoryNow()
                 },
@@ -342,6 +374,82 @@ struct MainWindowView: View {
             }
             appState.updateSyncMemoryChannel(channel, resolvedPath: resolvedPath)
         }
+    }
+
+    private func chooseKnowledgeImportFolder(for connectorID: KnowledgeConnectorID) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = false
+        panel.prompt = "Add"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            addKnowledgeImportConnector(
+                connectorID: connectorID,
+                displayName: connectorID == .obsidianImport ? "Obsidian Vault" : url.lastPathComponent,
+                sourcePath: url.path,
+                accountID: nil,
+                bearerToken: nil
+            )
+        }
+    }
+
+    private func addAPIKnowledgeImportConnector(
+        connectorID: KnowledgeConnectorID,
+        displayName: String,
+        sourcePath: String?,
+        accountID: String?,
+        bearerToken: String
+    ) {
+        addKnowledgeImportConnector(
+            connectorID: connectorID,
+            displayName: displayName,
+            sourcePath: sourcePath,
+            accountID: accountID,
+            bearerToken: bearerToken
+        )
+    }
+
+    private func addKnowledgeImportConnector(
+        connectorID: KnowledgeConnectorID,
+        displayName: String,
+        sourcePath: String?,
+        accountID: String?,
+        bearerToken: String?
+    ) {
+        let connectorInstanceID = "\(connectorID.rawValue)-\(UUID().uuidString)"
+        if let bearerToken {
+            appState.saveKnowledgeImportBearerToken(bearerToken, connectorInstanceID: connectorInstanceID)
+        }
+
+        var config = appState.knowledgeImportConfig
+        config.connectorInstances.append(
+            KnowledgeConnectorInstanceConfig(
+                id: connectorInstanceID,
+                connectorID: connectorID,
+                displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines),
+                sourcePath: sourcePath?.trimmingCharacters(in: .whitespacesAndNewlines),
+                accountID: accountID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                isEnabled: true
+            )
+        )
+        appState.saveKnowledgeImportConfig(config)
+    }
+
+    private func setKnowledgeImportConnectorEnabled(id: String, isEnabled: Bool) {
+        var config = appState.knowledgeImportConfig
+        guard let index = config.connectorInstances.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        config.connectorInstances[index].isEnabled = isEnabled
+        appState.saveKnowledgeImportConfig(config)
+    }
+
+    private func deleteKnowledgeImportConnector(id: String) {
+        var config = appState.knowledgeImportConfig
+        config.connectorInstances.removeAll { $0.id == id }
+        appState.deleteKnowledgeImportBearerToken(connectorInstanceID: id)
+        appState.saveKnowledgeImportConfig(config)
     }
 
     private func openSyncMemoryFolder(at path: String?) {

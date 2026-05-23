@@ -3,9 +3,12 @@ import SwiftUI
 struct DateSidebarView: View {
     let dates: [String]
     let selectedDate: String?
+    let selectedItemID: String?
+    let knowledgeImportConfig: KnowledgeImportConfig
     let isActive: Bool
-    var knowledgeImportConfig: KnowledgeImportConfig = .default
-    let onSelect: (String) -> Void
+    let onSelectDiaryDate: (String) -> Void
+    let onSelectOtherSource: (_ focusAddConnector: Bool) -> Void
+    let onSelectKnowledgeConnector: (String) -> Void
     let onOpenSyncMemory: () -> Void
     @State private var expandedSectionIDs: Set<String> = []
     @Environment(\.openSettings) private var openSettings
@@ -14,6 +17,29 @@ struct DateSidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             List(selection: activeBinding) {
+                ForEach(presentation.rootItems) { item in
+                    HStack(spacing: 8) {
+                        Label(item.title, systemImage: item.systemImage)
+                            .foregroundStyle(item.isEnabled ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                        Spacer()
+                        if item.showsAddButton {
+                            Button {
+                                onSelectOtherSource(true)
+                            } label: {
+                                Image(systemName: "plus")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Add Other Source")
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .fontWeight(item.isSelected ? .semibold : .regular)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        selectRootItem(item)
+                    }
+                }
+
                 ForEach(presentation.sections) { section in
                     if let title = section.title {
                         DisclosureGroup(isExpanded: expansionBinding(for: section)) {
@@ -98,10 +124,10 @@ struct DateSidebarView: View {
 
     private var activeBinding: Binding<String?> {
         Binding(
-            get: { isActive ? selectedDate.map(Self.diaryItemID) : nil },
+            get: { isActive ? selectedItemID : nil },
             set: { newValue in
                 if let newValue, let dayKey = Self.dayKeyForSelection(newValue) {
-                    onSelect(dayKey)
+                    onSelectDiaryDate(dayKey)
                 }
             }
         )
@@ -110,18 +136,34 @@ struct DateSidebarView: View {
     private var presentation: DateSidebarPresentation {
         DateSidebarPresentation(
             dates: dates,
-            selectedItemID: selectedDate.map(Self.diaryItemID),
+            selectedItemID: selectedItemID,
             knowledgeImportConfig: knowledgeImportConfig
         )
     }
 
     private func dateRow(_ item: DateSidebarItem) -> some View {
-        let isSelected = selectedDate.map(Self.diaryItemID) == item.id
+        let dayKey = item.id.replacingOccurrences(of: "diary:", with: "")
+        let isSelected = selectedItemID == item.id
         return Label(item.title, systemImage: "doc.plaintext")
             .padding(.vertical, 4)
             .fontWeight(isSelected ? .semibold : .regular)
             .foregroundStyle(isActive || isSelected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
             .tag(item.id)
+            .onTapGesture {
+                onSelectDiaryDate(dayKey)
+            }
+    }
+
+    private func selectRootItem(_ item: SidebarRootItem) {
+        if item.id == "diary-root" {
+            if let selectedDate {
+                onSelectDiaryDate(selectedDate)
+            }
+        } else if item.id == "other-source" {
+            onSelectOtherSource(false)
+        } else if item.id.hasPrefix("connector:") {
+            onSelectKnowledgeConnector(String(item.id.dropFirst("connector:".count)))
+        }
     }
 
     private func expansionBinding(for section: DateSidebarSection) -> Binding<Bool> {

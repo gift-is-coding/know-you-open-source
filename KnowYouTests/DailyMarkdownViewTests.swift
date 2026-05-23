@@ -101,6 +101,20 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertFalse(presentation.rootItems[3].isEnabled)
     }
 
+    func testSidebarPresentationMarksOtherSourceAddAction() throws {
+        let presentation = DateSidebarPresentation(
+            dates: [],
+            selectedItemID: "other-source",
+            knowledgeImportConfig: .default,
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        let otherSource = try XCTUnwrap(presentation.rootItems.first { $0.id == "other-source" })
+        XCTAssertTrue(otherSource.showsAddButton)
+        XCTAssertTrue(otherSource.isSelected)
+    }
+
     @MainActor
     func testDateSidebarViewOnlyTreatsDiarySelectionIDsAsDayKeys() {
         XCTAssertEqual(DateSidebarView.dayKeyForSelection("diary:2026-05-23"), "2026-05-23")
@@ -124,9 +138,12 @@ final class DailyMarkdownViewTests: XCTestCase {
         let view = DateSidebarView(
             dates: [],
             selectedDate: nil,
-            isActive: true,
+            selectedItemID: nil,
             knowledgeImportConfig: config,
-            onSelect: { _ in },
+            isActive: true,
+            onSelectDiaryDate: { _ in },
+            onSelectOtherSource: { _ in },
+            onSelectKnowledgeConnector: { _ in },
             onOpenSyncMemory: {}
         )
 

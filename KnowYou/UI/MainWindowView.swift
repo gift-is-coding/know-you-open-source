@@ -27,8 +27,12 @@ struct MainWindowView: View {
             DateSidebarView(
                 dates: appState.availableDates,
                 selectedDate: appState.selectedDate,
+                selectedItemID: selectedSidebarItemID,
+                knowledgeImportConfig: appState.knowledgeImportConfig,
                 isActive: appState.readerFocus == .dateList,
-                onSelect: appState.selectDate,
+                onSelectDiaryDate: appState.selectDate,
+                onSelectOtherSource: appState.selectOtherSourceManager,
+                onSelectKnowledgeConnector: appState.selectKnowledgeConnector,
                 onOpenSyncMemory: openSyncMemoryPanel
             )
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
@@ -255,6 +259,19 @@ struct MainWindowView: View {
     private var selectedRefreshJob: DayRefreshJob? {
         guard let selectedDate = appState.selectedDate else { return nil }
         return appState.refreshJob(for: selectedDate)
+    }
+
+    private var selectedSidebarItemID: String? {
+        switch appState.mainContentSelection {
+        case .diary(let dayKey):
+            return dayKey.map { "diary:\($0)" } ?? "diary-root"
+        case .otherSourceManager:
+            return "other-source"
+        case .knowledgeConnector(let instanceID):
+            return "connector:\(instanceID)"
+        case .knowledgeDocument(let instanceID, _):
+            return "connector:\(instanceID)"
+        }
     }
 
     private var currentEngineState: EngineIndicatorState {

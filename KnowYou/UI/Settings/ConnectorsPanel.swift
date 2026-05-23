@@ -57,9 +57,46 @@ struct ConnectorsPanelPresentation: Equatable {
     }
 }
 
+enum ConnectorsManagementSurface: Equatable {
+    case connectorsSheet
+    case otherSourceRoot
+}
+
 struct ConnectorsManagementPresentation: Equatable {
     var panelPresentation: ConnectorsPanelPresentation
+    var surface: ConnectorsManagementSurface
     var startsWithAddAPIForm: Bool
+
+    var title: String {
+        switch surface {
+        case .connectorsSheet:
+            return "Connectors"
+        case .otherSourceRoot:
+            return "Other Source"
+        }
+    }
+
+    var subtitle: String {
+        switch surface {
+        case .connectorsSheet:
+            return "Manage daily memory exports and local-first knowledge imports."
+        case .otherSourceRoot:
+            return "Sync files from connected sources into a local Markdown library."
+        }
+    }
+
+    var emptyImportMessage: String {
+        switch surface {
+        case .connectorsSheet:
+            return "No connectors configured"
+        case .otherSourceRoot:
+            return "No sources connected yet. Add a connector and it will appear as a first-level item in the sidebar."
+        }
+    }
+
+    var showsDailyMemoryExport: Bool {
+        surface == .connectorsSheet
+    }
 }
 
 struct ConnectorsManagementFormState: Equatable {
@@ -143,23 +180,25 @@ struct ConnectorsManagementView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Connectors")
+                Text(managementPresentation.title)
                     .font(.title3.weight(.semibold))
-                Text("Manage daily memory exports and local-first knowledge imports.")
+                Text(managementPresentation.subtitle)
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
-            connectorSection(
-                title: "Daily Memory Export",
-                rows: presentation.exportRows,
-                statusMessage: presentation.syncMemoryStatusMessage,
-                actionTitle: "Export Now",
-                action: onExportNow,
-                rowActions: exportRowActions
-            )
-
             importSection
+
+            if managementPresentation.showsDailyMemoryExport {
+                connectorSection(
+                    title: "Daily Memory Export",
+                    rows: presentation.exportRows,
+                    statusMessage: presentation.syncMemoryStatusMessage,
+                    actionTitle: "Export Now",
+                    action: onExportNow,
+                    rowActions: exportRowActions
+                )
+            }
         }
         .onChange(of: managementPresentation.startsWithAddAPIForm) { _, startsWithAddAPIForm in
             formState.apply(startsWithAddAPIForm: startsWithAddAPIForm)
@@ -305,7 +344,7 @@ struct ConnectorsManagementView: View {
             }
 
             if presentation.importRows.isEmpty {
-                emptyRow
+                emptyImportRow
             } else {
                 ForEach(presentation.importRows) { row in
                     connectorRow(row) {
@@ -390,6 +429,16 @@ struct ConnectorsManagementView: View {
         apiBearerToken = ""
         formState.isShowingAPIConnectorForm = false
     }
+
+    private var emptyImportRow: some View {
+        Text(managementPresentation.emptyImportMessage)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
 }
 
 struct ConnectorsPanel: View {
@@ -414,6 +463,7 @@ struct ConnectorsPanel: View {
             ConnectorsManagementView(
                 managementPresentation: ConnectorsManagementPresentation(
                     panelPresentation: presentation,
+                    surface: .connectorsSheet,
                     startsWithAddAPIForm: false
                 ),
                 isAutoImportEnabled: $isAutoImportEnabled,

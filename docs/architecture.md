@@ -151,7 +151,7 @@ Knowledge Imports 与 Daily Memory Export 是两个方向相反的能力。Daily
 
 ### 3.4 Other Source Root Navigation
 
-主窗口左侧导航现在把日记和外部资料源拆成平行的根级入口。`My Diary` 负责按天生成的 diary 内容；`Other Source` 是固定存在的连接器管理入口，用于添加、配置、删除和手动同步外部资料源。每个已配置的导入连接器实例会作为 `Other Source` 旁边的根级条目出现，点击后打开该连接器已经同步到本地缓存的文档列表与 Markdown 预览。
+主窗口左侧导航现在把日记和外部资料源拆成平行的根级入口。`My Diary` 负责按天生成的 diary 内容；`Other Source` 是固定存在的连接器管理入口，用于添加、配置、删除和手动同步外部资料源。`Other Source` 主页面只呈现 Knowledge Imports 相关操作与本地 Markdown 存储/同步规则说明，Daily Memory Export 继续留在齿轮菜单中的 legacy `Connectors` sheet，避免用户把导入外部资料和导出每日记忆混成一个方向。每个已配置的导入连接器实例会作为 `Other Source` 旁边的根级条目出现，点击后打开该连接器已经同步到本地缓存的文档列表与 Markdown 预览。
 
 `MainContentSelection` 避免把非 diary 页面编码成日期字符串。导入完成后，`AppState.importKnowledgeNow()` 只刷新用户当前仍在查看的 knowledge 页面；如果用户已经切回 diary 或 `Other Source` 管理页，导入完成不会把界面强制跳回旧 connector。
 

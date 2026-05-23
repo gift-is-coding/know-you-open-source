@@ -38,11 +38,57 @@ final class ConnectorsPanelTests: XCTestCase {
                 syncMemoryStatusMessage: nil,
                 knowledgeImportStatusMessage: nil
             ),
+            surface: .otherSourceRoot,
             startsWithAddAPIForm: true
         )
 
         XCTAssertTrue(presentation.startsWithAddAPIForm)
         XCTAssertEqual(presentation.panelPresentation.importRows, [])
+    }
+
+    func testOtherSourceRootPresentationUsesMockupCopyAndEmptyState() {
+        let presentation = ConnectorsManagementPresentation(
+            panelPresentation: ConnectorsPanelPresentation(
+                syncMemoryConfig: .default,
+                knowledgeImportConfig: .default,
+                syncMemoryStatusMessage: nil,
+                knowledgeImportStatusMessage: nil
+            ),
+            surface: .otherSourceRoot,
+            startsWithAddAPIForm: false
+        )
+
+        XCTAssertEqual(presentation.title, "Other Source")
+        XCTAssertEqual(
+            presentation.subtitle,
+            "Sync files from connected sources into a local Markdown library."
+        )
+        XCTAssertEqual(
+            presentation.emptyImportMessage,
+            "No sources connected yet. Add a connector and it will appear as a first-level item in the sidebar."
+        )
+        XCTAssertFalse(presentation.showsDailyMemoryExport)
+    }
+
+    func testLegacyConnectorsSheetPresentationKeepsMixedExportAndImportCopy() {
+        let presentation = ConnectorsManagementPresentation(
+            panelPresentation: ConnectorsPanelPresentation(
+                syncMemoryConfig: .default,
+                knowledgeImportConfig: .default,
+                syncMemoryStatusMessage: nil,
+                knowledgeImportStatusMessage: nil
+            ),
+            surface: .connectorsSheet,
+            startsWithAddAPIForm: false
+        )
+
+        XCTAssertEqual(presentation.title, "Connectors")
+        XCTAssertEqual(
+            presentation.subtitle,
+            "Manage daily memory exports and local-first knowledge imports."
+        )
+        XCTAssertEqual(presentation.emptyImportMessage, "No connectors configured")
+        XCTAssertTrue(presentation.showsDailyMemoryExport)
     }
 
     func testPresentationSeparatesDailyExportAndKnowledgeImportRows() {

@@ -192,6 +192,8 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 当启用每日 Knowledge Imports 时，系统必须安装独立于 Daily Memory Export 的用户级 `LaunchAgent`。
 - 侧边栏必须始终显示 `My Diary` 和 `Other Source` 两个根级入口。
 - `Other Source` 必须打开连接器管理页，而不是混合资料总览页。
+- `Other Source` 主页面不得展示 Daily Memory Export；Daily Memory Export 必须保留在独立的 legacy `Connectors` 设置入口中。
+- `Other Source` 主页面必须说明外部资料会同步为本地 Markdown 缓存、源文件不会被修改，并说明去重与 Obsidian 日记导出回环规避规则。
 - `Other Source` 旁边必须提供明确的添加入口，用于进入添加连接器流程。
 - 添加导入连接器后，该连接器必须作为根级侧边栏条目出现，并与 `My Diary`、`Other Source` 平行。
 - 点击连接器根级条目必须打开该连接器已同步到本地缓存的文档列表和 Markdown 预览。

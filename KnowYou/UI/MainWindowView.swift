@@ -42,7 +42,7 @@ struct MainWindowView: View {
                 case .diary:
                     diaryReaderView
                 case .otherSourceManager(let focusAddConnector):
-                    connectorsManagementView(focusAddConnector: focusAddConnector)
+                    otherSourceManagementView(focusAddConnector: focusAddConnector)
                 case .knowledgeConnector(let instanceID):
                     knowledgeSourceView(connectorInstanceID: instanceID)
                 case .knowledgeDocument(let instanceID, _):
@@ -232,15 +232,33 @@ struct MainWindowView: View {
                 .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
                 .onboardingCoachmarkTarget(.sourcesPanel)
             case .otherSourceManager, .knowledgeConnector, .knowledgeDocument:
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Local Source")
-                        .font(.headline)
-                    Text("Other Source documents are copied into KnowYou local storage. Source files are not modified.")
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                GeometryReader { proxy in
+                    VStack(alignment: .leading, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Local Storage")
+                                .font(.headline)
+                            Text("Other Source documents are copied into KnowYou local storage as Markdown. Source files are not modified.")
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Sync Rules")
+                                .font(.headline)
+                            Text("Daily import can run on a schedule, and manual Import Now is always available.")
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text("Duplicates are matched by source identity and content hash.")
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text("KnowYou diary exports are skipped during imports to avoid Obsidian export/import loops.")
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(20)
+                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(20)
                 .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
             }
         }
@@ -368,6 +386,14 @@ struct MainWindowView: View {
         )
     }
 
+    private func otherSourceManagementView(focusAddConnector: Bool) -> some View {
+        GeometryReader { proxy in
+            connectorsManagementView(focusAddConnector: focusAddConnector)
+                .padding(28)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+        }
+    }
+
     private func knowledgeSourceView(connectorInstanceID: String) -> some View {
         let connector = appState.knowledgeImportConfig.connectorInstances.first { $0.id == connectorInstanceID }
         return Group {
@@ -427,6 +453,7 @@ struct MainWindowView: View {
                 syncMemoryStatusMessage: appState.syncMemoryStatusMessage,
                 knowledgeImportStatusMessage: appState.knowledgeImportStatusMessage
             ),
+            surface: .otherSourceRoot,
             startsWithAddAPIForm: focusAddConnector
         )
     }

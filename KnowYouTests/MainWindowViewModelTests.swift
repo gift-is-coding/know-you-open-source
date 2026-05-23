@@ -7152,10 +7152,107 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.selectedKnowledgeDocumentMarkdown, "# Beta Plan")
     }
 
+    func testAppStateLimitsLargeKnowledgeDocumentMarkdownPreview() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let vault = root.appendingPathComponent("Vault", isDirectory: true)
+        let databaseURL = root.appendingPathComponent("events.sqlite")
+        let contentURL = root.appendingPathComponent("large-content.md")
+        let metadataURL = root.appendingPathComponent("large-metadata.json")
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let environment = try AppEnvironment(
+            databasePath: databaseURL.path,
+            vaultURL: vault,
+            summarizer: nil
+        )
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: defaults,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+        let document = ImportedKnowledgeDocument(
+            id: "doc-large",
+            connectorInstanceID: "feishu-main",
+            connectorID: .feishuImport,
+            remoteID: "remote-large",
+            title: "Large Plan",
+            sourcePath: "doc-large-token",
+            remoteURL: nil,
+            mimeType: "text/markdown",
+            contentHash: "hash-large",
+            remoteUpdatedAt: nil,
+            firstImportedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            lastSyncedAt: Date(timeIntervalSince1970: 1_778_000_100),
+            deletedAt: nil,
+            localContentPath: contentURL.path,
+            localMetadataPath: metadataURL.path,
+            normalizationVersion: 1,
+            originKind: "feishu"
+        )
+        let fullMarkdown = "# Large Plan\n\n" + String(repeating: "A", count: 300_000)
+        try fullMarkdown.write(toFile: document.localContentPath, atomically: true, encoding: .utf8)
+        try environment.databaseWriter.upsertImportedKnowledgeDocument(document)
+
+        appState.selectKnowledgeConnector(instanceID: "feishu-main")
+
+        let preview = try XCTUnwrap(appState.selectedKnowledgeDocumentMarkdown)
+        XCTAssertLessThan(preview.count, fullMarkdown.count)
+        XCTAssertTrue(preview.hasSuffix("\n\n[Preview truncated]"))
+    }
+
     func testDeletingSelectedKnowledgeConnectorRoutesToOtherSourceManager() throws {
         let environment = try makeReaderEnvironment()
         let appState = AppState(environment: environment, bootstrapServices: false)
         appState.selectKnowledgeConnector(instanceID: "feishu-main")
+
+        appState.didDeleteKnowledgeConnector(instanceID: "feishu-main")
+
+        XCTAssertEqual(appState.mainContentSelection, .otherSourceManager(focusAddConnector: false))
+    }
+
+    func testDeletingSelectedKnowledgeDocumentConnectorRoutesToOtherSourceManager() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let vault = root.appendingPathComponent("Vault", isDirectory: true)
+        let databaseURL = root.appendingPathComponent("events.sqlite")
+        let contentURL = root.appendingPathComponent("content.md")
+        let metadataURL = root.appendingPathComponent("metadata.json")
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let environment = try AppEnvironment(
+            databasePath: databaseURL.path,
+            vaultURL: vault,
+            summarizer: nil
+        )
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        let document = ImportedKnowledgeDocument(
+            id: "doc-1",
+            connectorInstanceID: "feishu-main",
+            connectorID: .feishuImport,
+            remoteID: "remote-1",
+            title: "Project Plan",
+            sourcePath: "doc-token",
+            remoteURL: nil,
+            mimeType: "text/markdown",
+            contentHash: "hash",
+            remoteUpdatedAt: nil,
+            firstImportedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            lastSyncedAt: Date(timeIntervalSince1970: 1_778_000_100),
+            deletedAt: nil,
+            localContentPath: contentURL.path,
+            localMetadataPath: metadataURL.path,
+            normalizationVersion: 1,
+            originKind: "feishu"
+        )
+        try "# Project Plan".write(toFile: document.localContentPath, atomically: true, encoding: .utf8)
+        try environment.databaseWriter.upsertImportedKnowledgeDocument(document)
+        appState.selectKnowledgeDocument(connectorInstanceID: "feishu-main", documentID: "doc-1")
 
         appState.didDeleteKnowledgeConnector(instanceID: "feishu-main")
 

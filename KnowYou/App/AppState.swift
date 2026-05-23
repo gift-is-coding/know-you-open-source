@@ -541,6 +541,8 @@ final class AppState {
         .openclawCLI,
         .openAI,
     ]
+    private static let knowledgeDocumentMarkdownPreviewByteLimit = 256_000
+    private static let knowledgeDocumentMarkdownPreviewTruncationMarker = "\n\n[Preview truncated]"
 
     var availableDates: [String] = []
     var selectedDate: String?
@@ -917,8 +919,21 @@ final class AppState {
 
     private func loadKnowledgeDocumentMarkdown(_ document: ImportedKnowledgeDocument?) -> String? {
         guard let document else { return nil }
-        // Local cached Markdown preview load; Task 5's content browser will revisit async loading.
-        return try? String(contentsOfFile: document.localContentPath, encoding: .utf8)
+        guard let fileHandle = FileHandle(forReadingAtPath: document.localContentPath) else {
+            return nil
+        }
+        defer { try? fileHandle.close() }
+
+        let data = fileHandle.readData(ofLength: Self.knowledgeDocumentMarkdownPreviewByteLimit + 1)
+        let isTruncated = data.count > Self.knowledgeDocumentMarkdownPreviewByteLimit
+        let previewBytes = isTruncated
+            ? Data(data.prefix(Self.knowledgeDocumentMarkdownPreviewByteLimit))
+            : data
+        var markdown = String(decoding: previewBytes, as: UTF8.self)
+        if isTruncated {
+            markdown += Self.knowledgeDocumentMarkdownPreviewTruncationMarker
+        }
+        return markdown
     }
 
     func selectAdjacentStoryParagraph(step: Int) {

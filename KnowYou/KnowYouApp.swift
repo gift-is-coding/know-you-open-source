@@ -47,10 +47,95 @@ struct EndOfDayReminderRoute: Equatable {
     }
 }
 
+@MainActor
+private enum KnowYouWindowPresenter {
+    private static var manualMainWindow: NSWindow?
+    private static var manualLaunchMode: LaunchMode?
+    private static var manualAppState: AppState?
+
+    static func configureManualWindow(appState: AppState, launchMode: LaunchMode) {
+        manualAppState = appState
+        manualLaunchMode = launchMode
+    }
+
+    static func shouldPresentMainWindowOnLaunch(arguments: [String] = CommandLine.arguments) -> Bool {
+        LaunchMode(arguments: arguments) == .interactive && isRunningUnderXCTest == false
+    }
+
+    static func presentExistingMainWindow() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        guard let window = mainWindow() ?? makeManualMainWindow() else { return }
+        window.deminiaturize(nil)
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+    }
+
+    static func presentExistingMainWindowSoon() {
+        DispatchQueue.main.async {
+            presentExistingMainWindow()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            presentExistingMainWindow()
+        }
+    }
+
+    private static var isRunningUnderXCTest: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || CommandLine.arguments.contains { argument in
+                argument.contains(".xctest") || argument.contains("xctestconfiguration")
+            }
+    }
+
+    private static func mainWindow() -> NSWindow? {
+        NSApp.windows.first { window in
+            window.title == "KnowYou"
+                || window.identifier?.rawValue.contains("main") == true
+        }
+    }
+
+    private static func makeManualMainWindow() -> NSWindow? {
+        if let manualMainWindow {
+            return manualMainWindow
+        }
+        guard let manualAppState, let manualLaunchMode else {
+            return NSApp.windows.first
+        }
+
+        let rootView = AppRootView(launchMode: manualLaunchMode)
+            .environment(manualAppState)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1180, height: 760),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.identifier = NSUserInterfaceItemIdentifier("main")
+        window.title = "KnowYou"
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.contentViewController = NSHostingController(rootView: rootView)
+        manualMainWindow = window
+        return window
+    }
+}
+
 final class KnowYouAppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     override init() {
         super.init()
         UNUserNotificationCenter.current().delegate = self
+    }
+
+    func applicationDidFinishLaunching(_: Notification) {
+        guard KnowYouWindowPresenter.shouldPresentMainWindowOnLaunch() else { return }
+        KnowYouWindowPresenter.presentExistingMainWindowSoon()
+    }
+
+    func applicationShouldHandleReopen(_: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if flag == false {
+            KnowYouWindowPresenter.presentExistingMainWindow()
+        }
+        return true
     }
 
     func userNotificationCenter(
@@ -69,8 +154,7 @@ final class KnowYouAppDelegate: NSObject, NSApplicationDelegate, UNUserNotificat
         if let route = EndOfDayReminderRoute.from(userInfo: response.notification.request.content.userInfo) {
             Task { @MainActor in
                 EndOfDayReminderNavigationCenter.shared.enqueue(dayKey: route.dayKey, action: route.action)
-                NSApp.activate(ignoringOtherApps: true)
-                NSApp.windows.first?.makeKeyAndOrderFront(nil)
+                KnowYouWindowPresenter.presentExistingMainWindow()
             }
         }
         completionHandler()
@@ -78,7 +162,18 @@ final class KnowYouAppDelegate: NSObject, NSApplicationDelegate, UNUserNotificat
 }
 
 @main
-struct KnowYouApp: App {
+enum KnowYouMain {
+    static func main() {
+        if #available(macOS 15.0, *) {
+            KnowYouPresentedApp.main()
+        } else {
+            KnowYouLegacyApp.main()
+        }
+    }
+}
+
+@available(macOS 15.0, *)
+private struct KnowYouPresentedApp: App {
     @NSApplicationDelegateAdaptor(KnowYouAppDelegate.self) private var appDelegate
     private let launchMode: LaunchMode
     private let shouldEnsureDefaultLaunchAtLogin: Bool
@@ -86,15 +181,15 @@ struct KnowYouApp: App {
 
     init() {
         let launchMode = LaunchMode(arguments: CommandLine.arguments)
+        let appState = AppState(bootstrapServices: launchMode != .endOfDayReminder)
         self.launchMode = launchMode
         self.shouldEnsureDefaultLaunchAtLogin = launchMode == .interactive && Self.isRunningUnderXCTest == false
-        _appState = State(
-            initialValue: AppState(bootstrapServices: launchMode != .endOfDayReminder)
-        )
+        _appState = State(initialValue: appState)
+        KnowYouWindowPresenter.configureManualWindow(appState: appState, launchMode: launchMode)
     }
 
     var body: some Scene {
-        WindowGroup("KnowYou", id: "main") {
+        Window("KnowYou", id: "main") {
             AppRootView(launchMode: launchMode)
                 .environment(appState)
             .task {
@@ -102,6 +197,10 @@ struct KnowYouApp: App {
                     appState.ensureDefaultLaunchAtLogin()
                 }
             }
+        }
+        .defaultLaunchBehavior(.presented)
+        .commands {
+            MainWindowCommands()
         }
 
         MenuBarExtra("KnowYou", systemImage: "book.closed") {
@@ -120,6 +219,68 @@ struct KnowYouApp: App {
             || CommandLine.arguments.contains { argument in
                 argument.contains(".xctest") || argument.contains("xctestconfiguration")
             }
+    }
+}
+
+private struct KnowYouLegacyApp: App {
+    @NSApplicationDelegateAdaptor(KnowYouAppDelegate.self) private var appDelegate
+    private let launchMode: LaunchMode
+    private let shouldEnsureDefaultLaunchAtLogin: Bool
+    @State private var appState: AppState
+
+    init() {
+        let launchMode = LaunchMode(arguments: CommandLine.arguments)
+        let appState = AppState(bootstrapServices: launchMode != .endOfDayReminder)
+        self.launchMode = launchMode
+        self.shouldEnsureDefaultLaunchAtLogin = launchMode == .interactive && Self.isRunningUnderXCTest == false
+        _appState = State(initialValue: appState)
+        KnowYouWindowPresenter.configureManualWindow(appState: appState, launchMode: launchMode)
+    }
+
+    var body: some Scene {
+        Window("KnowYou", id: "main") {
+            AppRootView(launchMode: launchMode)
+                .environment(appState)
+            .task {
+                if shouldEnsureDefaultLaunchAtLogin {
+                    appState.ensureDefaultLaunchAtLogin()
+                }
+            }
+        }
+        .commands {
+            MainWindowCommands()
+        }
+
+        MenuBarExtra("KnowYou", systemImage: "book.closed") {
+            MenuBarContentView()
+                .environment(appState)
+        }
+
+        Settings {
+            SettingsView()
+                .environment(appState)
+        }
+    }
+
+    private static var isRunningUnderXCTest: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || CommandLine.arguments.contains { argument in
+                argument.contains(".xctest") || argument.contains("xctestconfiguration")
+            }
+    }
+}
+
+private struct MainWindowCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("Open KnowYou") {
+                openWindow(id: "main")
+                KnowYouWindowPresenter.presentExistingMainWindowSoon()
+            }
+            .keyboardShortcut("n")
+        }
     }
 }
 
@@ -167,9 +328,8 @@ private struct AppRootView: View {
         if NSApp.windows.isEmpty {
             openWindow(id: "main")
         } else {
-            NSApp.windows.first?.makeKeyAndOrderFront(nil)
+            KnowYouWindowPresenter.presentExistingMainWindow()
         }
-        NSApp.activate(ignoringOtherApps: true)
         appState.openDayFromEndOfDayReminder(route.dayKey, action: route.action)
     }
 }
@@ -256,7 +416,7 @@ private struct MenuBarContentView: View {
 
             Button("Open KnowYou") {
                 openWindow(id: "main")
-                NSApp.activate(ignoringOtherApps: true)
+                KnowYouWindowPresenter.presentExistingMainWindowSoon()
             }
 
             Button("Refresh Selected Day") {

@@ -84,7 +84,7 @@ flowchart LR
 
 启动后会创建单例式的 `AppState`，并挂接三个界面入口：
 
-- 主窗口（`WindowGroup(id: "main")`）
+- 主窗口（`Window(id: "main")`）
 - 菜单栏入口
 - Settings 窗口
 
@@ -92,7 +92,7 @@ flowchart LR
 
 如果用户尚未完成 onboarding，则仍然进入真实主阅读器，但会叠加 Demo Day + coachmark 引导；否则直接进入正常主阅读器。
 
-菜单栏中的 `Open KnowYou` 会显式调用 `openWindow(id: "main")` 并激活应用，因此主窗口既能由正常启动拉起，也能由菜单栏重新唤起。
+菜单栏中的 `Open KnowYou` 和 `Command-N` 会显式调用 `openWindow(id: "main")` 并激活应用；如果 SwiftUI 在菜单栏常驻状态下没有恢复主窗口，`KnowYouWindowPresenter` 会用同一个 `AppState` 补建一个 AppKit 主窗口，因此主窗口既能由正常启动拉起，也能由菜单栏或 Dock 重开唤起。
 
 ### 3.2 AppState 作为编排中心
 

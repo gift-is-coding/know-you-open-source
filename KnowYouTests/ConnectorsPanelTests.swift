@@ -2,6 +2,21 @@ import XCTest
 @testable import KnowYou
 
 final class ConnectorsPanelTests: XCTestCase {
+    func testConnectorsManagementPresentationCanStartInAddAPIFormMode() {
+        let presentation = ConnectorsManagementPresentation(
+            panelPresentation: ConnectorsPanelPresentation(
+                syncMemoryConfig: .default,
+                knowledgeImportConfig: .default,
+                syncMemoryStatusMessage: nil,
+                knowledgeImportStatusMessage: nil
+            ),
+            startsWithAddAPIForm: true
+        )
+
+        XCTAssertTrue(presentation.startsWithAddAPIForm)
+        XCTAssertEqual(presentation.panelPresentation.importRows, [])
+    }
+
     func testPresentationSeparatesDailyExportAndKnowledgeImportRows() {
         var syncMemoryConfig = SyncMemoryConfig.default
         syncMemoryConfig.obsidian.isEnabled = true

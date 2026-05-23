@@ -57,8 +57,13 @@ struct ConnectorsPanelPresentation: Equatable {
     }
 }
 
-struct ConnectorsPanel: View {
-    let presentation: ConnectorsPanelPresentation
+struct ConnectorsManagementPresentation: Equatable {
+    var panelPresentation: ConnectorsPanelPresentation
+    var startsWithAddAPIForm: Bool
+}
+
+struct ConnectorsManagementView: View {
+    let managementPresentation: ConnectorsManagementPresentation
     @Binding var isAutoImportEnabled: Bool
     @Binding var dailyImportTime: Date
     let onChooseObsidianExport: () -> Void
@@ -72,14 +77,50 @@ struct ConnectorsPanel: View {
     let onDeleteImportConnector: (String) -> Void
     let onExportNow: () -> Void
     let onImportNow: () -> Void
-    let onClose: () -> Void
 
     @State private var apiConnectorID: KnowledgeConnectorID = .feishuImport
     @State private var apiDisplayName = ""
     @State private var apiSource = ""
     @State private var apiAccount = ""
     @State private var apiBearerToken = ""
-    @State private var isShowingAPIConnectorForm = false
+    @State private var isShowingAPIConnectorForm: Bool
+
+    init(
+        managementPresentation: ConnectorsManagementPresentation,
+        isAutoImportEnabled: Binding<Bool>,
+        dailyImportTime: Binding<Date>,
+        onChooseObsidianExport: @escaping () -> Void,
+        onChooseOpenClawExport: @escaping () -> Void,
+        onOpenObsidianExport: @escaping () -> Void,
+        onOpenOpenClawExport: @escaping () -> Void,
+        onAddLocalFolderImport: @escaping () -> Void,
+        onAddObsidianImport: @escaping () -> Void,
+        onAddAPIImportConnector: @escaping (KnowledgeConnectorID, String, String?, String?, String) -> Void,
+        onSetImportConnectorEnabled: @escaping (String, Bool) -> Void,
+        onDeleteImportConnector: @escaping (String) -> Void,
+        onExportNow: @escaping () -> Void,
+        onImportNow: @escaping () -> Void
+    ) {
+        self.managementPresentation = managementPresentation
+        _isAutoImportEnabled = isAutoImportEnabled
+        _dailyImportTime = dailyImportTime
+        self.onChooseObsidianExport = onChooseObsidianExport
+        self.onChooseOpenClawExport = onChooseOpenClawExport
+        self.onOpenObsidianExport = onOpenObsidianExport
+        self.onOpenOpenClawExport = onOpenOpenClawExport
+        self.onAddLocalFolderImport = onAddLocalFolderImport
+        self.onAddObsidianImport = onAddObsidianImport
+        self.onAddAPIImportConnector = onAddAPIImportConnector
+        self.onSetImportConnectorEnabled = onSetImportConnectorEnabled
+        self.onDeleteImportConnector = onDeleteImportConnector
+        self.onExportNow = onExportNow
+        self.onImportNow = onImportNow
+        _isShowingAPIConnectorForm = State(initialValue: managementPresentation.startsWithAddAPIForm)
+    }
+
+    private var presentation: ConnectorsPanelPresentation {
+        managementPresentation.panelPresentation
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -101,15 +142,7 @@ struct ConnectorsPanel: View {
             )
 
             importSection
-
-            HStack {
-                Spacer()
-                Button("Close", action: onClose)
-                    .keyboardShortcut(.defaultAction)
-            }
         }
-        .padding(20)
-        .frame(minWidth: 560, minHeight: 430)
     }
 
     private func connectorSection(
@@ -335,5 +368,55 @@ struct ConnectorsPanel: View {
         apiAccount = ""
         apiBearerToken = ""
         isShowingAPIConnectorForm = false
+    }
+}
+
+struct ConnectorsPanel: View {
+    let presentation: ConnectorsPanelPresentation
+    @Binding var isAutoImportEnabled: Bool
+    @Binding var dailyImportTime: Date
+    let onChooseObsidianExport: () -> Void
+    let onChooseOpenClawExport: () -> Void
+    let onOpenObsidianExport: () -> Void
+    let onOpenOpenClawExport: () -> Void
+    let onAddLocalFolderImport: () -> Void
+    let onAddObsidianImport: () -> Void
+    let onAddAPIImportConnector: (KnowledgeConnectorID, String, String?, String?, String) -> Void
+    let onSetImportConnectorEnabled: (String, Bool) -> Void
+    let onDeleteImportConnector: (String) -> Void
+    let onExportNow: () -> Void
+    let onImportNow: () -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            ConnectorsManagementView(
+                managementPresentation: ConnectorsManagementPresentation(
+                    panelPresentation: presentation,
+                    startsWithAddAPIForm: false
+                ),
+                isAutoImportEnabled: $isAutoImportEnabled,
+                dailyImportTime: $dailyImportTime,
+                onChooseObsidianExport: onChooseObsidianExport,
+                onChooseOpenClawExport: onChooseOpenClawExport,
+                onOpenObsidianExport: onOpenObsidianExport,
+                onOpenOpenClawExport: onOpenOpenClawExport,
+                onAddLocalFolderImport: onAddLocalFolderImport,
+                onAddObsidianImport: onAddObsidianImport,
+                onAddAPIImportConnector: onAddAPIImportConnector,
+                onSetImportConnectorEnabled: onSetImportConnectorEnabled,
+                onDeleteImportConnector: onDeleteImportConnector,
+                onExportNow: onExportNow,
+                onImportNow: onImportNow
+            )
+
+            HStack {
+                Spacer()
+                Button("Close", action: onClose)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 560, minHeight: 430)
     }
 }

@@ -199,29 +199,8 @@ struct MainWindowView: View {
                     syncMemoryStatusMessage: appState.syncMemoryStatusMessage,
                     knowledgeImportStatusMessage: appState.knowledgeImportStatusMessage
                 ),
-                isAutoImportEnabled: Binding(
-                    get: { appState.knowledgeImportConfig.isImportEnabled },
-                    set: { isEnabled in
-                        var config = appState.knowledgeImportConfig
-                        config.isImportEnabled = isEnabled
-                        appState.saveKnowledgeImportConfig(config)
-                    }
-                ),
-                dailyImportTime: Binding(
-                    get: {
-                        var components = DateComponents()
-                        components.hour = appState.knowledgeImportConfig.dailyImportHour
-                        components.minute = appState.knowledgeImportConfig.dailyImportMinute
-                        return Calendar.current.date(from: components) ?? Date()
-                    },
-                    set: { date in
-                        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
-                        var config = appState.knowledgeImportConfig
-                        config.dailyImportHour = components.hour ?? 7
-                        config.dailyImportMinute = components.minute ?? 30
-                        appState.saveKnowledgeImportConfig(config)
-                    }
-                ),
+                isAutoImportEnabled: knowledgeImportEnabledBinding,
+                dailyImportTime: knowledgeImportTimeBinding,
                 onChooseObsidianExport: { chooseSyncMemoryFolder(for: .obsidian) },
                 onChooseOpenClawExport: { chooseSyncMemoryFolder(for: .openClaw) },
                 onOpenObsidianExport: { openSyncMemoryFolder(at: appState.syncMemoryConfig.obsidian.resolvedPath) },
@@ -276,6 +255,35 @@ struct MainWindowView: View {
 
     private var currentEngineState: EngineIndicatorState {
         appState.engineStatuses[appState.defaultEngine]?.state ?? .gray
+    }
+
+    private var knowledgeImportEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { appState.knowledgeImportConfig.isImportEnabled },
+            set: { isEnabled in
+                var config = appState.knowledgeImportConfig
+                config.isImportEnabled = isEnabled
+                appState.saveKnowledgeImportConfig(config)
+            }
+        )
+    }
+
+    private var knowledgeImportTimeBinding: Binding<Date> {
+        Binding(
+            get: {
+                var components = DateComponents()
+                components.hour = appState.knowledgeImportConfig.dailyImportHour
+                components.minute = appState.knowledgeImportConfig.dailyImportMinute
+                return Calendar.current.date(from: components) ?? Date()
+            },
+            set: { date in
+                let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+                var config = appState.knowledgeImportConfig
+                config.dailyImportHour = components.hour ?? 7
+                config.dailyImportMinute = components.minute ?? 30
+                appState.saveKnowledgeImportConfig(config)
+            }
+        )
     }
 
     private var engineRows: [DiaryEnginePanelRow] {
@@ -345,6 +353,40 @@ struct MainWindowView: View {
     private func openSyncMemoryPanel() {
         appState.openSyncMemoryPanel()
     }
+
+    private func connectorsManagementView(focusAddConnector: Bool) -> some View {
+        ConnectorsManagementView(
+            managementPresentation: ConnectorsManagementPresentation(
+                panelPresentation: ConnectorsPanelPresentation(
+                    syncMemoryConfig: appState.syncMemoryConfig,
+                    knowledgeImportConfig: appState.knowledgeImportConfig,
+                    syncMemoryStatusMessage: appState.syncMemoryStatusMessage,
+                    knowledgeImportStatusMessage: appState.knowledgeImportStatusMessage
+                ),
+                startsWithAddAPIForm: focusAddConnector
+            ),
+            isAutoImportEnabled: knowledgeImportEnabledBinding,
+            dailyImportTime: knowledgeImportTimeBinding,
+            onChooseObsidianExport: { chooseSyncMemoryFolder(for: .obsidian) },
+            onChooseOpenClawExport: { chooseSyncMemoryFolder(for: .openClaw) },
+            onOpenObsidianExport: { openSyncMemoryFolder(at: appState.syncMemoryConfig.obsidian.resolvedPath) },
+            onOpenOpenClawExport: { openSyncMemoryFolder(at: appState.syncMemoryConfig.openClaw.resolvedPath) },
+            onAddLocalFolderImport: { chooseKnowledgeImportFolder(for: .localFolderImport) },
+            onAddObsidianImport: { chooseKnowledgeImportFolder(for: .obsidianImport) },
+            onAddAPIImportConnector: addAPIKnowledgeImportConnector,
+            onSetImportConnectorEnabled: setKnowledgeImportConnectorEnabled,
+            onDeleteImportConnector: deleteKnowledgeImportConnector,
+            onExportNow: {
+                appState.syncMemoryNow()
+            },
+            onImportNow: {
+                Task { @MainActor in
+                    await appState.importKnowledgeNow()
+                }
+            }
+        )
+    }
+
     private func openAPIDetail() {
         apiConfigDraft = SummarizerConfig.load()
         apiConfigDraft.defaultEngine = .openAI

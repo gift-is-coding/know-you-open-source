@@ -4,6 +4,7 @@ struct DateSidebarView: View {
     let dates: [String]
     let selectedDate: String?
     let isActive: Bool
+    var knowledgeImportConfig: KnowledgeImportConfig = .default
     let onSelect: (String) -> Void
     let onOpenSyncMemory: () -> Void
     @State private var expandedSectionIDs: Set<String> = []
@@ -99,15 +100,19 @@ struct DateSidebarView: View {
         Binding(
             get: { isActive ? selectedDate.map(Self.diaryItemID) : nil },
             set: { newValue in
-                if let newValue {
-                    onSelect(Self.dayKey(from: newValue))
+                if let newValue, let dayKey = Self.dayKeyForSelection(newValue) {
+                    onSelect(dayKey)
                 }
             }
         )
     }
 
     private var presentation: DateSidebarPresentation {
-        DateSidebarPresentation(dates: dates, selectedItemID: selectedDate.map(Self.diaryItemID))
+        DateSidebarPresentation(
+            dates: dates,
+            selectedItemID: selectedDate.map(Self.diaryItemID),
+            knowledgeImportConfig: knowledgeImportConfig
+        )
     }
 
     private func dateRow(_ item: DateSidebarItem) -> some View {
@@ -144,8 +149,10 @@ struct DateSidebarView: View {
         "diary:\(dayKey)"
     }
 
-    private static func dayKey(from itemID: String) -> String {
-        itemID.replacing(/^diary:/, with: "")
+    static func dayKeyForSelection(_ itemID: String) -> String? {
+        let prefix = "diary:"
+        guard itemID.hasPrefix(prefix) else { return nil }
+        return String(itemID.dropFirst(prefix.count))
     }
 
 }

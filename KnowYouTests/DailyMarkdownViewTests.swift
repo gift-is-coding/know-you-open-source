@@ -101,6 +101,38 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertFalse(presentation.rootItems[3].isEnabled)
     }
 
+    @MainActor
+    func testDateSidebarViewOnlyTreatsDiarySelectionIDsAsDayKeys() {
+        XCTAssertEqual(DateSidebarView.dayKeyForSelection("diary:2026-05-23"), "2026-05-23")
+        XCTAssertNil(DateSidebarView.dayKeyForSelection("other-source"))
+        XCTAssertNil(DateSidebarView.dayKeyForSelection("connector:drive-main"))
+    }
+
+    @MainActor
+    func testDateSidebarViewAcceptsKnowledgeImportConfig() {
+        let config = KnowledgeImportConfig(
+            connectorInstances: [
+                KnowledgeConnectorInstanceConfig(
+                    id: "drive-main",
+                    connectorID: .googleDriveImport,
+                    displayName: "Google Drive",
+                    isEnabled: true
+                ),
+            ]
+        )
+
+        let view = DateSidebarView(
+            dates: [],
+            selectedDate: nil,
+            isActive: true,
+            knowledgeImportConfig: config,
+            onSelect: { _ in },
+            onOpenSyncMemory: {}
+        )
+
+        XCTAssertEqual(view.knowledgeImportConfig.connectorInstances.map(\.id), ["drive-main"])
+    }
+
     func testRefreshProgressPresentationMarksCompletedAndCurrentSteps() {
         let job = DayRefreshJob(
             dayKey: "2026-04-09",

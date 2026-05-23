@@ -30,6 +30,9 @@ struct KnowledgeSourceContentPresentation: Equatable {
         statusMessage: String?
     ) {
         title = connector.displayName
+        let selectedDocumentExists = selectedDocumentID.map { selectedID in
+            documents.contains { $0.id == selectedID }
+        } ?? false
         documentRows = documents.map { document in
             DocumentRow(
                 id: document.id,
@@ -38,7 +41,7 @@ struct KnowledgeSourceContentPresentation: Equatable {
                 isSelected: document.id == selectedDocumentID
             )
         }
-        markdown = selectedMarkdown
+        markdown = selectedDocumentExists ? selectedMarkdown : nil
         self.statusMessage = statusMessage
 
         if connector.isEnabled == false {
@@ -201,5 +204,6 @@ struct KnowledgeSourceContentView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(row.title)
+        .accessibilityValue(row.isSelected ? "\(row.subtitle), Selected" : row.subtitle)
     }
 }

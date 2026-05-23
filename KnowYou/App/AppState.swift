@@ -4389,11 +4389,16 @@ extension AppState {
 
         noteIndex = notes.filter { $0.key != OnboardingDemoStory.demoDayKey }
         rebuildAvailableDates()
-        if let selectedDate {
-            loadDayPresentation(for: selectedDate)
-        } else if let firstDate = availableDates.first {
-            setSelectedDiaryDate(firstDate)
-            loadDayPresentation(for: firstDate)
+        switch mainContentSelection {
+        case .diary:
+            if let selectedDate {
+                loadDayPresentation(for: selectedDate)
+            } else if let firstDate = availableDates.first {
+                setSelectedDiaryDate(firstDate)
+                loadDayPresentation(for: firstDate)
+            }
+        case .otherSourceManager, .knowledgeConnector, .knowledgeDocument:
+            break
         }
     }
 

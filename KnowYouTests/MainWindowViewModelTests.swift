@@ -7064,13 +7064,83 @@ final class MainWindowViewModelTests: XCTestCase {
     func testRefreshNotesIndexAutoSelectsDiaryMainContentSelection() throws {
         let environment = try makeReaderEnvironment()
         let appState = AppState(environment: environment, bootstrapServices: false)
-        appState.selectOtherSourceManager(focusAddConnector: true)
-        appState.selectedDate = nil
 
         appState.refreshNotesIndex()
 
         XCTAssertEqual(appState.selectedDate, "2026-04-08")
         XCTAssertEqual(appState.mainContentSelection, .diary(dayKey: "2026-04-08"))
+    }
+
+    func testRefreshNotesIndexPreservesOtherSourceSelectionWhenSelectedDateExists() throws {
+        let environment = try makeReaderEnvironment()
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectDate("2026-04-08")
+        appState.selectOtherSourceManager(focusAddConnector: false)
+
+        appState.refreshNotesIndex()
+
+        XCTAssertEqual(appState.selectedDate, "2026-04-08")
+        XCTAssertEqual(appState.mainContentSelection, .otherSourceManager(focusAddConnector: false))
+    }
+
+    func testRefreshNotesIndexPreservesKnowledgeConnectorSelectionWhenSelectedDateExists() throws {
+        let environment = try makeReaderEnvironment()
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectDate("2026-04-08")
+        appState.selectKnowledgeConnector(instanceID: "feishu-main")
+
+        appState.refreshNotesIndex()
+
+        XCTAssertEqual(appState.selectedDate, "2026-04-08")
+        XCTAssertEqual(appState.mainContentSelection, .knowledgeConnector(instanceID: "feishu-main"))
+    }
+
+    func testRefreshNotesIndexPreservesKnowledgeDocumentSelectionWhenSelectedDateExists() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let vault = root.appendingPathComponent("Vault", isDirectory: true)
+        let databaseURL = root.appendingPathComponent("events.sqlite")
+        let contentURL = root.appendingPathComponent("content.md")
+        let metadataURL = root.appendingPathComponent("metadata.json")
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let environment = try AppEnvironment(
+            databasePath: databaseURL.path,
+            vaultURL: vault,
+            summarizer: nil
+        )
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        let document = ImportedKnowledgeDocument(
+            id: "doc-1",
+            connectorInstanceID: "feishu-main",
+            connectorID: .feishuImport,
+            remoteID: "remote-1",
+            title: "Project Plan",
+            sourcePath: "doc-token",
+            remoteURL: nil,
+            mimeType: "text/markdown",
+            contentHash: "hash",
+            remoteUpdatedAt: nil,
+            firstImportedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            lastSyncedAt: Date(timeIntervalSince1970: 1_778_000_100),
+            deletedAt: nil,
+            localContentPath: contentURL.path,
+            localMetadataPath: metadataURL.path,
+            normalizationVersion: 1,
+            originKind: "feishu"
+        )
+        try "# Project Plan".write(toFile: document.localContentPath, atomically: true, encoding: .utf8)
+        try environment.databaseWriter.upsertImportedKnowledgeDocument(document)
+        appState.selectDate("2026-04-08")
+        appState.selectKnowledgeDocument(connectorInstanceID: "feishu-main", documentID: "doc-1")
+
+        appState.refreshNotesIndex()
+
+        XCTAssertEqual(appState.selectedDate, "2026-04-08")
+        XCTAssertEqual(
+            appState.mainContentSelection,
+            .knowledgeDocument(connectorInstanceID: "feishu-main", documentID: "doc-1")
+        )
     }
 
     func testAppStateSelectsSecondKnowledgeDocumentMarkdown() throws {

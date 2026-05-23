@@ -37,46 +37,20 @@ struct MainWindowView: View {
             )
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
         } content: {
-            DailyMarkdownView(
-                story: appState.selectedStory,
-                selectedParagraphID: appState.selectedStoryParagraphID,
-                dayKey: appState.selectedDate,
-                refreshJob: selectedRefreshJob,
-                refreshLogNotice: appState.refreshLogNotice(for: appState.selectedDate),
-                isGenerating: appState.isGeneratingJournal(for: appState.selectedDate),
-                isActive: appState.readerFocus == .storyParagraphs,
-                onSelectParagraph: { paragraphID in
-                    appState.focusStoryParagraphs()
-                    appState.selectStoryParagraph(paragraphID)
-                    onStoryParagraphTap?(paragraphID)
-                },
-                onFocusStory: {
-                    appState.focusStoryParagraphs()
-                },
-                onRefresh: {
-                    Task { @MainActor in
-                        await appState.refreshSelectedDay()
-                    }
-                },
-                onTodayFullRefresh: {
-                    Task { @MainActor in
-                        await appState.refreshSelectedDayFullRecovery()
-                    }
-                },
-                canFullRefresh: appState.selectedDate != nil && appState.selectedDate != OnboardingDemoStory.demoDayKey,
-                fullRefreshMenuTitle: appState.selectedDate == ISO8601DayKey.format(Date())
-                    ? "Full Refresh Today (Overwriting)"
-                    : "Full Refresh (Overwriting)"
-            )
-            .onboardingCoachmarkTarget(.storyPanel)
+            Group {
+                switch appState.mainContentSelection {
+                case .diary:
+                    diaryReaderView
+                case .otherSourceManager(let focusAddConnector):
+                    connectorsManagementView(focusAddConnector: focusAddConnector)
+                case .knowledgeConnector(let instanceID):
+                    knowledgeSourceView(connectorInstanceID: instanceID)
+                case .knowledgeDocument(let instanceID, _):
+                    knowledgeSourceView(connectorInstanceID: instanceID)
+                }
+            }
         } detail: {
-            StorySourceDetailView(
-                selectedParagraph: appState.selectedStoryParagraph,
-                selectedEvents: appState.selectedStorySourceEvents,
-                allEvents: appState.selectedDayEvents
-            )
-            .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
-            .onboardingCoachmarkTarget(.sourcesPanel)
+            detailPane
         }
         .frame(minWidth: 1240, minHeight: 720)
         .overlay(alignment: .top) {
@@ -211,6 +185,67 @@ struct MainWindowView: View {
         return appState.refreshJob(for: selectedDate)
     }
 
+    private var diaryReaderView: some View {
+        DailyMarkdownView(
+            story: appState.selectedStory,
+            selectedParagraphID: appState.selectedStoryParagraphID,
+            dayKey: appState.selectedDate,
+            refreshJob: selectedRefreshJob,
+            refreshLogNotice: appState.refreshLogNotice(for: appState.selectedDate),
+            isGenerating: appState.isGeneratingJournal(for: appState.selectedDate),
+            isActive: appState.readerFocus == .storyParagraphs,
+            onSelectParagraph: { paragraphID in
+                appState.focusStoryParagraphs()
+                appState.selectStoryParagraph(paragraphID)
+                onStoryParagraphTap?(paragraphID)
+            },
+            onFocusStory: {
+                appState.focusStoryParagraphs()
+            },
+            onRefresh: {
+                Task { @MainActor in
+                    await appState.refreshSelectedDay()
+                }
+            },
+            onTodayFullRefresh: {
+                Task { @MainActor in
+                    await appState.refreshSelectedDayFullRecovery()
+                }
+            },
+            canFullRefresh: appState.selectedDate != nil && appState.selectedDate != OnboardingDemoStory.demoDayKey,
+            fullRefreshMenuTitle: appState.selectedDate == ISO8601DayKey.format(Date())
+                ? "Full Refresh Today (Overwriting)"
+                : "Full Refresh (Overwriting)"
+        )
+        .onboardingCoachmarkTarget(.storyPanel)
+    }
+
+    private var detailPane: some View {
+        Group {
+            switch appState.mainContentSelection {
+            case .diary:
+                StorySourceDetailView(
+                    selectedParagraph: appState.selectedStoryParagraph,
+                    selectedEvents: appState.selectedStorySourceEvents,
+                    allEvents: appState.selectedDayEvents
+                )
+                .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
+                .onboardingCoachmarkTarget(.sourcesPanel)
+            case .otherSourceManager, .knowledgeConnector, .knowledgeDocument:
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Local Source")
+                        .font(.headline)
+                    Text("Other Source documents are copied into KnowYou local storage. Source files are not modified.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(20)
+                .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
+            }
+        }
+    }
+
     private var selectedSidebarItemID: String? {
         switch appState.mainContentSelection {
         case .diary(let dayKey):
@@ -331,6 +366,42 @@ struct MainWindowView: View {
                 focusAddConnector: focusAddConnector
             )
         )
+    }
+
+    private func knowledgeSourceView(connectorInstanceID: String) -> some View {
+        let connector = appState.knowledgeImportConfig.connectorInstances.first { $0.id == connectorInstanceID }
+        return Group {
+            if let connector {
+                KnowledgeSourceContentView(
+                    presentation: KnowledgeSourceContentPresentation(
+                        connector: connector,
+                        documents: appState.selectedKnowledgeDocuments,
+                        selectedDocumentID: appState.selectedKnowledgeDocument?.id,
+                        selectedMarkdown: appState.selectedKnowledgeDocumentMarkdown,
+                        statusMessage: appState.knowledgeImportStatusMessage
+                    ),
+                    onSyncNow: {
+                        Task { @MainActor in
+                            await appState.importKnowledgeNow()
+                            appState.selectKnowledgeConnector(instanceID: connectorInstanceID)
+                        }
+                    },
+                    onSelectDocument: { documentID in
+                        appState.selectKnowledgeDocument(
+                            connectorInstanceID: connectorInstanceID,
+                            documentID: documentID
+                        )
+                    },
+                    onConfigure: {
+                        appState.selectOtherSourceManager(focusAddConnector: false)
+                    }
+                )
+            } else {
+                Text("Connector not found")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
     }
 
     private func connectorsManagementSheet() -> some View {
@@ -510,6 +581,7 @@ struct MainWindowView: View {
         config.connectorInstances.removeAll { $0.id == id }
         appState.deleteKnowledgeImportBearerToken(connectorInstanceID: id)
         appState.saveKnowledgeImportConfig(config)
+        appState.didDeleteKnowledgeConnector(instanceID: id)
     }
 
     private func openSyncMemoryFolder(at path: String?) {

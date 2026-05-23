@@ -192,36 +192,7 @@ struct MainWindowView: View {
                 }
             )
         ) {
-            ConnectorsPanel(
-                presentation: ConnectorsPanelPresentation(
-                    syncMemoryConfig: appState.syncMemoryConfig,
-                    knowledgeImportConfig: appState.knowledgeImportConfig,
-                    syncMemoryStatusMessage: appState.syncMemoryStatusMessage,
-                    knowledgeImportStatusMessage: appState.knowledgeImportStatusMessage
-                ),
-                isAutoImportEnabled: knowledgeImportEnabledBinding,
-                dailyImportTime: knowledgeImportTimeBinding,
-                onChooseObsidianExport: { chooseSyncMemoryFolder(for: .obsidian) },
-                onChooseOpenClawExport: { chooseSyncMemoryFolder(for: .openClaw) },
-                onOpenObsidianExport: { openSyncMemoryFolder(at: appState.syncMemoryConfig.obsidian.resolvedPath) },
-                onOpenOpenClawExport: { openSyncMemoryFolder(at: appState.syncMemoryConfig.openClaw.resolvedPath) },
-                onAddLocalFolderImport: { chooseKnowledgeImportFolder(for: .localFolderImport) },
-                onAddObsidianImport: { chooseKnowledgeImportFolder(for: .obsidianImport) },
-                onAddAPIImportConnector: addAPIKnowledgeImportConnector,
-                onSetImportConnectorEnabled: setKnowledgeImportConnectorEnabled,
-                onDeleteImportConnector: deleteKnowledgeImportConnector,
-                onExportNow: {
-                    appState.syncMemoryNow()
-                },
-                onImportNow: {
-                    Task { @MainActor in
-                        await appState.importKnowledgeNow()
-                    }
-                },
-                onClose: {
-                    appState.closeSyncMemoryPanel()
-                }
-            )
+            connectorsManagementSheet()
         }
         .onAppear {
             startKeyMonitor()
@@ -355,16 +326,46 @@ struct MainWindowView: View {
     }
 
     private func connectorsManagementView(focusAddConnector: Bool) -> some View {
-        ConnectorsManagementView(
-            managementPresentation: ConnectorsManagementPresentation(
-                panelPresentation: ConnectorsPanelPresentation(
-                    syncMemoryConfig: appState.syncMemoryConfig,
-                    knowledgeImportConfig: appState.knowledgeImportConfig,
-                    syncMemoryStatusMessage: appState.syncMemoryStatusMessage,
-                    knowledgeImportStatusMessage: appState.knowledgeImportStatusMessage
-                ),
-                startsWithAddAPIForm: focusAddConnector
+        connectorsManagementView(
+            managementPresentation: connectorsManagementPresentation(
+                focusAddConnector: focusAddConnector
+            )
+        )
+    }
+
+    private func connectorsManagementSheet() -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            connectorsManagementView(focusAddConnector: false)
+
+            HStack {
+                Spacer()
+                Button("Close") {
+                    appState.closeSyncMemoryPanel()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 560, minHeight: 430)
+    }
+
+    private func connectorsManagementPresentation(focusAddConnector: Bool) -> ConnectorsManagementPresentation {
+        ConnectorsManagementPresentation(
+            panelPresentation: ConnectorsPanelPresentation(
+                syncMemoryConfig: appState.syncMemoryConfig,
+                knowledgeImportConfig: appState.knowledgeImportConfig,
+                syncMemoryStatusMessage: appState.syncMemoryStatusMessage,
+                knowledgeImportStatusMessage: appState.knowledgeImportStatusMessage
             ),
+            startsWithAddAPIForm: focusAddConnector
+        )
+    }
+
+    private func connectorsManagementView(
+        managementPresentation: ConnectorsManagementPresentation
+    ) -> some View {
+        ConnectorsManagementView(
+            managementPresentation: managementPresentation,
             isAutoImportEnabled: knowledgeImportEnabledBinding,
             dailyImportTime: knowledgeImportTimeBinding,
             onChooseObsidianExport: { chooseSyncMemoryFolder(for: .obsidian) },

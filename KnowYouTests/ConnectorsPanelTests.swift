@@ -2,6 +2,34 @@ import XCTest
 @testable import KnowYou
 
 final class ConnectorsPanelTests: XCTestCase {
+    func testConnectorsManagementFormStateStartsWithAPIFormVisible() {
+        let state = ConnectorsManagementFormState(startsWithAddAPIForm: true)
+
+        XCTAssertTrue(state.isShowingAPIConnectorForm)
+    }
+
+    func testConnectorsManagementFormStateStartsWithAPIFormHidden() {
+        let state = ConnectorsManagementFormState(startsWithAddAPIForm: false)
+
+        XCTAssertFalse(state.isShowingAPIConnectorForm)
+    }
+
+    func testConnectorsManagementFormStateOpensWhenAddAPIFormFocusBecomesTrue() {
+        var state = ConnectorsManagementFormState(startsWithAddAPIForm: false)
+
+        state.apply(startsWithAddAPIForm: true)
+
+        XCTAssertTrue(state.isShowingAPIConnectorForm)
+    }
+
+    func testConnectorsManagementFormStateDoesNotCloseWhenAddAPIFormFocusBecomesFalse() {
+        var state = ConnectorsManagementFormState(startsWithAddAPIForm: true)
+
+        state.apply(startsWithAddAPIForm: false)
+
+        XCTAssertTrue(state.isShowingAPIConnectorForm)
+    }
+
     func testConnectorsManagementPresentationCanStartInAddAPIFormMode() {
         let presentation = ConnectorsManagementPresentation(
             panelPresentation: ConnectorsPanelPresentation(

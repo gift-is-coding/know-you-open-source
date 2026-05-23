@@ -62,6 +62,20 @@ struct ConnectorsManagementPresentation: Equatable {
     var startsWithAddAPIForm: Bool
 }
 
+struct ConnectorsManagementFormState: Equatable {
+    var isShowingAPIConnectorForm: Bool
+
+    init(startsWithAddAPIForm: Bool) {
+        isShowingAPIConnectorForm = startsWithAddAPIForm
+    }
+
+    mutating func apply(startsWithAddAPIForm: Bool) {
+        if startsWithAddAPIForm {
+            isShowingAPIConnectorForm = true
+        }
+    }
+}
+
 struct ConnectorsManagementView: View {
     let managementPresentation: ConnectorsManagementPresentation
     @Binding var isAutoImportEnabled: Bool
@@ -83,7 +97,7 @@ struct ConnectorsManagementView: View {
     @State private var apiSource = ""
     @State private var apiAccount = ""
     @State private var apiBearerToken = ""
-    @State private var isShowingAPIConnectorForm: Bool
+    @State private var formState: ConnectorsManagementFormState
 
     init(
         managementPresentation: ConnectorsManagementPresentation,
@@ -115,7 +129,11 @@ struct ConnectorsManagementView: View {
         self.onDeleteImportConnector = onDeleteImportConnector
         self.onExportNow = onExportNow
         self.onImportNow = onImportNow
-        _isShowingAPIConnectorForm = State(initialValue: managementPresentation.startsWithAddAPIForm)
+        _formState = State(
+            initialValue: ConnectorsManagementFormState(
+                startsWithAddAPIForm: managementPresentation.startsWithAddAPIForm
+            )
+        )
     }
 
     private var presentation: ConnectorsPanelPresentation {
@@ -142,6 +160,9 @@ struct ConnectorsManagementView: View {
             )
 
             importSection
+        }
+        .onChange(of: managementPresentation.startsWithAddAPIForm) { _, startsWithAddAPIForm in
+            formState.apply(startsWithAddAPIForm: startsWithAddAPIForm)
         }
     }
 
@@ -263,13 +284,13 @@ struct ConnectorsManagementView: View {
                     Label("Add Obsidian", systemImage: "square.stack.3d.up")
                 }
                 Button {
-                    isShowingAPIConnectorForm.toggle()
+                    formState.isShowingAPIConnectorForm.toggle()
                 } label: {
                     Label("Add API", systemImage: "network")
                 }
             }
 
-            if isShowingAPIConnectorForm {
+            if formState.isShowingAPIConnectorForm {
                 apiConnectorForm
             }
 
@@ -367,7 +388,7 @@ struct ConnectorsManagementView: View {
         apiSource = ""
         apiAccount = ""
         apiBearerToken = ""
-        isShowingAPIConnectorForm = false
+        formState.isShowingAPIConnectorForm = false
     }
 }
 

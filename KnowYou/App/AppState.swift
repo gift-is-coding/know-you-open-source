@@ -33,6 +33,13 @@ enum ReaderFocusZone: Hashable {
     case storyParagraphs
 }
 
+enum MainContentSelection: Equatable {
+    case diary(dayKey: String?)
+    case otherSourceManager(focusAddConnector: Bool)
+    case knowledgeConnector(instanceID: String)
+    case knowledgeDocument(connectorInstanceID: String, documentID: String)
+}
+
 enum ReaderMoveDirection {
     case up
     case down
@@ -566,6 +573,10 @@ final class AppState {
     var selectedSourceNotesMarkdown: String?
     var refreshLogNoticesByDay: [String: String] = [:]
     var readerFocus: ReaderFocusZone = .dateList
+    var mainContentSelection: MainContentSelection = .diary(dayKey: nil)
+    var selectedKnowledgeDocuments: [ImportedKnowledgeDocument] = []
+    var selectedKnowledgeDocument: ImportedKnowledgeDocument?
+    var selectedKnowledgeDocumentMarkdown: String?
     var onboardingProgress: OnboardingProgress
     var onboardingBootstrapState: OnboardingBootstrapState
     var onboardingBootstrapDayKeys: [String]
@@ -817,6 +828,7 @@ final class AppState {
     }
 
     func selectDate(_ date: String) {
+        mainContentSelection = .diary(dayKey: date)
         if date == OnboardingDemoStory.demoDayKey {
             readerFocus = .dateList
             selectedDate = date
@@ -827,6 +839,37 @@ final class AppState {
         selectedDate = date
         selectedMarkdownURL = noteIndex[date]
         loadDayPresentation(for: date)
+    }
+
+    func selectOtherSourceManager(focusAddConnector: Bool) {
+        mainContentSelection = .otherSourceManager(focusAddConnector: focusAddConnector)
+        readerFocus = .dateList
+    }
+
+    func selectKnowledgeConnector(instanceID: String) {
+        mainContentSelection = .knowledgeConnector(instanceID: instanceID)
+        readerFocus = .dateList
+        reloadKnowledgeDocuments(connectorInstanceID: instanceID)
+    }
+
+    func selectKnowledgeDocument(connectorInstanceID: String, documentID: String) {
+        mainContentSelection = .knowledgeDocument(
+            connectorInstanceID: connectorInstanceID,
+            documentID: documentID
+        )
+        reloadKnowledgeDocuments(connectorInstanceID: connectorInstanceID)
+        selectedKnowledgeDocument = selectedKnowledgeDocuments.first { $0.id == documentID }
+        selectedKnowledgeDocumentMarkdown = loadKnowledgeDocumentMarkdown(selectedKnowledgeDocument)
+    }
+
+    func didDeleteKnowledgeConnector(instanceID: String) {
+        switch mainContentSelection {
+        case .knowledgeConnector(let selectedID) where selectedID == instanceID,
+             .knowledgeDocument(connectorInstanceID: let selectedID, documentID: _) where selectedID == instanceID:
+            selectOtherSourceManager(focusAddConnector: false)
+        default:
+            break
+        }
     }
 
     func openDayFromEndOfDayReminder(_ dayKey: String, action: EndOfDayReminderAction = .review) {
@@ -857,6 +900,27 @@ final class AppState {
         guard isPresentingOnboardingDemo else { return }
         selectedStoryParagraphID = nil
         selectedStorySourceEvents = []
+    }
+
+    private func reloadKnowledgeDocuments(connectorInstanceID: String) {
+        guard let environment else {
+            selectedKnowledgeDocuments = []
+            selectedKnowledgeDocument = nil
+            selectedKnowledgeDocumentMarkdown = nil
+            return
+        }
+
+        selectedKnowledgeDocuments =
+            (try? environment.databaseWriter.fetchImportedKnowledgeDocuments(
+                connectorInstanceID: connectorInstanceID
+            )) ?? []
+        selectedKnowledgeDocument = selectedKnowledgeDocuments.first
+        selectedKnowledgeDocumentMarkdown = loadKnowledgeDocumentMarkdown(selectedKnowledgeDocument)
+    }
+
+    private func loadKnowledgeDocumentMarkdown(_ document: ImportedKnowledgeDocument?) -> String? {
+        guard let document else { return nil }
+        return try? String(contentsOfFile: document.localContentPath, encoding: .utf8)
     }
 
     func selectAdjacentStoryParagraph(step: Int) {

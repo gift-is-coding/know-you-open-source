@@ -6989,6 +6989,77 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertFalse(appState.isShowingSyncMemoryPanel)
     }
 
+    func testAppStateSelectsOtherSourceManagerWithoutChangingSelectedDiaryDate() {
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: defaults,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.selectDate("2026-05-23")
+
+        appState.selectOtherSourceManager(focusAddConnector: false)
+
+        XCTAssertEqual(appState.mainContentSelection, .otherSourceManager(focusAddConnector: false))
+        XCTAssertEqual(appState.selectedDate, "2026-05-23")
+    }
+
+    func testAppStateSelectsKnowledgeConnectorAndLoadsItsDocuments() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let vault = root.appendingPathComponent("Vault", isDirectory: true)
+        let databaseURL = root.appendingPathComponent("events.sqlite")
+        let contentURL = root.appendingPathComponent("content.md")
+        let metadataURL = root.appendingPathComponent("metadata.json")
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let environment = try AppEnvironment(
+            databasePath: databaseURL.path,
+            vaultURL: vault,
+            summarizer: nil
+        )
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: defaults,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+        let document = ImportedKnowledgeDocument(
+            id: "doc-1",
+            connectorInstanceID: "feishu-main",
+            connectorID: .feishuImport,
+            remoteID: "remote-1",
+            title: "Project Plan",
+            sourcePath: "doc-token",
+            remoteURL: nil,
+            mimeType: "text/markdown",
+            contentHash: "hash",
+            remoteUpdatedAt: nil,
+            firstImportedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            lastSyncedAt: Date(timeIntervalSince1970: 1_778_000_100),
+            deletedAt: nil,
+            localContentPath: contentURL.path,
+            localMetadataPath: metadataURL.path,
+            normalizationVersion: 1,
+            originKind: "feishu"
+        )
+        try "# Project Plan".write(toFile: document.localContentPath, atomically: true, encoding: .utf8)
+        try environment.databaseWriter.upsertImportedKnowledgeDocument(document)
+
+        appState.selectKnowledgeConnector(instanceID: "feishu-main")
+
+        XCTAssertEqual(appState.mainContentSelection, .knowledgeConnector(instanceID: "feishu-main"))
+        XCTAssertEqual(appState.selectedKnowledgeDocuments.map(\.title), ["Project Plan"])
+        XCTAssertEqual(appState.selectedKnowledgeDocumentMarkdown, "# Project Plan")
+    }
+
     func testSyncNowCopiesLatestDiaryIntoConfiguredDestinations() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let vault = root.appendingPathComponent("Vault", isDirectory: true)

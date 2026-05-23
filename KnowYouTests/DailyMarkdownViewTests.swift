@@ -123,6 +123,15 @@ final class DailyMarkdownViewTests: XCTestCase {
     }
 
     @MainActor
+    func testDateSidebarSelectionActionRoutesRootAndConnectorIDs() {
+        XCTAssertEqual(DateSidebarView.selectionAction(for: "diary:2026-05-23"), .diaryDate("2026-05-23"))
+        XCTAssertEqual(DateSidebarView.selectionAction(for: "other-source"), .otherSource(focusAddConnector: false))
+        XCTAssertEqual(DateSidebarView.selectionAction(for: "connector:feishu-main"), .knowledgeConnector("feishu-main"))
+        XCTAssertNil(DateSidebarView.selectionAction(for: "diary-root"))
+        XCTAssertNil(DateSidebarView.selectionAction(for: "settings"))
+    }
+
+    @MainActor
     func testDateSidebarViewAcceptsKnowledgeImportConfig() {
         let config = KnowledgeImportConfig(
             connectorInstances: [

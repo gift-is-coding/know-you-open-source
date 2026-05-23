@@ -107,8 +107,8 @@ struct DateSidebarView: View {
         Binding(
             get: { isActive ? selectedItemID : nil },
             set: { newValue in
-                if let newValue, let dayKey = Self.dayKeyForSelection(newValue) {
-                    onSelectDiaryDate(dayKey)
+                if let newValue {
+                    handleSelectionAction(Self.selectionAction(for: newValue))
                 }
             }
         )
@@ -144,10 +144,13 @@ struct DateSidebarView: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Add Other Source")
+                .accessibilityLabel("Add Other Source")
+                .accessibilityIdentifier("other-source-add-button")
             }
         }
         .padding(.vertical, 4)
         .fontWeight(item.isSelected ? .semibold : .regular)
+        .tag(item.id)
     }
 
     private func dateRow(_ item: DateSidebarItem) -> some View {
@@ -163,15 +166,37 @@ struct DateSidebarView: View {
             }
     }
 
+    private func handleSelectionAction(_ action: SidebarSelectionAction?) {
+        switch action {
+        case .diaryDate(let dayKey):
+            onSelectDiaryDate(dayKey)
+        case .otherSource(let focusAddConnector):
+            onSelectOtherSource(focusAddConnector)
+        case .knowledgeConnector(let instanceID):
+            onSelectKnowledgeConnector(instanceID)
+        case nil:
+            break
+        }
+    }
+
+    static func selectionAction(for itemID: String) -> SidebarSelectionAction? {
+        if let dayKey = dayKeyForSelection(itemID) {
+            return .diaryDate(dayKey)
+        } else if itemID == "other-source" {
+            return .otherSource(focusAddConnector: false)
+        } else if itemID.hasPrefix("connector:") {
+            return .knowledgeConnector(String(itemID.dropFirst("connector:".count)))
+        }
+        return nil
+    }
+
     private func selectRootItem(_ item: SidebarRootItem) {
         if item.id == "diary-root" {
             if let selectedDate {
                 onSelectDiaryDate(selectedDate)
             }
-        } else if item.id == "other-source" {
-            onSelectOtherSource(false)
-        } else if item.id.hasPrefix("connector:") {
-            onSelectKnowledgeConnector(String(item.id.dropFirst("connector:".count)))
+        } else {
+            handleSelectionAction(Self.selectionAction(for: item.id))
         }
     }
 
@@ -206,6 +231,12 @@ struct DateSidebarView: View {
         return String(itemID.dropFirst(prefix.count))
     }
 
+}
+
+enum SidebarSelectionAction: Equatable {
+    case diaryDate(String)
+    case otherSource(focusAddConnector: Bool)
+    case knowledgeConnector(String)
 }
 
 struct SidebarRootItem: Identifiable, Equatable {

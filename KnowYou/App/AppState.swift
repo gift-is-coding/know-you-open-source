@@ -515,6 +515,7 @@ struct OnboardingProgress: Equatable {
 private struct ReaderPresentationSnapshot {
     let availableDates: [String]
     let selectedDate: String?
+    let mainContentSelection: MainContentSelection
     let selectedMarkdownURL: URL?
     let noteIndex: [String: URL]
     let selectedStory: DailyStory?
@@ -828,15 +829,14 @@ final class AppState {
     }
 
     func selectDate(_ date: String) {
-        mainContentSelection = .diary(dayKey: date)
         if date == OnboardingDemoStory.demoDayKey {
             readerFocus = .dateList
-            selectedDate = date
+            setSelectedDiaryDate(date)
             loadDemoDayPresentation()
             return
         }
         readerFocus = .dateList
-        selectedDate = date
+        setSelectedDiaryDate(date)
         selectedMarkdownURL = noteIndex[date]
         loadDayPresentation(for: date)
     }
@@ -857,7 +857,7 @@ final class AppState {
             connectorInstanceID: connectorInstanceID,
             documentID: documentID
         )
-        reloadKnowledgeDocuments(connectorInstanceID: connectorInstanceID)
+        selectedKnowledgeDocuments = fetchKnowledgeDocuments(connectorInstanceID: connectorInstanceID)
         selectedKnowledgeDocument = selectedKnowledgeDocuments.first { $0.id == documentID }
         selectedKnowledgeDocumentMarkdown = loadKnowledgeDocumentMarkdown(selectedKnowledgeDocument)
     }
@@ -903,23 +903,21 @@ final class AppState {
     }
 
     private func reloadKnowledgeDocuments(connectorInstanceID: String) {
-        guard let environment else {
-            selectedKnowledgeDocuments = []
-            selectedKnowledgeDocument = nil
-            selectedKnowledgeDocumentMarkdown = nil
-            return
-        }
-
-        selectedKnowledgeDocuments =
-            (try? environment.databaseWriter.fetchImportedKnowledgeDocuments(
-                connectorInstanceID: connectorInstanceID
-            )) ?? []
+        selectedKnowledgeDocuments = fetchKnowledgeDocuments(connectorInstanceID: connectorInstanceID)
         selectedKnowledgeDocument = selectedKnowledgeDocuments.first
         selectedKnowledgeDocumentMarkdown = loadKnowledgeDocumentMarkdown(selectedKnowledgeDocument)
     }
 
+    private func fetchKnowledgeDocuments(connectorInstanceID: String) -> [ImportedKnowledgeDocument] {
+        guard let environment else { return [] }
+        return (try? environment.databaseWriter.fetchImportedKnowledgeDocuments(
+            connectorInstanceID: connectorInstanceID
+        )) ?? []
+    }
+
     private func loadKnowledgeDocumentMarkdown(_ document: ImportedKnowledgeDocument?) -> String? {
         guard let document else { return nil }
+        // Local cached Markdown preview load; Task 5's content browser will revisit async loading.
         return try? String(contentsOfFile: document.localContentPath, encoding: .utf8)
     }
 
@@ -3961,6 +3959,11 @@ extension AppState {
         environment.vaultURL.appending(path: "\(dayKey).story.json")
     }
 
+    private func setSelectedDiaryDate(_ dayKey: String) {
+        selectedDate = dayKey
+        mainContentSelection = .diary(dayKey: dayKey)
+    }
+
     private func persistArtifacts(
         dayKey: String,
         story: DailyStory,
@@ -3983,7 +3986,7 @@ extension AppState {
         noteIndex[dayKey] = fileURL
         availableDates = noteIndex.keys.sorted(by: >)
         if selectedDate == dayKey || selectedDate == nil {
-            selectedDate = dayKey
+            setSelectedDiaryDate(dayKey)
             selectedMarkdownURL = fileURL
             selectedContentVersion += 1
         }
@@ -4094,7 +4097,7 @@ extension AppState {
             return
         }
         if onboardingBootstrapDayKeys.contains(dayKey), noteIndex[dayKey] == nil {
-            selectedDate = dayKey
+            setSelectedDiaryDate(dayKey)
             selectedStory = nil
             selectedStoryParagraphID = nil
             selectedStorySourceEvents = []
@@ -4121,7 +4124,7 @@ extension AppState {
     }
 
     func updateSelectedPresentation(dayKey: String, story: DailyStory, events: [EventRecord]) {
-        selectedDate = dayKey
+        setSelectedDiaryDate(dayKey)
         selectedStory = story
         selectedDayEvents = events
         selectedMarkdownURL = preferredMarkdownURL(for: dayKey)
@@ -4153,6 +4156,7 @@ extension AppState {
             liveReaderSnapshot = ReaderPresentationSnapshot(
                 availableDates: availableDates,
                 selectedDate: selectedDate,
+                mainContentSelection: mainContentSelection,
                 selectedMarkdownURL: selectedMarkdownURL,
                 noteIndex: noteIndex,
                 selectedStory: selectedStory,
@@ -4168,7 +4172,7 @@ extension AppState {
 
         availableDates = [OnboardingDemoStory.demoDayKey]
         noteIndex = [:]
-        selectedDate = OnboardingDemoStory.demoDayKey
+        setSelectedDiaryDate(OnboardingDemoStory.demoDayKey)
         selectedMarkdownURL = nil
         selectedStory = OnboardingDemoStory.demoStory
         selectedDayEvents = OnboardingDemoStory.demoEvents
@@ -4185,7 +4189,7 @@ extension AppState {
 
     private func loadDemoDayPresentation() {
         selectedMarkdownURL = nil
-        selectedDate = OnboardingDemoStory.demoDayKey
+        setSelectedDiaryDate(OnboardingDemoStory.demoDayKey)
         selectedStory = OnboardingDemoStory.demoStory
         selectedDayEvents = OnboardingDemoStory.demoEvents
         selectedMarkdownText = nil
@@ -4212,6 +4216,7 @@ extension AppState {
         guard let liveReaderSnapshot else { return }
         availableDates = liveReaderSnapshot.availableDates
         selectedDate = liveReaderSnapshot.selectedDate
+        mainContentSelection = liveReaderSnapshot.mainContentSelection
         selectedMarkdownURL = liveReaderSnapshot.selectedMarkdownURL
         noteIndex = liveReaderSnapshot.noteIndex
         selectedStory = liveReaderSnapshot.selectedStory
@@ -4372,7 +4377,7 @@ extension AppState {
         if let selectedDate {
             loadDayPresentation(for: selectedDate)
         } else if let firstDate = availableDates.first {
-            selectedDate = firstDate
+            setSelectedDiaryDate(firstDate)
             loadDayPresentation(for: firstDate)
         }
     }

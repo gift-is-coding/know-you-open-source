@@ -728,16 +728,12 @@ final class MainWindowViewModelTests: XCTestCase {
         engineDefaults = UserDefaults(suiteName: engineDefaultsSuiteName)!
         engineKeychain = AppStateTestKeychainStore()
         markOnboardingComplete(in: engineDefaults)
-        markOnboardingComplete(in: .standard)
+        AppState.setDefaultUserDefaultsForTesting(engineDefaults)
     }
 
     override func tearDown() {
         MainWindowStubURLProtocol.reset()
-        UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
-        UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.onboardingProgressState)
-        UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.onboardingBootstrapState)
-        UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.onboardingBootstrapDayKeys)
-        UserDefaults.standard.removeObject(forKey: AppState.UserDefaultsKeys.launchAtLoginDefaultRegistrationAttempted)
+        AppState.setDefaultUserDefaultsForTesting(nil)
         if let engineDefaultsSuiteName {
             engineDefaults.removePersistentDomain(forName: engineDefaultsSuiteName)
         }

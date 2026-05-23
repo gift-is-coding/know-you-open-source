@@ -623,6 +623,16 @@ final class AppState {
     @ObservationIgnored private var autoSelectionSuppressedByExplicitNone: Bool
     @ObservationIgnored private var dayReviewStates: [String: DayReviewState]
 
+    private static var defaultUserDefaultsOverrideForTesting: UserDefaults?
+
+    static func setDefaultUserDefaultsForTesting(_ defaults: UserDefaults?) {
+        defaultUserDefaultsOverrideForTesting = defaults
+    }
+
+    private static func defaultUserDefaults() -> UserDefaults {
+        defaultUserDefaultsOverrideForTesting ?? .standard
+    }
+
     var summarizerStatus: SummarizerRuntimeStatus {
         get {
             let status = engineStatuses[defaultEngine] ?? Self.makeBaselineStatus(
@@ -674,7 +684,7 @@ final class AppState {
         },
         processEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         currentDate: @escaping @Sendable () -> Date = Date.init,
-        userDefaults: UserDefaults = .standard,
+        userDefaults: UserDefaults? = nil,
         keychain: KeychainStoring = KeychainHelper.shared,
         keychainService: String = KeychainHelper.service,
         launchAgentManager: LaunchAgentManager = LaunchAgentManager(),
@@ -689,7 +699,8 @@ final class AppState {
         endOfDayReminderService: EndOfDayReminderService = EndOfDayReminderService()
     ) {
         let explicitSummarizerConfig = summarizerConfig
-        self.userDefaults = userDefaults
+        let resolvedUserDefaults = userDefaults ?? Self.defaultUserDefaults()
+        self.userDefaults = resolvedUserDefaults
         self.keychain = keychain
         self.keychainService = keychainService
         self.processEnvironment = processEnvironment
@@ -705,23 +716,23 @@ final class AppState {
         self.endOfDayReminderPlanner = endOfDayReminderPlanner
         self.endOfDayReminderService = endOfDayReminderService
         self.summarizerConfig = summarizerConfig ?? SummarizerConfig.load(
-            from: userDefaults,
+            from: resolvedUserDefaults,
             keychain: keychain,
             keychainService: keychainService
         )
         self.syncMemoryConfig = Self.bootstrapSyncMemoryConfigIfNeeded(
-            startingFrom: SyncMemoryConfig.load(from: userDefaults),
-            userDefaults: userDefaults
+            startingFrom: SyncMemoryConfig.load(from: resolvedUserDefaults),
+            userDefaults: resolvedUserDefaults
         )
-        self.knowledgeImportConfig = KnowledgeImportConfig.load(from: userDefaults)
-        self.endOfDayReminderConfig = EndOfDayReminderConfig.load(from: userDefaults)
-        self.dayReviewStates = Self.loadDayReviewStates(from: userDefaults)
-        let persistedSuppression = userDefaults.object(
+        self.knowledgeImportConfig = KnowledgeImportConfig.load(from: resolvedUserDefaults)
+        self.endOfDayReminderConfig = EndOfDayReminderConfig.load(from: resolvedUserDefaults)
+        self.dayReviewStates = Self.loadDayReviewStates(from: resolvedUserDefaults)
+        let persistedSuppression = resolvedUserDefaults.object(
             forKey: UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection
         ) as? Bool
         self.autoSelectionSuppressedByExplicitNone = persistedSuppression ?? false
-        self.lastNotificationImportAt = userDefaults.object(forKey: UserDefaultsKeys.lastNotificationImportAt) as? Date
-        self.lastUpdateCheckAt = userDefaults.object(forKey: UserDefaultsKeys.lastUpdateCheckAt) as? Date
+        self.lastNotificationImportAt = resolvedUserDefaults.object(forKey: UserDefaultsKeys.lastNotificationImportAt) as? Date
+        self.lastUpdateCheckAt = resolvedUserDefaults.object(forKey: UserDefaultsKeys.lastUpdateCheckAt) as? Date
         let loadedDefaultEngine = self.summarizerConfig.defaultEngine
         if explicitSummarizerConfig == nil, let injectedSummarizer = environment?.summarizer {
             self.summarizerConfig = Self.reconciledConfig(
@@ -740,15 +751,15 @@ final class AppState {
             environment: environment?.summarizer,
             engineStatuses: initialEngineStatuses
         )
-        onboardingProgress = Self.loadOnboardingProgress(from: userDefaults)
-        onboardingBootstrapState = Self.loadOnboardingBootstrapState(from: userDefaults)
-        onboardingBootstrapDayKeys = Self.loadOnboardingBootstrapDayKeys(from: userDefaults)
+        onboardingProgress = Self.loadOnboardingProgress(from: resolvedUserDefaults)
+        onboardingBootstrapState = Self.loadOnboardingBootstrapState(from: resolvedUserDefaults)
+        onboardingBootstrapDayKeys = Self.loadOnboardingBootstrapDayKeys(from: resolvedUserDefaults)
         onboardingBootstrapNotice = nil
         if explicitSummarizerConfig == nil,
            environment?.summarizer == nil,
-           self.summarizerConfig.defaultEngine != loadedDefaultEngine {
+            self.summarizerConfig.defaultEngine != loadedDefaultEngine {
             self.summarizerConfig.save(
-                to: userDefaults,
+                to: resolvedUserDefaults,
                 keychain: keychain,
                 keychainService: keychainService
             )

@@ -18,26 +18,7 @@ struct DateSidebarView: View {
         VStack(spacing: 0) {
             List(selection: activeBinding) {
                 ForEach(presentation.rootItems) { item in
-                    HStack(spacing: 8) {
-                        Label(item.title, systemImage: item.systemImage)
-                            .foregroundStyle(item.isEnabled ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                        Spacer()
-                        if item.showsAddButton {
-                            Button {
-                                onSelectOtherSource(true)
-                            } label: {
-                                Image(systemName: "plus")
-                            }
-                            .buttonStyle(.borderless)
-                            .help("Add Other Source")
-                        }
-                    }
-                    .padding(.vertical, 4)
-                    .fontWeight(item.isSelected ? .semibold : .regular)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        selectRootItem(item)
-                    }
+                    rootRow(item)
                 }
 
                 ForEach(presentation.sections) { section in
@@ -139,6 +120,34 @@ struct DateSidebarView: View {
             selectedItemID: selectedItemID,
             knowledgeImportConfig: knowledgeImportConfig
         )
+    }
+
+    private func rootRow(_ item: SidebarRootItem) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                selectRootItem(item)
+            } label: {
+                HStack(spacing: 8) {
+                    Label(item.title, systemImage: item.systemImage)
+                        .foregroundStyle(item.isEnabled ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if item.showsAddButton {
+                Button {
+                    onSelectOtherSource(true)
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.borderless)
+                .help("Add Other Source")
+            }
+        }
+        .padding(.vertical, 4)
+        .fontWeight(item.isSelected ? .semibold : .regular)
     }
 
     private func dateRow(_ item: DateSidebarItem) -> some View {

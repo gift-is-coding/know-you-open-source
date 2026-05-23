@@ -383,7 +383,6 @@ struct MainWindowView: View {
                     onSyncNow: {
                         Task { @MainActor in
                             await appState.importKnowledgeNow()
-                            appState.selectKnowledgeConnector(instanceID: connectorInstanceID)
                         }
                     },
                     onSelectDocument: { documentID in

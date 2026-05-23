@@ -1240,6 +1240,36 @@ final class AppState {
         let result = await coordinator.sync(connectors: connectors)
         let noun = result.changedDocumentCount == 1 ? "document" : "documents"
         setKnowledgeImportStatus("Imported \(result.changedDocumentCount) \(noun)")
+        refreshVisibleKnowledgeSelectionAfterImport()
+    }
+
+    private func refreshVisibleKnowledgeSelectionAfterImport() {
+        switch mainContentSelection {
+        case .knowledgeConnector(let instanceID):
+            guard knowledgeImportConfig.connectorInstances.contains(where: { $0.id == instanceID }) else {
+                selectOtherSourceManager(focusAddConnector: false)
+                return
+            }
+            reloadKnowledgeDocuments(connectorInstanceID: instanceID)
+        case .knowledgeDocument(let connectorInstanceID, let documentID):
+            guard knowledgeImportConfig.connectorInstances.contains(where: { $0.id == connectorInstanceID }) else {
+                selectOtherSourceManager(focusAddConnector: false)
+                return
+            }
+
+            let documents = fetchKnowledgeDocuments(connectorInstanceID: connectorInstanceID)
+            selectedKnowledgeDocuments = documents
+            if let document = documents.first(where: { $0.id == documentID }) {
+                selectedKnowledgeDocument = document
+                selectedKnowledgeDocumentMarkdown = loadKnowledgeDocumentMarkdown(document)
+            } else {
+                mainContentSelection = .knowledgeConnector(instanceID: connectorInstanceID)
+                selectedKnowledgeDocument = documents.first
+                selectedKnowledgeDocumentMarkdown = loadKnowledgeDocumentMarkdown(selectedKnowledgeDocument)
+            }
+        case .diary, .otherSourceManager:
+            break
+        }
     }
 
     private func normalizedSyncMemoryPath(_ path: String?) -> String? {

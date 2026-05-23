@@ -6290,6 +6290,130 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertFalse(appState.syncMemoryConfig.autoSyncEnabled)
     }
 
+    func testImportKnowledgeNowRefreshesVisibleKnowledgeConnectorDocuments() async throws {
+        let environment = try makeEngineEnvironment()
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        var importConfig = KnowledgeImportConfig.default
+        importConfig.connectorInstances = [
+            KnowledgeConnectorInstanceConfig(
+                id: "local-main",
+                connectorID: .localFolderImport,
+                displayName: "Docs",
+                sourcePath: root.path,
+                isEnabled: true
+            )
+        ]
+        appState.saveKnowledgeImportConfig(importConfig)
+        appState.selectKnowledgeConnector(instanceID: "local-main")
+        XCTAssertTrue(appState.selectedKnowledgeDocuments.isEmpty)
+
+        try "# Imported".write(
+            to: root.appending(path: "imported.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        await appState.importKnowledgeNow()
+
+        XCTAssertEqual(appState.mainContentSelection, .knowledgeConnector(instanceID: "local-main"))
+        XCTAssertEqual(appState.selectedKnowledgeDocuments.map(\.title), ["imported"])
+        XCTAssertEqual(appState.selectedKnowledgeDocumentMarkdown, "# Imported")
+    }
+
+    func testImportKnowledgeNowLeavesDiaryAndOtherSourceSelectionUnchanged() async throws {
+        let environment = try makeEngineEnvironment()
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try "# Imported".write(
+            to: root.appending(path: "imported.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        var importConfig = KnowledgeImportConfig.default
+        importConfig.connectorInstances = [
+            KnowledgeConnectorInstanceConfig(
+                id: "local-main",
+                connectorID: .localFolderImport,
+                displayName: "Docs",
+                sourcePath: root.path,
+                isEnabled: true
+            )
+        ]
+        appState.saveKnowledgeImportConfig(importConfig)
+
+        let initialDiarySelection = appState.mainContentSelection
+        await appState.importKnowledgeNow()
+        XCTAssertEqual(appState.mainContentSelection, initialDiarySelection)
+
+        appState.selectOtherSourceManager(focusAddConnector: false)
+        await appState.importKnowledgeNow()
+        XCTAssertEqual(appState.mainContentSelection, .otherSourceManager(focusAddConnector: false))
+    }
+
+    func testImportKnowledgeNowPreservesSelectedKnowledgeDocumentAndReloadsMarkdown() async throws {
+        let environment = try makeEngineEnvironment()
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let documentURL = root.appending(path: "project.md")
+        try "# Original".write(to: documentURL, atomically: true, encoding: .utf8)
+
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        var importConfig = KnowledgeImportConfig.default
+        importConfig.connectorInstances = [
+            KnowledgeConnectorInstanceConfig(
+                id: "local-main",
+                connectorID: .localFolderImport,
+                displayName: "Docs",
+                sourcePath: root.path,
+                isEnabled: true
+            )
+        ]
+        appState.saveKnowledgeImportConfig(importConfig)
+        await appState.importKnowledgeNow()
+        appState.selectKnowledgeConnector(instanceID: "local-main")
+        let document = try XCTUnwrap(appState.selectedKnowledgeDocuments.first)
+        appState.selectKnowledgeDocument(connectorInstanceID: "local-main", documentID: document.id)
+        XCTAssertEqual(appState.selectedKnowledgeDocumentMarkdown, "# Original")
+
+        try "# Updated".write(to: documentURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSinceNow: 10)],
+            ofItemAtPath: documentURL.path
+        )
+
+        await appState.importKnowledgeNow()
+
+        XCTAssertEqual(
+            appState.mainContentSelection,
+            .knowledgeDocument(connectorInstanceID: "local-main", documentID: document.id)
+        )
+        XCTAssertEqual(appState.selectedKnowledgeDocument?.id, document.id)
+        XCTAssertEqual(appState.selectedKnowledgeDocumentMarkdown, "# Updated")
+    }
+
     func testSavingSyncMemoryConfigPublishesAutoSyncStatusMessage() {
         let appState = AppState(
             bootstrapServices: false,

@@ -312,6 +312,56 @@ final class KnowledgeImportCoordinatorTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: document.localContentPath), encoding: .utf8), "# Same")
     }
 
+    func testSyncTombstonesDocumentsMissingFromSuccessfulConnectorSnapshot() async throws {
+        let deletedAt = Date(timeIntervalSince1970: 1_778_100_675)
+        let fixture = try makeFixture(now: deletedAt)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let keptSnapshot = Self.makeSnapshot(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "docs/kept.md",
+            title: "Kept",
+            contentMarkdown: "# Kept"
+        )
+        let removedSnapshot = Self.makeSnapshot(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "docs/removed.md",
+            title: "Removed",
+            contentMarkdown: "# Removed"
+        )
+        let initialConnector = StubKnowledgeImportConnector(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            snapshots: [keptSnapshot, removedSnapshot]
+        )
+        let laterConnector = StubKnowledgeImportConnector(
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            snapshots: [keptSnapshot]
+        )
+
+        _ = await fixture.coordinator.sync(connectors: [initialConnector])
+        let result = await fixture.coordinator.sync(connectors: [laterConnector])
+
+        XCTAssertEqual(result.succeededConnectorInstanceIDs, ["local-main"])
+        XCTAssertEqual(result.failedConnectorInstanceIDs, [])
+        XCTAssertEqual(result.changedDocumentCount, 1)
+        XCTAssertEqual(
+            try fixture.databaseWriter.fetchImportedKnowledgeDocuments(connectorInstanceID: "local-main").map(\.remoteID),
+            ["docs/kept.md"]
+        )
+
+        let allDocuments = try fixture.databaseWriter.fetchImportedKnowledgeDocuments(
+            connectorInstanceID: "local-main",
+            includeDeleted: true
+        )
+        let documentsByRemoteID = Dictionary(uniqueKeysWithValues: allDocuments.map { ($0.remoteID, $0) })
+        XCTAssertNil(documentsByRemoteID["docs/kept.md"]?.deletedAt)
+        XCTAssertEqual(documentsByRemoteID["docs/removed.md"]?.deletedAt, deletedAt)
+        XCTAssertEqual(documentsByRemoteID["docs/removed.md"]?.lastSyncedAt, deletedAt)
+    }
+
     func testSyncNormalizesInternalDatabaseFieldsWithoutCountingChange() async throws {
         let fixture = try makeFixture(now: Date(timeIntervalSince1970: 1_778_100_700))
         defer { try? FileManager.default.removeItem(at: fixture.root) }

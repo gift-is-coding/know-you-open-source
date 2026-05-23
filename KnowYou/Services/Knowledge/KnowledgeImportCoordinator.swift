@@ -121,6 +121,7 @@ struct KnowledgeImportCoordinator: @unchecked Sendable {
         var existingDocumentsByRemoteID = Dictionary(
             uniqueKeysWithValues: existingDocuments.map { ($0.remoteID, $0) }
         )
+        let syncedRemoteIDs = Set(snapshots.map(\.remoteID))
         var saveResults = [KnowledgeImportSaveResult]()
 
         for snapshot in snapshots {
@@ -138,7 +139,32 @@ struct KnowledgeImportCoordinator: @unchecked Sendable {
         let documents = saveResults.map(\.document)
         applyHooks.beforeDatabaseUpsert(connector.connectorInstanceID, documents)
         try databaseWriter.upsertImportedKnowledgeDocuments(documents)
-        return saveResults.filter(\.didChange).count
+        let deletedDocumentCount = try markDocumentsMissingFromSourceDeleted(
+            existingDocuments,
+            syncedRemoteIDs: syncedRemoteIDs,
+            connectorInstanceID: connector.connectorInstanceID
+        )
+        return saveResults.filter(\.didChange).count + deletedDocumentCount
+    }
+
+    private func markDocumentsMissingFromSourceDeleted(
+        _ existingDocuments: [ImportedKnowledgeDocument],
+        syncedRemoteIDs: Set<String>,
+        connectorInstanceID: String
+    ) throws -> Int {
+        let deletedAt = now()
+        let documentsToDelete = existingDocuments.filter { document in
+            document.deletedAt == nil && !syncedRemoteIDs.contains(document.remoteID)
+        }
+
+        for document in documentsToDelete {
+            try databaseWriter.markImportedKnowledgeDocumentDeleted(
+                connectorInstanceID: connectorInstanceID,
+                remoteID: document.remoteID,
+                deletedAt: deletedAt
+            )
+        }
+        return documentsToDelete.count
     }
 
     private static func validate(

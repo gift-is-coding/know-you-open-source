@@ -190,6 +190,13 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - API 连接器凭据必须存放在 Keychain 或等价安全存储中。
 - 用户必须能手动触发 Knowledge Imports。
 - 当启用每日 Knowledge Imports 时，系统必须安装独立于 Daily Memory Export 的用户级 `LaunchAgent`。
+- 侧边栏必须始终显示 `My Diary` 和 `Other Source` 两个根级入口。
+- `Other Source` 必须打开连接器管理页，而不是混合资料总览页。
+- `Other Source` 旁边必须提供明确的添加入口，用于进入添加连接器流程。
+- 添加导入连接器后，该连接器必须作为根级侧边栏条目出现，并与 `My Diary`、`Other Source` 平行。
+- 点击连接器根级条目必须打开该连接器已同步到本地缓存的文档列表和 Markdown 预览。
+- 连接器内容页必须提供手动 `Sync Now`，并明确说明导入内容复制到 KnowYou 本地存储，源文件不会被修改。
+- Knowledge Imports 同步完成后只允许刷新当前仍可见的 knowledge 页面，不得把已经切走的用户强制带回旧连接器页面。
 - 系统必须支持一个可开启/关闭的 `Evening review reminder`
 - 当 `Evening review reminder` 开启且系统通知权限允许时，产品必须安装一个用户级后台提醒任务，而不是依赖当天前台 app 是否开过
 - 晚间提醒必须使用用户本地时区，在每天固定 `20:30` 运行后台判断

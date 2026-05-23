@@ -5,21 +5,23 @@ final class DailyMarkdownViewTests: XCTestCase {
     func testDateSidebarPresentationGroupsDatesByEnglishMonth() {
         let presentation = DateSidebarPresentation(
             dates: ["2026-04-24", "2026-04-23", "2026-03-31", "demo-day"],
-            selectedDate: nil,
+            selectedItemID: nil,
+            knowledgeImportConfig: .default,
             today: makeDate(year: 2026, month: 4, day: 24),
             calendar: gregorianCalendar
         )
 
         XCTAssertEqual(presentation.sections.map(\.title), ["April 2026", "March 2026", nil])
-        XCTAssertEqual(presentation.sections[0].items.map(\.id), ["2026-04-24", "2026-04-23"])
-        XCTAssertEqual(presentation.sections[1].items.map(\.id), ["2026-03-31"])
-        XCTAssertEqual(presentation.sections[2].items.map(\.id), ["demo-day"])
+        XCTAssertEqual(presentation.sections[0].items.map(\.id), ["diary:2026-04-24", "diary:2026-04-23"])
+        XCTAssertEqual(presentation.sections[1].items.map(\.id), ["diary:2026-03-31"])
+        XCTAssertEqual(presentation.sections[2].items.map(\.id), ["diary:demo-day"])
     }
 
     func testDateSidebarPresentationOpensCurrentMonthAndCollapsesOlderMonths() {
         let presentation = DateSidebarPresentation(
             dates: ["2026-04-24", "2026-03-31"],
-            selectedDate: nil,
+            selectedItemID: nil,
+            knowledgeImportConfig: .default,
             today: makeDate(year: 2026, month: 4, day: 24),
             calendar: gregorianCalendar
         )
@@ -31,13 +33,72 @@ final class DailyMarkdownViewTests: XCTestCase {
     func testDateSidebarPresentationOpensSelectedOlderMonth() {
         let presentation = DateSidebarPresentation(
             dates: ["2026-04-24", "2026-03-31"],
-            selectedDate: "2026-03-31",
+            selectedItemID: "diary:2026-03-31",
+            knowledgeImportConfig: .default,
             today: makeDate(year: 2026, month: 4, day: 24),
             calendar: gregorianCalendar
         )
 
         XCTAssertTrue(presentation.sections[0].isExpandedByDefault)
         XCTAssertTrue(presentation.sections[1].isExpandedByDefault)
+    }
+
+    func testSidebarPresentationShowsDiaryAndOtherSourceRootsBeforeDates() {
+        let presentation = DateSidebarPresentation(
+            dates: ["2026-05-23", "2026-05-22"],
+            selectedItemID: "diary:2026-05-23",
+            knowledgeImportConfig: .default,
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        XCTAssertEqual(presentation.rootItems.map(\.id), ["diary-root", "other-source"])
+        XCTAssertEqual(presentation.rootItems.map(\.title), ["My Diary", "Other Source"])
+        XCTAssertEqual(presentation.rootItems.map(\.systemImage), ["book.closed", "tray.full"])
+        XCTAssertTrue(presentation.rootItems[1].showsAddButton)
+        XCTAssertEqual(presentation.sections.first?.title, "May 2026")
+        XCTAssertEqual(presentation.sections.first?.items.map(\.id), ["diary:2026-05-23", "diary:2026-05-22"])
+    }
+
+    func testSidebarPresentationAddsConnectorInstancesAsRootItems() {
+        let config = KnowledgeImportConfig(
+            isImportEnabled: true,
+            dailyImportHour: 7,
+            dailyImportMinute: 30,
+            connectorInstances: [
+                KnowledgeConnectorInstanceConfig(
+                    id: "feishu-main",
+                    connectorID: .feishuImport,
+                    displayName: "飞书文档",
+                    sourcePath: "doc-token",
+                    isEnabled: true
+                ),
+                KnowledgeConnectorInstanceConfig(
+                    id: "drive-main",
+                    connectorID: .googleDriveImport,
+                    displayName: "Google Drive",
+                    accountID: "me@example.com",
+                    isEnabled: false
+                ),
+            ]
+        )
+
+        let presentation = DateSidebarPresentation(
+            dates: [],
+            selectedItemID: "connector:feishu-main",
+            knowledgeImportConfig: config,
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        XCTAssertEqual(
+            presentation.rootItems.map(\.id),
+            ["diary-root", "other-source", "connector:feishu-main", "connector:drive-main"]
+        )
+        XCTAssertEqual(presentation.rootItems.map(\.title), ["My Diary", "Other Source", "飞书文档", "Google Drive"])
+        XCTAssertEqual(presentation.rootItems.map(\.systemImage), ["book.closed", "tray.full", "doc.richtext", "externaldrive"])
+        XCTAssertTrue(presentation.rootItems[2].isEnabled)
+        XCTAssertFalse(presentation.rootItems[3].isEnabled)
     }
 
     func testRefreshProgressPresentationMarksCompletedAndCurrentSteps() {

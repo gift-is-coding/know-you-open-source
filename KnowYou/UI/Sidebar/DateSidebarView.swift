@@ -97,21 +97,21 @@ struct DateSidebarView: View {
 
     private var activeBinding: Binding<String?> {
         Binding(
-            get: { isActive ? selectedDate : nil },
+            get: { isActive ? selectedDate.map(Self.diaryItemID) : nil },
             set: { newValue in
                 if let newValue {
-                    onSelect(newValue)
+                    onSelect(Self.dayKey(from: newValue))
                 }
             }
         )
     }
 
     private var presentation: DateSidebarPresentation {
-        DateSidebarPresentation(dates: dates, selectedDate: selectedDate)
+        DateSidebarPresentation(dates: dates, selectedItemID: selectedDate.map(Self.diaryItemID))
     }
 
     private func dateRow(_ item: DateSidebarItem) -> some View {
-        let isSelected = selectedDate == item.id
+        let isSelected = selectedDate.map(Self.diaryItemID) == item.id
         return Label(item.title, systemImage: "doc.plaintext")
             .padding(.vertical, 4)
             .fontWeight(isSelected ? .semibold : .regular)
@@ -140,29 +140,82 @@ struct DateSidebarView: View {
         )
     }
 
+    private static func diaryItemID(for dayKey: String) -> String {
+        "diary:\(dayKey)"
+    }
+
+    private static func dayKey(from itemID: String) -> String {
+        itemID.replacing(/^diary:/, with: "")
+    }
+
+}
+
+struct SidebarRootItem: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let systemImage: String
+    let isSelected: Bool
+    let isEnabled: Bool
+    let showsAddButton: Bool
 }
 
 struct DateSidebarPresentation {
+    let rootItems: [SidebarRootItem]
     let sections: [DateSidebarSection]
 
-    init(dates: [String], selectedDate: String?, today: Date = Date(), calendar: Calendar = .current) {
+    init(
+        dates: [String],
+        selectedItemID: String?,
+        knowledgeImportConfig: KnowledgeImportConfig = .default,
+        today: Date = Date(),
+        calendar: Calendar = .current
+    ) {
         let parser = Self.dateParser
         let currentMonth = Self.monthStart(for: today, calendar: calendar)
-        let selectedMonth = selectedDate.flatMap(parser.date(from:)).map {
+        let selectedDayKey = selectedItemID.map(Self.dayKey)
+        let selectedMonth = selectedDayKey.flatMap(parser.date(from:)).map {
             Self.monthStart(for: $0, calendar: calendar)
         }
         var monthBuckets: [Date: [DateSidebarItem]] = [:]
         var specialItems: [DateSidebarItem] = []
 
+        rootItems = [
+            SidebarRootItem(
+                id: "diary-root",
+                title: "My Diary",
+                systemImage: "book.closed",
+                isSelected: selectedItemID == "diary-root",
+                isEnabled: true,
+                showsAddButton: false
+            ),
+            SidebarRootItem(
+                id: "other-source",
+                title: "Other Source",
+                systemImage: "tray.full",
+                isSelected: selectedItemID == "other-source",
+                isEnabled: true,
+                showsAddButton: true
+            ),
+        ] + knowledgeImportConfig.connectorInstances.map { instance in
+            SidebarRootItem(
+                id: "connector:\(instance.id)",
+                title: instance.displayName,
+                systemImage: Self.systemImage(for: instance.connectorID),
+                isSelected: selectedItemID == "connector:\(instance.id)",
+                isEnabled: instance.isEnabled,
+                showsAddButton: false
+            )
+        }
+
         for dayKey in dates {
             guard let date = parser.date(from: dayKey) else {
-                specialItems.append(DateSidebarItem(id: dayKey, title: Self.formattedDay(dayKey)))
+                specialItems.append(DateSidebarItem(id: Self.diaryItemID(for: dayKey), title: Self.formattedDay(dayKey)))
                 continue
             }
 
             let month = Self.monthStart(for: date, calendar: calendar)
             monthBuckets[month, default: []].append(
-                DateSidebarItem(id: dayKey, title: Self.formattedDay(dayKey))
+                DateSidebarItem(id: Self.diaryItemID(for: dayKey), title: Self.formattedDay(dayKey))
             )
         }
 
@@ -217,6 +270,31 @@ struct DateSidebarPresentation {
 
     private static func monthID(for date: Date) -> String {
         dateParser.string(from: date)
+    }
+
+    private static func diaryItemID(for dayKey: String) -> String {
+        "diary:\(dayKey)"
+    }
+
+    private static func dayKey(from itemID: String) -> String {
+        itemID.replacing(/^diary:/, with: "")
+    }
+
+    private static func systemImage(for connectorID: KnowledgeConnectorID) -> String {
+        switch connectorID {
+        case .localFolderImport:
+            return "folder"
+        case .obsidianImport:
+            return "square.stack.3d.up"
+        case .feishuImport:
+            return "doc.richtext"
+        case .notionImport:
+            return "doc.on.doc"
+        case .googleDriveImport:
+            return "externaldrive"
+        case .obsidianExport, .openClawExport:
+            return "arrow.up.doc"
+        }
     }
 
     private static func formattedDay(_ dateString: String) -> String {

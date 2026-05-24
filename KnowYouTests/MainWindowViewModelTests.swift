@@ -1171,7 +1171,21 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
             )
         )
-        let appState = AppState(environment: environment, bootstrapServices: false)
+        let defaultsSuiteName = "GenerateDailyNoteFailure-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: defaultsSuiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: defaultsSuiteName)
+        }
+        var summarizerConfig = SummarizerConfig.default
+        summarizerConfig.defaultEngine = .openAI
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            summarizerConfig: summarizerConfig,
+            userDefaults: defaults,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
         appState.selectedDate = nil
         appState.selectedStory = nil
 

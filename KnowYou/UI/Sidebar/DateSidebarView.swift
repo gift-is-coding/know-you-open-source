@@ -11,33 +11,28 @@ struct DateSidebarView: View {
     let onSelectKnowledgeConnector: (String) -> Void
     let onOpenSyncMemory: () -> Void
     @State private var expandedSectionIDs: Set<String> = []
+    @State private var isSourceGroupExpanded = true
+    @State private var isDiaryGroupExpanded = true
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openURL) private var openURL
 
     var body: some View {
         VStack(spacing: 0) {
             List(selection: activeBinding) {
-                ForEach(presentation.rootItems) { item in
-                    rootRow(item)
-                }
-
-                ForEach(presentation.sections) { section in
-                    if let title = section.title {
-                        DisclosureGroup(isExpanded: expansionBinding(for: section)) {
-                            ForEach(section.items) { item in
-                                dateRow(item)
-                            }
-                        } label: {
-                            Text(title)
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.secondary)
+                DisclosureGroup(isExpanded: $isSourceGroupExpanded) {
+                    DisclosureGroup(isExpanded: $isDiaryGroupExpanded) {
+                        ForEach(presentation.diarySections) { section in
+                            diarySectionRows(section)
                         }
-                    } else {
-                        ForEach(section.items) { item in
-                            dateRow(item)
-                        }
+                    } label: {
+                        diaryGroupLabel(presentation.diaryRootItem)
                     }
+
+                    ForEach(presentation.sourceItems) { item in
+                        rootRow(item)
+                    }
+                } label: {
+                    sourceGroupLabel(presentation.sourceRootItem)
                 }
             }
             .listStyle(.sidebar)
@@ -122,6 +117,52 @@ struct DateSidebarView: View {
         )
     }
 
+    private func sourceGroupLabel(_ item: SidebarRootItem) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                selectRootItem(item)
+            } label: {
+                HStack(spacing: 8) {
+                    Label(item.title, systemImage: item.systemImage)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                onSelectOtherSource(true)
+            } label: {
+                Image(systemName: "plus")
+            }
+            .buttonStyle(.borderless)
+            .help("Add Source")
+            .accessibilityLabel("Add Source")
+            .accessibilityIdentifier("add-source-add-button")
+        }
+        .padding(.vertical, 4)
+        .fontWeight(item.isSelected ? .semibold : .regular)
+        .tag(item.id)
+    }
+
+    private func diaryGroupLabel(_ item: SidebarRootItem) -> some View {
+        Button {
+            selectRootItem(item)
+        } label: {
+            HStack(spacing: 8) {
+                Label(item.title, systemImage: item.systemImage)
+                    .foregroundStyle(.primary)
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 4)
+        .fontWeight(item.isSelected ? .semibold : .regular)
+        .tag(item.id)
+    }
+
     private func rootRow(_ item: SidebarRootItem) -> some View {
         HStack(spacing: 8) {
             Button {
@@ -143,14 +184,34 @@ struct DateSidebarView: View {
                     Image(systemName: "plus")
                 }
                 .buttonStyle(.borderless)
-                .help("Add Other Source")
-                .accessibilityLabel("Add Other Source")
-                .accessibilityIdentifier("other-source-add-button")
+                .help("Add Source")
+                .accessibilityLabel("Add Source")
+                .accessibilityIdentifier("add-source-add-button")
             }
         }
         .padding(.vertical, 4)
         .fontWeight(item.isSelected ? .semibold : .regular)
         .tag(item.id)
+    }
+
+    @ViewBuilder
+    private func diarySectionRows(_ section: DateSidebarSection) -> some View {
+        if let title = section.title {
+            DisclosureGroup(isExpanded: expansionBinding(for: section)) {
+                ForEach(section.items) { item in
+                    dateRow(item)
+                }
+            } label: {
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            ForEach(section.items) { item in
+                dateRow(item)
+            }
+        }
     }
 
     private func dateRow(_ item: DateSidebarItem) -> some View {
@@ -182,7 +243,7 @@ struct DateSidebarView: View {
     static func selectionAction(for itemID: String) -> SidebarSelectionAction? {
         if let dayKey = dayKeyForSelection(itemID) {
             return .diaryDate(dayKey)
-        } else if itemID == "other-source" {
+        } else if itemID == "add-source" || itemID == "other-source" {
             return .otherSource(focusAddConnector: false)
         } else if itemID.hasPrefix("connector:") {
             return .knowledgeConnector(String(itemID.dropFirst("connector:".count)))
@@ -249,6 +310,10 @@ struct SidebarRootItem: Identifiable, Equatable {
 }
 
 struct DateSidebarPresentation {
+    let sourceRootItem: SidebarRootItem
+    let diaryRootItem: SidebarRootItem
+    let sourceItems: [SidebarRootItem]
+    let diarySections: [DateSidebarSection]
     let rootItems: [SidebarRootItem]
     let sections: [DateSidebarSection]
 
@@ -268,24 +333,23 @@ struct DateSidebarPresentation {
         var monthBuckets: [Date: [DateSidebarItem]] = [:]
         var specialItems: [DateSidebarItem] = []
 
-        rootItems = [
-            SidebarRootItem(
-                id: "diary-root",
-                title: "My Diary",
-                systemImage: "book.closed",
-                isSelected: selectedItemID == "diary-root",
-                isEnabled: true,
-                showsAddButton: false
-            ),
-            SidebarRootItem(
-                id: "other-source",
-                title: "Other Source",
-                systemImage: "tray.full",
-                isSelected: selectedItemID == "other-source",
-                isEnabled: true,
-                showsAddButton: true
-            ),
-        ] + knowledgeImportConfig.connectorInstances.map { instance in
+        sourceRootItem = SidebarRootItem(
+            id: "add-source",
+            title: "Add Source",
+            systemImage: "plus.square.on.square",
+            isSelected: selectedItemID == "add-source" || selectedItemID == "other-source",
+            isEnabled: true,
+            showsAddButton: true
+        )
+        diaryRootItem = SidebarRootItem(
+            id: "diary-root",
+            title: "My Diary",
+            systemImage: "book.closed",
+            isSelected: selectedItemID == "diary-root",
+            isEnabled: true,
+            showsAddButton: false
+        )
+        sourceItems = knowledgeImportConfig.connectorInstances.map { instance in
             SidebarRootItem(
                 id: "connector:\(instance.id)",
                 title: instance.displayName,
@@ -298,13 +362,21 @@ struct DateSidebarPresentation {
 
         for dayKey in dates {
             guard let date = parser.date(from: dayKey) else {
-                specialItems.append(DateSidebarItem(id: Self.diaryItemID(for: dayKey), title: Self.formattedDay(dayKey)))
+                specialItems.append(
+                    DateSidebarItem(
+                        id: Self.diaryItemID(for: dayKey),
+                        title: Self.formattedDay(dayKey, today: today, calendar: calendar)
+                    )
+                )
                 continue
             }
 
             let month = Self.monthStart(for: date, calendar: calendar)
             monthBuckets[month, default: []].append(
-                DateSidebarItem(id: Self.diaryItemID(for: dayKey), title: Self.formattedDay(dayKey))
+                DateSidebarItem(
+                    id: Self.diaryItemID(for: dayKey),
+                    title: Self.formattedDay(dayKey, today: today, calendar: calendar)
+                )
             )
         }
 
@@ -318,9 +390,9 @@ struct DateSidebarPresentation {
         }
 
         if specialItems.isEmpty {
-            sections = monthSections
+            diarySections = monthSections
         } else {
-            sections = monthSections + [
+            diarySections = monthSections + [
                 DateSidebarSection(
                     id: "special",
                     title: nil,
@@ -329,11 +401,14 @@ struct DateSidebarPresentation {
                 )
             ]
         }
+        rootItems = [sourceRootItem, diaryRootItem] + sourceItems
+        sections = diarySections
     }
 
     private static let dateParser: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
@@ -341,6 +416,7 @@ struct DateSidebarPresentation {
     private static let monthDisplay: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "MMMM yyyy"
         return formatter
     }()
@@ -348,6 +424,7 @@ struct DateSidebarPresentation {
     private static let dayDisplay: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "MM-dd EEE"
         return formatter
     }()
@@ -386,11 +463,18 @@ struct DateSidebarPresentation {
         }
     }
 
-    private static func formattedDay(_ dateString: String) -> String {
+    private static func formattedDay(_ dateString: String, today: Date, calendar: Calendar) -> String {
         if dateString == OnboardingDemoStory.demoDayKey {
             return "Demo Day"
         }
         guard let date = Self.dateParser.date(from: dateString) else { return dateString }
+        if calendar.isDate(date, inSameDayAs: today) {
+            return "Today"
+        }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: today),
+           calendar.isDate(date, inSameDayAs: yesterday) {
+            return "Yesterday"
+        }
         return Self.dayDisplay.string(from: date)
     }
 }

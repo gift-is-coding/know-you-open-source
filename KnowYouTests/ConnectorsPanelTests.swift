@@ -46,7 +46,7 @@ final class ConnectorsPanelTests: XCTestCase {
         XCTAssertEqual(presentation.panelPresentation.importRows, [])
     }
 
-    func testOtherSourceRootPresentationUsesMockupCopyAndEmptyState() {
+    func testAddSourceRootPresentationUsesApprovedCopyAndCards() {
         let presentation = ConnectorsManagementPresentation(
             panelPresentation: ConnectorsPanelPresentation(
                 syncMemoryConfig: .default,
@@ -58,15 +58,20 @@ final class ConnectorsPanelTests: XCTestCase {
             startsWithAddAPIForm: false
         )
 
-        XCTAssertEqual(presentation.title, "Other Source")
+        XCTAssertEqual(presentation.title, "Add Source")
         XCTAssertEqual(
             presentation.subtitle,
-            "Sync files from connected sources into a local Markdown library."
+            "Manage all sources that feed your local Markdown library."
         )
         XCTAssertEqual(
-            presentation.emptyImportMessage,
-            "No sources connected yet. Add a connector and it will appear as a first-level item in the sidebar."
+            presentation.addSourceCards.map(\.title),
+            ["My Diary", "Local Folder", "Obsidian Vault", "Feishu Docs", "Notion", "Google Drive"]
         )
+        XCTAssertEqual(
+            presentation.addSourceCards.map(\.status),
+            ["Built-in", "Add", "Detected", "Needs auth", "Not set up", "Not set up"]
+        )
+        XCTAssertFalse(presentation.showsAPIConnectorOption)
         XCTAssertFalse(presentation.showsDailyMemoryExport)
     }
 

@@ -137,7 +137,7 @@ flowchart LR
 
 - 持有并持久化 `KnowledgeImportConfig`
 - 暴露 `importKnowledgeNow()` 和导入状态文案
-- 持有 `MainContentSelection`，把 diary 阅读、`Other Source` 管理页、connector 内容页和 imported document 选择分开建模
+- 持有 `MainContentSelection`，把 diary 阅读、`Add Source` 管理页、connector 内容页和 imported document 选择分开建模
 - 从连接器实例配置创建 Local Folder、Obsidian、Feishu/Lark、Notion、Google Drive 导入器
 - 通过 `KnowledgeImportCredentialStore` 从 Keychain 读取 API 连接器 bearer token
 - 在用户修改每日导入配置时注册或移除独立的导入 `LaunchAgent`
@@ -149,11 +149,13 @@ Knowledge Imports 与 Daily Memory Export 是两个方向相反的能力。Daily
 
 导入内容存放在 `Application Support/KnowYou/KnowledgeSources/`，每个文档写为 `content.md` 和 `metadata.json`，并在 SQLite 中记录 connector instance、remote identity、content hash、同步状态和 tombstone。Obsidian 导入默认跳过 `<vault>/KnowYou/Daily Memories/`，并跳过带有 `knowyou_export: daily_memory` marker 的文件，避免把 KnowYou 自己导出的日记再导入回来。
 
-### 3.4 Other Source Root Navigation
+### 3.4 Add Source Navigation
 
-主窗口左侧导航现在把日记和外部资料源拆成平行的根级入口。`My Diary` 负责按天生成的 diary 内容；`Other Source` 是固定存在的连接器管理入口，用于添加、配置、删除和手动同步外部资料源。`Other Source` 主页面只呈现 Knowledge Imports 相关操作与本地 Markdown 存储/同步规则说明，Daily Memory Export 继续留在齿轮菜单中的 legacy `Connectors` sheet，避免用户把导入外部资料和导出每日记忆混成一个方向。每个已配置的导入连接器实例会作为 `Other Source` 旁边的根级条目出现，点击后打开该连接器已经同步到本地缓存的文档列表与 Markdown 预览。
+主窗口左侧导航现在把所有可导入/可浏览的来源收进固定的 `Add Source` 一级目录。`My Diary` 是 `Add Source` 下的内置来源，负责按天生成的 diary 内容；Local Folder、Obsidian、Feishu/Lark、Notion、Google Drive 等连接器添加后也作为 `Add Source` 下的并列来源出现。`Add Source` 行保留明确的 `+` 入口，用于添加或配置新的来源。
 
-`MainContentSelection` 避免把非 diary 页面编码成日期字符串。导入完成后，`AppState.importKnowledgeNow()` 只刷新用户当前仍在查看的 knowledge 页面；如果用户已经切回 diary 或 `Other Source` 管理页，导入完成不会把界面强制跳回旧 connector。
+`Add Source` 主页面只呈现来源添加卡片、Knowledge Imports 相关操作与本地 Markdown 存储/同步规则说明，Daily Memory Export 继续留在齿轮菜单中的 legacy `Connectors` sheet，避免用户把导入外部资料和导出每日记忆混成一个方向。每个已配置的导入连接器实例会作为 `Add Source` 下的来源条目出现，点击后打开该连接器已经同步到本地缓存的文档列表与 Markdown 预览。
+
+`MainContentSelection` 避免把非 diary 页面编码成日期字符串。导入完成后，`AppState.importKnowledgeNow()` 只刷新用户当前仍在查看的 knowledge 页面；如果用户已经切回 diary 或 `Add Source` 管理页，导入完成不会把界面强制跳回旧 connector。
 
 当前 `AppState` 也负责晚间回顾提醒配置与通知后的前台路由：
 

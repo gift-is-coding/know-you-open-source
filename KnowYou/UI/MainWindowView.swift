@@ -237,7 +237,7 @@ struct MainWindowView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Local Storage")
                                 .font(.headline)
-                            Text("Other Source documents are copied into KnowYou local storage as Markdown. Source files are not modified.")
+                            Text("Add Source documents are copied into KnowYou local storage as Markdown. Source files are not modified.")
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -269,7 +269,7 @@ struct MainWindowView: View {
         case .diary(let dayKey):
             return dayKey.map { "diary:\($0)" } ?? "diary-root"
         case .otherSourceManager:
-            return "other-source"
+            return "add-source"
         case .knowledgeConnector(let instanceID):
             return "connector:\(instanceID)"
         case .knowledgeDocument(let instanceID, _):
@@ -388,9 +388,12 @@ struct MainWindowView: View {
 
     private func otherSourceManagementView(focusAddConnector: Bool) -> some View {
         GeometryReader { proxy in
-            connectorsManagementView(focusAddConnector: focusAddConnector)
-                .padding(28)
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+            ScrollView {
+                connectorsManagementView(focusAddConnector: focusAddConnector)
+                    .padding(28)
+                    .frame(maxWidth: 860, alignment: .topLeading)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
         }
     }
 
@@ -454,7 +457,7 @@ struct MainWindowView: View {
                 knowledgeImportStatusMessage: appState.knowledgeImportStatusMessage
             ),
             surface: .otherSourceRoot,
-            startsWithAddAPIForm: focusAddConnector
+            startsWithAddAPIForm: false
         )
     }
 
@@ -539,6 +542,10 @@ struct MainWindowView: View {
         panel.canChooseDirectories = true
         panel.canCreateDirectories = false
         panel.prompt = "Add"
+        if connectorID == .obsidianImport, let detectedVault = detectedObsidianVault() {
+            panel.directoryURL = detectedVault.deletingLastPathComponent()
+            panel.nameFieldStringValue = detectedVault.lastPathComponent
+        }
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             addKnowledgeImportConnector(
@@ -549,6 +556,24 @@ struct MainWindowView: View {
                 bearerToken: nil
             )
         }
+    }
+
+    private func detectedObsidianVault() -> URL? {
+        let detector = SyncMemoryPathDetector()
+        let homeURL = FileManager.default.homeDirectoryForCurrentUser
+        let configuredVaults = detector.detectConfiguredObsidianVaults(
+            configDirectory: detector.defaultObsidianConfigDirectory(homePath: homeURL.path)
+        )
+        if let configuredVault = configuredVaults.first {
+            return configuredVault
+        }
+
+        return detector.detectObsidianVaults(
+            searchRoots: [
+                homeURL.appendingPathComponent("Documents", isDirectory: true),
+                homeURL.appendingPathComponent("Desktop", isDirectory: true),
+            ]
+        ).first
     }
 
     private func addAPIKnowledgeImportConnector(

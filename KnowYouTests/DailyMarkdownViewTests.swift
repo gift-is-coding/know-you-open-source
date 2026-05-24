@@ -43,7 +43,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertTrue(presentation.sections[1].isExpandedByDefault)
     }
 
-    func testSidebarPresentationShowsDiaryAndOtherSourceRootsBeforeDates() {
+    func testSidebarPresentationShowsAddSourceRootWithDiaryChildBeforeDates() {
         let presentation = DateSidebarPresentation(
             dates: ["2026-05-23", "2026-05-22"],
             selectedItemID: "diary:2026-05-23",
@@ -52,12 +52,12 @@ final class DailyMarkdownViewTests: XCTestCase {
             calendar: gregorianCalendar
         )
 
-        XCTAssertEqual(presentation.rootItems.map(\.id), ["diary-root", "other-source"])
-        XCTAssertEqual(presentation.rootItems.map(\.title), ["My Diary", "Other Source"])
-        XCTAssertEqual(presentation.rootItems.map(\.systemImage), ["book.closed", "tray.full"])
-        XCTAssertTrue(presentation.rootItems[1].showsAddButton)
-        XCTAssertEqual(presentation.sections.first?.title, "May 2026")
-        XCTAssertEqual(presentation.sections.first?.items.map(\.id), ["diary:2026-05-23", "diary:2026-05-22"])
+        XCTAssertEqual(presentation.sourceRootItem.id, "add-source")
+        XCTAssertEqual(presentation.sourceRootItem.title, "Add Source")
+        XCTAssertTrue(presentation.sourceRootItem.showsAddButton)
+        XCTAssertEqual(presentation.diaryRootItem.id, "diary-root")
+        XCTAssertEqual(presentation.diaryRootItem.title, "My Diary")
+        XCTAssertEqual(presentation.diarySections.first?.items.map(\.title), ["Today", "Yesterday"])
     }
 
     func testSidebarPresentationAddsConnectorInstancesAsRootItems() {
@@ -92,40 +92,39 @@ final class DailyMarkdownViewTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            presentation.rootItems.map(\.id),
-            ["diary-root", "other-source", "connector:feishu-main", "connector:drive-main"]
+            presentation.sourceItems.map(\.id),
+            ["connector:feishu-main", "connector:drive-main"]
         )
-        XCTAssertEqual(presentation.rootItems.map(\.title), ["My Diary", "Other Source", "飞书文档", "Google Drive"])
-        XCTAssertEqual(presentation.rootItems.map(\.systemImage), ["book.closed", "tray.full", "doc.richtext", "externaldrive"])
-        XCTAssertTrue(presentation.rootItems[2].isEnabled)
-        XCTAssertFalse(presentation.rootItems[3].isEnabled)
+        XCTAssertEqual(presentation.sourceItems.map(\.title), ["飞书文档", "Google Drive"])
+        XCTAssertEqual(presentation.sourceItems.map(\.systemImage), ["doc.richtext", "externaldrive"])
+        XCTAssertTrue(presentation.sourceItems[0].isEnabled)
+        XCTAssertFalse(presentation.sourceItems[1].isEnabled)
     }
 
-    func testSidebarPresentationMarksOtherSourceAddAction() throws {
+    func testSidebarPresentationMarksAddSourceAction() throws {
         let presentation = DateSidebarPresentation(
             dates: [],
-            selectedItemID: "other-source",
+            selectedItemID: "add-source",
             knowledgeImportConfig: .default,
             today: makeDate(year: 2026, month: 5, day: 23),
             calendar: gregorianCalendar
         )
 
-        let otherSource = try XCTUnwrap(presentation.rootItems.first { $0.id == "other-source" })
-        XCTAssertTrue(otherSource.showsAddButton)
-        XCTAssertTrue(otherSource.isSelected)
+        XCTAssertTrue(presentation.sourceRootItem.showsAddButton)
+        XCTAssertTrue(presentation.sourceRootItem.isSelected)
     }
 
     @MainActor
     func testDateSidebarViewOnlyTreatsDiarySelectionIDsAsDayKeys() {
         XCTAssertEqual(DateSidebarView.dayKeyForSelection("diary:2026-05-23"), "2026-05-23")
-        XCTAssertNil(DateSidebarView.dayKeyForSelection("other-source"))
+        XCTAssertNil(DateSidebarView.dayKeyForSelection("add-source"))
         XCTAssertNil(DateSidebarView.dayKeyForSelection("connector:drive-main"))
     }
 
     @MainActor
     func testDateSidebarSelectionActionRoutesRootAndConnectorIDs() {
         XCTAssertEqual(DateSidebarView.selectionAction(for: "diary:2026-05-23"), .diaryDate("2026-05-23"))
-        XCTAssertEqual(DateSidebarView.selectionAction(for: "other-source"), .otherSource(focusAddConnector: false))
+        XCTAssertEqual(DateSidebarView.selectionAction(for: "add-source"), .otherSource(focusAddConnector: false))
         XCTAssertEqual(DateSidebarView.selectionAction(for: "connector:feishu-main"), .knowledgeConnector("feishu-main"))
         XCTAssertNil(DateSidebarView.selectionAction(for: "diary-root"))
         XCTAssertNil(DateSidebarView.selectionAction(for: "settings"))

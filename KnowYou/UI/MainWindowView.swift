@@ -29,10 +29,12 @@ struct MainWindowView: View {
                 selectedDate: appState.selectedDate,
                 selectedItemID: selectedSidebarItemID,
                 knowledgeImportConfig: appState.knowledgeImportConfig,
+                knowledgeDocumentsByConnector: appState.knowledgeDocumentsByConnector,
                 isActive: appState.readerFocus == .dateList,
                 onSelectDiaryDate: appState.selectDate,
                 onSelectOtherSource: appState.selectOtherSourceManager,
                 onSelectKnowledgeConnector: appState.selectKnowledgeConnector,
+                onSelectKnowledgeDocument: appState.selectKnowledgeDocument,
                 onOpenSyncMemory: openSyncMemoryPanel
             )
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
@@ -273,6 +275,9 @@ struct MainWindowView: View {
         case .knowledgeConnector(let instanceID):
             return "connector:\(instanceID)"
         case .knowledgeDocument(let instanceID, _):
+            if let documentID = appState.selectedKnowledgeDocument?.id {
+                return "document:\(instanceID):\(documentID)"
+            }
             return "connector:\(instanceID)"
         }
     }
@@ -457,7 +462,8 @@ struct MainWindowView: View {
                 knowledgeImportStatusMessage: appState.knowledgeImportStatusMessage
             ),
             surface: .otherSourceRoot,
-            startsWithAddAPIForm: false
+            externalSourcesRootURL: appState.environment?.externalSourcesDirectoryURL
+                ?? ExternalSourcePromptPresentation.defaultExternalSourcesRootURL()
         )
     }
 
@@ -474,7 +480,7 @@ struct MainWindowView: View {
             onOpenOpenClawExport: { openSyncMemoryFolder(at: appState.syncMemoryConfig.openClaw.resolvedPath) },
             onAddLocalFolderImport: { chooseKnowledgeImportFolder(for: .localFolderImport) },
             onAddObsidianImport: { chooseKnowledgeImportFolder(for: .obsidianImport) },
-            onAddAPIImportConnector: addAPIKnowledgeImportConnector,
+            onAddExternalPromptSource: addExternalPromptSource,
             onSetImportConnectorEnabled: setKnowledgeImportConnectorEnabled,
             onDeleteImportConnector: deleteKnowledgeImportConnector,
             onExportNow: {
@@ -552,8 +558,7 @@ struct MainWindowView: View {
                 connectorID: connectorID,
                 displayName: connectorID == .obsidianImport ? "Obsidian Vault" : url.lastPathComponent,
                 sourcePath: url.path,
-                accountID: nil,
-                bearerToken: nil
+                accountID: nil
             )
         }
     }
@@ -576,33 +581,13 @@ struct MainWindowView: View {
         ).first
     }
 
-    private func addAPIKnowledgeImportConnector(
-        connectorID: KnowledgeConnectorID,
-        displayName: String,
-        sourcePath: String?,
-        accountID: String?,
-        bearerToken: String
-    ) {
-        addKnowledgeImportConnector(
-            connectorID: connectorID,
-            displayName: displayName,
-            sourcePath: sourcePath,
-            accountID: accountID,
-            bearerToken: bearerToken
-        )
-    }
-
     private func addKnowledgeImportConnector(
         connectorID: KnowledgeConnectorID,
         displayName: String,
         sourcePath: String?,
-        accountID: String?,
-        bearerToken: String?
+        accountID: String?
     ) {
         let connectorInstanceID = "\(connectorID.rawValue)-\(UUID().uuidString)"
-        if let bearerToken {
-            appState.saveKnowledgeImportBearerToken(bearerToken, connectorInstanceID: connectorInstanceID)
-        }
 
         var config = appState.knowledgeImportConfig
         config.connectorInstances.append(
@@ -615,6 +600,37 @@ struct MainWindowView: View {
                 isEnabled: true
             )
         )
+        appState.saveKnowledgeImportConfig(config)
+    }
+
+    private func addExternalPromptSource(
+        connectorID: KnowledgeConnectorID,
+        displayName: String,
+        sourcePath: String
+    ) {
+        let sourceURL = URL(fileURLWithPath: sourcePath, isDirectory: true)
+        try? FileManager.default.createDirectory(at: sourceURL, withIntermediateDirectories: true)
+
+        var config = appState.knowledgeImportConfig
+        if let index = config.connectorInstances.firstIndex(where: { $0.connectorID == connectorID }) {
+            config.connectorInstances[index].displayName = displayName
+            config.connectorInstances[index].sourcePath = sourcePath
+            config.connectorInstances[index].accountID = nil
+            config.connectorInstances[index].workspaceID = nil
+            config.connectorInstances[index].isEnabled = true
+        } else {
+            config.connectorInstances.append(
+                KnowledgeConnectorInstanceConfig(
+                    id: "\(connectorID.rawValue)-\(UUID().uuidString)",
+                    connectorID: connectorID,
+                    displayName: displayName,
+                    sourcePath: sourcePath,
+                    accountID: nil,
+                    workspaceID: nil,
+                    isEnabled: true
+                )
+            )
+        }
         appState.saveKnowledgeImportConfig(config)
     }
 

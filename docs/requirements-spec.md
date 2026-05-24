@@ -182,23 +182,26 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 系统必须把 Knowledge Imports 和 Daily Memory Export 分开建模。
 - Knowledge Imports 必须把导入内容保存到本地缓存，而不是依赖动态远端链接。
 - Knowledge Imports 必须支持 Local Folder、Obsidian、Feishu/Lark、Notion 和 Google Drive 类型的导入连接器。
+- Feishu/Lark、Notion 和 Google Drive 必须通过 prompt-backed 本地目录工作：KnowYou 只生成 prompt、保存本地 source 元数据，并扫描 `Application Support/KnowYou/ExternalSources/<platform>/` 下的 Markdown/TXT 文件。
+- KnowYou 不得为 Feishu/Lark、Notion 或 Google Drive 保存 token、OAuth secret、cookie、CLI 登录态、bearer token 或账号授权状态。
+- 外部平台 prompt 必须要求 Codex / Cloud Code 在外部环境自行完成授权、定时任务、远端拉取、Markdown 转换和稳定路径覆盖更新。
 - Knowledge Imports 导入的 Markdown 或类似文本内容必须在本地规范化为 `content.md` 和 `metadata.json`。
 - Obsidian 导入必须默认跳过 `<vault>/KnowYou/Daily Memories/`。
 - 导入器必须跳过带有 `knowyou_export: daily_memory` 的 KnowYou 导出文件。
 - 导入器必须通过 connector instance、remote identity 和 content hash 做幂等去重。
 - 单个导入连接器失败不得阻塞其他连接器。
-- API 连接器凭据必须存放在 Keychain 或等价安全存储中。
 - 用户必须能手动触发 Knowledge Imports。
 - 当启用每日 Knowledge Imports 时，系统必须安装独立于 Daily Memory Export 的用户级 `LaunchAgent`。
 - 侧边栏必须始终显示 `Add Source` 一级目录。
-- `My Diary` 必须位于 `Add Source` 下，并作为内置来源与外部来源平行呈现。
+- `Add Source` 必须是独立入口，不得折叠或收起其他来源。
+- `My Diary` 必须作为内置来源与 Obsidian、Local Folder、Feishu/Lark、Notion、Google Drive 等外部来源平行呈现。
 - `Add Source` 必须打开来源管理页，而不是混合资料总览页。
-- `Add Source` 主页面不得展示 Daily Memory Export；Daily Memory Export 必须保留在独立的 legacy `Connectors` 设置入口中。
+- `Add Source` 主页面不得展示 Daily Memory Export；Daily Memory Export 必须保留底层能力，但不得与 Add Source 的导入流程混在一起。
 - `Add Source` 主页面必须说明外部资料会同步为本地 Markdown 缓存、源文件不会被修改，并说明去重与 Obsidian 日记导出回环规避规则。
-- `Add Source` 旁边必须提供明确的添加入口，用于进入添加连接器流程。
+- `Add Source` 主页面不得出现顶部重复的 `Add Connector` 入口，所有未连接、已连接或异常来源必须在一个 `Sources` 列表中呈现。
 - `Add Source` 主页面不得提供泛化的 `Add API` 选项；外部平台必须以平台名称或本地文件来源名称呈现。
 - 添加导入连接器后，该连接器必须作为 `Add Source` 下的并列来源条目出现。
-- 点击连接器来源条目必须打开该连接器已同步到本地缓存的文档列表和 Markdown 预览。
+- 点击连接器来源条目必须在侧边栏展开或折叠该来源的路径层级；点击 Markdown/TXT 文档叶子必须打开 Markdown 预览。
 - 连接器内容页必须提供手动 `Sync Now`，并明确说明导入内容复制到 KnowYou 本地存储，源文件不会被修改。
 - Knowledge Imports 同步完成后只允许刷新当前仍可见的 knowledge 页面，不得把已经切走的用户强制带回旧连接器页面。
 - 系统必须支持一个可开启/关闭的 `Evening review reminder`
@@ -284,12 +287,12 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 
 - vault 目录
 - diary engine 默认项
-- 对应的 API token、CLI 路径，或 Codex Auth 本地登录状态
+- diary engine 对应的 API token、CLI 路径，或 Codex Auth 本地登录状态
 
 配置入口包括：
 
 - 首次 onboarding 中的 Demo Day + coachmark 流程
-- 主窗口左下角 `...` 菜单中的 `Connectors`
+- `Add Source` 来源管理页
 - 主窗口右上角 diary engine selector
 - Settings 页面中的次级状态入口
 - Settings 页面中的作者联系、社区与法律文档入口

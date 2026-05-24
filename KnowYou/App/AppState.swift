@@ -580,6 +580,7 @@ final class AppState {
     var selectedKnowledgeDocuments: [ImportedKnowledgeDocument] = []
     var selectedKnowledgeDocument: ImportedKnowledgeDocument?
     var selectedKnowledgeDocumentMarkdown: String?
+    var knowledgeDocumentsByConnector: [String: [ImportedKnowledgeDocument]] = [:]
     var onboardingProgress: OnboardingProgress
     var onboardingBootstrapState: OnboardingBootstrapState
     var onboardingBootstrapDayKeys: [String]
@@ -862,6 +863,7 @@ final class AppState {
     func selectKnowledgeConnector(instanceID: String) {
         mainContentSelection = .knowledgeConnector(instanceID: instanceID)
         readerFocus = .dateList
+        refreshKnowledgeDocumentTree()
         reloadKnowledgeDocuments(connectorInstanceID: instanceID)
     }
 
@@ -873,6 +875,7 @@ final class AppState {
         selectedKnowledgeDocuments = fetchKnowledgeDocuments(connectorInstanceID: connectorInstanceID)
         selectedKnowledgeDocument = selectedKnowledgeDocuments.first { $0.id == documentID }
         selectedKnowledgeDocumentMarkdown = loadKnowledgeDocumentMarkdown(selectedKnowledgeDocument)
+        refreshKnowledgeDocumentTree()
     }
 
     func didDeleteKnowledgeConnector(instanceID: String) {
@@ -916,9 +919,19 @@ final class AppState {
     }
 
     private func reloadKnowledgeDocuments(connectorInstanceID: String) {
+        refreshKnowledgeDocumentTree()
         selectedKnowledgeDocuments = fetchKnowledgeDocuments(connectorInstanceID: connectorInstanceID)
         selectedKnowledgeDocument = selectedKnowledgeDocuments.first
         selectedKnowledgeDocumentMarkdown = loadKnowledgeDocumentMarkdown(selectedKnowledgeDocument)
+    }
+
+    private func refreshKnowledgeDocumentTree() {
+        guard let environment else {
+            knowledgeDocumentsByConnector = [:]
+            return
+        }
+        let documents = (try? environment.databaseWriter.fetchImportedKnowledgeDocuments()) ?? []
+        knowledgeDocumentsByConnector = Dictionary(grouping: documents, by: \.connectorInstanceID)
     }
 
     private func fetchKnowledgeDocuments(connectorInstanceID: String) -> [ImportedKnowledgeDocument] {
@@ -1203,6 +1216,7 @@ final class AppState {
     func saveKnowledgeImportConfig(_ config: KnowledgeImportConfig) {
         knowledgeImportConfig = config
         knowledgeImportConfig.save(to: userDefaults)
+        refreshKnowledgeDocumentTree()
         do {
             try knowledgeImportLaunchAgentManager.knowledgeImportRegistration(
                 executablePath: Bundle.main.executableURL?.path,
@@ -1251,6 +1265,7 @@ final class AppState {
         let result = await coordinator.sync(connectors: connectors)
         let noun = result.changedDocumentCount == 1 ? "document" : "documents"
         setKnowledgeImportStatus("Imported \(result.changedDocumentCount) \(noun)")
+        refreshKnowledgeDocumentTree()
         refreshVisibleKnowledgeSelectionAfterImport()
     }
 
@@ -1300,7 +1315,6 @@ final class AppState {
     }
 
     private func makeKnowledgeImportConnectors(from config: KnowledgeImportConfig) -> [any KnowledgeImportConnector] {
-        let credentialStore = KnowledgeImportCredentialStore(keychain: keychain, service: keychainService)
         return config.connectorInstances.compactMap { instance -> (any KnowledgeImportConnector)? in
             guard instance.isEnabled else {
                 return nil
@@ -1324,30 +1338,31 @@ final class AppState {
                     vaultURL: URL(fileURLWithPath: path, isDirectory: true)
                 )
             case .feishuImport:
-                guard let token = credentialStore.bearerToken(connectorInstanceID: instance.id),
-                      let docToken = normalizedKnowledgeImportValue(instance.sourcePath) else {
+                guard let path = normalizedKnowledgeImportValue(instance.sourcePath) else {
                     return nil
                 }
-                return FeishuKnowledgeConnector(
+                return FileBackedPlatformKnowledgeConnector(
                     connectorInstanceID: instance.id,
-                    docToken: docToken,
-                    bearerToken: token
+                    connectorID: .feishuImport,
+                    rootURL: URL(fileURLWithPath: path, isDirectory: true)
                 )
             case .notionImport:
-                guard let token = credentialStore.bearerToken(connectorInstanceID: instance.id) else {
+                guard let path = normalizedKnowledgeImportValue(instance.sourcePath) else {
                     return nil
                 }
-                return NotionKnowledgeConnector(
+                return FileBackedPlatformKnowledgeConnector(
                     connectorInstanceID: instance.id,
-                    bearerToken: token
+                    connectorID: .notionImport,
+                    rootURL: URL(fileURLWithPath: path, isDirectory: true)
                 )
             case .googleDriveImport:
-                guard let token = credentialStore.bearerToken(connectorInstanceID: instance.id) else {
+                guard let path = normalizedKnowledgeImportValue(instance.sourcePath) else {
                     return nil
                 }
-                return GoogleDriveKnowledgeConnector(
+                return FileBackedPlatformKnowledgeConnector(
                     connectorInstanceID: instance.id,
-                    bearerToken: token
+                    connectorID: .googleDriveImport,
+                    rootURL: URL(fileURLWithPath: path, isDirectory: true)
                 )
             case .obsidianExport, .openClawExport:
                 return nil
@@ -4429,6 +4444,7 @@ extension AppState {
         }
 
         noteIndex = notes.filter { $0.key != OnboardingDemoStory.demoDayKey }
+        refreshKnowledgeDocumentTree()
         rebuildAvailableDates()
         switch mainContentSelection {
         case .diary:

@@ -6300,6 +6300,51 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertFalse(appState.syncMemoryConfig.autoSyncEnabled)
     }
 
+    func testImportKnowledgeNowReadsPromptBackedPlatformDirectoryWithoutToken() async throws {
+        let environment = try makeEngineEnvironment()
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root.appending(path: "team", directoryHint: .isDirectory), withIntermediateDirectories: true)
+        try "# Feishu Plan".write(
+            to: root.appending(path: "team/plan.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let keychain = AppStateTestKeychainStore()
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: keychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        var importConfig = KnowledgeImportConfig.default
+        importConfig.connectorInstances = [
+            KnowledgeConnectorInstanceConfig(
+                id: "feishu-main",
+                connectorID: .feishuImport,
+                displayName: "Feishu Docs",
+                sourcePath: root.path,
+                isEnabled: true
+            )
+        ]
+        appState.saveKnowledgeImportConfig(importConfig)
+
+        await appState.importKnowledgeNow()
+
+        XCTAssertEqual(appState.knowledgeImportStatusMessage, "Imported 1 document")
+        XCTAssertEqual(appState.knowledgeDocumentsByConnector["feishu-main"]?.map(\.title), ["plan"])
+        XCTAssertEqual(
+            appState.knowledgeDocumentsByConnector["feishu-main"]?.first?.originKind,
+            "feishu-local-file"
+        )
+        XCTAssertNil(
+            keychain.load(
+                forKey: "knowledge-import.feishu-main.bearer-token",
+                service: "MainWindowViewModelTests"
+            )
+        )
+    }
+
     func testImportKnowledgeNowRefreshesVisibleKnowledgeConnectorDocuments() async throws {
         let environment = try makeEngineEnvironment()
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)

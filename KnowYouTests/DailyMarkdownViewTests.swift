@@ -55,6 +55,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.sourceRootItem.id, "add-source")
         XCTAssertEqual(presentation.sourceRootItem.title, "Add Source")
         XCTAssertTrue(presentation.sourceRootItem.showsAddButton)
+        XCTAssertFalse(presentation.sourceRootItem.isExpandable)
         XCTAssertEqual(presentation.diaryRootItem.id, "diary-root")
         XCTAssertEqual(presentation.diaryRootItem.title, "My Diary")
         XCTAssertEqual(presentation.diarySections.first?.items.map(\.title), ["Today", "Yesterday"])
@@ -87,6 +88,24 @@ final class DailyMarkdownViewTests: XCTestCase {
             dates: [],
             selectedItemID: "connector:feishu-main",
             knowledgeImportConfig: config,
+            knowledgeDocumentsByConnector: [
+                "feishu-main": [
+                    makeKnowledgeDocument(
+                        id: "feishu-doc",
+                        connectorInstanceID: "feishu-main",
+                        title: "Feishu Doc",
+                        sourcePath: "doc-token/doc.md"
+                    ),
+                ],
+                "drive-main": [
+                    makeKnowledgeDocument(
+                        id: "drive-doc",
+                        connectorInstanceID: "drive-main",
+                        title: "Drive Doc",
+                        sourcePath: "drive.md"
+                    ),
+                ],
+            ],
             today: makeDate(year: 2026, month: 5, day: 23),
             calendar: gregorianCalendar
         )
@@ -99,6 +118,53 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.sourceItems.map(\.systemImage), ["doc.richtext", "externaldrive"])
         XCTAssertTrue(presentation.sourceItems[0].isEnabled)
         XCTAssertFalse(presentation.sourceItems[1].isEnabled)
+        XCTAssertTrue(presentation.sourceItems.allSatisfy(\.isExpandable))
+    }
+
+    func testSidebarPresentationBuildsConnectorDocumentTreeFromImportedDocumentPaths() throws {
+        let root = "/Users/me/Library/Application Support/KnowYou/ExternalSources/feishu"
+        let config = KnowledgeImportConfig(
+            connectorInstances: [
+                KnowledgeConnectorInstanceConfig(
+                    id: "feishu-main",
+                    connectorID: .feishuImport,
+                    displayName: "Feishu Docs",
+                    sourcePath: root,
+                    isEnabled: true
+                )
+            ]
+        )
+        let documents = [
+            makeKnowledgeDocument(
+                id: "doc-alpha",
+                connectorInstanceID: "feishu-main",
+                title: "Alpha",
+                sourcePath: "\(root)/Projects/Alpha.md"
+            ),
+            makeKnowledgeDocument(
+                id: "doc-beta",
+                connectorInstanceID: "feishu-main",
+                title: "Beta",
+                sourcePath: "\(root)/Projects/Nested/Beta.md"
+            ),
+        ]
+
+        let presentation = DateSidebarPresentation(
+            dates: [],
+            selectedItemID: "document:feishu-main:doc-beta",
+            knowledgeImportConfig: config,
+            knowledgeDocumentsByConnector: ["feishu-main": documents],
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        let connector = try XCTUnwrap(presentation.sourceItems.first)
+        XCTAssertEqual(connector.children.map(\.title), ["Projects"])
+        let projects = try XCTUnwrap(connector.children.first)
+        XCTAssertEqual(projects.children.map(\.title), ["Alpha", "Nested"])
+        let nested = try XCTUnwrap(projects.children.first { $0.title == "Nested" })
+        XCTAssertEqual(nested.children.map(\.id), ["document:feishu-main:doc-beta"])
+        XCTAssertEqual(nested.children.first?.selectionAction, .knowledgeDocument("feishu-main", "doc-beta"))
     }
 
     func testSidebarPresentationMarksAddSourceAction() throws {
@@ -125,7 +191,11 @@ final class DailyMarkdownViewTests: XCTestCase {
     func testDateSidebarSelectionActionRoutesRootAndConnectorIDs() {
         XCTAssertEqual(DateSidebarView.selectionAction(for: "diary:2026-05-23"), .diaryDate("2026-05-23"))
         XCTAssertEqual(DateSidebarView.selectionAction(for: "add-source"), .otherSource(focusAddConnector: false))
-        XCTAssertEqual(DateSidebarView.selectionAction(for: "connector:feishu-main"), .knowledgeConnector("feishu-main"))
+        XCTAssertNil(DateSidebarView.selectionAction(for: "connector:feishu-main"))
+        XCTAssertEqual(
+            DateSidebarView.selectionAction(for: "document:feishu-main:doc-alpha"),
+            .knowledgeDocument("feishu-main", "doc-alpha")
+        )
         XCTAssertNil(DateSidebarView.selectionAction(for: "diary-root"))
         XCTAssertNil(DateSidebarView.selectionAction(for: "settings"))
     }
@@ -148,14 +218,43 @@ final class DailyMarkdownViewTests: XCTestCase {
             selectedDate: nil,
             selectedItemID: nil,
             knowledgeImportConfig: config,
+            knowledgeDocumentsByConnector: [:],
             isActive: true,
             onSelectDiaryDate: { _ in },
             onSelectOtherSource: { _ in },
             onSelectKnowledgeConnector: { _ in },
+            onSelectKnowledgeDocument: { _, _ in },
             onOpenSyncMemory: {}
         )
 
         XCTAssertEqual(view.knowledgeImportConfig.connectorInstances.map(\.id), ["drive-main"])
+    }
+
+    private func makeKnowledgeDocument(
+        id: String,
+        connectorInstanceID: String,
+        title: String,
+        sourcePath: String
+    ) -> ImportedKnowledgeDocument {
+        ImportedKnowledgeDocument(
+            id: id,
+            connectorInstanceID: connectorInstanceID,
+            connectorID: .feishuImport,
+            remoteID: String(sourcePath.split(separator: "/").suffix(2).joined(separator: "/")),
+            title: title,
+            sourcePath: sourcePath,
+            remoteURL: nil,
+            mimeType: "text/markdown",
+            contentHash: "hash-\(id)",
+            remoteUpdatedAt: nil,
+            firstImportedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            lastSyncedAt: Date(timeIntervalSince1970: 1_778_000_100),
+            deletedAt: nil,
+            localContentPath: "/tmp/\(id).md",
+            localMetadataPath: "/tmp/\(id).json",
+            normalizationVersion: 1,
+            originKind: "feishu-local-file"
+        )
     }
 
     func testRefreshProgressPresentationMarksCompletedAndCurrentSteps() {

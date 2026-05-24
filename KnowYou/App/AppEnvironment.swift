@@ -21,6 +21,9 @@ final class AppEnvironment {
     var knowledgeSourcesDirectoryURL: URL {
         databaseURL.deletingLastPathComponent().appending(path: "KnowledgeSources", directoryHint: .isDirectory)
     }
+    var externalSourcesDirectoryURL: URL {
+        databaseURL.deletingLastPathComponent().appending(path: "ExternalSources", directoryHint: .isDirectory)
+    }
 
     convenience init(
         databasePath: String,

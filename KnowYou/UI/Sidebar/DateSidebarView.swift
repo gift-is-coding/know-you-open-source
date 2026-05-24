@@ -5,34 +5,34 @@ struct DateSidebarView: View {
     let selectedDate: String?
     let selectedItemID: String?
     let knowledgeImportConfig: KnowledgeImportConfig
+    let knowledgeDocumentsByConnector: [String: [ImportedKnowledgeDocument]]
     let isActive: Bool
     let onSelectDiaryDate: (String) -> Void
     let onSelectOtherSource: (_ focusAddConnector: Bool) -> Void
     let onSelectKnowledgeConnector: (String) -> Void
+    let onSelectKnowledgeDocument: (String, String) -> Void
     let onOpenSyncMemory: () -> Void
     @State private var expandedSectionIDs: Set<String> = []
-    @State private var isSourceGroupExpanded = true
     @State private var isDiaryGroupExpanded = true
+    @State private var expandedSourceNodeIDs: Set<String> = []
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openURL) private var openURL
 
     var body: some View {
         VStack(spacing: 0) {
             List(selection: activeBinding) {
-                DisclosureGroup(isExpanded: $isSourceGroupExpanded) {
-                    DisclosureGroup(isExpanded: $isDiaryGroupExpanded) {
-                        ForEach(presentation.diarySections) { section in
-                            diarySectionRows(section)
-                        }
-                    } label: {
-                        diaryGroupLabel(presentation.diaryRootItem)
-                    }
+                rootRow(presentation.sourceRootItem)
 
-                    ForEach(presentation.sourceItems) { item in
-                        rootRow(item)
+                DisclosureGroup(isExpanded: $isDiaryGroupExpanded) {
+                    ForEach(presentation.diarySections) { section in
+                        diarySectionRows(section)
                     }
                 } label: {
-                    sourceGroupLabel(presentation.sourceRootItem)
+                    diaryGroupLabel(presentation.diaryRootItem)
+                }
+
+                ForEach(presentation.sourceItems) { item in
+                    sourceNodeRow(item)
                 }
             }
             .listStyle(.sidebar)
@@ -41,7 +41,6 @@ struct DateSidebarView: View {
 
             HStack(spacing: 4) {
                 Menu {
-                    Button("Connectors", action: onOpenSyncMemory)
                     Button("Settings") {
                         openSettings()
                     }
@@ -113,37 +112,9 @@ struct DateSidebarView: View {
         DateSidebarPresentation(
             dates: dates,
             selectedItemID: selectedItemID,
-            knowledgeImportConfig: knowledgeImportConfig
+            knowledgeImportConfig: knowledgeImportConfig,
+            knowledgeDocumentsByConnector: knowledgeDocumentsByConnector
         )
-    }
-
-    private func sourceGroupLabel(_ item: SidebarRootItem) -> some View {
-        HStack(spacing: 8) {
-            Button {
-                selectRootItem(item)
-            } label: {
-                HStack(spacing: 8) {
-                    Label(item.title, systemImage: item.systemImage)
-                        .foregroundStyle(.primary)
-                    Spacer()
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                onSelectOtherSource(true)
-            } label: {
-                Image(systemName: "plus")
-            }
-            .buttonStyle(.borderless)
-            .help("Add Source")
-            .accessibilityLabel("Add Source")
-            .accessibilityIdentifier("add-source-add-button")
-        }
-        .padding(.vertical, 4)
-        .fontWeight(item.isSelected ? .semibold : .regular)
-        .tag(item.id)
     }
 
     private func diaryGroupLabel(_ item: SidebarRootItem) -> some View {
@@ -194,6 +165,30 @@ struct DateSidebarView: View {
         .tag(item.id)
     }
 
+    private func sourceNodeRow(_ item: SidebarRootItem) -> AnyView {
+        if item.children.isEmpty {
+            return AnyView(Label(item.title, systemImage: item.systemImage)
+                .padding(.vertical, 4)
+                .fontWeight(item.isSelected ? .semibold : .regular)
+                .foregroundStyle(item.isEnabled ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                .tag(item.id)
+                .onTapGesture {
+                    handleSelectionAction(item.selectionAction ?? Self.selectionAction(for: item.id))
+                })
+        } else {
+            return AnyView(DisclosureGroup(isExpanded: sourceExpansionBinding(for: item.id)) {
+                ForEach(item.children) { child in
+                    sourceNodeRow(child)
+                }
+            } label: {
+                Label(item.title, systemImage: item.systemImage)
+                    .padding(.vertical, 4)
+                    .fontWeight(item.isSelected ? .semibold : .regular)
+                    .foregroundStyle(item.isEnabled ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+            })
+        }
+    }
+
     @ViewBuilder
     private func diarySectionRows(_ section: DateSidebarSection) -> some View {
         if let title = section.title {
@@ -235,6 +230,8 @@ struct DateSidebarView: View {
             onSelectOtherSource(focusAddConnector)
         case .knowledgeConnector(let instanceID):
             onSelectKnowledgeConnector(instanceID)
+        case .knowledgeDocument(let instanceID, let documentID):
+            onSelectKnowledgeDocument(instanceID, documentID)
         case nil:
             break
         }
@@ -245,8 +242,11 @@ struct DateSidebarView: View {
             return .diaryDate(dayKey)
         } else if itemID == "add-source" || itemID == "other-source" {
             return .otherSource(focusAddConnector: false)
-        } else if itemID.hasPrefix("connector:") {
-            return .knowledgeConnector(String(itemID.dropFirst("connector:".count)))
+        } else if itemID.hasPrefix("document:") {
+            let remainder = String(itemID.dropFirst("document:".count))
+            let parts = remainder.split(separator: ":", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { return nil }
+            return .knowledgeDocument(parts[0], parts[1])
         }
         return nil
     }
@@ -269,6 +269,19 @@ struct DateSidebarView: View {
                     expandedSectionIDs.insert(section.id)
                 } else {
                     expandedSectionIDs.remove(section.id)
+                }
+            }
+        )
+    }
+
+    private func sourceExpansionBinding(for id: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedSourceNodeIDs.contains(id) },
+            set: { isExpanded in
+                if isExpanded {
+                    expandedSourceNodeIDs.insert(id)
+                } else {
+                    expandedSourceNodeIDs.remove(id)
                 }
             }
         )
@@ -298,6 +311,7 @@ enum SidebarSelectionAction: Equatable {
     case diaryDate(String)
     case otherSource(focusAddConnector: Bool)
     case knowledgeConnector(String)
+    case knowledgeDocument(String, String)
 }
 
 struct SidebarRootItem: Identifiable, Equatable {
@@ -307,6 +321,32 @@ struct SidebarRootItem: Identifiable, Equatable {
     let isSelected: Bool
     let isEnabled: Bool
     let showsAddButton: Bool
+    let children: [SidebarRootItem]
+    let selectionAction: SidebarSelectionAction?
+
+    var isExpandable: Bool {
+        !children.isEmpty
+    }
+
+    init(
+        id: String,
+        title: String,
+        systemImage: String,
+        isSelected: Bool,
+        isEnabled: Bool,
+        showsAddButton: Bool,
+        children: [SidebarRootItem] = [],
+        selectionAction: SidebarSelectionAction? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.systemImage = systemImage
+        self.isSelected = isSelected
+        self.isEnabled = isEnabled
+        self.showsAddButton = showsAddButton
+        self.children = children
+        self.selectionAction = selectionAction
+    }
 }
 
 struct DateSidebarPresentation {
@@ -321,6 +361,7 @@ struct DateSidebarPresentation {
         dates: [String],
         selectedItemID: String?,
         knowledgeImportConfig: KnowledgeImportConfig = .default,
+        knowledgeDocumentsByConnector: [String: [ImportedKnowledgeDocument]] = [:],
         today: Date = Date(),
         calendar: Calendar = .current
     ) {
@@ -350,13 +391,19 @@ struct DateSidebarPresentation {
             showsAddButton: false
         )
         sourceItems = knowledgeImportConfig.connectorInstances.map { instance in
-            SidebarRootItem(
+            let documentChildren = Self.documentTree(
+                for: knowledgeDocumentsByConnector[instance.id, default: []],
+                connector: instance,
+                selectedItemID: selectedItemID
+            )
+            return SidebarRootItem(
                 id: "connector:\(instance.id)",
                 title: instance.displayName,
                 systemImage: Self.systemImage(for: instance.connectorID),
                 isSelected: selectedItemID == "connector:\(instance.id)",
                 isEnabled: instance.isEnabled,
-                showsAddButton: false
+                showsAddButton: false,
+                children: documentChildren
             )
         }
 
@@ -463,6 +510,48 @@ struct DateSidebarPresentation {
         }
     }
 
+    private static func documentTree(
+        for documents: [ImportedKnowledgeDocument],
+        connector: KnowledgeConnectorInstanceConfig,
+        selectedItemID: String?
+    ) -> [SidebarRootItem] {
+        let rootPath = connector.sourcePath.map { URL(fileURLWithPath: $0, isDirectory: true).standardizedFileURL.path }
+        var builder = SidebarDocumentTreeBuilder(connectorInstanceID: connector.id, selectedItemID: selectedItemID)
+
+        for document in documents {
+            let path = relativeDisplayPath(for: document, rootPath: rootPath)
+            builder.insert(document: document, pathComponents: path)
+        }
+
+        return builder.items()
+    }
+
+    private static func relativeDisplayPath(for document: ImportedKnowledgeDocument, rootPath: String?) -> [String] {
+        if let sourcePath = document.sourcePath?.trimmingCharacters(in: .whitespacesAndNewlines),
+           sourcePath.isEmpty == false {
+            let standardizedPath = URL(fileURLWithPath: sourcePath).standardizedFileURL.path
+            if let rootPath {
+                let prefix = rootPath.hasSuffix("/") ? rootPath : "\(rootPath)/"
+                if standardizedPath.hasPrefix(prefix) {
+                    let relative = String(standardizedPath.dropFirst(prefix.count))
+                    return pathComponents(relative)
+                }
+            }
+            return pathComponents(URL(fileURLWithPath: standardizedPath).lastPathComponent)
+        }
+
+        let remotePath = document.remoteID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if remotePath.isEmpty == false {
+            return pathComponents(remotePath)
+        }
+        return [document.title]
+    }
+
+    private static func pathComponents(_ path: String) -> [String] {
+        let components = path.split(separator: "/").map(String.init).filter { !$0.isEmpty }
+        return components.isEmpty ? [path] : components
+    }
+
     private static func formattedDay(_ dateString: String, today: Date, calendar: Calendar) -> String {
         if dateString == OnboardingDemoStory.demoDayKey {
             return "Demo Day"
@@ -476,6 +565,84 @@ struct DateSidebarPresentation {
             return "Yesterday"
         }
         return Self.dayDisplay.string(from: date)
+    }
+}
+
+private struct SidebarDocumentTreeBuilder {
+    private final class Node {
+        var title: String
+        var id: String
+        var document: ImportedKnowledgeDocument?
+        var children: [String: Node] = [:]
+
+        init(title: String, id: String, document: ImportedKnowledgeDocument? = nil) {
+            self.title = title
+            self.id = id
+            self.document = document
+        }
+    }
+
+    private let connectorInstanceID: String
+    private let selectedItemID: String?
+    private let root = Node(title: "", id: "")
+
+    init(connectorInstanceID: String, selectedItemID: String?) {
+        self.connectorInstanceID = connectorInstanceID
+        self.selectedItemID = selectedItemID
+    }
+
+    mutating func insert(document: ImportedKnowledgeDocument, pathComponents: [String]) {
+        guard !pathComponents.isEmpty else { return }
+        var current = root
+        for component in pathComponents.dropLast() {
+            let folderID = "\(current.id)/\(component)"
+            current = current.children[component] ?? {
+                let node = Node(title: component, id: folderID)
+                current.children[component] = node
+                return node
+            }()
+        }
+
+        let leafTitle = document.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? pathComponents.last ?? document.remoteID
+            : document.title
+        let leafID = "document:\(connectorInstanceID):\(document.id)"
+        current.children[pathComponents.last ?? document.id] = Node(title: leafTitle, id: leafID, document: document)
+    }
+
+    func items() -> [SidebarRootItem] {
+        makeItems(from: Array(root.children.values))
+    }
+
+    private func makeItems(from nodes: [Node]) -> [SidebarRootItem] {
+        nodes.sorted { lhs, rhs in
+            if (lhs.document == nil) != (rhs.document == nil) {
+                return lhs.document != nil
+            }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }.map { node in
+            if let document = node.document {
+                return SidebarRootItem(
+                    id: node.id,
+                    title: node.title,
+                    systemImage: "doc.plaintext",
+                    isSelected: selectedItemID == node.id,
+                    isEnabled: true,
+                    showsAddButton: false,
+                    children: [],
+                    selectionAction: .knowledgeDocument(connectorInstanceID, document.id)
+                )
+            }
+            return SidebarRootItem(
+                id: "folder:\(connectorInstanceID):\(node.id)",
+                title: node.title,
+                systemImage: "folder",
+                isSelected: false,
+                isEnabled: true,
+                showsAddButton: false,
+                children: makeItems(from: Array(node.children.values))
+            )
+        }
     }
 }
 

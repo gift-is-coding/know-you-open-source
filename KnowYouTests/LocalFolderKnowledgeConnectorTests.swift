@@ -146,6 +146,27 @@ final class LocalFolderKnowledgeConnectorTests: XCTestCase {
             XCTAssertTrue(description.contains("BadEncoding.md"), description)
         }
     }
+
+    func testFileBackedPlatformConnectorReadsLocalMarkdownDirectoryWithoutToken() async throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sourceURL = try writeFile("# Weekly Plan", at: "team/weekly-plan.md", in: root)
+
+        let connector = FileBackedPlatformKnowledgeConnector(
+            connectorInstanceID: "feishu-main",
+            connectorID: .feishuImport,
+            rootURL: root
+        )
+
+        let snapshots = try await connector.fetchSnapshots()
+
+        XCTAssertEqual(snapshots.map(\.remoteID), ["team/weekly-plan.md"])
+        XCTAssertEqual(snapshots.first?.connectorID, .feishuImport)
+        XCTAssertEqual(snapshots.first?.connectorInstanceID, "feishu-main")
+        XCTAssertEqual(snapshots.first?.originKind, "feishu-local-file")
+        XCTAssertEqual(snapshots.first?.sourcePath, sourceURL.path)
+        XCTAssertEqual(snapshots.first?.contentMarkdown, "# Weekly Plan")
+    }
 }
 
 private func makeTemporaryDirectory() throws -> URL {

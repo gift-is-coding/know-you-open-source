@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ConnectorPanelRow: Equatable, Identifiable {
@@ -16,11 +17,118 @@ struct AddSourceCardPresentation: Equatable, Identifiable {
     var systemImage: String
     var primaryActionTitle: String
     var isPrimaryActionEnabled: Bool
+    var localDirectory: String?
+    var connectorID: KnowledgeConnectorID?
+    var connectorInstanceID: String?
+}
+
+enum ExternalSourcePromptFrequency: String, CaseIterable, Identifiable, Equatable {
+    case daily
+    case weekly
+
+    var id: String { rawValue }
+}
+
+struct ExternalSourcePromptPresentation: Equatable {
+    var connectorID: KnowledgeConnectorID
+    var frequency: ExternalSourcePromptFrequency
+    var importTime: Date
+    var scopeDescription: String
+    var externalSourcesRootURL: URL
+
+    var platformName: String {
+        switch connectorID {
+        case .feishuImport:
+            return "Feishu Docs"
+        case .notionImport:
+            return "Notion"
+        case .googleDriveImport:
+            return "Google Drive"
+        case .localFolderImport:
+            return "Local Folder"
+        case .obsidianImport:
+            return "Obsidian Vault"
+        case .obsidianExport:
+            return "Obsidian Export"
+        case .openClawExport:
+            return "OpenClaw Export"
+        }
+    }
+
+    var directoryName: String {
+        switch connectorID {
+        case .feishuImport:
+            return "feishu"
+        case .notionImport:
+            return "notion"
+        case .googleDriveImport:
+            return "google-drive"
+        default:
+            return connectorID.rawValue
+        }
+    }
+
+    var outputDirectory: String {
+        externalSourcesRootURL
+            .appending(path: directoryName, directoryHint: .isDirectory)
+            .path
+    }
+
+    var displayTime: String {
+        Self.timeFormatter.string(from: importTime)
+    }
+
+    var prompt: String {
+        let scope = scopeDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        let scopeLine = scope.isEmpty ? "Use the platform content scope I provide when I run this prompt." : scope
+        return """
+        Create a \(frequency.rawValue) automation for \(platformName).
+
+        Schedule:
+        - Frequency: \(frequency.rawValue)
+        - Local time: \(displayTime)
+
+        Source scope:
+        \(scopeLine)
+
+        Destination:
+        - Write Markdown or plain text files into:
+          \(outputDirectory)
+        - Create the directory if it does not exist.
+        - Use stable folder paths and file names so later runs overwrite changed files instead of creating duplicates.
+        - Convert supported remote documents to Markdown whenever possible.
+
+        Authorization:
+        - Handle any required platform sign-in inside Codex or Cloud Code.
+        - Keep remote authorization state in that automation environment.
+        - Do not ask the user to paste any remote credential into KnowYou.
+
+        After the first run, KnowYou will read this local directory and import the files as a source.
+        """
+    }
+
+    static func defaultExternalSourcesRootURL() -> URL {
+        let applicationSupportURL = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support")
+        return applicationSupportURL
+            .appending(path: "KnowYou", directoryHint: .isDirectory)
+            .appending(path: "ExternalSources", directoryHint: .isDirectory)
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
 }
 
 struct ConnectorsPanelPresentation: Equatable {
     var exportRows: [ConnectorPanelRow]
     var importRows: [ConnectorPanelRow]
+    var importInstances: [KnowledgeConnectorInstanceConfig]
     var syncMemoryStatusMessage: String?
     var knowledgeImportStatusMessage: String?
 
@@ -46,6 +154,7 @@ struct ConnectorsPanelPresentation: Equatable {
                 detail: Self.detail(for: syncMemoryConfig.openClaw.resolvedPath)
             ),
         ]
+        importInstances = knowledgeImportConfig.connectorInstances
         importRows = knowledgeImportConfig.connectorInstances.map { instance in
             ConnectorPanelRow(
                 id: instance.id,
@@ -75,7 +184,7 @@ enum ConnectorsManagementSurface: Equatable {
 struct ConnectorsManagementPresentation: Equatable {
     var panelPresentation: ConnectorsPanelPresentation
     var surface: ConnectorsManagementSurface
-    var startsWithAddAPIForm: Bool
+    var externalSourcesRootURL: URL = ExternalSourcePromptPresentation.defaultExternalSourcesRootURL()
 
     var title: String {
         switch surface {
@@ -89,7 +198,7 @@ struct ConnectorsManagementPresentation: Equatable {
     var subtitle: String {
         switch surface {
         case .connectorsSheet:
-            return "Manage daily memory exports and local-first knowledge imports."
+            return "Manage daily memory exports."
         case .otherSourceRoot:
             return "Manage all sources that feed your local Markdown library."
         }
@@ -109,7 +218,15 @@ struct ConnectorsManagementPresentation: Equatable {
     }
 
     var showsAPIConnectorOption: Bool {
-        surface == .connectorsSheet
+        false
+    }
+
+    var showsHeaderAddConnector: Bool {
+        false
+    }
+
+    var showsConnectedSection: Bool {
+        false
     }
 
     var addSourceCards: [AddSourceCardPresentation] {
@@ -121,67 +238,160 @@ struct ConnectorsManagementPresentation: Equatable {
                 detail: "Daily notes generated by KnowYou stay in the same source tree.",
                 systemImage: "book.closed",
                 primaryActionTitle: "Open",
-                isPrimaryActionEnabled: false
+                isPrimaryActionEnabled: false,
+                localDirectory: nil,
+                connectorID: nil,
+                connectorInstanceID: nil
             ),
-            AddSourceCardPresentation(
+            localSourceCard(
                 id: "local-folder",
                 title: "Local Folder",
-                status: "Add",
-                detail: "Import Markdown and text files from a folder on this Mac.",
+                connectorID: .localFolderImport,
+                defaultStatus: "Not connected",
+                defaultDetail: "Import Markdown and text files from a folder on this Mac.",
                 systemImage: "folder.badge.plus",
-                primaryActionTitle: "Add Folder",
-                isPrimaryActionEnabled: true
+                addAction: "Add Folder"
             ),
-            AddSourceCardPresentation(
+            localSourceCard(
                 id: "obsidian",
                 title: "Obsidian Vault",
-                status: "Detected",
-                detail: "Use your existing Obsidian vault as a local Markdown source.",
+                connectorID: .obsidianImport,
+                defaultStatus: "Detected",
+                defaultDetail: "Use your existing Obsidian vault as a local Markdown source.",
                 systemImage: "square.stack.3d.up",
-                primaryActionTitle: "Use Vault",
-                isPrimaryActionEnabled: true
+                addAction: "Use Vault"
             ),
-            AddSourceCardPresentation(
-                id: "feishu",
-                title: "Feishu Docs",
-                status: "Needs auth",
-                detail: "Connect Feishu/Lark documents after authorization is available.",
-                systemImage: "doc.richtext",
-                primaryActionTitle: "Authorize",
-                isPrimaryActionEnabled: true
-            ),
-            AddSourceCardPresentation(
-                id: "notion",
-                title: "Notion",
-                status: "Not set up",
-                detail: "Bring Notion pages into the local Markdown library.",
-                systemImage: "doc.on.doc",
-                primaryActionTitle: "Set Up",
-                isPrimaryActionEnabled: true
-            ),
-            AddSourceCardPresentation(
-                id: "google-drive",
-                title: "Google Drive",
-                status: "Not set up",
-                detail: "Sync Drive documents into local Markdown storage.",
-                systemImage: "externaldrive",
-                primaryActionTitle: "Set Up",
-                isPrimaryActionEnabled: true
-            ),
+            externalSourceCard(id: "feishu", title: "Feishu Docs", connectorID: .feishuImport, systemImage: "doc.richtext"),
+            externalSourceCard(id: "notion", title: "Notion", connectorID: .notionImport, systemImage: "doc.on.doc"),
+            externalSourceCard(id: "google-drive", title: "Google Drive", connectorID: .googleDriveImport, systemImage: "externaldrive"),
         ]
     }
-}
 
-struct ConnectorsManagementFormState: Equatable {
-    var isShowingAPIConnectorForm: Bool
-
-    init(startsWithAddAPIForm: Bool) {
-        isShowingAPIConnectorForm = startsWithAddAPIForm
+    private func localSourceCard(
+        id: String,
+        title: String,
+        connectorID: KnowledgeConnectorID,
+        defaultStatus: String,
+        defaultDetail: String,
+        systemImage: String,
+        addAction: String
+    ) -> AddSourceCardPresentation {
+        let instance = panelPresentation.importInstances.first { $0.connectorID == connectorID }
+        if let instance {
+            let detail = Self.detail(for: instance.sourcePath ?? instance.accountID ?? instance.workspaceID)
+            return AddSourceCardPresentation(
+                id: id,
+                title: title,
+                status: instance.isEnabled ? "Connected" : "Disabled",
+                detail: detail,
+                systemImage: systemImage,
+                primaryActionTitle: "Sync Now",
+                isPrimaryActionEnabled: instance.isEnabled,
+                localDirectory: detail == "Not connected" ? nil : detail,
+                connectorID: connectorID,
+                connectorInstanceID: instance.id
+            )
+        }
+        return AddSourceCardPresentation(
+            id: id,
+            title: title,
+            status: defaultStatus,
+            detail: defaultDetail,
+            systemImage: systemImage,
+            primaryActionTitle: addAction,
+            isPrimaryActionEnabled: true,
+            localDirectory: nil,
+            connectorID: connectorID,
+            connectorInstanceID: nil
+        )
     }
 
-    mutating func apply(startsWithAddAPIForm: Bool) {
-        if startsWithAddAPIForm {
-            isShowingAPIConnectorForm = true
+    private func externalSourceCard(
+        id: String,
+        title: String,
+        connectorID: KnowledgeConnectorID,
+        systemImage: String
+    ) -> AddSourceCardPresentation {
+        let instance = panelPresentation.importInstances.first { $0.connectorID == connectorID }
+        let directory = externalSourcesRootURL
+            .appending(path: ExternalSourcePromptPresentation(
+                connectorID: connectorID,
+                frequency: .daily,
+                importTime: Date(timeIntervalSince1970: 0),
+                scopeDescription: "",
+                externalSourcesRootURL: externalSourcesRootURL
+            ).directoryName, directoryHint: .isDirectory)
+            .path
+        if let instance {
+            let detail = Self.detail(for: instance.sourcePath ?? instance.accountID ?? instance.workspaceID)
+            let status = instance.isEnabled
+                ? Self.localDirectoryStatus(for: instance.sourcePath)
+                : "Disabled"
+            return AddSourceCardPresentation(
+                id: id,
+                title: title,
+                status: status,
+                detail: detail,
+                systemImage: systemImage,
+                primaryActionTitle: status == "Needs first sync" ? "Generate Prompt" : "Sync Now",
+                isPrimaryActionEnabled: instance.isEnabled && status != "Error",
+                localDirectory: detail == "Not connected" ? directory : detail,
+                connectorID: connectorID,
+                connectorInstanceID: instance.id
+            )
+        }
+        return AddSourceCardPresentation(
+            id: id,
+            title: title,
+            status: "Not connected",
+            detail: "Generate a Codex or Cloud Code prompt that syncs this platform into a local Markdown folder.",
+            systemImage: systemImage,
+            primaryActionTitle: "Generate Prompt",
+            isPrimaryActionEnabled: true,
+            localDirectory: directory,
+            connectorID: connectorID,
+            connectorInstanceID: nil
+        )
+    }
+
+    private static func detail(for value: String?) -> String {
+        guard let value, value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return "Not connected"
+        }
+        return value
+    }
+
+    private static func localDirectoryStatus(for path: String?) -> String {
+        guard let path, path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return "Needs first sync"
+        }
+        let url = URL(fileURLWithPath: path, isDirectory: true)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else {
+            return "Needs first sync"
+        }
+        guard isDirectory.boolValue else {
+            return "Error"
+        }
+        do {
+            let files = try FileManager.default.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            )
+            let hasImportableFile = try files.contains { fileURL in
+                let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey])
+                guard values.isRegularFile == true else { return false }
+                switch fileURL.pathExtension.lowercased() {
+                case "md", "markdown", "txt":
+                    return true
+                default:
+                    return false
+                }
+            }
+            return hasImportableFile ? "Connected" : "Needs first sync"
+        } catch {
+            return "Error"
         }
     }
 }
@@ -196,18 +406,17 @@ struct ConnectorsManagementView: View {
     let onOpenOpenClawExport: () -> Void
     let onAddLocalFolderImport: () -> Void
     let onAddObsidianImport: () -> Void
-    let onAddAPIImportConnector: (KnowledgeConnectorID, String, String?, String?, String) -> Void
+    let onAddExternalPromptSource: (KnowledgeConnectorID, String, String) -> Void
     let onSetImportConnectorEnabled: (String, Bool) -> Void
     let onDeleteImportConnector: (String) -> Void
     let onExportNow: () -> Void
     let onImportNow: () -> Void
 
-    @State private var apiConnectorID: KnowledgeConnectorID = .feishuImport
-    @State private var apiDisplayName = ""
-    @State private var apiSource = ""
-    @State private var apiAccount = ""
-    @State private var apiBearerToken = ""
-    @State private var formState: ConnectorsManagementFormState
+    @State private var promptConnectorID: KnowledgeConnectorID = .feishuImport
+    @State private var promptFrequency: ExternalSourcePromptFrequency = .daily
+    @State private var promptImportTime = Date()
+    @State private var promptScopeDescription = ""
+    @State private var isShowingExternalPrompt = false
 
     init(
         managementPresentation: ConnectorsManagementPresentation,
@@ -219,7 +428,7 @@ struct ConnectorsManagementView: View {
         onOpenOpenClawExport: @escaping () -> Void,
         onAddLocalFolderImport: @escaping () -> Void,
         onAddObsidianImport: @escaping () -> Void,
-        onAddAPIImportConnector: @escaping (KnowledgeConnectorID, String, String?, String?, String) -> Void,
+        onAddExternalPromptSource: @escaping (KnowledgeConnectorID, String, String) -> Void = { _, _, _ in },
         onSetImportConnectorEnabled: @escaping (String, Bool) -> Void,
         onDeleteImportConnector: @escaping (String) -> Void,
         onExportNow: @escaping () -> Void,
@@ -234,16 +443,11 @@ struct ConnectorsManagementView: View {
         self.onOpenOpenClawExport = onOpenOpenClawExport
         self.onAddLocalFolderImport = onAddLocalFolderImport
         self.onAddObsidianImport = onAddObsidianImport
-        self.onAddAPIImportConnector = onAddAPIImportConnector
+        self.onAddExternalPromptSource = onAddExternalPromptSource
         self.onSetImportConnectorEnabled = onSetImportConnectorEnabled
         self.onDeleteImportConnector = onDeleteImportConnector
         self.onExportNow = onExportNow
         self.onImportNow = onImportNow
-        _formState = State(
-            initialValue: ConnectorsManagementFormState(
-                startsWithAddAPIForm: managementPresentation.startsWithAddAPIForm
-            )
-        )
     }
 
     private var presentation: ConnectorsPanelPresentation {
@@ -256,8 +460,6 @@ struct ConnectorsManagementView: View {
 
             if managementPresentation.surface == .otherSourceRoot {
                 addSourceRootSection
-            } else {
-                importSection
             }
 
             if managementPresentation.showsDailyMemoryExport {
@@ -270,9 +472,6 @@ struct ConnectorsManagementView: View {
                     rowActions: exportRowActions
                 )
             }
-        }
-        .onChange(of: managementPresentation.startsWithAddAPIForm) { _, startsWithAddAPIForm in
-            formState.apply(startsWithAddAPIForm: startsWithAddAPIForm)
         }
     }
 
@@ -288,7 +487,7 @@ struct ConnectorsManagementView: View {
 
             Spacer(minLength: 16)
 
-            if managementPresentation.surface == .otherSourceRoot {
+            if managementPresentation.surface == .otherSourceRoot, managementPresentation.showsHeaderAddConnector {
                 Menu {
                     Button(action: onAddLocalFolderImport) {
                         Label("Local Folder", systemImage: "folder.badge.plus")
@@ -298,17 +497,17 @@ struct ConnectorsManagementView: View {
                     }
                     Divider()
                     Button {
-                        beginExternalConnectorSetup(.feishuImport)
+                        beginExternalPromptSetup(.feishuImport)
                     } label: {
                         Label("Feishu Docs", systemImage: "doc.richtext")
                     }
                     Button {
-                        beginExternalConnectorSetup(.notionImport)
+                        beginExternalPromptSetup(.notionImport)
                     } label: {
                         Label("Notion", systemImage: "doc.on.doc")
                     }
                     Button {
-                        beginExternalConnectorSetup(.googleDriveImport)
+                        beginExternalPromptSetup(.googleDriveImport)
                     } label: {
                         Label("Google Drive", systemImage: "externaldrive")
                     }
@@ -328,37 +527,14 @@ struct ConnectorsManagementView: View {
                 addSourceCard(card)
             }
 
-            if formState.isShowingAPIConnectorForm {
-                apiConnectorForm
+            if isShowingExternalPrompt {
+                externalPromptSection
             }
 
             if presentation.importRows.isEmpty {
                 Text("Connectors added here will appear as source items in the sidebar.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Connected")
-                        .font(.subheadline.weight(.semibold))
-                    ForEach(presentation.importRows) { row in
-                        connectorRow(row) {
-                            Toggle(
-                                "",
-                                isOn: Binding(
-                                    get: { row.status == "Ready" },
-                                    set: { onSetImportConnectorEnabled(row.id, $0) }
-                                )
-                            )
-                            .labelsHidden()
-
-                            Button(role: .destructive) {
-                                onDeleteImportConnector(row.id)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
-                    }
-                }
             }
 
             if let statusMessage = presentation.knowledgeImportStatusMessage, statusMessage.isEmpty == false {
@@ -391,7 +567,7 @@ struct ConnectorsManagementView: View {
             Spacer(minLength: 12)
 
             Button(card.primaryActionTitle) {
-                performAddSourceCardAction(card.id)
+                performAddSourceCardAction(card)
             }
             .disabled(!card.isPrimaryActionEnabled)
         }
@@ -417,10 +593,12 @@ struct ConnectorsManagementView: View {
 
     private func statusForegroundColor(_ status: String) -> Color {
         switch status {
-        case "Built-in", "Detected":
+        case "Built-in", "Detected", "Connected":
             return .green
-        case "Needs auth", "Add":
+        case "Needs first sync", "Add":
             return .orange
+        case "Error":
+            return .red
         default:
             return .secondary
         }
@@ -428,47 +606,112 @@ struct ConnectorsManagementView: View {
 
     private func statusBackgroundColor(_ status: String) -> Color {
         switch status {
-        case "Built-in", "Detected":
+        case "Built-in", "Detected", "Connected":
             return Color.green.opacity(0.12)
-        case "Needs auth", "Add":
+        case "Needs first sync", "Add":
             return Color.orange.opacity(0.14)
+        case "Error":
+            return Color.red.opacity(0.12)
         default:
             return Color(nsColor: .quaternaryLabelColor).opacity(0.18)
         }
     }
 
-    private func performAddSourceCardAction(_ id: String) {
-        switch id {
+    private func performAddSourceCardAction(_ card: AddSourceCardPresentation) {
+        if card.primaryActionTitle == "Sync Now" {
+            onImportNow()
+            return
+        }
+
+        switch card.id {
         case "local-folder":
             onAddLocalFolderImport()
         case "obsidian":
             onAddObsidianImport()
         case "feishu":
-            beginExternalConnectorSetup(.feishuImport)
+            beginExternalPromptSetup(.feishuImport)
         case "notion":
-            beginExternalConnectorSetup(.notionImport)
+            beginExternalPromptSetup(.notionImport)
         case "google-drive":
-            beginExternalConnectorSetup(.googleDriveImport)
+            beginExternalPromptSetup(.googleDriveImport)
         default:
             break
         }
     }
 
-    private func beginExternalConnectorSetup(_ connectorID: KnowledgeConnectorID) {
-        apiConnectorID = connectorID
-        if apiDisplayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            switch connectorID {
-            case .feishuImport:
-                apiDisplayName = "Feishu Docs"
-            case .notionImport:
-                apiDisplayName = "Notion"
-            case .googleDriveImport:
-                apiDisplayName = "Google Drive"
-            default:
-                break
+    private var externalPromptSection: some View {
+        let promptPresentation = ExternalSourcePromptPresentation(
+            connectorID: promptConnectorID,
+            frequency: promptFrequency,
+            importTime: promptImportTime,
+            scopeDescription: promptScopeDescription,
+            externalSourcesRootURL: managementPresentation.externalSourcesRootURL
+        )
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Generate Prompt")
+                .font(.subheadline.weight(.semibold))
+
+            Picker("Platform", selection: $promptConnectorID) {
+                Text("Feishu Docs").tag(KnowledgeConnectorID.feishuImport)
+                Text("Notion").tag(KnowledgeConnectorID.notionImport)
+                Text("Google Drive").tag(KnowledgeConnectorID.googleDriveImport)
+            }
+            .pickerStyle(.segmented)
+
+            Picker("Frequency", selection: $promptFrequency) {
+                Text("Daily").tag(ExternalSourcePromptFrequency.daily)
+                Text("Weekly").tag(ExternalSourcePromptFrequency.weekly)
+            }
+            .pickerStyle(.segmented)
+
+            DatePicker("Update Time", selection: $promptImportTime, displayedComponents: .hourAndMinute)
+
+            TextField("Remote scope, folder, workspace, page, or doc link", text: $promptScopeDescription)
+
+            Text(promptPresentation.outputDirectory)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+
+            TextEditor(text: .constant(promptPresentation.prompt))
+                .font(.system(.caption, design: .monospaced))
+                .frame(minHeight: 170)
+                .textSelection(.enabled)
+
+            HStack {
+                Button {
+                    copyPromptAndCreateSource(promptPresentation)
+                } label: {
+                    Label("Copy Prompt", systemImage: "doc.on.doc")
+                }
+
+                Button("Cancel") {
+                    isShowingExternalPrompt = false
+                }
+
+                Spacer()
             }
         }
-        formState.isShowingAPIConnectorForm = true
+        .padding(12)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func beginExternalPromptSetup(_ connectorID: KnowledgeConnectorID) {
+        promptConnectorID = connectorID
+        isShowingExternalPrompt = true
+    }
+
+    private func copyPromptAndCreateSource(_ presentation: ExternalSourcePromptPresentation) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(presentation.prompt, forType: .string)
+        onAddExternalPromptSource(
+            presentation.connectorID,
+            presentation.platformName,
+            presentation.outputDirectory
+        )
     }
 
     private func connectorSection(
@@ -572,139 +815,6 @@ struct ConnectorsManagementView: View {
         }
     }
 
-    private var importSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Knowledge Imports")
-                    .font(.headline)
-                Spacer()
-                Button("Import Now", action: onImportNow)
-            }
-
-            HStack(spacing: 12) {
-                Button(action: onAddLocalFolderImport) {
-                    Label("Add Folder", systemImage: "folder.badge.plus")
-                }
-                Button(action: onAddObsidianImport) {
-                    Label("Add Obsidian", systemImage: "square.stack.3d.up")
-                }
-                Button {
-                    formState.isShowingAPIConnectorForm.toggle()
-                } label: {
-                    Label("Add API", systemImage: "network")
-                }
-            }
-
-            if formState.isShowingAPIConnectorForm {
-                apiConnectorForm
-            }
-
-            HStack {
-                Toggle("Daily Import", isOn: $isAutoImportEnabled)
-                DatePicker(
-                    "Import Time",
-                    selection: $dailyImportTime,
-                    displayedComponents: .hourAndMinute
-                )
-                .disabled(!isAutoImportEnabled)
-            }
-
-            if presentation.importRows.isEmpty {
-                emptyImportRow
-            } else {
-                ForEach(presentation.importRows) { row in
-                    connectorRow(row) {
-                        Toggle(
-                            "",
-                            isOn: Binding(
-                                get: { row.status == "Ready" },
-                                set: { onSetImportConnectorEnabled(row.id, $0) }
-                            )
-                        )
-                        .labelsHidden()
-
-                        Button(role: .destructive) {
-                            onDeleteImportConnector(row.id)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                    }
-                }
-            }
-
-            if let statusMessage = presentation.knowledgeImportStatusMessage, statusMessage.isEmpty == false {
-                Text(statusMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var apiConnectorForm: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Picker("Type", selection: $apiConnectorID) {
-                Text("Feishu / Lark").tag(KnowledgeConnectorID.feishuImport)
-                Text("Notion").tag(KnowledgeConnectorID.notionImport)
-                Text("Google Drive").tag(KnowledgeConnectorID.googleDriveImport)
-            }
-            .pickerStyle(.segmented)
-
-            TextField("Display Name", text: $apiDisplayName)
-
-            if apiConnectorID == .feishuImport {
-                TextField("Document Token", text: $apiSource)
-            } else {
-                TextField("Account or Workspace", text: $apiAccount)
-            }
-
-            SecureField("Bearer Token", text: $apiBearerToken)
-
-            HStack {
-                Spacer()
-                Button("Add") {
-                    onAddAPIImportConnector(
-                        apiConnectorID,
-                        apiDisplayName,
-                        apiConnectorID == .feishuImport ? apiSource : nil,
-                        apiConnectorID == .feishuImport ? nil : apiAccount,
-                        apiBearerToken
-                    )
-                    resetAPIForm()
-                }
-                .disabled(!canSubmitAPIConnector)
-            }
-        }
-        .padding(12)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    private var canSubmitAPIConnector: Bool {
-        let hasName = apiDisplayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-        let hasToken = apiBearerToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-        if apiConnectorID == .feishuImport {
-            return hasName && hasToken && apiSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-        }
-        return hasName && hasToken && apiAccount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-    }
-
-    private func resetAPIForm() {
-        apiDisplayName = ""
-        apiSource = ""
-        apiAccount = ""
-        apiBearerToken = ""
-        formState.isShowingAPIConnectorForm = false
-    }
-
-    private var emptyImportRow: some View {
-        Text(managementPresentation.emptyImportMessage)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
 }
 
 struct ConnectorsPanel: View {
@@ -717,7 +827,6 @@ struct ConnectorsPanel: View {
     let onOpenOpenClawExport: () -> Void
     let onAddLocalFolderImport: () -> Void
     let onAddObsidianImport: () -> Void
-    let onAddAPIImportConnector: (KnowledgeConnectorID, String, String?, String?, String) -> Void
     let onSetImportConnectorEnabled: (String, Bool) -> Void
     let onDeleteImportConnector: (String) -> Void
     let onExportNow: () -> Void
@@ -729,8 +838,7 @@ struct ConnectorsPanel: View {
             ConnectorsManagementView(
                 managementPresentation: ConnectorsManagementPresentation(
                     panelPresentation: presentation,
-                    surface: .connectorsSheet,
-                    startsWithAddAPIForm: false
+                    surface: .connectorsSheet
                 ),
                 isAutoImportEnabled: $isAutoImportEnabled,
                 dailyImportTime: $dailyImportTime,
@@ -740,7 +848,6 @@ struct ConnectorsPanel: View {
                 onOpenOpenClawExport: onOpenOpenClawExport,
                 onAddLocalFolderImport: onAddLocalFolderImport,
                 onAddObsidianImport: onAddObsidianImport,
-                onAddAPIImportConnector: onAddAPIImportConnector,
                 onSetImportConnectorEnabled: onSetImportConnectorEnabled,
                 onDeleteImportConnector: onDeleteImportConnector,
                 onExportNow: onExportNow,

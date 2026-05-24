@@ -138,8 +138,8 @@ flowchart LR
 - 持有并持久化 `KnowledgeImportConfig`
 - 暴露 `importKnowledgeNow()` 和导入状态文案
 - 持有 `MainContentSelection`，把 diary 阅读、`Add Source` 管理页、connector 内容页和 imported document 选择分开建模
-- 从连接器实例配置创建 Local Folder、Obsidian、Feishu/Lark、Notion、Google Drive 导入器
-- 通过 `KnowledgeImportCredentialStore` 从 Keychain 读取 API 连接器 bearer token
+- 从连接器实例配置创建 Local Folder、Obsidian，以及 prompt-backed 的 Feishu/Lark、Notion、Google Drive 本地目录导入器
+- 对 Feishu/Lark、Notion、Google Drive 不保存 token、OAuth secret、cookie、CLI 登录态或 bearer token；远端授权和定时任务由用户复制 prompt 到 Codex / Cloud Code 后在外部环境完成
 - 在用户修改每日导入配置时注册或移除独立的导入 `LaunchAgent`
 - 通过 `KnowledgeImportCoordinator` 把外部资料导入 KnowYou 自有本地缓存，而不是在 UI 中动态读取远端链接
 
@@ -147,13 +147,13 @@ flowchart LR
 
 Knowledge Imports 与 Daily Memory Export 是两个方向相反的能力。Daily Memory Export 把 KnowYou 生成的每日日记复制到外部工具；Knowledge Imports 把用户选择的外部资料导入 KnowYou 本地缓存。
 
-导入内容存放在 `Application Support/KnowYou/KnowledgeSources/`，每个文档写为 `content.md` 和 `metadata.json`，并在 SQLite 中记录 connector instance、remote identity、content hash、同步状态和 tombstone。Obsidian 导入默认跳过 `<vault>/KnowYou/Daily Memories/`，并跳过带有 `knowyou_export: daily_memory` marker 的文件，避免把 KnowYou 自己导出的日记再导入回来。
+导入内容存放在 `Application Support/KnowYou/KnowledgeSources/`，每个文档写为 `content.md` 和 `metadata.json`，并在 SQLite 中记录 connector instance、remote identity、content hash、同步状态和 tombstone。Feishu/Lark、Notion、Google Drive 的默认源目录位于 `Application Support/KnowYou/ExternalSources/<platform>/`；KnowYou 只扫描这些目录下的 `.md`、`.markdown`、`.txt` 文件。Obsidian 导入默认跳过 `<vault>/KnowYou/Daily Memories/`，并跳过带有 `knowyou_export: daily_memory` marker 的文件，避免把 KnowYou 自己导出的日记再导入回来。
 
 ### 3.4 Add Source Navigation
 
-主窗口左侧导航现在把所有可导入/可浏览的来源收进固定的 `Add Source` 一级目录。`My Diary` 是 `Add Source` 下的内置来源，负责按天生成的 diary 内容；Local Folder、Obsidian、Feishu/Lark、Notion、Google Drive 等连接器添加后也作为 `Add Source` 下的并列来源出现。`Add Source` 行保留明确的 `+` 入口，用于添加或配置新的来源。
+主窗口左侧导航现在把 `Add Source` 作为独立入口，而不是可折叠父目录。`My Diary` 是内置来源，负责按天生成的 diary 内容；Local Folder、Obsidian、Feishu/Lark、Notion、Google Drive 等连接器添加后也作为平行的一级来源出现。连接器 root 点击只展开或折叠本地路径推导出的文件树；点击 Markdown/TXT 叶子后进入 Markdown preview。
 
-`Add Source` 主页面只呈现来源添加卡片、Knowledge Imports 相关操作与本地 Markdown 存储/同步规则说明，Daily Memory Export 继续留在齿轮菜单中的 legacy `Connectors` sheet，避免用户把导入外部资料和导出每日记忆混成一个方向。每个已配置的导入连接器实例会作为 `Add Source` 下的来源条目出现，点击后打开该连接器已经同步到本地缓存的文档列表与 Markdown 预览。
+`Add Source` 主页面只呈现一个 `Sources` 列表。Local Folder 和 Obsidian 直接指向本地目录；Feishu/Lark、Notion、Google Drive 的主动作是 `Generate Prompt`，让用户复制到 Codex / Cloud Code 创建每日或每周定时同步任务。Daily Memory Export 保留底层能力和独立配置面板，但不再与 Add Source 混在同一个导入入口里。
 
 `MainContentSelection` 避免把非 diary 页面编码成日期字符串。导入完成后，`AppState.importKnowledgeNow()` 只刷新用户当前仍在查看的 knowledge 页面；如果用户已经切回 diary 或 `Add Source` 管理页，导入完成不会把界面强制跳回旧 connector。
 

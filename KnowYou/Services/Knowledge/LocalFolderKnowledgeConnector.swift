@@ -21,6 +21,45 @@ struct LocalFolderKnowledgeConnector: KnowledgeImportConnector {
     }
 }
 
+struct FileBackedPlatformKnowledgeConnector: KnowledgeImportConnector {
+    let connectorInstanceID: String
+    let connectorID: KnowledgeConnectorID
+
+    private let scanner: FileKnowledgeSnapshotScanner
+
+    init(connectorInstanceID: String, connectorID: KnowledgeConnectorID, rootURL: URL) {
+        precondition(
+            [.feishuImport, .notionImport, .googleDriveImport].contains(connectorID),
+            "FileBackedPlatformKnowledgeConnector only supports external platform imports."
+        )
+        self.connectorInstanceID = connectorInstanceID
+        self.connectorID = connectorID
+        self.scanner = FileKnowledgeSnapshotScanner(
+            connectorInstanceID: connectorInstanceID,
+            connectorID: connectorID,
+            rootURL: rootURL,
+            originKind: "\(Self.slug(for: connectorID))-local-file"
+        )
+    }
+
+    func fetchSnapshots() async throws -> [KnowledgeImportSnapshot] {
+        try scanner.fetchSnapshots()
+    }
+
+    private static func slug(for connectorID: KnowledgeConnectorID) -> String {
+        switch connectorID {
+        case .feishuImport:
+            return "feishu"
+        case .notionImport:
+            return "notion"
+        case .googleDriveImport:
+            return "google-drive"
+        case .localFolderImport, .obsidianImport, .obsidianExport, .openClawExport:
+            return connectorID.rawValue
+        }
+    }
+}
+
 struct FileKnowledgeSnapshotScanner: @unchecked Sendable {
     typealias RemoteIDPredicate = @Sendable (String) -> Bool
     typealias ContentPredicate = @Sendable (String, String) -> Bool

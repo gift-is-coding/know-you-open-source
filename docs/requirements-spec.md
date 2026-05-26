@@ -22,6 +22,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 每日 Markdown 文件
 - 每日结构化 `.story.json` 文件
 - 外部 memory 渠道同步（Obsidian / OpenClaw）
+- 外部知识源导入后的本地 Markdown 缓存
 
 其中：
 
@@ -81,7 +82,9 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - story-first 三栏阅读器
 - 段落级 source link
 - 真实阅读器上的 onboarding coachmarks 与 settings 配置
-- 左下角 `...` 二级菜单中的 `Sync Memory`
+- 左下角 `...` 二级菜单中的 `Connectors`
+- Daily Memory Export 到 Obsidian / OpenClaw
+- Add Source 从 Local Folder / Obsidian / Feishu(Lark) / Notion / Google Drive 的本地目录建立引用并扫描 Markdown/TXT
 - 顶部 diary engine selector
 - 左上标题栏更新提醒胶囊与更新 sheet
 - 晚间回顾本地通知提醒
@@ -103,7 +106,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 浏览器历史、邮件、日历等更多信号源
 - 主界面中的原始 Markdown 编辑模式
 - App Store 分发约束下的沙盒化方案
-- 双向外部知识库同步
+- 支持外部知识源到本地缓存的单向导入，但不支持双向外部知识库编辑
 
 当前版本的对外分发方式是 Developer ID + notarization，不是 Mac App Store。
 
@@ -173,9 +176,40 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - OpenClaw 目标目录固定为 `<workspace>/know-you-memory/`
 - 系统不得覆盖 OpenClaw 原生 daily memory 文件
 - 同步时必须覆盖 KnowYou 在目标目录中已有的同名日记文件，但不得删除目标目录中的其他历史文件
-- 用户必须能手动触发 `Sync Memory`
+- 用户必须能在 `Connectors` 面板里手动触发 Daily Memory Export
 - 用户必须能开启 `Auto Sync Daily`
 - 当启用 `Auto Sync Daily` 时，系统必须安装用户级 `LaunchAgent`，在用户登录后按固定时间执行同步
+- 系统必须把 Add Source 本地扫描和 Daily Memory Export 分开建模。
+- Add Source 必须把 Local Folder 和 Obsidian 作为软链接式本地引用处理，不得复制原始文档内容。
+- Add Source 必须支持 Local Folder、Obsidian、Feishu/Lark、Notion 和 Google Drive 类型的本地 source。
+- Feishu/Lark、Notion 和 Google Drive 必须通过 prompt-backed 本地目录工作：KnowYou 只生成 prompt、保存本地 source 元数据，并扫描 `Application Support/KnowYou/ExternalSources/<platform>/` 下的 Markdown/TXT 文件。
+- KnowYou 不得为 Feishu/Lark、Notion 或 Google Drive 保存 token、OAuth secret、cookie、CLI 登录态、bearer token 或账号授权状态。
+- 外部平台 prompt 必须要求 Codex / Cloud Code 在外部环境自行完成授权、定时任务、远端拉取、Markdown 转换和稳定路径覆盖更新。
+- 文件型 source 必须只保存轻量 metadata 和 SQLite index；`localContentPath` 必须指向原始本地文件路径。
+- Obsidian 扫描必须默认跳过 `<vault>/KnowYou/Daily Memories/`。
+- 扫描器必须跳过带有 `knowyou_export: daily_memory` 的 KnowYou 导出文件。
+- 扫描器必须通过 connector instance、remote identity 和 content hash 做幂等去重。
+- 单个 source 扫描失败不得阻塞其他 source。
+- 用户必须能手动触发 `Refresh`，它只重新扫描本地目录。
+- 当启用每日 source scan 时，系统必须安装独立于 Daily Memory Export 的用户级 `LaunchAgent`。
+- 侧边栏必须始终显示 `Add Source` 一级目录。
+- `Add Source` 必须是独立入口，不得折叠或收起其他来源。
+- `My Diary` 必须作为内置来源与 Obsidian、Local Folder、Feishu/Lark、Notion、Google Drive 等外部来源平行呈现。
+- `Add Source` 必须打开来源管理页，而不是混合资料总览页。
+- `Add Source` 主页面不得展示 Daily Memory Export；Daily Memory Export 必须保留底层能力，但不得与 Add Source 的导入流程混在一起。
+- `Add Source` 主页面必须说明本地资料以 reference-only 方式读取，源文件不会被复制或修改，并说明去重与 Obsidian 日记导出回环规避规则。
+- `Add Source` 主页面不得出现顶部重复的 `Add Connector` 入口，所有未连接、已连接或异常来源必须在一个 `Sources` 列表中呈现。
+- `Add Source` 主页面不得提供泛化的 `Add API` 选项；外部平台必须以平台名称或本地文件来源名称呈现。
+- Feishu/Lark、Notion 和 Google Drive 的 `Generate Prompt` 必须打开弹窗，不得在 `Sources` 列表下方插入 inline prompt 表单。
+- Prompt 生成器默认更新频率为 daily，默认更新时间为本地时间 `11:00`。
+- 添加 source 后，该 source 必须作为 `Add Source` 下的并列来源条目出现。
+- 点击连接器来源条目必须在侧边栏展开或折叠该来源的路径层级；点击 Markdown/TXT 文档叶子必须打开 Markdown 预览。
+- Add Source 卡片和侧边栏来源条目必须优先使用已有真实品牌 logo；Obsidian、Feishu/Lark、Notion、Google Drive 不得使用泛化系统图标。
+- 侧边栏文件树必须从 connector root 下的相对路径展示；如果导入路径重复包含 connector root 文件夹名，不得多显示一层同名包装目录。
+- 连接器 root 或 folder 不得在主区域打开第二份文档索引；左侧文件树是 source 的唯一索引。
+- Source 文档阅读页不得显示 `Refresh`、`Configure`、扫描状态或 linked-source 说明栏；手动 `Refresh` 只能出现在 `Add Source` 管理页。
+- Source 文档阅读页必须用 Markdown 富文本渲染正文，并默认隐藏 YAML frontmatter。
+- source scan 完成后只允许刷新当前仍可见的 knowledge 页面，不得把已经切走的用户强制带回旧连接器页面。
 - 系统必须支持一个可开启/关闭的 `Evening review reminder`
 - 当 `Evening review reminder` 开启且系统通知权限允许时，产品必须安装一个用户级后台提醒任务，而不是依赖当天前台 app 是否开过
 - 晚间提醒必须使用用户本地时区，在每天固定 `20:30` 运行后台判断
@@ -259,12 +293,12 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 
 - vault 目录
 - diary engine 默认项
-- 对应的 API token、CLI 路径，或 Codex Auth 本地登录状态
+- diary engine 对应的 API token、CLI 路径，或 Codex Auth 本地登录状态
 
 配置入口包括：
 
 - 首次 onboarding 中的 Demo Day + coachmark 流程
-- 主窗口左下角 `...` 菜单中的 `Sync Memory`
+- `Add Source` 来源管理页
 - 主窗口右上角 diary engine selector
 - Settings 页面中的次级状态入口
 - Settings 页面中的作者联系、社区与法律文档入口

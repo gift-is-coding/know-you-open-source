@@ -33,6 +33,13 @@ enum ReaderFocusZone: Hashable {
     case storyParagraphs
 }
 
+enum MainContentSelection: Equatable {
+    case diary(dayKey: String?)
+    case otherSourceManager(focusAddConnector: Bool)
+    case knowledgeConnector(instanceID: String)
+    case knowledgeDocument(connectorInstanceID: String, documentID: String)
+}
+
 enum ReaderMoveDirection {
     case up
     case down
@@ -510,6 +517,7 @@ struct OnboardingProgress: Equatable {
 private struct ReaderPresentationSnapshot {
     let availableDates: [String]
     let selectedDate: String?
+    let mainContentSelection: MainContentSelection
     let selectedMarkdownURL: URL?
     let noteIndex: [String: URL]
     let selectedStory: DailyStory?
@@ -535,6 +543,8 @@ final class AppState {
         .openclawCLI,
         .openAI,
     ]
+    private static let knowledgeDocumentMarkdownPreviewByteLimit = 256_000
+    private static let knowledgeDocumentMarkdownPreviewTruncationMarker = "\n\n[Preview truncated]"
 
     var availableDates: [String] = []
     var selectedDate: String?
@@ -543,6 +553,7 @@ final class AppState {
     var statusMessage: String?
     var endOfDayReminderTestStatusMessage: String?
     var syncMemoryStatusMessage: String?
+    var knowledgeImportStatusMessage: String?
     var isShowingSyncMemoryPanel = false
     var lastAutomationRunAt: Date?
     var lastImportedNotificationCount = 0
@@ -552,6 +563,7 @@ final class AppState {
     var notificationStatus = NotificationImportStatus()
     var dayRefreshStatus = DayRefreshStatus()
     var syncMemoryConfig: SyncMemoryConfig
+    var knowledgeImportConfig: KnowledgeImportConfig
     var endOfDayReminderConfig: EndOfDayReminderConfig
     var engineStatuses: [DiaryEngine: EngineRuntimeStatus]
     var defaultEngine: DiaryEngine
@@ -566,6 +578,11 @@ final class AppState {
     var selectedSourceNotesMarkdown: String?
     var refreshLogNoticesByDay: [String: String] = [:]
     var readerFocus: ReaderFocusZone = .dateList
+    var mainContentSelection: MainContentSelection = .diary(dayKey: nil)
+    var selectedKnowledgeDocuments: [ImportedKnowledgeDocument] = []
+    var selectedKnowledgeDocument: ImportedKnowledgeDocument?
+    var selectedKnowledgeDocumentMarkdown: String?
+    var knowledgeDocumentsByConnector: [String: [ImportedKnowledgeDocument]] = [:]
     var onboardingProgress: OnboardingProgress
     var onboardingBootstrapState: OnboardingBootstrapState
     var onboardingBootstrapDayKeys: [String]
@@ -600,6 +617,7 @@ final class AppState {
     @ObservationIgnored private let onRefreshStageChange: RefreshStageChangeHandler?
     @ObservationIgnored private let notifyOnboardingBootstrapCompletion: @MainActor @Sendable ([String]) -> Void
     @ObservationIgnored private let launchAgentManager: LaunchAgentManager
+    @ObservationIgnored private let knowledgeImportLaunchAgentManager: LaunchAgentManager
     @ObservationIgnored private let loginItemManager: any LoginItemManaging
     @ObservationIgnored private let endOfDayReminderLaunchAgentManager: LaunchAgentManager
     @ObservationIgnored private let endOfDayReminderPlanner: EndOfDayReminderPlanner
@@ -607,6 +625,16 @@ final class AppState {
     @ObservationIgnored private var summarizerConfig: SummarizerConfig
     @ObservationIgnored private var autoSelectionSuppressedByExplicitNone: Bool
     @ObservationIgnored private var dayReviewStates: [String: DayReviewState]
+
+    private static var defaultUserDefaultsOverrideForTesting: UserDefaults?
+
+    static func setDefaultUserDefaultsForTesting(_ defaults: UserDefaults?) {
+        defaultUserDefaultsOverrideForTesting = defaults
+    }
+
+    private static func defaultUserDefaults() -> UserDefaults {
+        defaultUserDefaultsOverrideForTesting ?? .standard
+    }
 
     var summarizerStatus: SummarizerRuntimeStatus {
         get {
@@ -659,10 +687,13 @@ final class AppState {
         },
         processEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         currentDate: @escaping @Sendable () -> Date = Date.init,
-        userDefaults: UserDefaults = .standard,
+        userDefaults: UserDefaults? = nil,
         keychain: KeychainStoring = KeychainHelper.shared,
         keychainService: String = KeychainHelper.service,
         launchAgentManager: LaunchAgentManager = LaunchAgentManager(),
+        knowledgeImportLaunchAgentManager: LaunchAgentManager = LaunchAgentManager(
+            label: "dev.knowyou.knowledge-import"
+        ),
         loginItemManager: any LoginItemManaging = MainAppLoginItemManager(),
         endOfDayReminderLaunchAgentManager: LaunchAgentManager = LaunchAgentManager(
             label: "dev.knowyou.end-of-day-reminder"
@@ -671,7 +702,8 @@ final class AppState {
         endOfDayReminderService: EndOfDayReminderService = EndOfDayReminderService()
     ) {
         let explicitSummarizerConfig = summarizerConfig
-        self.userDefaults = userDefaults
+        let resolvedUserDefaults = userDefaults ?? Self.defaultUserDefaults()
+        self.userDefaults = resolvedUserDefaults
         self.keychain = keychain
         self.keychainService = keychainService
         self.processEnvironment = processEnvironment
@@ -681,27 +713,29 @@ final class AppState {
         self.onRefreshStageChange = onRefreshStageChange
         self.notifyOnboardingBootstrapCompletion = notifyOnboardingBootstrapCompletion
         self.launchAgentManager = launchAgentManager
+        self.knowledgeImportLaunchAgentManager = knowledgeImportLaunchAgentManager
         self.loginItemManager = loginItemManager
         self.endOfDayReminderLaunchAgentManager = endOfDayReminderLaunchAgentManager
         self.endOfDayReminderPlanner = endOfDayReminderPlanner
         self.endOfDayReminderService = endOfDayReminderService
         self.summarizerConfig = summarizerConfig ?? SummarizerConfig.load(
-            from: userDefaults,
+            from: resolvedUserDefaults,
             keychain: keychain,
             keychainService: keychainService
         )
         self.syncMemoryConfig = Self.bootstrapSyncMemoryConfigIfNeeded(
-            startingFrom: SyncMemoryConfig.load(from: userDefaults),
-            userDefaults: userDefaults
+            startingFrom: SyncMemoryConfig.load(from: resolvedUserDefaults),
+            userDefaults: resolvedUserDefaults
         )
-        self.endOfDayReminderConfig = EndOfDayReminderConfig.load(from: userDefaults)
-        self.dayReviewStates = Self.loadDayReviewStates(from: userDefaults)
-        let persistedSuppression = userDefaults.object(
+        self.knowledgeImportConfig = KnowledgeImportConfig.load(from: resolvedUserDefaults)
+        self.endOfDayReminderConfig = EndOfDayReminderConfig.load(from: resolvedUserDefaults)
+        self.dayReviewStates = Self.loadDayReviewStates(from: resolvedUserDefaults)
+        let persistedSuppression = resolvedUserDefaults.object(
             forKey: UserDefaultsKeys.explicitlyDisabledSummarizerAutoSelection
         ) as? Bool
         self.autoSelectionSuppressedByExplicitNone = persistedSuppression ?? false
-        self.lastNotificationImportAt = userDefaults.object(forKey: UserDefaultsKeys.lastNotificationImportAt) as? Date
-        self.lastUpdateCheckAt = userDefaults.object(forKey: UserDefaultsKeys.lastUpdateCheckAt) as? Date
+        self.lastNotificationImportAt = resolvedUserDefaults.object(forKey: UserDefaultsKeys.lastNotificationImportAt) as? Date
+        self.lastUpdateCheckAt = resolvedUserDefaults.object(forKey: UserDefaultsKeys.lastUpdateCheckAt) as? Date
         let loadedDefaultEngine = self.summarizerConfig.defaultEngine
         if explicitSummarizerConfig == nil, let injectedSummarizer = environment?.summarizer {
             self.summarizerConfig = Self.reconciledConfig(
@@ -720,15 +754,15 @@ final class AppState {
             environment: environment?.summarizer,
             engineStatuses: initialEngineStatuses
         )
-        onboardingProgress = Self.loadOnboardingProgress(from: userDefaults)
-        onboardingBootstrapState = Self.loadOnboardingBootstrapState(from: userDefaults)
-        onboardingBootstrapDayKeys = Self.loadOnboardingBootstrapDayKeys(from: userDefaults)
+        onboardingProgress = Self.loadOnboardingProgress(from: resolvedUserDefaults)
+        onboardingBootstrapState = Self.loadOnboardingBootstrapState(from: resolvedUserDefaults)
+        onboardingBootstrapDayKeys = Self.loadOnboardingBootstrapDayKeys(from: resolvedUserDefaults)
         onboardingBootstrapNotice = nil
         if explicitSummarizerConfig == nil,
            environment?.summarizer == nil,
-           self.summarizerConfig.defaultEngine != loadedDefaultEngine {
+            self.summarizerConfig.defaultEngine != loadedDefaultEngine {
             self.summarizerConfig.save(
-                to: userDefaults,
+                to: resolvedUserDefaults,
                 keychain: keychain,
                 keychainService: keychainService
             )
@@ -745,6 +779,7 @@ final class AppState {
             updateNotificationAccessStatus(using: environment.notificationReader)
             refreshEngineStatuses()
             refreshNotesIndex()
+            queueInitialLinkedSourceScanIfNeeded()
             if bootstrapServices {
                 queueEndOfDayReminderBootstrap()
                 restoreOnboardingProgress(
@@ -787,6 +822,7 @@ final class AppState {
             updateNotificationAccessStatus(using: environment.notificationReader)
             refreshEngineStatuses()
             refreshNotesIndex()
+            queueInitialLinkedSourceScanIfNeeded()
             statusMessage = "Capture services ready"
             queueEndOfDayReminderBootstrap()
             restoreOnboardingProgress(
@@ -813,14 +849,49 @@ final class AppState {
     func selectDate(_ date: String) {
         if date == OnboardingDemoStory.demoDayKey {
             readerFocus = .dateList
-            selectedDate = date
+            setSelectedDiaryDate(date)
             loadDemoDayPresentation()
             return
         }
         readerFocus = .dateList
-        selectedDate = date
+        setSelectedDiaryDate(date)
         selectedMarkdownURL = noteIndex[date]
         loadDayPresentation(for: date)
+    }
+
+    func selectOtherSourceManager(focusAddConnector: Bool) {
+        mainContentSelection = .otherSourceManager(focusAddConnector: focusAddConnector)
+        readerFocus = .dateList
+    }
+
+    func selectKnowledgeConnector(instanceID: String) {
+        mainContentSelection = .knowledgeConnector(instanceID: instanceID)
+        readerFocus = .dateList
+        refreshKnowledgeDocumentTree()
+        selectedKnowledgeDocuments = fetchKnowledgeDocuments(connectorInstanceID: instanceID)
+        selectedKnowledgeDocument = nil
+        selectedKnowledgeDocumentMarkdown = nil
+    }
+
+    func selectKnowledgeDocument(connectorInstanceID: String, documentID: String) {
+        mainContentSelection = .knowledgeDocument(
+            connectorInstanceID: connectorInstanceID,
+            documentID: documentID
+        )
+        selectedKnowledgeDocuments = fetchKnowledgeDocuments(connectorInstanceID: connectorInstanceID)
+        selectedKnowledgeDocument = selectedKnowledgeDocuments.first { $0.id == documentID }
+        selectedKnowledgeDocumentMarkdown = loadKnowledgeDocumentMarkdown(selectedKnowledgeDocument)
+        refreshKnowledgeDocumentTree()
+    }
+
+    func didDeleteKnowledgeConnector(instanceID: String) {
+        switch mainContentSelection {
+        case .knowledgeConnector(let selectedID) where selectedID == instanceID,
+             .knowledgeDocument(connectorInstanceID: let selectedID, documentID: _) where selectedID == instanceID:
+            selectOtherSourceManager(focusAddConnector: false)
+        default:
+            break
+        }
     }
 
     func openDayFromEndOfDayReminder(_ dayKey: String, action: EndOfDayReminderAction = .review) {
@@ -851,6 +922,41 @@ final class AppState {
         guard isPresentingOnboardingDemo else { return }
         selectedStoryParagraphID = nil
         selectedStorySourceEvents = []
+    }
+
+    private func refreshKnowledgeDocumentTree() {
+        guard let environment else {
+            knowledgeDocumentsByConnector = [:]
+            return
+        }
+        let documents = (try? environment.databaseWriter.fetchImportedKnowledgeDocuments()) ?? []
+        knowledgeDocumentsByConnector = Dictionary(grouping: documents, by: \.connectorInstanceID)
+    }
+
+    private func fetchKnowledgeDocuments(connectorInstanceID: String) -> [ImportedKnowledgeDocument] {
+        guard let environment else { return [] }
+        return (try? environment.databaseWriter.fetchImportedKnowledgeDocuments(
+            connectorInstanceID: connectorInstanceID
+        )) ?? []
+    }
+
+    private func loadKnowledgeDocumentMarkdown(_ document: ImportedKnowledgeDocument?) -> String? {
+        guard let document else { return nil }
+        guard let fileHandle = FileHandle(forReadingAtPath: document.localContentPath) else {
+            return nil
+        }
+        defer { try? fileHandle.close() }
+
+        let data = fileHandle.readData(ofLength: Self.knowledgeDocumentMarkdownPreviewByteLimit + 1)
+        let isTruncated = data.count > Self.knowledgeDocumentMarkdownPreviewByteLimit
+        let previewBytes = isTruncated
+            ? Data(data.prefix(Self.knowledgeDocumentMarkdownPreviewByteLimit))
+            : data
+        var markdown = String(decoding: previewBytes, as: UTF8.self)
+        if isTruncated {
+            markdown += Self.knowledgeDocumentMarkdownPreviewTruncationMarker
+        }
+        return markdown
     }
 
     func selectAdjacentStoryParagraph(step: Int) {
@@ -1106,6 +1212,104 @@ final class AppState {
         }
     }
 
+    func saveKnowledgeImportConfig(_ config: KnowledgeImportConfig) {
+        knowledgeImportConfig = config
+        knowledgeImportConfig.save(to: userDefaults)
+        refreshKnowledgeDocumentTree()
+        do {
+            try knowledgeImportLaunchAgentManager.knowledgeImportRegistration(
+                executablePath: Bundle.main.executableURL?.path,
+                hour: config.dailyImportHour,
+                minute: config.dailyImportMinute,
+                isEnabled: config.isImportEnabled
+            )
+            if config.isImportEnabled {
+                let timeSummary = String(format: "%02d:%02d", config.dailyImportHour, config.dailyImportMinute)
+                setKnowledgeImportStatus("Source scan enabled for \(timeSummary)")
+            } else {
+                setKnowledgeImportStatus("Source scan disabled")
+            }
+        } catch {
+            setKnowledgeImportStatus("Source scan setup failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func queueInitialLinkedSourceScanIfNeeded() {
+        guard knowledgeImportConfig.connectorInstances.contains(where: \.isEnabled),
+              ProcessInfo.processInfo.arguments.contains("--import-knowledge-now") == false else {
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            await self?.importKnowledgeNow()
+        }
+    }
+
+    func saveKnowledgeImportBearerToken(_ token: String, connectorInstanceID: String) {
+        KnowledgeImportCredentialStore(keychain: keychain, service: keychainService)
+            .saveBearerToken(token, connectorInstanceID: connectorInstanceID)
+    }
+
+    func deleteKnowledgeImportBearerToken(connectorInstanceID: String) {
+        KnowledgeImportCredentialStore(keychain: keychain, service: keychainService)
+            .deleteBearerToken(connectorInstanceID: connectorInstanceID)
+    }
+
+    func importKnowledgeNow() async {
+        guard let environment else {
+            setKnowledgeImportStatus("Source scan unavailable")
+            return
+        }
+
+        let connectors = makeKnowledgeImportConnectors(from: knowledgeImportConfig)
+        guard !connectors.isEmpty else {
+            setKnowledgeImportStatus("No linked sources enabled")
+            return
+        }
+
+        let coordinator = KnowledgeImportCoordinator(
+            store: KnowledgeImportStore(rootDirectory: environment.knowledgeSourcesDirectoryURL),
+            databaseWriter: environment.databaseWriter,
+            now: currentDate
+        )
+        let result = await coordinator.sync(connectors: connectors)
+        let noun = result.changedDocumentCount == 1 ? "document" : "documents"
+        setKnowledgeImportStatus("Refreshed \(result.changedDocumentCount) \(noun)")
+        refreshKnowledgeDocumentTree()
+        refreshVisibleKnowledgeSelectionAfterImport()
+    }
+
+    private func refreshVisibleKnowledgeSelectionAfterImport() {
+        switch mainContentSelection {
+        case .knowledgeConnector(let instanceID):
+            guard knowledgeImportConfig.connectorInstances.contains(where: { $0.id == instanceID }) else {
+                selectOtherSourceManager(focusAddConnector: false)
+                return
+            }
+            selectedKnowledgeDocuments = fetchKnowledgeDocuments(connectorInstanceID: instanceID)
+            selectedKnowledgeDocument = nil
+            selectedKnowledgeDocumentMarkdown = nil
+        case .knowledgeDocument(let connectorInstanceID, let documentID):
+            guard knowledgeImportConfig.connectorInstances.contains(where: { $0.id == connectorInstanceID }) else {
+                selectOtherSourceManager(focusAddConnector: false)
+                return
+            }
+
+            let documents = fetchKnowledgeDocuments(connectorInstanceID: connectorInstanceID)
+            selectedKnowledgeDocuments = documents
+            if let document = documents.first(where: { $0.id == documentID }) {
+                selectedKnowledgeDocument = document
+                selectedKnowledgeDocumentMarkdown = loadKnowledgeDocumentMarkdown(document)
+            } else {
+                mainContentSelection = .knowledgeConnector(instanceID: connectorInstanceID)
+                selectedKnowledgeDocument = documents.first
+                selectedKnowledgeDocumentMarkdown = loadKnowledgeDocumentMarkdown(selectedKnowledgeDocument)
+            }
+        case .diary, .otherSourceManager:
+            break
+        }
+    }
+
     private func normalizedSyncMemoryPath(_ path: String?) -> String? {
         guard let path else { return nil }
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1115,6 +1319,73 @@ final class AppState {
     private func setSyncMemoryStatus(_ message: String) {
         syncMemoryStatusMessage = message
         statusMessage = message
+    }
+
+    private func setKnowledgeImportStatus(_ message: String) {
+        knowledgeImportStatusMessage = message
+        statusMessage = message
+    }
+
+    private func makeKnowledgeImportConnectors(from config: KnowledgeImportConfig) -> [any KnowledgeImportConnector] {
+        return config.connectorInstances.compactMap { instance -> (any KnowledgeImportConnector)? in
+            guard instance.isEnabled else {
+                return nil
+            }
+
+            switch instance.connectorID {
+            case .localFolderImport:
+                guard let path = normalizedKnowledgeImportValue(instance.sourcePath) else {
+                    return nil
+                }
+                return LocalFolderKnowledgeConnector(
+                    connectorInstanceID: instance.id,
+                    rootURL: URL(fileURLWithPath: path, isDirectory: true)
+                )
+            case .obsidianImport:
+                guard let path = normalizedKnowledgeImportValue(instance.sourcePath) else {
+                    return nil
+                }
+                return ObsidianKnowledgeConnector(
+                    connectorInstanceID: instance.id,
+                    vaultURL: URL(fileURLWithPath: path, isDirectory: true)
+                )
+            case .feishuImport:
+                guard let path = normalizedKnowledgeImportValue(instance.sourcePath) else {
+                    return nil
+                }
+                return FileBackedPlatformKnowledgeConnector(
+                    connectorInstanceID: instance.id,
+                    connectorID: .feishuImport,
+                    rootURL: URL(fileURLWithPath: path, isDirectory: true)
+                )
+            case .notionImport:
+                guard let path = normalizedKnowledgeImportValue(instance.sourcePath) else {
+                    return nil
+                }
+                return FileBackedPlatformKnowledgeConnector(
+                    connectorInstanceID: instance.id,
+                    connectorID: .notionImport,
+                    rootURL: URL(fileURLWithPath: path, isDirectory: true)
+                )
+            case .googleDriveImport:
+                guard let path = normalizedKnowledgeImportValue(instance.sourcePath) else {
+                    return nil
+                }
+                return FileBackedPlatformKnowledgeConnector(
+                    connectorInstanceID: instance.id,
+                    connectorID: .googleDriveImport,
+                    rootURL: URL(fileURLWithPath: path, isDirectory: true)
+                )
+            case .obsidianExport, .openClawExport:
+                return nil
+            }
+        }
+    }
+
+    private func normalizedKnowledgeImportValue(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     func completeOnboarding(vaultURL: URL, preferredEngine: DiaryEngine) {
@@ -3773,6 +4044,11 @@ extension AppState {
         environment.vaultURL.appending(path: "\(dayKey).story.json")
     }
 
+    private func setSelectedDiaryDate(_ dayKey: String) {
+        selectedDate = dayKey
+        mainContentSelection = .diary(dayKey: dayKey)
+    }
+
     private func persistArtifacts(
         dayKey: String,
         story: DailyStory,
@@ -3795,7 +4071,7 @@ extension AppState {
         noteIndex[dayKey] = fileURL
         availableDates = noteIndex.keys.sorted(by: >)
         if selectedDate == dayKey || selectedDate == nil {
-            selectedDate = dayKey
+            setSelectedDiaryDate(dayKey)
             selectedMarkdownURL = fileURL
             selectedContentVersion += 1
         }
@@ -3906,7 +4182,7 @@ extension AppState {
             return
         }
         if onboardingBootstrapDayKeys.contains(dayKey), noteIndex[dayKey] == nil {
-            selectedDate = dayKey
+            setSelectedDiaryDate(dayKey)
             selectedStory = nil
             selectedStoryParagraphID = nil
             selectedStorySourceEvents = []
@@ -3933,7 +4209,7 @@ extension AppState {
     }
 
     func updateSelectedPresentation(dayKey: String, story: DailyStory, events: [EventRecord]) {
-        selectedDate = dayKey
+        setSelectedDiaryDate(dayKey)
         selectedStory = story
         selectedDayEvents = events
         selectedMarkdownURL = preferredMarkdownURL(for: dayKey)
@@ -3965,6 +4241,7 @@ extension AppState {
             liveReaderSnapshot = ReaderPresentationSnapshot(
                 availableDates: availableDates,
                 selectedDate: selectedDate,
+                mainContentSelection: mainContentSelection,
                 selectedMarkdownURL: selectedMarkdownURL,
                 noteIndex: noteIndex,
                 selectedStory: selectedStory,
@@ -3980,7 +4257,7 @@ extension AppState {
 
         availableDates = [OnboardingDemoStory.demoDayKey]
         noteIndex = [:]
-        selectedDate = OnboardingDemoStory.demoDayKey
+        setSelectedDiaryDate(OnboardingDemoStory.demoDayKey)
         selectedMarkdownURL = nil
         selectedStory = OnboardingDemoStory.demoStory
         selectedDayEvents = OnboardingDemoStory.demoEvents
@@ -3997,7 +4274,7 @@ extension AppState {
 
     private func loadDemoDayPresentation() {
         selectedMarkdownURL = nil
-        selectedDate = OnboardingDemoStory.demoDayKey
+        setSelectedDiaryDate(OnboardingDemoStory.demoDayKey)
         selectedStory = OnboardingDemoStory.demoStory
         selectedDayEvents = OnboardingDemoStory.demoEvents
         selectedMarkdownText = nil
@@ -4024,6 +4301,7 @@ extension AppState {
         guard let liveReaderSnapshot else { return }
         availableDates = liveReaderSnapshot.availableDates
         selectedDate = liveReaderSnapshot.selectedDate
+        mainContentSelection = liveReaderSnapshot.mainContentSelection
         selectedMarkdownURL = liveReaderSnapshot.selectedMarkdownURL
         noteIndex = liveReaderSnapshot.noteIndex
         selectedStory = liveReaderSnapshot.selectedStory
@@ -4180,12 +4458,18 @@ extension AppState {
         }
 
         noteIndex = notes.filter { $0.key != OnboardingDemoStory.demoDayKey }
+        refreshKnowledgeDocumentTree()
         rebuildAvailableDates()
-        if let selectedDate {
-            loadDayPresentation(for: selectedDate)
-        } else if let firstDate = availableDates.first {
-            selectedDate = firstDate
-            loadDayPresentation(for: firstDate)
+        switch mainContentSelection {
+        case .diary:
+            if let selectedDate {
+                loadDayPresentation(for: selectedDate)
+            } else if let firstDate = availableDates.first {
+                setSelectedDiaryDate(firstDate)
+                loadDayPresentation(for: firstDate)
+            }
+        case .otherSourceManager, .knowledgeConnector, .knowledgeDocument:
+            break
         }
     }
 

@@ -43,6 +43,80 @@ enum Migrations {
             }
         }
 
+        migrator.registerMigration("createKnowledgeImports") { db in
+            try db.create(table: "knowledge_import_documents", ifNotExists: true) { table in
+                table.column("id", .text).primaryKey()
+                table.column("connectorInstanceID", .text).notNull()
+                table.column("connectorID", .text).notNull()
+                table.column("remoteID", .text).notNull()
+                table.column("title", .text).notNull()
+                table.column("sourcePath", .text)
+                table.column("remoteURL", .text)
+                table.column("mimeType", .text).notNull()
+                table.column("contentHash", .text).notNull()
+                table.column("remoteUpdatedAt", .datetime)
+                table.column("firstImportedAt", .datetime).notNull()
+                table.column("lastSyncedAt", .datetime).notNull()
+                table.column("deletedAt", .datetime)
+                table.column("localContentPath", .text).notNull()
+                table.column("localMetadataPath", .text).notNull()
+                table.column("normalizationVersion", .integer).notNull()
+                table.column("originKind", .text).notNull()
+                table.uniqueKey(["connectorInstanceID", "remoteID"])
+            }
+
+            try db.create(table: "knowledge_import_status", ifNotExists: true) { table in
+                table.column("connectorInstanceID", .text).primaryKey()
+                table.column("lastStartedAt", .datetime)
+                table.column("lastSucceededAt", .datetime)
+                table.column("lastFailedAt", .datetime)
+                table.column("lastErrorMessage", .text)
+                table.column("lastChangedDocumentCount", .integer).notNull().defaults(to: 0)
+            }
+        }
+
+        migrator.registerMigration("repairKnowledgeImportDocumentUniqueKey") { db in
+            guard try db.tableExists("knowledge_import_documents") else {
+                return
+            }
+
+            try db.execute(sql: "DROP TABLE IF EXISTS knowledge_import_documents_repaired")
+            try db.create(table: "knowledge_import_documents_repaired") { table in
+                table.column("id", .text).primaryKey()
+                table.column("connectorInstanceID", .text).notNull()
+                table.column("connectorID", .text).notNull()
+                table.column("remoteID", .text).notNull()
+                table.column("title", .text).notNull()
+                table.column("sourcePath", .text)
+                table.column("remoteURL", .text)
+                table.column("mimeType", .text).notNull()
+                table.column("contentHash", .text).notNull()
+                table.column("remoteUpdatedAt", .datetime)
+                table.column("firstImportedAt", .datetime).notNull()
+                table.column("lastSyncedAt", .datetime).notNull()
+                table.column("deletedAt", .datetime)
+                table.column("localContentPath", .text).notNull()
+                table.column("localMetadataPath", .text).notNull()
+                table.column("normalizationVersion", .integer).notNull()
+                table.column("originKind", .text).notNull()
+                table.uniqueKey(["connectorInstanceID", "remoteID"])
+            }
+
+            try db.execute(sql: """
+                INSERT INTO knowledge_import_documents_repaired
+                (id, connectorInstanceID, connectorID, remoteID, title, sourcePath, remoteURL, mimeType, contentHash,
+                 remoteUpdatedAt, firstImportedAt, lastSyncedAt, deletedAt, localContentPath, localMetadataPath,
+                 normalizationVersion, originKind)
+                SELECT
+                    id, connectorInstanceID, connectorID, remoteID, title, sourcePath, remoteURL, mimeType, contentHash,
+                    remoteUpdatedAt, firstImportedAt, lastSyncedAt, deletedAt, localContentPath, localMetadataPath,
+                    normalizationVersion, originKind
+                FROM knowledge_import_documents
+                """)
+            try db.drop(table: "knowledge_import_documents")
+            try db.rename(table: "knowledge_import_documents_repaired", to: "knowledge_import_documents")
+        }
+
         return migrator
     }
 }

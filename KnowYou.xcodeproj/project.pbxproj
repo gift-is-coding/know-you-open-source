@@ -89,6 +89,9 @@
 		A10000010000000000000048 /* LaunchAgentManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000048 /* LaunchAgentManager.swift */; };
 		A10000010000000000000049 /* SyncMemoryPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000049 /* SyncMemoryPanel.swift */; };
 		A1000001000000000000004A /* SyncMemoryPanelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004A /* SyncMemoryPanelTests.swift */; };
+		D80000010000000000000002 /* ConnectorsPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D80001010000000000000002 /* ConnectorsPanel.swift */; };
+		D80000010000000000000001 /* ConnectorsPanelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D80001010000000000000001 /* ConnectorsPanelTests.swift */; };
+		E90000010000000000000001 /* AppStateDefaultUserDefaultsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E90001010000000000000001 /* AppStateDefaultUserDefaultsTests.swift */; };
 		A1000001000000000000004B /* UpdateChannelResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004B /* UpdateChannelResolverTests.swift */; };
 		A1000001000000000000004C /* UpdateServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004C /* UpdateServiceTests.swift */; };
 		A1000001000000000000004D /* AppUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000004D /* AppUpdate.swift */; };
@@ -109,6 +112,26 @@
 		A1000001000000000000005D /* EndOfDayReminderAppStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000005D /* EndOfDayReminderAppStateTests.swift */; };
 		A10000010000000000000060 /* EndOfDayReminderRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000060 /* EndOfDayReminderRunner.swift */; };
 		A10000010000000000000061 /* EndOfDayReminderRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000061 /* EndOfDayReminderRunnerTests.swift */; };
+		A10000010000000000000062 /* KnowledgeImportModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000062 /* KnowledgeImportModelTests.swift */; };
+		A10000010000000000000063 /* KnowledgeImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000063 /* KnowledgeImport.swift */; };
+		A10000010000000000000064 /* KnowledgeImportConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000064 /* KnowledgeImportConfig.swift */; };
+		A10000010000000000000065 /* KnowledgeImportDatabaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000065 /* KnowledgeImportDatabaseTests.swift */; };
+		A10000010000000000000066 /* KnowledgeImportStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000066 /* KnowledgeImportStoreTests.swift */; };
+		A10000010000000000000067 /* KnowledgeImportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000067 /* KnowledgeImportStore.swift */; };
+		C50000010000000000000003 /* LocalFolderKnowledgeConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C50001010000000000000003 /* LocalFolderKnowledgeConnector.swift */; };
+		C50000010000000000000004 /* ObsidianKnowledgeConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C50001010000000000000004 /* ObsidianKnowledgeConnector.swift */; };
+		C50000010000000000000001 /* LocalFolderKnowledgeConnectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C50001010000000000000001 /* LocalFolderKnowledgeConnectorTests.swift */; };
+		C50000010000000000000002 /* ObsidianKnowledgeConnectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C50001010000000000000002 /* ObsidianKnowledgeConnectorTests.swift */; };
+		D70000010000000000000001 /* KnowledgeAPIConnectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70001010000000000000001 /* KnowledgeAPIConnectorTests.swift */; };
+		D90000010000000000000001 /* KnowledgeSourceContentViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D90001010000000000000001 /* KnowledgeSourceContentViewTests.swift */; };
+		D90000010000000000000002 /* KnowledgeSourceContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D90001010000000000000002 /* KnowledgeSourceContentView.swift */; };
+		D70000010000000000000002 /* KnowledgeHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70001010000000000000002 /* KnowledgeHTTPClient.swift */; };
+		D70000010000000000000003 /* FeishuKnowledgeConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70001010000000000000003 /* FeishuKnowledgeConnector.swift */; };
+		D70000010000000000000004 /* NotionKnowledgeConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70001010000000000000004 /* NotionKnowledgeConnector.swift */; };
+		D70000010000000000000005 /* GoogleDriveKnowledgeConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70001010000000000000005 /* GoogleDriveKnowledgeConnector.swift */; };
+		C40000010000000000000002 /* KnowledgeImportConnector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40001010000000000000002 /* KnowledgeImportConnector.swift */; };
+		C40000010000000000000003 /* KnowledgeImportCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40001010000000000000003 /* KnowledgeImportCoordinator.swift */; };
+		C40000010000000000000001 /* KnowledgeImportCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40001010000000000000001 /* KnowledgeImportCoordinatorTests.swift */; };
 		B20000010000000000000001 /* CodexJWTTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000001 /* CodexJWTTests.swift */; };
 		B20000010000000000000002 /* CodexAuthStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000002 /* CodexAuthStoreTests.swift */; };
 		B20000010000000000000003 /* CodexJWT.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000003 /* CodexJWT.swift */; };
@@ -242,6 +265,9 @@
 		A10001010000000000000048 /* LaunchAgentManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAgentManager.swift; sourceTree = "<group>"; };
 		A10001010000000000000049 /* SyncMemoryPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryPanel.swift; sourceTree = "<group>"; };
 		A1000101000000000000004A /* SyncMemoryPanelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncMemoryPanelTests.swift; sourceTree = "<group>"; };
+		D80001010000000000000002 /* ConnectorsPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorsPanel.swift; sourceTree = "<group>"; };
+		D80001010000000000000001 /* ConnectorsPanelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorsPanelTests.swift; sourceTree = "<group>"; };
+		E90001010000000000000001 /* AppStateDefaultUserDefaultsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateDefaultUserDefaultsTests.swift; sourceTree = "<group>"; };
 		A1000101000000000000004B /* UpdateChannelResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChannelResolverTests.swift; sourceTree = "<group>"; };
 		A1000101000000000000004C /* UpdateServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateServiceTests.swift; sourceTree = "<group>"; };
 		A1000101000000000000004D /* AppUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdate.swift; sourceTree = "<group>"; };
@@ -264,6 +290,26 @@
 		A10001010000000000000061 /* EndOfDayReminderRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndOfDayReminderRunnerTests.swift; sourceTree = "<group>"; };
 		AB20595053D3ED4A85FD3189 /* KnowledgeOntologyProjectExporter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyProjectExporter.swift; sourceTree = "<group>"; };
 		AC41767E0E95299BB3007A33 /* KnowledgeOntologyLauncher.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyLauncher.swift; sourceTree = "<group>"; };
+		A10001010000000000000062 /* KnowledgeImportModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportModelTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000063 /* KnowledgeImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImport.swift; sourceTree = "<group>"; };
+		A10001010000000000000064 /* KnowledgeImportConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportConfig.swift; sourceTree = "<group>"; };
+		A10001010000000000000065 /* KnowledgeImportDatabaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportDatabaseTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000066 /* KnowledgeImportStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportStoreTests.swift; sourceTree = "<group>"; };
+		A10001010000000000000067 /* KnowledgeImportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportStore.swift; sourceTree = "<group>"; };
+		C50001010000000000000001 /* LocalFolderKnowledgeConnectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFolderKnowledgeConnectorTests.swift; sourceTree = "<group>"; };
+		C50001010000000000000002 /* ObsidianKnowledgeConnectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObsidianKnowledgeConnectorTests.swift; sourceTree = "<group>"; };
+		C50001010000000000000003 /* LocalFolderKnowledgeConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFolderKnowledgeConnector.swift; sourceTree = "<group>"; };
+		C50001010000000000000004 /* ObsidianKnowledgeConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObsidianKnowledgeConnector.swift; sourceTree = "<group>"; };
+		D70001010000000000000001 /* KnowledgeAPIConnectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeAPIConnectorTests.swift; sourceTree = "<group>"; };
+		D90001010000000000000001 /* KnowledgeSourceContentViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeSourceContentViewTests.swift; sourceTree = "<group>"; };
+		D90001010000000000000002 /* KnowledgeSourceContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeSourceContentView.swift; sourceTree = "<group>"; };
+		D70001010000000000000002 /* KnowledgeHTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeHTTPClient.swift; sourceTree = "<group>"; };
+		D70001010000000000000003 /* FeishuKnowledgeConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeishuKnowledgeConnector.swift; sourceTree = "<group>"; };
+		D70001010000000000000004 /* NotionKnowledgeConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotionKnowledgeConnector.swift; sourceTree = "<group>"; };
+		D70001010000000000000005 /* GoogleDriveKnowledgeConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveKnowledgeConnector.swift; sourceTree = "<group>"; };
+		C40001010000000000000002 /* KnowledgeImportConnector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportConnector.swift; sourceTree = "<group>"; };
+		C40001010000000000000003 /* KnowledgeImportCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportCoordinator.swift; sourceTree = "<group>"; };
+		C40001010000000000000001 /* KnowledgeImportCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportCoordinatorTests.swift; sourceTree = "<group>"; };
 		B20001010000000000000001 /* CodexJWTTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexJWTTests.swift; sourceTree = "<group>"; };
 		B20001010000000000000002 /* CodexAuthStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAuthStoreTests.swift; sourceTree = "<group>"; };
 		B20001010000000000000003 /* CodexJWT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexJWT.swift; sourceTree = "<group>"; };
@@ -383,6 +429,7 @@
 				A1000006000000000000001D /* Onboarding */,
 				830002010000000000000002 /* MyWiki */,
 				D8C86E3E512B54C4B921C658 /* KnowledgeOntology */,
+				D90000060000000000000001 /* Knowledge */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -420,8 +467,17 @@
 				A10001010000000000000057 /* EngineConfigurationSection.swift */,
 				A10001010000000000000008 /* SettingsView.swift */,
 				A10001010000000000000049 /* SyncMemoryPanel.swift */,
+				D80001010000000000000002 /* ConnectorsPanel.swift */,
 			);
 			path = Settings;
+			sourceTree = "<group>";
+		};
+		D90000060000000000000001 /* Knowledge */ = {
+			isa = PBXGroup;
+			children = (
+				D90001010000000000000002 /* KnowledgeSourceContentView.swift */,
+			);
+			path = Knowledge;
 			sourceTree = "<group>";
 		};
 		A10000060000000000000010 /* KnowYouTests */ = {
@@ -448,6 +504,8 @@
 				A10001010000000000000042 /* SyncMemoryConfigTests.swift */,
 				A10001010000000000000045 /* SyncMemoryCoordinatorTests.swift */,
 				A1000101000000000000004A /* SyncMemoryPanelTests.swift */,
+				D80001010000000000000001 /* ConnectorsPanelTests.swift */,
+				E90001010000000000000001 /* AppStateDefaultUserDefaultsTests.swift */,
 				A10001010000000000000046 /* LaunchAgentManagerTests.swift */,
 				A1000101000000000000004B /* UpdateChannelResolverTests.swift */,
 				A1000101000000000000004C /* UpdateServiceTests.swift */,
@@ -456,6 +514,14 @@
 				A1000101000000000000005C /* EndOfDayReminderServiceTests.swift */,
 				A1000101000000000000005D /* EndOfDayReminderAppStateTests.swift */,
 				A10001010000000000000061 /* EndOfDayReminderRunnerTests.swift */,
+				A10001010000000000000062 /* KnowledgeImportModelTests.swift */,
+				A10001010000000000000065 /* KnowledgeImportDatabaseTests.swift */,
+				A10001010000000000000066 /* KnowledgeImportStoreTests.swift */,
+				C40001010000000000000001 /* KnowledgeImportCoordinatorTests.swift */,
+				C50001010000000000000001 /* LocalFolderKnowledgeConnectorTests.swift */,
+				C50001010000000000000002 /* ObsidianKnowledgeConnectorTests.swift */,
+				D70001010000000000000001 /* KnowledgeAPIConnectorTests.swift */,
+				D90001010000000000000001 /* KnowledgeSourceContentViewTests.swift */,
 				A1000101000000000000002A /* OnboardingContentTests.swift */,
 				A1000101000000000000002B /* OnboardingViewLayoutTests.swift */,
 				A10001010000000000000055 /* OnboardingProgressTests.swift */,
@@ -496,6 +562,7 @@
 				A10001010000000000000012 /* RunRecord.swift */,
 				A1000101000000000000001B /* DailyNote.swift */,
 				A10001010000000000000058 /* EndOfDayReminder.swift */,
+				A10001010000000000000063 /* KnowledgeImport.swift */,
 				A10001010000000000000043 /* SyncMemoryChannel.swift */,
 			);
 			path = Domain;
@@ -507,6 +574,7 @@
 				A10000060000000000000019 /* Backfill */,
 				A10000060000000000000016 /* Clipboard */,
 				A1000006000000000000001A /* Composer */,
+				A10000060000000000000022 /* Knowledge */,
 				A10000060000000000000017 /* Notifications */,
 				A10000060000000000000014 /* Privacy */,
 				A10000060000000000000021 /* Reminders */,
@@ -662,6 +730,23 @@
 			path = KnowledgeOntology;
 			sourceTree = "<group>";
 		};
+		A10000060000000000000022 /* Knowledge */ = {
+			isa = PBXGroup;
+			children = (
+				A10001010000000000000064 /* KnowledgeImportConfig.swift */,
+				C40001010000000000000002 /* KnowledgeImportConnector.swift */,
+				C40001010000000000000003 /* KnowledgeImportCoordinator.swift */,
+				A10001010000000000000067 /* KnowledgeImportStore.swift */,
+				C50001010000000000000003 /* LocalFolderKnowledgeConnector.swift */,
+				C50001010000000000000004 /* ObsidianKnowledgeConnector.swift */,
+				D70001010000000000000002 /* KnowledgeHTTPClient.swift */,
+				D70001010000000000000003 /* FeishuKnowledgeConnector.swift */,
+				D70001010000000000000004 /* NotionKnowledgeConnector.swift */,
+				D70001010000000000000005 /* GoogleDriveKnowledgeConnector.swift */,
+			);
+			path = Knowledge;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -805,6 +890,7 @@
 				A1000001000000000000000E /* RunRecord.swift in Sources */,
 				A10000010000000000000018 /* DailyNote.swift in Sources */,
 				A10000010000000000000058 /* EndOfDayReminder.swift in Sources */,
+				A10000010000000000000063 /* KnowledgeImport.swift in Sources */,
 				A10000010000000000000004 /* MainWindowView.swift in Sources */,
 				A10000010000000000000005 /* DateSidebarView.swift in Sources */,
 				A10000010000000000000006 /* DailyMarkdownView.swift in Sources */,
@@ -824,6 +910,17 @@
 				A10000010000000000000041 /* SyncMemoryPathDetector.swift in Sources */,
 				A10000010000000000000043 /* SyncMemoryChannel.swift in Sources */,
 				A10000010000000000000044 /* SyncMemoryConfig.swift in Sources */,
+				A10000010000000000000064 /* KnowledgeImportConfig.swift in Sources */,
+				C40000010000000000000002 /* KnowledgeImportConnector.swift in Sources */,
+				C40000010000000000000003 /* KnowledgeImportCoordinator.swift in Sources */,
+				A10000010000000000000067 /* KnowledgeImportStore.swift in Sources */,
+				C50000010000000000000003 /* LocalFolderKnowledgeConnector.swift in Sources */,
+				C50000010000000000000004 /* ObsidianKnowledgeConnector.swift in Sources */,
+				D70000010000000000000002 /* KnowledgeHTTPClient.swift in Sources */,
+				D70000010000000000000003 /* FeishuKnowledgeConnector.swift in Sources */,
+				D70000010000000000000004 /* NotionKnowledgeConnector.swift in Sources */,
+				D70000010000000000000005 /* GoogleDriveKnowledgeConnector.swift in Sources */,
+				D90000010000000000000002 /* KnowledgeSourceContentView.swift in Sources */,
 				A10000010000000000000047 /* SyncMemoryCoordinator.swift in Sources */,
 				A10000010000000000000048 /* LaunchAgentManager.swift in Sources */,
 				A1000001000000000000005A /* EndOfDayReminderService.swift in Sources */,
@@ -832,6 +929,7 @@
 				A10000010000000000000050 /* UpdatePillView.swift in Sources */,
 				A10000010000000000000051 /* UpdateSheet.swift in Sources */,
 				A10000010000000000000049 /* SyncMemoryPanel.swift in Sources */,
+				D80000010000000000000002 /* ConnectorsPanel.swift in Sources */,
 				A10000010000000000000034 /* DiaryEngineSelectorButton.swift in Sources */,
 				A1000001000000000000000C /* PrivacyFilter.swift in Sources */,
 				A1000001000000000000000F /* Migrations.swift in Sources */,
@@ -896,6 +994,8 @@
 				A10000010000000000000042 /* SyncMemoryConfigTests.swift in Sources */,
 				A10000010000000000000045 /* SyncMemoryCoordinatorTests.swift in Sources */,
 				A1000001000000000000004A /* SyncMemoryPanelTests.swift in Sources */,
+				D80000010000000000000001 /* ConnectorsPanelTests.swift in Sources */,
+				E90000010000000000000001 /* AppStateDefaultUserDefaultsTests.swift in Sources */,
 				A10000010000000000000046 /* LaunchAgentManagerTests.swift in Sources */,
 				A1000001000000000000004B /* UpdateChannelResolverTests.swift in Sources */,
 				A1000001000000000000004C /* UpdateServiceTests.swift in Sources */,
@@ -904,6 +1004,14 @@
 				A1000001000000000000005C /* EndOfDayReminderServiceTests.swift in Sources */,
 				A1000001000000000000005D /* EndOfDayReminderAppStateTests.swift in Sources */,
 				A10000010000000000000061 /* EndOfDayReminderRunnerTests.swift in Sources */,
+				A10000010000000000000062 /* KnowledgeImportModelTests.swift in Sources */,
+				A10000010000000000000065 /* KnowledgeImportDatabaseTests.swift in Sources */,
+				A10000010000000000000066 /* KnowledgeImportStoreTests.swift in Sources */,
+				C40000010000000000000001 /* KnowledgeImportCoordinatorTests.swift in Sources */,
+				C50000010000000000000001 /* LocalFolderKnowledgeConnectorTests.swift in Sources */,
+				C50000010000000000000002 /* ObsidianKnowledgeConnectorTests.swift in Sources */,
+				D70000010000000000000001 /* KnowledgeAPIConnectorTests.swift in Sources */,
+				D90000010000000000000001 /* KnowledgeSourceContentViewTests.swift in Sources */,
 				A10000010000000000000028 /* OnboardingContentTests.swift in Sources */,
 				A10000010000000000000029 /* OnboardingViewLayoutTests.swift in Sources */,
 				A10000010000000000000055 /* OnboardingProgressTests.swift in Sources */,

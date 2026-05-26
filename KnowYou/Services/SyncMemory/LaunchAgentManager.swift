@@ -113,6 +113,22 @@ struct LaunchAgentManager {
         )
     }
 
+    func knowledgeImportRegistration(
+        executablePath: String?,
+        hour: Int,
+        minute: Int,
+        isEnabled: Bool
+    ) throws {
+        try registration(
+            executablePath: executablePath,
+            hour: hour,
+            minute: minute,
+            isEnabled: isEnabled,
+            launchArgument: "--import-knowledge-now",
+            runAtLoad: true
+        )
+    }
+
     private func registration(
         executablePath: String?,
         hour: Int,

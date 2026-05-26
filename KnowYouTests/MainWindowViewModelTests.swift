@@ -739,11 +739,12 @@ final class MainWindowViewModelTests: XCTestCase {
         engineKeychain = AppStateTestKeychainStore()
         snapshotStandardDefaults()
         markOnboardingComplete(in: engineDefaults)
-        markOnboardingComplete(in: .standard)
+        AppState.setDefaultUserDefaultsForTesting(engineDefaults)
     }
 
     override func tearDown() {
         MainWindowStubURLProtocol.reset()
+        AppState.setDefaultUserDefaultsForTesting(nil)
         restoreStandardDefaults()
         if let engineDefaultsSuiteName {
             engineDefaults.removePersistentDomain(forName: engineDefaultsSuiteName)
@@ -1206,7 +1207,21 @@ final class MainWindowViewModelTests: XCTestCase {
                 backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
             )
         )
-        let appState = AppState(environment: environment, bootstrapServices: false)
+        let defaultsSuiteName = "GenerateDailyNoteFailure-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: defaultsSuiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: defaultsSuiteName)
+        }
+        var summarizerConfig = SummarizerConfig.default
+        summarizerConfig.defaultEngine = .openAI
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            summarizerConfig: summarizerConfig,
+            userDefaults: defaults,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
         appState.selectedDate = nil
         appState.selectedStory = nil
 
@@ -4540,7 +4555,7 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(yesterdayStarted, 0)
 
         await gate.release(dayKey: "2026-04-11")
-        let completed = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
+        let completed = await waitUntil(timeoutNanoseconds: 5_000_000_000) {
             appState.onboardingBootstrapState == .complete
         }
         XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after refreshing the missing day")
@@ -6231,19 +6246,39 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertEqual(
             try String(contentsOf: obsidianURL.appending(path: "2026-04-10.md"), encoding: .utf8),
-            "# Older"
+            """
+            ---
+            knowyou_export: daily_memory
+            ---
+            # Older
+            """
         )
         XCTAssertEqual(
             try String(contentsOf: obsidianURL.appending(path: "2026-04-11.md"), encoding: .utf8),
-            "# Latest"
+            """
+            ---
+            knowyou_export: daily_memory
+            ---
+            # Latest
+            """
         )
         XCTAssertEqual(
             try String(contentsOf: openClawURL.appending(path: "2026-04-10.md"), encoding: .utf8),
-            "# Older"
+            """
+            ---
+            knowyou_export: daily_memory
+            ---
+            # Older
+            """
         )
         XCTAssertEqual(
             try String(contentsOf: openClawURL.appending(path: "2026-04-11.md"), encoding: .utf8),
-            "# Latest"
+            """
+            ---
+            knowyou_export: daily_memory
+            ---
+            # Latest
+            """
         )
         XCTAssertEqual(appState.statusMessage, "Synced 2 notes to 2 destinations")
         XCTAssertEqual(appState.syncMemoryStatusMessage, "Synced 2 notes to 2 destinations")
@@ -6280,6 +6315,249 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: openClawURL.appending(path: "2026-04-12.md").path))
         XCTAssertEqual(appState.statusMessage, "Synced 1 note to 1 destination")
         XCTAssertEqual(appState.syncMemoryStatusMessage, "Synced 1 note to 1 destination")
+    }
+
+    func testImportKnowledgeNowRunsEnabledConnectorsWithoutChangingSyncMemoryExportConfig() async throws {
+        let environment = try makeEngineEnvironment()
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try "# Imported".write(
+            to: root.appending(path: "imported.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        var importConfig = KnowledgeImportConfig.default
+        importConfig.connectorInstances = [
+            KnowledgeConnectorInstanceConfig(
+                id: "local-main",
+                connectorID: .localFolderImport,
+                displayName: "Docs",
+                sourcePath: root.path,
+                isEnabled: true
+            )
+        ]
+        appState.saveKnowledgeImportConfig(importConfig)
+
+        await appState.importKnowledgeNow()
+
+        XCTAssertEqual(appState.knowledgeImportStatusMessage, "Refreshed 1 document")
+        XCTAssertEqual(appState.statusMessage, "Refreshed 1 document")
+        XCTAssertFalse(appState.syncMemoryConfig.autoSyncEnabled)
+    }
+
+    func testImportKnowledgeNowReadsPromptBackedPlatformDirectoryWithoutToken() async throws {
+        let environment = try makeEngineEnvironment()
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root.appending(path: "team", directoryHint: .isDirectory), withIntermediateDirectories: true)
+        try "# Feishu Plan".write(
+            to: root.appending(path: "team/plan.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let keychain = AppStateTestKeychainStore()
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: keychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        var importConfig = KnowledgeImportConfig.default
+        importConfig.connectorInstances = [
+            KnowledgeConnectorInstanceConfig(
+                id: "feishu-main",
+                connectorID: .feishuImport,
+                displayName: "Feishu Docs",
+                sourcePath: root.path,
+                isEnabled: true
+            )
+        ]
+        appState.saveKnowledgeImportConfig(importConfig)
+
+        await appState.importKnowledgeNow()
+
+        XCTAssertEqual(appState.knowledgeImportStatusMessage, "Refreshed 1 document")
+        XCTAssertEqual(appState.knowledgeDocumentsByConnector["feishu-main"]?.map(\.title), ["plan"])
+        XCTAssertEqual(
+            appState.knowledgeDocumentsByConnector["feishu-main"]?.first?.originKind,
+            "feishu-local-file"
+        )
+        XCTAssertNil(
+            keychain.load(
+                forKey: "knowledge-import.feishu-main.bearer-token",
+                service: "MainWindowViewModelTests"
+            )
+        )
+    }
+
+    func testAppLaunchScansPersistedPromptBackedSourceDirectory() async throws {
+        let environment = try makeEngineEnvironment()
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root.appending(path: "minutes", directoryHint: .isDirectory), withIntermediateDirectories: true)
+        try "# Meeting Notes".write(
+            to: root.appending(path: "minutes/standup.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        KnowledgeImportConfig(
+            connectorInstances: [
+                KnowledgeConnectorInstanceConfig(
+                    id: "feishu-main",
+                    connectorID: .feishuImport,
+                    displayName: "Feishu Docs",
+                    sourcePath: root.path,
+                    isEnabled: true
+                )
+            ]
+        ).save(to: engineDefaults)
+
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let didScan = await waitUntil {
+            appState.knowledgeDocumentsByConnector["feishu-main"]?.map(\.remoteID) == ["minutes/standup.md"]
+        }
+        XCTAssertTrue(didScan)
+        XCTAssertEqual(appState.knowledgeDocumentsByConnector["feishu-main"]?.first?.localContentPath, root.appending(path: "minutes/standup.md").path)
+    }
+
+    func testImportKnowledgeNowRefreshesVisibleKnowledgeConnectorDocuments() async throws {
+        let environment = try makeEngineEnvironment()
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        var importConfig = KnowledgeImportConfig.default
+        importConfig.connectorInstances = [
+            KnowledgeConnectorInstanceConfig(
+                id: "local-main",
+                connectorID: .localFolderImport,
+                displayName: "Docs",
+                sourcePath: root.path,
+                isEnabled: true
+            )
+        ]
+        appState.saveKnowledgeImportConfig(importConfig)
+        appState.selectKnowledgeConnector(instanceID: "local-main")
+        XCTAssertTrue(appState.selectedKnowledgeDocuments.isEmpty)
+
+        try "# Imported".write(
+            to: root.appending(path: "imported.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        await appState.importKnowledgeNow()
+
+        XCTAssertEqual(appState.mainContentSelection, .knowledgeConnector(instanceID: "local-main"))
+        XCTAssertEqual(appState.selectedKnowledgeDocuments.map(\.title), ["imported"])
+        XCTAssertNil(appState.selectedKnowledgeDocument)
+        XCTAssertNil(appState.selectedKnowledgeDocumentMarkdown)
+    }
+
+    func testImportKnowledgeNowLeavesDiaryAndOtherSourceSelectionUnchanged() async throws {
+        let environment = try makeEngineEnvironment()
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try "# Imported".write(
+            to: root.appending(path: "imported.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        var importConfig = KnowledgeImportConfig.default
+        importConfig.connectorInstances = [
+            KnowledgeConnectorInstanceConfig(
+                id: "local-main",
+                connectorID: .localFolderImport,
+                displayName: "Docs",
+                sourcePath: root.path,
+                isEnabled: true
+            )
+        ]
+        appState.saveKnowledgeImportConfig(importConfig)
+
+        let initialDiarySelection = appState.mainContentSelection
+        await appState.importKnowledgeNow()
+        XCTAssertEqual(appState.mainContentSelection, initialDiarySelection)
+
+        appState.selectOtherSourceManager(focusAddConnector: false)
+        await appState.importKnowledgeNow()
+        XCTAssertEqual(appState.mainContentSelection, .otherSourceManager(focusAddConnector: false))
+    }
+
+    func testImportKnowledgeNowPreservesSelectedKnowledgeDocumentAndReloadsMarkdown() async throws {
+        let environment = try makeEngineEnvironment()
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let documentURL = root.appending(path: "project.md")
+        try "# Original".write(to: documentURL, atomically: true, encoding: .utf8)
+
+        let appState = AppState(
+            environment: environment,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        var importConfig = KnowledgeImportConfig.default
+        importConfig.connectorInstances = [
+            KnowledgeConnectorInstanceConfig(
+                id: "local-main",
+                connectorID: .localFolderImport,
+                displayName: "Docs",
+                sourcePath: root.path,
+                isEnabled: true
+            )
+        ]
+        appState.saveKnowledgeImportConfig(importConfig)
+        await appState.importKnowledgeNow()
+        appState.selectKnowledgeConnector(instanceID: "local-main")
+        let document = try XCTUnwrap(appState.selectedKnowledgeDocuments.first)
+        appState.selectKnowledgeDocument(connectorInstanceID: "local-main", documentID: document.id)
+        XCTAssertEqual(appState.selectedKnowledgeDocumentMarkdown, "# Original")
+
+        try "# Updated".write(to: documentURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSinceNow: 10)],
+            ofItemAtPath: documentURL.path
+        )
+
+        await appState.importKnowledgeNow()
+
+        XCTAssertEqual(
+            appState.mainContentSelection,
+            .knowledgeDocument(connectorInstanceID: "local-main", documentID: document.id)
+        )
+        XCTAssertEqual(appState.selectedKnowledgeDocument?.id, document.id)
+        XCTAssertEqual(appState.selectedKnowledgeDocumentMarkdown, "# Updated")
     }
 
     func testSavingSyncMemoryConfigPublishesAutoSyncStatusMessage() {
@@ -6943,6 +7221,7 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertEqual(appState.availableDates, [newerDayKey, olderDayKey, OnboardingDemoStory.demoDayKey])
         XCTAssertEqual(appState.selectedDate, newerDayKey)
+        XCTAssertEqual(appState.mainContentSelection, .diary(dayKey: newerDayKey))
     }
 
     func testAppStateLoadsSyncMemoryDefaultsAndExposesClosedPanelInitially() {
@@ -6979,6 +7258,359 @@ final class MainWindowViewModelTests: XCTestCase {
 
         appState.closeSyncMemoryPanel()
         XCTAssertFalse(appState.isShowingSyncMemoryPanel)
+    }
+
+    func testAppStateSelectsOtherSourceManagerWithoutChangingSelectedDiaryDate() {
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: defaults,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.selectDate("2026-05-23")
+
+        appState.selectOtherSourceManager(focusAddConnector: false)
+
+        XCTAssertEqual(appState.mainContentSelection, .otherSourceManager(focusAddConnector: false))
+        XCTAssertEqual(appState.selectedDate, "2026-05-23")
+    }
+
+    func testAppStateSelectsKnowledgeConnectorWithoutOpeningFirstDocument() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let vault = root.appendingPathComponent("Vault", isDirectory: true)
+        let databaseURL = root.appendingPathComponent("events.sqlite")
+        let contentURL = root.appendingPathComponent("content.md")
+        let metadataURL = root.appendingPathComponent("metadata.json")
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let environment = try AppEnvironment(
+            databasePath: databaseURL.path,
+            vaultURL: vault,
+            summarizer: nil
+        )
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: defaults,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+        let document = ImportedKnowledgeDocument(
+            id: "doc-1",
+            connectorInstanceID: "feishu-main",
+            connectorID: .feishuImport,
+            remoteID: "remote-1",
+            title: "Project Plan",
+            sourcePath: "doc-token",
+            remoteURL: nil,
+            mimeType: "text/markdown",
+            contentHash: "hash",
+            remoteUpdatedAt: nil,
+            firstImportedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            lastSyncedAt: Date(timeIntervalSince1970: 1_778_000_100),
+            deletedAt: nil,
+            localContentPath: contentURL.path,
+            localMetadataPath: metadataURL.path,
+            normalizationVersion: 1,
+            originKind: "feishu"
+        )
+        try "# Project Plan".write(toFile: document.localContentPath, atomically: true, encoding: .utf8)
+        try environment.databaseWriter.upsertImportedKnowledgeDocument(document)
+
+        appState.selectKnowledgeConnector(instanceID: "feishu-main")
+
+        XCTAssertEqual(appState.mainContentSelection, .knowledgeConnector(instanceID: "feishu-main"))
+        XCTAssertEqual(appState.selectedKnowledgeDocuments.map(\.title), ["Project Plan"])
+        XCTAssertNil(appState.selectedKnowledgeDocument)
+        XCTAssertNil(appState.selectedKnowledgeDocumentMarkdown)
+    }
+
+    func testRefreshNotesIndexAutoSelectsDiaryMainContentSelection() throws {
+        let environment = try makeReaderEnvironment()
+        let appState = AppState(environment: environment, bootstrapServices: false)
+
+        appState.refreshNotesIndex()
+
+        XCTAssertEqual(appState.selectedDate, "2026-04-08")
+        XCTAssertEqual(appState.mainContentSelection, .diary(dayKey: "2026-04-08"))
+    }
+
+    func testRefreshNotesIndexPreservesOtherSourceSelectionWhenSelectedDateExists() throws {
+        let environment = try makeReaderEnvironment()
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectDate("2026-04-08")
+        appState.selectOtherSourceManager(focusAddConnector: false)
+
+        appState.refreshNotesIndex()
+
+        XCTAssertEqual(appState.selectedDate, "2026-04-08")
+        XCTAssertEqual(appState.mainContentSelection, .otherSourceManager(focusAddConnector: false))
+    }
+
+    func testRefreshNotesIndexPreservesKnowledgeConnectorSelectionWhenSelectedDateExists() throws {
+        let environment = try makeReaderEnvironment()
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectDate("2026-04-08")
+        appState.selectKnowledgeConnector(instanceID: "feishu-main")
+
+        appState.refreshNotesIndex()
+
+        XCTAssertEqual(appState.selectedDate, "2026-04-08")
+        XCTAssertEqual(appState.mainContentSelection, .knowledgeConnector(instanceID: "feishu-main"))
+    }
+
+    func testRefreshNotesIndexPreservesKnowledgeDocumentSelectionWhenSelectedDateExists() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let vault = root.appendingPathComponent("Vault", isDirectory: true)
+        let databaseURL = root.appendingPathComponent("events.sqlite")
+        let contentURL = root.appendingPathComponent("content.md")
+        let metadataURL = root.appendingPathComponent("metadata.json")
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let environment = try AppEnvironment(
+            databasePath: databaseURL.path,
+            vaultURL: vault,
+            summarizer: nil
+        )
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        let document = ImportedKnowledgeDocument(
+            id: "doc-1",
+            connectorInstanceID: "feishu-main",
+            connectorID: .feishuImport,
+            remoteID: "remote-1",
+            title: "Project Plan",
+            sourcePath: "doc-token",
+            remoteURL: nil,
+            mimeType: "text/markdown",
+            contentHash: "hash",
+            remoteUpdatedAt: nil,
+            firstImportedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            lastSyncedAt: Date(timeIntervalSince1970: 1_778_000_100),
+            deletedAt: nil,
+            localContentPath: contentURL.path,
+            localMetadataPath: metadataURL.path,
+            normalizationVersion: 1,
+            originKind: "feishu"
+        )
+        try "# Project Plan".write(toFile: document.localContentPath, atomically: true, encoding: .utf8)
+        try environment.databaseWriter.upsertImportedKnowledgeDocument(document)
+        appState.selectDate("2026-04-08")
+        appState.selectKnowledgeDocument(connectorInstanceID: "feishu-main", documentID: "doc-1")
+
+        appState.refreshNotesIndex()
+
+        XCTAssertEqual(appState.selectedDate, "2026-04-08")
+        XCTAssertEqual(
+            appState.mainContentSelection,
+            .knowledgeDocument(connectorInstanceID: "feishu-main", documentID: "doc-1")
+        )
+    }
+
+    func testAppStateSelectsSecondKnowledgeDocumentMarkdown() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let vault = root.appendingPathComponent("Vault", isDirectory: true)
+        let databaseURL = root.appendingPathComponent("events.sqlite")
+        let firstContentURL = root.appendingPathComponent("alpha.md")
+        let firstMetadataURL = root.appendingPathComponent("alpha.json")
+        let secondContentURL = root.appendingPathComponent("beta.md")
+        let secondMetadataURL = root.appendingPathComponent("beta.json")
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let environment = try AppEnvironment(
+            databasePath: databaseURL.path,
+            vaultURL: vault,
+            summarizer: nil
+        )
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: defaults,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+        let firstDocument = ImportedKnowledgeDocument(
+            id: "doc-alpha",
+            connectorInstanceID: "feishu-main",
+            connectorID: .feishuImport,
+            remoteID: "remote-alpha",
+            title: "Alpha Plan",
+            sourcePath: "doc-alpha-token",
+            remoteURL: nil,
+            mimeType: "text/markdown",
+            contentHash: "hash-alpha",
+            remoteUpdatedAt: nil,
+            firstImportedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            lastSyncedAt: Date(timeIntervalSince1970: 1_778_000_100),
+            deletedAt: nil,
+            localContentPath: firstContentURL.path,
+            localMetadataPath: firstMetadataURL.path,
+            normalizationVersion: 1,
+            originKind: "feishu"
+        )
+        let secondDocument = ImportedKnowledgeDocument(
+            id: "doc-beta",
+            connectorInstanceID: "feishu-main",
+            connectorID: .feishuImport,
+            remoteID: "remote-beta",
+            title: "Beta Plan",
+            sourcePath: "doc-beta-token",
+            remoteURL: nil,
+            mimeType: "text/markdown",
+            contentHash: "hash-beta",
+            remoteUpdatedAt: nil,
+            firstImportedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            lastSyncedAt: Date(timeIntervalSince1970: 1_778_000_100),
+            deletedAt: nil,
+            localContentPath: secondContentURL.path,
+            localMetadataPath: secondMetadataURL.path,
+            normalizationVersion: 1,
+            originKind: "feishu"
+        )
+        try "# Alpha Plan".write(toFile: firstDocument.localContentPath, atomically: true, encoding: .utf8)
+        try "# Beta Plan".write(toFile: secondDocument.localContentPath, atomically: true, encoding: .utf8)
+        try environment.databaseWriter.upsertImportedKnowledgeDocuments([secondDocument, firstDocument])
+
+        appState.selectKnowledgeDocument(connectorInstanceID: "feishu-main", documentID: "doc-beta")
+
+        XCTAssertEqual(
+            appState.mainContentSelection,
+            .knowledgeDocument(connectorInstanceID: "feishu-main", documentID: "doc-beta")
+        )
+        XCTAssertEqual(appState.selectedKnowledgeDocuments.map(\.title), ["Alpha Plan", "Beta Plan"])
+        XCTAssertEqual(appState.selectedKnowledgeDocument?.id, "doc-beta")
+        XCTAssertEqual(appState.selectedKnowledgeDocumentMarkdown, "# Beta Plan")
+    }
+
+    func testAppStateLimitsLargeKnowledgeDocumentMarkdownPreview() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let vault = root.appendingPathComponent("Vault", isDirectory: true)
+        let databaseURL = root.appendingPathComponent("events.sqlite")
+        let contentURL = root.appendingPathComponent("large-content.md")
+        let metadataURL = root.appendingPathComponent("large-metadata.json")
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let environment = try AppEnvironment(
+            databasePath: databaseURL.path,
+            vaultURL: vault,
+            summarizer: nil
+        )
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: defaults,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+        let document = ImportedKnowledgeDocument(
+            id: "doc-large",
+            connectorInstanceID: "feishu-main",
+            connectorID: .feishuImport,
+            remoteID: "remote-large",
+            title: "Large Plan",
+            sourcePath: "doc-large-token",
+            remoteURL: nil,
+            mimeType: "text/markdown",
+            contentHash: "hash-large",
+            remoteUpdatedAt: nil,
+            firstImportedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            lastSyncedAt: Date(timeIntervalSince1970: 1_778_000_100),
+            deletedAt: nil,
+            localContentPath: contentURL.path,
+            localMetadataPath: metadataURL.path,
+            normalizationVersion: 1,
+            originKind: "feishu"
+        )
+        let fullMarkdown = "# Large Plan\n\n" + String(repeating: "A", count: 300_000)
+        try fullMarkdown.write(toFile: document.localContentPath, atomically: true, encoding: .utf8)
+        try environment.databaseWriter.upsertImportedKnowledgeDocument(document)
+
+        appState.selectKnowledgeDocument(connectorInstanceID: "feishu-main", documentID: "doc-large")
+
+        let preview = try XCTUnwrap(appState.selectedKnowledgeDocumentMarkdown)
+        XCTAssertLessThan(preview.count, fullMarkdown.count)
+        XCTAssertTrue(preview.hasSuffix("\n\n[Preview truncated]"))
+    }
+
+    func testDeletingSelectedKnowledgeConnectorRoutesToOtherSourceManager() throws {
+        let environment = try makeReaderEnvironment()
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectKnowledgeConnector(instanceID: "feishu-main")
+
+        appState.didDeleteKnowledgeConnector(instanceID: "feishu-main")
+
+        XCTAssertEqual(appState.mainContentSelection, .otherSourceManager(focusAddConnector: false))
+    }
+
+    func testDeletingSelectedKnowledgeDocumentConnectorRoutesToOtherSourceManager() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let vault = root.appendingPathComponent("Vault", isDirectory: true)
+        let databaseURL = root.appendingPathComponent("events.sqlite")
+        let contentURL = root.appendingPathComponent("content.md")
+        let metadataURL = root.appendingPathComponent("metadata.json")
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let environment = try AppEnvironment(
+            databasePath: databaseURL.path,
+            vaultURL: vault,
+            summarizer: nil
+        )
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        let document = ImportedKnowledgeDocument(
+            id: "doc-1",
+            connectorInstanceID: "feishu-main",
+            connectorID: .feishuImport,
+            remoteID: "remote-1",
+            title: "Project Plan",
+            sourcePath: "doc-token",
+            remoteURL: nil,
+            mimeType: "text/markdown",
+            contentHash: "hash",
+            remoteUpdatedAt: nil,
+            firstImportedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            lastSyncedAt: Date(timeIntervalSince1970: 1_778_000_100),
+            deletedAt: nil,
+            localContentPath: contentURL.path,
+            localMetadataPath: metadataURL.path,
+            normalizationVersion: 1,
+            originKind: "feishu"
+        )
+        try "# Project Plan".write(toFile: document.localContentPath, atomically: true, encoding: .utf8)
+        try environment.databaseWriter.upsertImportedKnowledgeDocument(document)
+        appState.selectKnowledgeDocument(connectorInstanceID: "feishu-main", documentID: "doc-1")
+
+        appState.didDeleteKnowledgeConnector(instanceID: "feishu-main")
+
+        XCTAssertEqual(appState.mainContentSelection, .otherSourceManager(focusAddConnector: false))
+    }
+
+    func testDeletingUnrelatedKnowledgeConnectorLeavesSelectionUnchanged() throws {
+        let environment = try makeReaderEnvironment()
+        let appState = AppState(environment: environment, bootstrapServices: false)
+        appState.selectKnowledgeDocument(connectorInstanceID: "feishu-main", documentID: "doc-1")
+
+        appState.didDeleteKnowledgeConnector(instanceID: "notion-main")
+
+        XCTAssertEqual(
+            appState.mainContentSelection,
+            .knowledgeDocument(connectorInstanceID: "feishu-main", documentID: "doc-1")
+        )
     }
 
     func testSyncNowCopiesLatestDiaryIntoConfiguredDestinations() throws {

@@ -38,15 +38,20 @@ struct MainWindowView: View {
                     sidebar
                         .navigationSplitViewColumnWidth(min: 180, ideal: 220)
                 } content: {
-                    journalContent
+                    Group {
+                        switch appState.mainContentSelection {
+                        case .diary:
+                            diaryReaderView
+                        case .otherSourceManager(let focusAddConnector):
+                            otherSourceManagementView(focusAddConnector: focusAddConnector)
+                        case .knowledgeConnector(let instanceID):
+                            knowledgeSourceView(connectorInstanceID: instanceID)
+                        case .knowledgeDocument(let instanceID, _):
+                            knowledgeSourceView(connectorInstanceID: instanceID)
+                        }
+                    }
                 } detail: {
-                    StorySourceDetailView(
-                        selectedParagraph: appState.selectedStoryParagraph,
-                        selectedEvents: appState.selectedStorySourceEvents,
-                        allEvents: appState.selectedDayEvents
-                    )
-                    .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
-                    .onboardingCoachmarkTarget(.sourcesPanel)
+                    detailPane
                 }
             }
         }
@@ -164,44 +169,7 @@ struct MainWindowView: View {
                 }
             )
         ) {
-            SyncMemoryPanel(
-                obsidianPath: appState.syncMemoryConfig.obsidian.resolvedPath,
-                openClawPath: appState.syncMemoryConfig.openClaw.resolvedPath,
-                statusMessage: appState.syncMemoryStatusMessage,
-                isAutoSyncDailyEnabled: Binding(
-                    get: { appState.syncMemoryConfig.autoSyncEnabled },
-                    set: { isEnabled in
-                        var config = appState.syncMemoryConfig
-                        config.autoSyncEnabled = isEnabled
-                        appState.saveSyncMemoryConfig(config)
-                    }
-                ),
-                dailySyncTime: Binding(
-                    get: {
-                        var components = DateComponents()
-                        components.hour = appState.syncMemoryConfig.dailySyncHour
-                        components.minute = appState.syncMemoryConfig.dailySyncMinute
-                        return Calendar.current.date(from: components) ?? Date()
-                    },
-                    set: { date in
-                        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
-                        var config = appState.syncMemoryConfig
-                        config.dailySyncHour = components.hour ?? 21
-                        config.dailySyncMinute = components.minute ?? 0
-                        appState.saveSyncMemoryConfig(config)
-                    }
-                ),
-                onChooseObsidian: { chooseSyncMemoryFolder(for: .obsidian) },
-                onChooseOpenClaw: { chooseSyncMemoryFolder(for: .openClaw) },
-                onOpenObsidian: { openSyncMemoryFolder(at: appState.syncMemoryConfig.obsidian.resolvedPath) },
-                onOpenOpenClaw: { openSyncMemoryFolder(at: appState.syncMemoryConfig.openClaw.resolvedPath) },
-                onSyncNow: {
-                    appState.syncMemoryNow()
-                },
-                onClose: {
-                    appState.closeSyncMemoryPanel()
-                }
-            )
+            connectorsManagementSheet()
         }
         .onAppear {
             startKeyMonitor()
@@ -215,52 +183,32 @@ struct MainWindowView: View {
         DateSidebarView(
             dates: appState.availableDates,
             selectedDate: appState.selectedDate,
+            selectedItemID: selectedSidebarItemID,
+            knowledgeImportConfig: appState.knowledgeImportConfig,
+            knowledgeDocumentsByConnector: appState.knowledgeDocumentsByConnector,
             isActive: mode == .journal && appState.readerFocus == .dateList,
             isKnowledgeOntologySelected: mode == .knowledgeOntology,
-            onSelect: { dayKey in
+            onSelectDiaryDate: { dayKey in
                 mode = .journal
                 appState.selectDate(dayKey)
+            },
+            onSelectOtherSource: { focusAddConnector in
+                mode = .journal
+                appState.selectOtherSourceManager(focusAddConnector: focusAddConnector)
+            },
+            onSelectKnowledgeConnector: { instanceID in
+                mode = .journal
+                appState.selectKnowledgeConnector(instanceID: instanceID)
+            },
+            onSelectKnowledgeDocument: { instanceID, documentID in
+                mode = .journal
+                appState.selectKnowledgeDocument(connectorInstanceID: instanceID, documentID: documentID)
             },
             onOpenKnowledgeOntology: {
                 mode = .knowledgeOntology
             },
             onOpenSyncMemory: openSyncMemoryPanel
         )
-    }
-
-    private var journalContent: some View {
-        DailyMarkdownView(
-            story: appState.selectedStory,
-            selectedParagraphID: appState.selectedStoryParagraphID,
-            dayKey: appState.selectedDate,
-            refreshJob: selectedRefreshJob,
-            refreshLogNotice: appState.refreshLogNotice(for: appState.selectedDate),
-            isGenerating: appState.isGeneratingJournal(for: appState.selectedDate),
-            isActive: appState.readerFocus == .storyParagraphs,
-            onSelectParagraph: { paragraphID in
-                appState.focusStoryParagraphs()
-                appState.selectStoryParagraph(paragraphID)
-                onStoryParagraphTap?(paragraphID)
-            },
-            onFocusStory: {
-                appState.focusStoryParagraphs()
-            },
-            onRefresh: {
-                Task { @MainActor in
-                    await appState.refreshSelectedDay()
-                }
-            },
-            onTodayFullRefresh: {
-                Task { @MainActor in
-                    await appState.refreshSelectedDayFullRecovery()
-                }
-            },
-            canFullRefresh: appState.selectedDate != nil && appState.selectedDate != OnboardingDemoStory.demoDayKey,
-            fullRefreshMenuTitle: appState.selectedDate == ISO8601DayKey.format(Date())
-                ? "Full Refresh Today (Overwriting)"
-                : "Full Refresh (Overwriting)"
-        )
-        .onboardingCoachmarkTarget(.storyPanel)
     }
 
     private var knowledgeOntologyWorkspace: some View {
@@ -297,8 +245,106 @@ struct MainWindowView: View {
             .appending(path: "KnowledgeOntology/KnowYouContext", directoryHint: .isDirectory)
     }
 
+    private var diaryReaderView: some View {
+        DailyMarkdownView(
+            story: appState.selectedStory,
+            selectedParagraphID: appState.selectedStoryParagraphID,
+            dayKey: appState.selectedDate,
+            refreshJob: selectedRefreshJob,
+            refreshLogNotice: appState.refreshLogNotice(for: appState.selectedDate),
+            isGenerating: appState.isGeneratingJournal(for: appState.selectedDate),
+            isActive: appState.readerFocus == .storyParagraphs,
+            onSelectParagraph: { paragraphID in
+                appState.focusStoryParagraphs()
+                appState.selectStoryParagraph(paragraphID)
+                onStoryParagraphTap?(paragraphID)
+            },
+            onFocusStory: {
+                appState.focusStoryParagraphs()
+            },
+            onRefresh: {
+                Task { @MainActor in
+                    await appState.refreshSelectedDay()
+                }
+            },
+            onTodayFullRefresh: {
+                Task { @MainActor in
+                    await appState.refreshSelectedDayFullRecovery()
+                }
+            },
+            canFullRefresh: appState.selectedDate != nil && appState.selectedDate != OnboardingDemoStory.demoDayKey,
+            fullRefreshMenuTitle: appState.selectedDate == ISO8601DayKey.format(Date())
+                ? "Full Refresh Today (Overwriting)"
+                : "Full Refresh (Overwriting)"
+        )
+        .onboardingCoachmarkTarget(.storyPanel)
+    }
+
+    private var detailPane: some View {
+        Group {
+            switch appState.mainContentSelection {
+            case .diary:
+                StorySourceDetailView(
+                    selectedParagraph: appState.selectedStoryParagraph,
+                    selectedEvents: appState.selectedStorySourceEvents,
+                    allEvents: appState.selectedDayEvents
+                )
+                .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
+                .onboardingCoachmarkTarget(.sourcesPanel)
+            case .otherSourceManager, .knowledgeConnector, .knowledgeDocument:
+                Color.clear
+                    .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 0)
+            }
+        }
+    }
+
+    private var selectedSidebarItemID: String? {
+        switch appState.mainContentSelection {
+        case .diary(let dayKey):
+            return dayKey.map { "diary:\($0)" } ?? "diary-root"
+        case .otherSourceManager:
+            return "add-source"
+        case .knowledgeConnector(let instanceID):
+            return "connector:\(instanceID)"
+        case .knowledgeDocument(let instanceID, _):
+            if let documentID = appState.selectedKnowledgeDocument?.id {
+                return "document:\(instanceID):\(documentID)"
+            }
+            return "connector:\(instanceID)"
+        }
+    }
+
     private var currentEngineState: EngineIndicatorState {
         appState.engineStatuses[appState.defaultEngine]?.state ?? .gray
+    }
+
+    private var knowledgeImportEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { appState.knowledgeImportConfig.isImportEnabled },
+            set: { isEnabled in
+                var config = appState.knowledgeImportConfig
+                config.isImportEnabled = isEnabled
+                appState.saveKnowledgeImportConfig(config)
+            }
+        )
+    }
+
+    private var knowledgeImportTimeBinding: Binding<Date> {
+        Binding(
+            get: {
+                var components = DateComponents()
+                components.hour = appState.knowledgeImportConfig.dailyImportHour
+                components.minute = appState.knowledgeImportConfig.dailyImportMinute
+                return Calendar.current.date(from: components) ?? Date()
+            },
+            set: { date in
+                let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+                var config = appState.knowledgeImportConfig
+                config.dailyImportHour = components.hour ?? 7
+                config.dailyImportMinute = components.minute ?? 30
+                appState.saveKnowledgeImportConfig(config)
+            }
+        )
     }
 
     private var engineRows: [DiaryEnginePanelRow] {
@@ -368,6 +414,104 @@ struct MainWindowView: View {
     private func openSyncMemoryPanel() {
         appState.openSyncMemoryPanel()
     }
+
+    private func connectorsManagementView(focusAddConnector: Bool) -> some View {
+        connectorsManagementView(
+            managementPresentation: connectorsManagementPresentation(
+                focusAddConnector: focusAddConnector
+            )
+        )
+    }
+
+    private func otherSourceManagementView(focusAddConnector: Bool) -> some View {
+        GeometryReader { proxy in
+            ScrollView {
+                connectorsManagementView(focusAddConnector: focusAddConnector)
+                    .padding(28)
+                    .frame(maxWidth: 860, alignment: .topLeading)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+        }
+    }
+
+    private func knowledgeSourceView(connectorInstanceID: String) -> some View {
+        let connector = appState.knowledgeImportConfig.connectorInstances.first { $0.id == connectorInstanceID }
+        return Group {
+            if let connector {
+                KnowledgeSourceContentView(
+                    presentation: KnowledgeSourceContentPresentation(
+                        connector: connector,
+                        documents: appState.selectedKnowledgeDocuments,
+                        selectedDocumentID: appState.selectedKnowledgeDocument?.id,
+                        selectedMarkdown: appState.selectedKnowledgeDocumentMarkdown,
+                        statusMessage: appState.knowledgeImportStatusMessage
+                    )
+                )
+            } else {
+                Text("Connector not found")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
+    private func connectorsManagementSheet() -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            connectorsManagementView(focusAddConnector: false)
+
+            HStack {
+                Spacer()
+                Button("Close") {
+                    appState.closeSyncMemoryPanel()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 560, minHeight: 430)
+    }
+
+    private func connectorsManagementPresentation(focusAddConnector: Bool) -> ConnectorsManagementPresentation {
+        ConnectorsManagementPresentation(
+            panelPresentation: ConnectorsPanelPresentation(
+                syncMemoryConfig: appState.syncMemoryConfig,
+                knowledgeImportConfig: appState.knowledgeImportConfig,
+                syncMemoryStatusMessage: appState.syncMemoryStatusMessage,
+                knowledgeImportStatusMessage: appState.knowledgeImportStatusMessage
+            ),
+            surface: .otherSourceRoot,
+            externalSourcesRootURL: appState.environment?.externalSourcesDirectoryURL
+                ?? ExternalSourcePromptPresentation.defaultExternalSourcesRootURL()
+        )
+    }
+
+    private func connectorsManagementView(
+        managementPresentation: ConnectorsManagementPresentation
+    ) -> some View {
+        ConnectorsManagementView(
+            managementPresentation: managementPresentation,
+            isAutoImportEnabled: knowledgeImportEnabledBinding,
+            dailyImportTime: knowledgeImportTimeBinding,
+            onChooseObsidianExport: { chooseSyncMemoryFolder(for: .obsidian) },
+            onChooseOpenClawExport: { chooseSyncMemoryFolder(for: .openClaw) },
+            onOpenObsidianExport: { openSyncMemoryFolder(at: appState.syncMemoryConfig.obsidian.resolvedPath) },
+            onOpenOpenClawExport: { openSyncMemoryFolder(at: appState.syncMemoryConfig.openClaw.resolvedPath) },
+            onAddLocalFolderImport: { chooseKnowledgeImportFolder(for: .localFolderImport) },
+            onAddObsidianImport: { chooseKnowledgeImportFolder(for: .obsidianImport) },
+            onAddExternalPromptSource: addExternalPromptSource,
+            onSetImportConnectorEnabled: setKnowledgeImportConnectorEnabled,
+            onDeleteImportConnector: deleteKnowledgeImportConnector,
+            onExportNow: {
+                appState.syncMemoryNow()
+            },
+            onImportNow: {
+                Task { @MainActor in
+                    await appState.importKnowledgeNow()
+                }
+            }
+        )
+    }
+
     private func openAPIDetail() {
         apiConfigDraft = SummarizerConfig.load()
         apiConfigDraft.defaultEngine = .openAI
@@ -414,6 +558,115 @@ struct MainWindowView: View {
             }
             appState.updateSyncMemoryChannel(channel, resolvedPath: resolvedPath)
         }
+    }
+
+    private func chooseKnowledgeImportFolder(for connectorID: KnowledgeConnectorID) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = false
+        panel.prompt = "Add"
+        if connectorID == .obsidianImport, let detectedVault = detectedObsidianVault() {
+            panel.directoryURL = detectedVault.deletingLastPathComponent()
+            panel.nameFieldStringValue = detectedVault.lastPathComponent
+        }
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            addKnowledgeImportConnector(
+                connectorID: connectorID,
+                displayName: connectorID == .obsidianImport ? "Obsidian Vault" : url.lastPathComponent,
+                sourcePath: url.path,
+                accountID: nil
+            )
+        }
+    }
+
+    private func detectedObsidianVault() -> URL? {
+        let detector = SyncMemoryPathDetector()
+        let homeURL = FileManager.default.homeDirectoryForCurrentUser
+        let configuredVaults = detector.detectConfiguredObsidianVaults(
+            configDirectory: detector.defaultObsidianConfigDirectory(homePath: homeURL.path)
+        )
+        if let configuredVault = configuredVaults.first {
+            return configuredVault
+        }
+
+        return detector.detectObsidianVaults(
+            searchRoots: [
+                homeURL.appendingPathComponent("Documents", isDirectory: true),
+                homeURL.appendingPathComponent("Desktop", isDirectory: true),
+            ]
+        ).first
+    }
+
+    private func addKnowledgeImportConnector(
+        connectorID: KnowledgeConnectorID,
+        displayName: String,
+        sourcePath: String?,
+        accountID: String?
+    ) {
+        let connectorInstanceID = "\(connectorID.rawValue)-\(UUID().uuidString)"
+
+        var config = appState.knowledgeImportConfig
+        config.connectorInstances.append(
+            KnowledgeConnectorInstanceConfig(
+                id: connectorInstanceID,
+                connectorID: connectorID,
+                displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines),
+                sourcePath: sourcePath?.trimmingCharacters(in: .whitespacesAndNewlines),
+                accountID: accountID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                isEnabled: true
+            )
+        )
+        appState.saveKnowledgeImportConfig(config)
+    }
+
+    private func addExternalPromptSource(
+        connectorID: KnowledgeConnectorID,
+        displayName: String,
+        sourcePath: String
+    ) {
+        let sourceURL = URL(fileURLWithPath: sourcePath, isDirectory: true)
+        try? FileManager.default.createDirectory(at: sourceURL, withIntermediateDirectories: true)
+
+        var config = appState.knowledgeImportConfig
+        if let index = config.connectorInstances.firstIndex(where: { $0.connectorID == connectorID }) {
+            config.connectorInstances[index].displayName = displayName
+            config.connectorInstances[index].sourcePath = sourcePath
+            config.connectorInstances[index].accountID = nil
+            config.connectorInstances[index].workspaceID = nil
+            config.connectorInstances[index].isEnabled = true
+        } else {
+            config.connectorInstances.append(
+                KnowledgeConnectorInstanceConfig(
+                    id: "\(connectorID.rawValue)-\(UUID().uuidString)",
+                    connectorID: connectorID,
+                    displayName: displayName,
+                    sourcePath: sourcePath,
+                    accountID: nil,
+                    workspaceID: nil,
+                    isEnabled: true
+                )
+            )
+        }
+        appState.saveKnowledgeImportConfig(config)
+    }
+
+    private func setKnowledgeImportConnectorEnabled(id: String, isEnabled: Bool) {
+        var config = appState.knowledgeImportConfig
+        guard let index = config.connectorInstances.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        config.connectorInstances[index].isEnabled = isEnabled
+        appState.saveKnowledgeImportConfig(config)
+    }
+
+    private func deleteKnowledgeImportConnector(id: String) {
+        var config = appState.knowledgeImportConfig
+        config.connectorInstances.removeAll { $0.id == id }
+        appState.deleteKnowledgeImportBearerToken(connectorInstanceID: id)
+        appState.saveKnowledgeImportConfig(config)
+        appState.didDeleteKnowledgeConnector(instanceID: id)
     }
 
     private func openSyncMemoryFolder(at path: String?) {

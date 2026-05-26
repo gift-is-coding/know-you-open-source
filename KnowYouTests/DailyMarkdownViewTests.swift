@@ -5,21 +5,23 @@ final class DailyMarkdownViewTests: XCTestCase {
     func testDateSidebarPresentationGroupsDatesByEnglishMonth() {
         let presentation = DateSidebarPresentation(
             dates: ["2026-04-24", "2026-04-23", "2026-03-31", "demo-day"],
-            selectedDate: nil,
+            selectedItemID: nil,
+            knowledgeImportConfig: .default,
             today: makeDate(year: 2026, month: 4, day: 24),
             calendar: gregorianCalendar
         )
 
         XCTAssertEqual(presentation.sections.map(\.title), ["April 2026", "March 2026", nil])
-        XCTAssertEqual(presentation.sections[0].items.map(\.id), ["2026-04-24", "2026-04-23"])
-        XCTAssertEqual(presentation.sections[1].items.map(\.id), ["2026-03-31"])
-        XCTAssertEqual(presentation.sections[2].items.map(\.id), ["demo-day"])
+        XCTAssertEqual(presentation.sections[0].items.map(\.id), ["diary:2026-04-24", "diary:2026-04-23"])
+        XCTAssertEqual(presentation.sections[1].items.map(\.id), ["diary:2026-03-31"])
+        XCTAssertEqual(presentation.sections[2].items.map(\.id), ["diary:demo-day"])
     }
 
     func testDateSidebarPresentationOpensCurrentMonthAndCollapsesOlderMonths() {
         let presentation = DateSidebarPresentation(
             dates: ["2026-04-24", "2026-03-31"],
-            selectedDate: nil,
+            selectedItemID: nil,
+            knowledgeImportConfig: .default,
             today: makeDate(year: 2026, month: 4, day: 24),
             calendar: gregorianCalendar
         )
@@ -31,13 +33,366 @@ final class DailyMarkdownViewTests: XCTestCase {
     func testDateSidebarPresentationOpensSelectedOlderMonth() {
         let presentation = DateSidebarPresentation(
             dates: ["2026-04-24", "2026-03-31"],
-            selectedDate: "2026-03-31",
+            selectedItemID: "diary:2026-03-31",
+            knowledgeImportConfig: .default,
             today: makeDate(year: 2026, month: 4, day: 24),
             calendar: gregorianCalendar
         )
 
         XCTAssertTrue(presentation.sections[0].isExpandedByDefault)
         XCTAssertTrue(presentation.sections[1].isExpandedByDefault)
+    }
+
+    func testSidebarPresentationShowsAddSourceRootWithDiaryChildBeforeDates() {
+        let presentation = DateSidebarPresentation(
+            dates: ["2026-05-23", "2026-05-22"],
+            selectedItemID: "diary:2026-05-23",
+            knowledgeImportConfig: .default,
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        XCTAssertEqual(presentation.sourceRootItem.id, "add-source")
+        XCTAssertEqual(presentation.sourceRootItem.title, "Add Source")
+        XCTAssertTrue(presentation.sourceRootItem.showsAddButton)
+        XCTAssertFalse(presentation.sourceRootItem.isExpandable)
+        XCTAssertEqual(presentation.diaryRootItem.id, "diary-root")
+        XCTAssertEqual(presentation.diaryRootItem.title, "My Diary")
+        XCTAssertEqual(presentation.diarySections.first?.items.map(\.title), ["Today", "Yesterday"])
+    }
+
+    func testSidebarPresentationAddsConnectorInstancesAsRootItems() {
+        let config = KnowledgeImportConfig(
+            isImportEnabled: true,
+            dailyImportHour: 7,
+            dailyImportMinute: 30,
+            connectorInstances: [
+                KnowledgeConnectorInstanceConfig(
+                    id: "feishu-main",
+                    connectorID: .feishuImport,
+                    displayName: "飞书文档",
+                    sourcePath: "doc-token",
+                    isEnabled: true
+                ),
+                KnowledgeConnectorInstanceConfig(
+                    id: "drive-main",
+                    connectorID: .googleDriveImport,
+                    displayName: "Google Drive",
+                    accountID: "me@example.com",
+                    isEnabled: false
+                ),
+            ]
+        )
+
+        let presentation = DateSidebarPresentation(
+            dates: [],
+            selectedItemID: "connector:feishu-main",
+            knowledgeImportConfig: config,
+            knowledgeDocumentsByConnector: [
+                "feishu-main": [
+                    makeKnowledgeDocument(
+                        id: "feishu-doc",
+                        connectorInstanceID: "feishu-main",
+                        title: "Feishu Doc",
+                        sourcePath: "doc-token/doc.md"
+                    ),
+                ],
+                "drive-main": [
+                    makeKnowledgeDocument(
+                        id: "drive-doc",
+                        connectorInstanceID: "drive-main",
+                        title: "Drive Doc",
+                        sourcePath: "drive.md"
+                    ),
+                ],
+            ],
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        XCTAssertEqual(
+            presentation.sourceItems.map(\.id),
+            ["connector:feishu-main", "connector:drive-main"]
+        )
+        XCTAssertEqual(presentation.sourceItems.map(\.title), ["飞书文档", "Google Drive"])
+        XCTAssertEqual(presentation.sourceItems.map(\.systemImage), ["doc.richtext", "externaldrive"])
+        XCTAssertEqual(presentation.sourceItems.map(\.brandAssetName), ["SourceLogoFeishu", "SourceLogoGoogleDrive"])
+        XCTAssertTrue(presentation.sourceItems[0].isEnabled)
+        XCTAssertFalse(presentation.sourceItems[1].isEnabled)
+        XCTAssertTrue(presentation.sourceItems.allSatisfy(\.isExpandable))
+    }
+
+    func testSidebarPresentationBuildsConnectorDocumentTreeFromImportedDocumentPaths() throws {
+        let root = "/Users/me/Library/Application Support/KnowYou/ExternalSources/feishu"
+        let config = KnowledgeImportConfig(
+            connectorInstances: [
+                KnowledgeConnectorInstanceConfig(
+                    id: "feishu-main",
+                    connectorID: .feishuImport,
+                    displayName: "Feishu Docs",
+                    sourcePath: root,
+                    isEnabled: true
+                )
+            ]
+        )
+        let documents = [
+            makeKnowledgeDocument(
+                id: "doc-alpha",
+                connectorInstanceID: "feishu-main",
+                title: "Alpha",
+                sourcePath: "\(root)/Projects/Alpha.md"
+            ),
+            makeKnowledgeDocument(
+                id: "doc-beta",
+                connectorInstanceID: "feishu-main",
+                title: "Beta",
+                sourcePath: "\(root)/Projects/Nested/Beta.md"
+            ),
+        ]
+
+        let presentation = DateSidebarPresentation(
+            dates: [],
+            selectedItemID: "document:feishu-main:doc-beta",
+            knowledgeImportConfig: config,
+            knowledgeDocumentsByConnector: ["feishu-main": documents],
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        let connector = try XCTUnwrap(presentation.sourceItems.first)
+        XCTAssertEqual(connector.children.map(\.title), ["Projects"])
+        let projects = try XCTUnwrap(connector.children.first)
+        XCTAssertEqual(projects.children.map(\.title), ["Alpha", "Nested"])
+        let nested = try XCTUnwrap(projects.children.first { $0.title == "Nested" })
+        XCTAssertEqual(nested.children.map(\.id), ["document:feishu-main:doc-beta"])
+        XCTAssertEqual(nested.children.first?.selectionAction, .knowledgeDocument("feishu-main", "doc-beta"))
+    }
+
+    func testSidebarPresentationDoesNotShowDuplicateConnectorRootFolder() throws {
+        let root = "/Users/me/Documents/obsidian-folder"
+        let config = KnowledgeImportConfig(
+            connectorInstances: [
+                KnowledgeConnectorInstanceConfig(
+                    id: "obsidian-main",
+                    connectorID: .obsidianImport,
+                    displayName: "Obsidian Vault",
+                    sourcePath: root,
+                    isEnabled: true
+                )
+            ]
+        )
+        let document = makeKnowledgeDocument(
+            id: "obsidian-doc",
+            connectorInstanceID: "obsidian-main",
+            title: "Daily Note",
+            sourcePath: "\(root)/obsidian-folder/Daily Note.md"
+        )
+
+        let presentation = DateSidebarPresentation(
+            dates: [],
+            selectedItemID: nil,
+            knowledgeImportConfig: config,
+            knowledgeDocumentsByConnector: ["obsidian-main": [document]],
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        let connector = try XCTUnwrap(presentation.sourceItems.first)
+        XCTAssertEqual(connector.brandAssetName, "SourceLogoObsidian")
+        XCTAssertEqual(connector.children.map(\.title), ["Daily Note"])
+        XCTAssertEqual(connector.children.first?.id, "document:obsidian-main:obsidian-doc")
+    }
+
+    @MainActor
+    func testSidebarDoubleClickTogglesExpandableConnectorAndFolderRowsOnly() throws {
+        let root = "/Users/me/Library/Application Support/KnowYou/ExternalSources/feishu"
+        let config = KnowledgeImportConfig(
+            connectorInstances: [
+                KnowledgeConnectorInstanceConfig(
+                    id: "feishu-main",
+                    connectorID: .feishuImport,
+                    displayName: "Feishu Docs",
+                    sourcePath: root,
+                    isEnabled: true
+                )
+            ]
+        )
+        let document = makeKnowledgeDocument(
+            id: "feishu-doc",
+            connectorInstanceID: "feishu-main",
+            title: "Alpha",
+            sourcePath: "\(root)/Projects/Alpha.md"
+        )
+
+        let presentation = DateSidebarPresentation(
+            dates: [],
+            selectedItemID: nil,
+            knowledgeImportConfig: config,
+            knowledgeDocumentsByConnector: ["feishu-main": [document]],
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        let connector = try XCTUnwrap(presentation.sourceItems.first)
+        let folder = try XCTUnwrap(connector.children.first)
+        let leaf = try XCTUnwrap(folder.children.first)
+
+        XCTAssertEqual(DateSidebarView.doubleClickExpansionID(for: connector), "connector:feishu-main")
+        XCTAssertEqual(DateSidebarView.doubleClickExpansionID(for: folder), folder.id)
+        XCTAssertNil(DateSidebarView.doubleClickExpansionID(for: leaf))
+    }
+
+    @MainActor
+    func testSidebarDoubleClickTreatsDiaryRootAsExpandableDisclosure() {
+        let presentation = DateSidebarPresentation(
+            dates: ["2026-05-23"],
+            selectedItemID: nil,
+            knowledgeImportConfig: .default,
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        XCTAssertEqual(DateSidebarView.doubleClickExpansionID(for: presentation.diaryRootItem), "diary-root")
+    }
+
+    @MainActor
+    func testSidebarRowsExposeSelectionIDsForBlueClickFeedback() throws {
+        let root = "/Users/me/Library/Application Support/KnowYou/ExternalSources/feishu"
+        let config = KnowledgeImportConfig(
+            connectorInstances: [
+                KnowledgeConnectorInstanceConfig(
+                    id: "feishu-main",
+                    connectorID: .feishuImport,
+                    displayName: "Feishu Docs",
+                    sourcePath: root,
+                    isEnabled: true
+                )
+            ]
+        )
+        let document = makeKnowledgeDocument(
+            id: "feishu-doc",
+            connectorInstanceID: "feishu-main",
+            title: "Alpha",
+            sourcePath: "\(root)/Projects/Alpha.md"
+        )
+
+        let presentation = DateSidebarPresentation(
+            dates: [],
+            selectedItemID: nil,
+            knowledgeImportConfig: config,
+            knowledgeDocumentsByConnector: ["feishu-main": [document]],
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        let connector = try XCTUnwrap(presentation.sourceItems.first)
+        let folder = try XCTUnwrap(connector.children.first)
+        let leaf = try XCTUnwrap(folder.children.first)
+
+        XCTAssertEqual(DateSidebarView.sidebarSelectionID(for: connector), "connector:feishu-main")
+        XCTAssertEqual(DateSidebarView.sidebarSelectionID(for: folder), folder.id)
+        XCTAssertEqual(DateSidebarView.sidebarSelectionID(for: leaf), "document:feishu-main:feishu-doc")
+    }
+
+    @MainActor
+    func testSidebarBrandLogoMetricsKeepFeishuFromRenderingLargerThanObsidian() {
+        let feishu = DateSidebarView.sidebarIconMetrics(forBrandAssetName: "SourceLogoFeishu")
+        let obsidian = DateSidebarView.sidebarIconMetrics(forBrandAssetName: "SourceLogoObsidian")
+
+        XCTAssertEqual(feishu.frameSize, obsidian.frameSize)
+        XCTAssertLessThan(feishu.contentSize, obsidian.contentSize)
+    }
+
+    func testSidebarPresentationMarksAddSourceAction() throws {
+        let presentation = DateSidebarPresentation(
+            dates: [],
+            selectedItemID: "add-source",
+            knowledgeImportConfig: .default,
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        XCTAssertTrue(presentation.sourceRootItem.showsAddButton)
+        XCTAssertTrue(presentation.sourceRootItem.isSelected)
+    }
+
+    @MainActor
+    func testDateSidebarViewOnlyTreatsDiarySelectionIDsAsDayKeys() {
+        XCTAssertEqual(DateSidebarView.dayKeyForSelection("diary:2026-05-23"), "2026-05-23")
+        XCTAssertNil(DateSidebarView.dayKeyForSelection("add-source"))
+        XCTAssertNil(DateSidebarView.dayKeyForSelection("connector:drive-main"))
+    }
+
+    @MainActor
+    func testDateSidebarSelectionActionRoutesRootAndConnectorIDs() {
+        XCTAssertEqual(DateSidebarView.selectionAction(for: "diary:2026-05-23"), .diaryDate("2026-05-23"))
+        XCTAssertEqual(DateSidebarView.selectionAction(for: "add-source"), .otherSource(focusAddConnector: false))
+        XCTAssertNil(DateSidebarView.selectionAction(for: "connector:feishu-main"))
+        XCTAssertEqual(
+            DateSidebarView.selectionAction(for: "document:feishu-main:doc-alpha"),
+            .knowledgeDocument("feishu-main", "doc-alpha")
+        )
+        XCTAssertNil(DateSidebarView.selectionAction(for: "diary-root"))
+        XCTAssertNil(DateSidebarView.selectionAction(for: "settings"))
+    }
+
+    @MainActor
+    func testDateSidebarViewAcceptsKnowledgeImportConfig() {
+        let config = KnowledgeImportConfig(
+            connectorInstances: [
+                KnowledgeConnectorInstanceConfig(
+                    id: "drive-main",
+                    connectorID: .googleDriveImport,
+                    displayName: "Google Drive",
+                    isEnabled: true
+                ),
+            ]
+        )
+
+        let view = DateSidebarView(
+            dates: [],
+            selectedDate: nil,
+            selectedItemID: nil,
+            knowledgeImportConfig: config,
+            knowledgeDocumentsByConnector: [:],
+            isActive: true,
+            isKnowledgeOntologySelected: false,
+            onSelectDiaryDate: { _ in },
+            onSelectOtherSource: { _ in },
+            onSelectKnowledgeConnector: { _ in },
+            onSelectKnowledgeDocument: { _, _ in },
+            onOpenKnowledgeOntology: {},
+            onOpenSyncMemory: {}
+        )
+
+        XCTAssertEqual(view.knowledgeImportConfig.connectorInstances.map(\KnowledgeConnectorInstanceConfig.id), ["drive-main"])
+    }
+
+    private func makeKnowledgeDocument(
+        id: String,
+        connectorInstanceID: String,
+        title: String,
+        sourcePath: String
+    ) -> ImportedKnowledgeDocument {
+        ImportedKnowledgeDocument(
+            id: id,
+            connectorInstanceID: connectorInstanceID,
+            connectorID: .feishuImport,
+            remoteID: String(sourcePath.split(separator: "/").suffix(2).joined(separator: "/")),
+            title: title,
+            sourcePath: sourcePath,
+            remoteURL: nil,
+            mimeType: "text/markdown",
+            contentHash: "hash-\(id)",
+            remoteUpdatedAt: nil,
+            firstImportedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            lastSyncedAt: Date(timeIntervalSince1970: 1_778_000_100),
+            deletedAt: nil,
+            localContentPath: "/tmp/\(id).md",
+            localMetadataPath: "/tmp/\(id).json",
+            normalizationVersion: 1,
+            originKind: "feishu-local-file"
+        )
     }
 
     func testRefreshProgressPresentationMarksCompletedAndCurrentSteps() {

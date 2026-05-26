@@ -8,6 +8,7 @@ struct MyWikiDetailView: View {
     var onOrganizeJournals: () -> Void = {}
     var onFindDuplicates: () -> Void = {}
     var onManageSources: () -> Void = {}
+    var onUseInAgents: () -> Void = {}
     var onRevealWikiFolder: () -> Void = {}
     var onShowStatus: () -> Void = {}
     var onOpenSource: (String) -> Void = { _ in }
@@ -44,6 +45,7 @@ struct MyWikiDetailView: View {
                 Button(isSyncing ? "Organizing Journals..." : "Organize Journals", action: onOrganizeJournals)
                     .disabled(isSyncing)
                 Button("Source Library", action: onManageSources)
+                Button("Use My Wiki in Agents", action: onUseInAgents)
                 Divider()
                 Button("Find duplicates", action: onFindDuplicates)
                 Button("Reveal Wiki Folder", action: onRevealWikiFolder)
@@ -340,6 +342,7 @@ private struct MyWikiMarkdownBodyView: View {
 
 enum MyWikiDetailMoreMenuPolicy {
     static let includesSourceLibrary = true
+    static let includesAgentContext = true
 }
 
 private extension Text {

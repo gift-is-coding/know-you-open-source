@@ -237,6 +237,10 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertTrue(MyWikiDetailMoreMenuPolicy.includesSourceLibrary)
     }
 
+    func testDetailMoreMenuIncludesAgentContextAction() {
+        XCTAssertTrue(MyWikiDetailMoreMenuPolicy.includesAgentContext)
+    }
+
     func testProgressRefreshRunsWhilePipelineIsActive() {
         XCTAssertTrue(MyWikiProgressRefreshPolicy.shouldRefresh(isSyncing: true, progressState: nil))
         XCTAssertTrue(MyWikiProgressRefreshPolicy.shouldRefresh(isSyncing: false, progressState: .running))

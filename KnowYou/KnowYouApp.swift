@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import UserNotifications
+import Darwin
 
 @MainActor
 final class EndOfDayReminderNavigationCenter {
@@ -102,8 +103,15 @@ struct KnowYouApp: App {
 
     init() {
         let launchMode = LaunchMode(arguments: CommandLine.arguments)
+        if launchMode == .myWikiContext {
+            Self.runMyWikiContextCommandAndExit(arguments: CommandLine.arguments)
+        }
+        if launchMode == .myWikiMCP {
+            Self.runMyWikiMCPCommandAndExit(arguments: CommandLine.arguments)
+        }
+
         self.launchMode = launchMode
-        let initialAppState = AppState(bootstrapServices: launchMode != .endOfDayReminder)
+        let initialAppState = AppState(bootstrapServices: Self.shouldBootstrapServices(for: launchMode))
         _appState = State(
             initialValue: initialAppState
         )
@@ -140,6 +148,33 @@ struct KnowYouApp: App {
             || CommandLine.arguments.contains { argument in
                 argument.contains(".xctest") || argument.contains("xctestconfiguration")
             }
+    }
+
+    private static func shouldBootstrapServices(for launchMode: LaunchMode) -> Bool {
+        launchMode != .endOfDayReminder
+            && launchMode != .myWikiContext
+            && launchMode != .myWikiMCP
+            && isRunningUnderXCTest == false
+    }
+
+    private static func runMyWikiContextCommandAndExit(arguments: [String]) -> Never {
+        let result = MyWikiContextPackCommand.run(arguments: arguments)
+        write(result.stdout, to: .standardOutput)
+        write(result.stderr, to: .standardError)
+        Darwin.exit(result.exitCode)
+    }
+
+    private static func runMyWikiMCPCommandAndExit(arguments: [String]) -> Never {
+        let exitCode = MyWikiMCPCommand.serve(arguments: arguments)
+        Darwin.exit(exitCode)
+    }
+
+    private static func write(_ string: String, to fileHandle: FileHandle) {
+        guard string.isEmpty == false,
+              let data = string.data(using: .utf8) else {
+            return
+        }
+        fileHandle.write(data)
     }
 }
 
@@ -255,16 +290,22 @@ private struct AppRootView: View {
     }
 }
 
-private enum LaunchMode {
+enum LaunchMode: Equatable {
     case interactive
     case syncMemory
     case endOfDayReminder
+    case myWikiContext
+    case myWikiMCP
 
     init(arguments: [String]) {
         if arguments.contains("--sync-memory-now") {
             self = .syncMemory
         } else if arguments.contains("--end-of-day-reminder-now") {
             self = .endOfDayReminder
+        } else if arguments.contains(MyWikiContextPackCommand.launchArgument) {
+            self = .myWikiContext
+        } else if arguments.contains(MyWikiMCPCommand.launchArgument) {
+            self = .myWikiMCP
         } else {
             self = .interactive
         }

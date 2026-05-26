@@ -400,6 +400,17 @@ onboarding 的配置约束为：
 - KnowYou 必须优先连接 bundled llm_wiki helper；没有 bundled helper 时，允许回退到 `ThirdParty/llm_wiki` 开发源码目录
 - 第一版只能导出 KnowYou 已生成的每日 Markdown，不得直接导出未经额外授权的 SQLite 原始事件
 - 系统必须提供本地服务层能力，让 Codex、Claude、Cowork 等 agent 能读取 My Wiki 的最小必要背景摘要
+- My Wiki 必须提供 `Use My Wiki in Agents` 用户入口，并且该入口必须接入新版 My Wiki 页面，不得回退到旧 KnowledgeOntology 控制面板
+- 用户默认路径必须是对内置 agent 执行 `Add My Wiki` 自动配置；第一版内置 agent 包括 Codex、Claude Code、Claude Desktop、Cursor、Gemini CLI 和 OpenClaw
+- 自动配置必须在修改已有 agent 配置前创建备份；Codex 写入 `~/.codex/config.toml`，Claude Code 写入 `~/.claude.json`，Claude Desktop 写入 `~/Library/Application Support/Claude/claude_desktop_config.json`，Cursor 写入 `~/.cursor/mcp.json`，Gemini CLI 写入 `~/.gemini/settings.json`，OpenClaw 写入 `~/.openclaw/openclaw.json`
+- Codex 配置必须使用受控 MCP block 标记，重复启用时必须替换旧 block，不得生成重复 `[mcp_servers.knowyou-my-wiki]` 段；JSON 配置型 agent 必须合并 `knowyou-my-wiki` server，不得删除已有无关 server
+- Codex、Claude Code、Cursor、Gemini CLI 和 OpenClaw 必须同时安装 `.agents/skills/my-wiki-context` companion Skill；Claude Desktop 只安装 MCP 连接配置；generic MCP 的手动配置必须保留在高级配置区
+- My Wiki MCP 必须暴露 `my_wiki_context`，输入是一段背景信息或任务描述，而不要求调用方只能提供关键词
+- My Wiki MCP 必须由 KnowYou app 自身内置提供，默认配置必须直接启动 `KnowYou --my-wiki-mcp --project-root <path>`；用户不得被要求安装 Node、npm 或运行 `npm install`
+- `my_wiki_context` 返回必须包含 query、query plan、items 和 citations；items 必须包含 title、page type、excerpt、score、matched terms 和 citation
+- KnowYou 的 `--my-wiki-context` headless 模式必须只输出 JSON 并退出，不得启动主窗口、采集器或常驻后台服务
+- KnowYou 的 `--my-wiki-mcp` headless 模式必须逐行响应 stdio JSON-RPC 请求，不得等待 stdin 关闭后才输出结果
+- MCP 进程生命周期必须由 MCP client 管理；KnowYou 不得在 UI 中误导用户以为 MCP 会由 KnowYou 常驻启动
 
 ## 7. 内容体验要求
 

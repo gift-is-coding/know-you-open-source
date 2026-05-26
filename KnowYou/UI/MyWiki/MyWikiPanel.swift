@@ -21,6 +21,9 @@ struct MyWikiPanel: View {
     @State private var conflictMessage: String?
     @State private var isShowingStatus = false
     @State private var isShowingSourceLibrary = false
+    @State private var isShowingAgentConnection = false
+    @State private var selectedAgentClient: MyWikiAgentClient = .codex
+    @State private var agentSetupRefreshID = UUID()
     @State private var reviewingSuggestion: MyWikiDuplicateSuggestion?
     @State private var duplicateDiscoveryTask: Task<Void, Never>?
 
@@ -92,6 +95,13 @@ struct MyWikiPanel: View {
                     .padding(24)
             }
         }
+        .sheet(isPresented: $isShowingAgentConnection) {
+            MyWikiAgentConnectionSheet(
+                presentation: agentConnectionPresentation,
+                selectedClient: $selectedAgentClient,
+                setupRefreshID: $agentSetupRefreshID
+            )
+        }
     }
 
     private var indexPane: some View {
@@ -138,6 +148,7 @@ struct MyWikiPanel: View {
                     onOrganizeJournals: syncDiaries,
                     onFindDuplicates: findDuplicates,
                     onManageSources: { isShowingSourceLibrary = true },
+                    onUseInAgents: { isShowingAgentConnection = true },
                     onRevealWikiFolder: openProjectFolder,
                     onShowStatus: { isShowingStatus = true },
                     onOpenSource: openSource,
@@ -150,8 +161,19 @@ struct MyWikiPanel: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("My Wiki", systemImage: "point.3.connected.trianglepath.dotted")
-                .font(.system(size: 30, weight: .semibold))
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Label("My Wiki", systemImage: "point.3.connected.trianglepath.dotted")
+                    .font(.system(size: 30, weight: .semibold))
+
+                Spacer()
+
+                Button {
+                    isShowingAgentConnection = true
+                } label: {
+                    Label("Use My Wiki in Agents", systemImage: "externaldrive.connected.to.line.below")
+                }
+                .buttonStyle(.bordered)
+            }
 
             Text(MyWikiUserFacingCopy.overviewSubtitle)
                 .font(.system(size: 14))
@@ -357,6 +379,14 @@ struct MyWikiPanel: View {
         MyWikiPipelineBridge.resolveTarget(
             bundledHelperAppURL: bundledHelperAppURL,
             developmentSourceURL: developmentSourceURL
+        )
+    }
+
+    private var agentConnectionPresentation: MyWikiAgentConnectionPresentation {
+        MyWikiAgentConnectionPresentation(
+            projectRoot: projectRoot,
+            mcpServerScriptURL: MyWikiAgentConnectionPresentation.defaultMCPServerScriptURL(),
+            knowYouBinaryURL: Bundle.main.executableURL ?? URL(fileURLWithPath: "KnowYou")
         )
     }
 

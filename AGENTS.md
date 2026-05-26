@@ -6,6 +6,8 @@ This repository uses Superpower workflows as the default development process.
 
 For any feature, bugfix, refactor, or behavior change, the agent must follow this order unless the user explicitly says otherwise:
 
+Feature development, design, implementation, and testing must be judged for delivery maturity from the perspective of a real user's end-to-end journey.
+
 1. `using-superpowers`
 2. `brainstorming`
 3. `writing-plans` for multi-step work

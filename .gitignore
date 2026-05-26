@@ -5,6 +5,7 @@ build/
 KnowYou/Config/Secrets.xcconfig
 KnowYou/Config/*.local.xcconfig
 KnowYou/Config/*.private.xcconfig
+docs/fundraising/private/
 *.xcuserstate
 **/xcuserdata/
 .DS_Store

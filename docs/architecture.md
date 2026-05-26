@@ -24,7 +24,7 @@ KnowYou 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 1. 采集层：剪贴板监听、通知数据库读取与导入
 2. 存储与调度层：SQLite、run 记录、刷新日志、today-only 定时自动化
 3. 生成层：本地 fallback story 生成、可选云端/CLI 总结器、Markdown 组合
-4. 连接器层：Daily Memory Export 单向导出、Knowledge Imports 单向导入、本地缓存、API 连接器、LaunchAgent 定时运行
+4. 连接器层：Daily Memory Export 单向导出、Add Source 本地引用扫描、prompt-backed 外部目录、LaunchAgent 定时运行
 5. 提醒层：晚间回顾 planner、本地通知权限与调度
 6. 界面层：真实三栏阅读器上的 onboarding coachmarks、设置页、菜单栏状态入口、About & Community 对外入口
 
@@ -133,29 +133,29 @@ flowchart LR
 - 在用户修改自动同步配置时注册或移除用户级 `LaunchAgent`
 - 通过 `SyncMemoryCoordinator` 把全部 `YYYY-MM-DD.md` 复制到外部记忆目录，并以同名覆盖方式做增量修正
 
-当前 `AppState` 也负责 Knowledge Imports 编排：
+当前 `AppState` 也负责 Add Source 本地扫描编排：
 
 - 持有并持久化 `KnowledgeImportConfig`
-- 暴露 `importKnowledgeNow()` 和导入状态文案
-- 持有 `MainContentSelection`，把 diary 阅读、`Add Source` 管理页、connector 内容页和 imported document 选择分开建模
-- 从连接器实例配置创建 Local Folder、Obsidian，以及 prompt-backed 的 Feishu/Lark、Notion、Google Drive 本地目录导入器
+- 暴露 `importKnowledgeNow()` 兼容入口和 source scan 状态文案
+- 持有 `MainContentSelection`，把 diary 阅读、`Add Source` 管理页、source 内容页和 linked document 选择分开建模
+- 从 source 实例配置创建 Local Folder、Obsidian，以及 prompt-backed 的 Feishu/Lark、Notion、Google Drive 本地目录扫描器
 - 对 Feishu/Lark、Notion、Google Drive 不保存 token、OAuth secret、cookie、CLI 登录态或 bearer token；远端授权和定时任务由用户复制 prompt 到 Codex / Cloud Code 后在外部环境完成
-- 在用户修改每日导入配置时注册或移除独立的导入 `LaunchAgent`
-- 通过 `KnowledgeImportCoordinator` 把外部资料导入 KnowYou 自有本地缓存，而不是在 UI 中动态读取远端链接
+- 在用户修改每日扫描配置时注册或移除独立的 `LaunchAgent`
+- 通过 `KnowledgeImportCoordinator` 扫描本地 Markdown/TXT 文件并写入轻量 index；文件型 source 的预览读取原始 source path，不复制正文内容
 
-### 3.3 Knowledge Imports
+### 3.3 Add Source Local Scan
 
-Knowledge Imports 与 Daily Memory Export 是两个方向相反的能力。Daily Memory Export 把 KnowYou 生成的每日日记复制到外部工具；Knowledge Imports 把用户选择的外部资料导入 KnowYou 本地缓存。
+Add Source 与 Daily Memory Export 是边界不同的能力。Daily Memory Export 把 KnowYou 生成的每日日记复制到外部工具；Add Source 把用户已有的本地 Markdown/TXT 文件作为引用扫描进索引。
 
-导入内容存放在 `Application Support/KnowYou/KnowledgeSources/`，每个文档写为 `content.md` 和 `metadata.json`，并在 SQLite 中记录 connector instance、remote identity、content hash、同步状态和 tombstone。Feishu/Lark、Notion、Google Drive 的默认源目录位于 `Application Support/KnowYou/ExternalSources/<platform>/`；KnowYou 只扫描这些目录下的 `.md`、`.markdown`、`.txt` 文件。Obsidian 导入默认跳过 `<vault>/KnowYou/Daily Memories/`，并跳过带有 `knowyou_export: daily_memory` marker 的文件，避免把 KnowYou 自己导出的日记再导入回来。
+文件型 source 的正文保留在原始路径。KnowYou 在 `Application Support/KnowYou/KnowledgeSources/` 下只保存 metadata JSON，并在 SQLite 中记录 connector instance、remote identity、content hash、扫描状态和 tombstone；`localContentPath` 指向原始本地文件。Feishu/Lark、Notion、Google Drive 的默认源目录位于 `Application Support/KnowYou/ExternalSources/<platform>/`；KnowYou 只扫描这些目录下的 `.md`、`.markdown`、`.txt` 文件。Obsidian 扫描默认跳过 `<vault>/KnowYou/Daily Memories/`，并跳过带有 `knowyou_export: daily_memory` marker 的文件，避免把 KnowYou 自己导出的日记再扫回来。
 
 ### 3.4 Add Source Navigation
 
-主窗口左侧导航现在把 `Add Source` 作为独立入口，而不是可折叠父目录。`My Diary` 是内置来源，负责按天生成的 diary 内容；Local Folder、Obsidian、Feishu/Lark、Notion、Google Drive 等连接器添加后也作为平行的一级来源出现。连接器 root 点击只展开或折叠本地路径推导出的文件树；点击 Markdown/TXT 叶子后进入 Markdown preview。
+主窗口左侧导航现在把 `Add Source` 作为独立入口，而不是可折叠父目录。`My Diary` 是内置来源，负责按天生成的 diary 内容；Local Folder、Obsidian、Feishu/Lark、Notion、Google Drive 等连接器添加后也作为平行的一级来源出现。连接器 root 和 folder 点击只展开或折叠本地路径推导出的文件树，不会在主区域打开第二份索引；点击 Markdown/TXT 叶子后，主区域直接进入 Markdown preview。侧边栏优先使用已有品牌 logo，并在从本地路径推导文件树时去掉重复的 connector root 文件夹名，避免 Obsidian vault 下多出一层同名目录。
 
-`Add Source` 主页面只呈现一个 `Sources` 列表。Local Folder 和 Obsidian 直接指向本地目录；Feishu/Lark、Notion、Google Drive 的主动作是 `Generate Prompt`，让用户复制到 Codex / Cloud Code 创建每日或每周定时同步任务。Daily Memory Export 保留底层能力和独立配置面板，但不再与 Add Source 混在同一个导入入口里。
+`Add Source` 主页面只呈现一个 `Sources` 列表。Local Folder 和 Obsidian 直接指向本地目录；Feishu/Lark、Notion、Google Drive 的主动作是 `Generate Prompt`，用弹窗展示 prompt 生成器，默认 daily 且本地时间 11:00，让用户复制到 Codex / Cloud Code 创建每日或每周定时同步任务。Daily Memory Export 保留底层能力和独立配置面板，但不再与 Add Source 混在同一个导入入口里。
 
-`MainContentSelection` 避免把非 diary 页面编码成日期字符串。导入完成后，`AppState.importKnowledgeNow()` 只刷新用户当前仍在查看的 knowledge 页面；如果用户已经切回 diary 或 `Add Source` 管理页，导入完成不会把界面强制跳回旧 connector。
+`MainContentSelection` 避免把非 diary 页面编码成日期字符串。刷新完成后，`AppState.importKnowledgeNow()` 只刷新用户当前仍在查看的 knowledge 页面；如果用户停留在 connector root，只更新左侧文件树且不自动打开第一篇文档；如果用户正在阅读某个 source 文档，则保持该文档选择并重新加载 Markdown。Source 阅读状态不显示第三栏说明面板，避免和左侧文件树形成重复索引。
 
 当前 `AppState` 也负责晚间回顾提醒配置与通知后的前台路由：
 
@@ -301,7 +301,8 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 - 数据库：`~/Library/Application Support/KnowYou/events.sqlite`
 - Vault：`~/Library/Application Support/KnowYou/Vault`
 - 刷新日志：`~/Library/Application Support/KnowYou/RefreshLogs`
-- Knowledge Imports 缓存：`~/Library/Application Support/KnowYou/KnowledgeSources`
+- Add Source metadata/index：`~/Library/Application Support/KnowYou/KnowledgeSources`
+- Prompt-backed source 文件目录：`~/Library/Application Support/KnowYou/ExternalSources`
 
 每一天会写出两份文件：
 

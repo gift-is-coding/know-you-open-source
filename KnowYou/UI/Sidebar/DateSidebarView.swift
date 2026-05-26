@@ -15,6 +15,7 @@ struct DateSidebarView: View {
     @State private var expandedSectionIDs: Set<String> = []
     @State private var isDiaryGroupExpanded = true
     @State private var expandedSourceNodeIDs: Set<String> = []
+    @State private var selectedSourceNodeID: String?
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openURL) private var openURL
 
@@ -95,13 +96,17 @@ struct DateSidebarView: View {
         .onChange(of: selectedDate) {
             seedExpandedSections()
         }
+        .onChange(of: selectedItemID) {
+            selectedSourceNodeID = nil
+        }
     }
 
     private var activeBinding: Binding<String?> {
         Binding(
-            get: { isActive ? selectedItemID : nil },
+            get: { isActive ? selectedSourceNodeID ?? selectedItemID : nil },
             set: { newValue in
                 if let newValue {
+                    selectedSourceNodeID = newValue
                     handleSelectionAction(Self.selectionAction(for: newValue))
                 }
             }
@@ -122,16 +127,26 @@ struct DateSidebarView: View {
             selectRootItem(item)
         } label: {
             HStack(spacing: 8) {
-                Label(item.title, systemImage: item.systemImage)
+                sidebarItemIcon(item)
+                Text(item.title)
                     .foregroundStyle(.primary)
                 Spacer()
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
+        .font(.title3)
         .fontWeight(item.isSelected ? .semibold : .regular)
         .tag(item.id)
+        .simultaneousGesture(
+            TapGesture(count: 2)
+                .onEnded {
+                    if Self.doubleClickExpansionID(for: item) == "diary-root" {
+                        isDiaryGroupExpanded.toggle()
+                    }
+                }
+        )
     }
 
     private func rootRow(_ item: SidebarRootItem) -> some View {
@@ -140,7 +155,8 @@ struct DateSidebarView: View {
                 selectRootItem(item)
             } label: {
                 HStack(spacing: 8) {
-                    Label(item.title, systemImage: item.systemImage)
+                    sidebarItemIcon(item)
+                    Text(item.title)
                         .foregroundStyle(item.isEnabled ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                     Spacer()
                 }
@@ -160,15 +176,22 @@ struct DateSidebarView: View {
                 .accessibilityIdentifier("add-source-add-button")
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
+        .font(.title3)
         .fontWeight(item.isSelected ? .semibold : .regular)
         .tag(item.id)
     }
 
     private func sourceNodeRow(_ item: SidebarRootItem) -> AnyView {
         if item.children.isEmpty {
-            return AnyView(Label(item.title, systemImage: item.systemImage)
-                .padding(.vertical, 4)
+            return AnyView(HStack(spacing: 10) {
+                sidebarItemIcon(item)
+                Text(item.title)
+                    .lineLimit(1)
+                Spacer()
+            }
+                .padding(.vertical, 8)
+                .font(.title3)
                 .fontWeight(item.isSelected ? .semibold : .regular)
                 .foregroundStyle(item.isEnabled ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                 .tag(item.id)
@@ -176,16 +199,51 @@ struct DateSidebarView: View {
                     handleSelectionAction(item.selectionAction ?? Self.selectionAction(for: item.id))
                 })
         } else {
-            return AnyView(DisclosureGroup(isExpanded: sourceExpansionBinding(for: item.id)) {
-                ForEach(item.children) { child in
-                    sourceNodeRow(child)
+            return AnyView(
+                DisclosureGroup(isExpanded: sourceExpansionBinding(for: item.id)) {
+                    ForEach(item.children) { child in
+                        sourceNodeRow(child)
+                    }
+                } label: {
+                    sourceNodeLabel(item)
+                        .onTapGesture(count: 2) {
+                            if let expansionID = Self.doubleClickExpansionID(for: item) {
+                                toggleSourceExpansion(expansionID)
+                            }
+                        }
                 }
-            } label: {
-                Label(item.title, systemImage: item.systemImage)
-                    .padding(.vertical, 4)
-                    .fontWeight(item.isSelected ? .semibold : .regular)
-                    .foregroundStyle(item.isEnabled ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-            })
+                .tag(Self.sidebarSelectionID(for: item))
+            )
+        }
+    }
+
+    private func sourceNodeLabel(_ item: SidebarRootItem) -> some View {
+        HStack(spacing: 10) {
+            sidebarItemIcon(item)
+            Text(item.title)
+                .lineLimit(1)
+            Spacer()
+        }
+        .contentShape(Rectangle())
+        .padding(.vertical, 8)
+        .font(.title3)
+        .fontWeight(item.isSelected ? .semibold : .regular)
+        .foregroundStyle(item.isEnabled ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+    }
+
+    @ViewBuilder
+    private func sidebarItemIcon(_ item: SidebarRootItem) -> some View {
+        let metrics = Self.sidebarIconMetrics(forBrandAssetName: item.brandAssetName)
+        if let brandAssetName = item.brandAssetName, let image = NSImage(named: brandAssetName) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(width: metrics.contentSize, height: metrics.contentSize)
+                .frame(width: metrics.frameSize, height: metrics.frameSize)
+        } else {
+            Image(systemName: item.systemImage)
+                .font(.system(size: 22))
+                .frame(width: metrics.frameSize, height: metrics.frameSize)
         }
     }
 
@@ -287,6 +345,14 @@ struct DateSidebarView: View {
         )
     }
 
+    private func toggleSourceExpansion(_ id: String) {
+        if expandedSourceNodeIDs.contains(id) {
+            expandedSourceNodeIDs.remove(id)
+        } else {
+            expandedSourceNodeIDs.insert(id)
+        }
+    }
+
     private func seedExpandedSections() {
         expandedSectionIDs = Set(
             presentation.sections
@@ -305,6 +371,29 @@ struct DateSidebarView: View {
         return String(itemID.dropFirst(prefix.count))
     }
 
+    static func doubleClickExpansionID(for item: SidebarRootItem) -> String? {
+        if item.id == "diary-root" {
+            return item.id
+        }
+        return item.isExpandable ? item.id : nil
+    }
+
+    static func sidebarSelectionID(for item: SidebarRootItem) -> String {
+        item.id
+    }
+
+    static func sidebarIconMetrics(forBrandAssetName brandAssetName: String?) -> SidebarIconMetrics {
+        SidebarIconMetrics(
+            frameSize: 24,
+            contentSize: brandAssetName == "SourceLogoFeishu" ? 21 : 24
+        )
+    }
+
+}
+
+struct SidebarIconMetrics: Equatable {
+    let frameSize: CGFloat
+    let contentSize: CGFloat
 }
 
 enum SidebarSelectionAction: Equatable {
@@ -318,6 +407,7 @@ struct SidebarRootItem: Identifiable, Equatable {
     let id: String
     let title: String
     let systemImage: String
+    let brandAssetName: String?
     let isSelected: Bool
     let isEnabled: Bool
     let showsAddButton: Bool
@@ -332,6 +422,7 @@ struct SidebarRootItem: Identifiable, Equatable {
         id: String,
         title: String,
         systemImage: String,
+        brandAssetName: String? = nil,
         isSelected: Bool,
         isEnabled: Bool,
         showsAddButton: Bool,
@@ -341,6 +432,7 @@ struct SidebarRootItem: Identifiable, Equatable {
         self.id = id
         self.title = title
         self.systemImage = systemImage
+        self.brandAssetName = brandAssetName
         self.isSelected = isSelected
         self.isEnabled = isEnabled
         self.showsAddButton = showsAddButton
@@ -400,6 +492,7 @@ struct DateSidebarPresentation {
                 id: "connector:\(instance.id)",
                 title: instance.displayName,
                 systemImage: Self.systemImage(for: instance.connectorID),
+                brandAssetName: Self.brandAssetName(for: instance.connectorID),
                 isSelected: selectedItemID == "connector:\(instance.id)",
                 isEnabled: instance.isEnabled,
                 showsAddButton: false,
@@ -510,6 +603,21 @@ struct DateSidebarPresentation {
         }
     }
 
+    private static func brandAssetName(for connectorID: KnowledgeConnectorID) -> String? {
+        switch connectorID {
+        case .obsidianImport:
+            return "SourceLogoObsidian"
+        case .feishuImport:
+            return "SourceLogoFeishu"
+        case .notionImport:
+            return "SourceLogoNotion"
+        case .googleDriveImport:
+            return "SourceLogoGoogleDrive"
+        case .localFolderImport, .obsidianExport, .openClawExport:
+            return nil
+        }
+    }
+
     private static func documentTree(
         for documents: [ImportedKnowledgeDocument],
         connector: KnowledgeConnectorInstanceConfig,
@@ -534,7 +642,7 @@ struct DateSidebarPresentation {
                 let prefix = rootPath.hasSuffix("/") ? rootPath : "\(rootPath)/"
                 if standardizedPath.hasPrefix(prefix) {
                     let relative = String(standardizedPath.dropFirst(prefix.count))
-                    return pathComponents(relative)
+                    return pathComponents(relative, droppingDuplicatedRootNameFrom: rootPath)
                 }
             }
             return pathComponents(URL(fileURLWithPath: standardizedPath).lastPathComponent)
@@ -550,6 +658,15 @@ struct DateSidebarPresentation {
     private static func pathComponents(_ path: String) -> [String] {
         let components = path.split(separator: "/").map(String.init).filter { !$0.isEmpty }
         return components.isEmpty ? [path] : components
+    }
+
+    private static func pathComponents(_ path: String, droppingDuplicatedRootNameFrom rootPath: String) -> [String] {
+        var components = pathComponents(path)
+        let rootName = URL(fileURLWithPath: rootPath, isDirectory: true).lastPathComponent
+        if components.first == rootName {
+            components.removeFirst()
+        }
+        return components.isEmpty ? pathComponents(path) : components
     }
 
     private static func formattedDay(_ dateString: String, today: Date, calendar: Calendar) -> String {

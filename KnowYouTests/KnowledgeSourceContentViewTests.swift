@@ -2,83 +2,86 @@ import XCTest
 @testable import KnowYou
 
 final class KnowledgeSourceContentViewTests: XCTestCase {
-    func testPresentationShowsEmptyStateWhenConnectorHasNoDocuments() {
-        let connector = KnowledgeConnectorInstanceConfig(
-            id: "feishu-main",
-            connectorID: .feishuImport,
-            displayName: "飞书文档",
-            sourcePath: "doc-token",
-            isEnabled: true
-        )
+    func testPresentationShowsEmptyStateWithoutIndexOrReadingActions() {
+        let connector = makeConnector()
 
         let presentation = KnowledgeSourceContentPresentation(
             connector: connector,
             documents: [],
             selectedDocumentID: nil,
             selectedMarkdown: nil,
-            statusMessage: nil
+            statusMessage: "Refreshed 314 documents"
         )
 
         XCTAssertEqual(presentation.title, "飞书文档")
         XCTAssertEqual(presentation.state, .empty)
-        XCTAssertEqual(presentation.emptyTitle, "No documents yet")
-        XCTAssertTrue(presentation.showsSyncNow)
+        XCTAssertEqual(presentation.emptyTitle, "No document selected")
+        XCTAssertEqual(
+            presentation.emptyMessage,
+            "Choose a Markdown or text file from the source tree on the left."
+        )
+        XCTAssertFalse(presentation.showsDocumentList)
+        XCTAssertFalse(presentation.showsRefreshAction)
+        XCTAssertFalse(presentation.showsConfigureAction)
+        XCTAssertNil(presentation.statusMessage)
     }
 
-    func testPresentationShowsSelectedDocumentMarkdown() {
-        let connector = KnowledgeConnectorInstanceConfig(
-            id: "feishu-main",
-            connectorID: .feishuImport,
-            displayName: "飞书文档",
-            sourcePath: "doc-token",
-            isEnabled: true
-        )
-        let document = ImportedKnowledgeDocument(
-            id: "doc-1",
-            connectorInstanceID: "feishu-main",
-            connectorID: .feishuImport,
-            remoteID: "remote-1",
-            title: "Project Plan",
-            sourcePath: nil,
-            remoteURL: nil,
-            mimeType: "text/markdown",
-            contentHash: "hash",
-            remoteUpdatedAt: nil,
-            firstImportedAt: Date(timeIntervalSince1970: 1_778_000_000),
-            lastSyncedAt: Date(timeIntervalSince1970: 1_778_000_100),
-            deletedAt: nil,
-            localContentPath: "/tmp/content.md",
-            localMetadataPath: "/tmp/metadata.json",
-            normalizationVersion: 1,
-            originKind: "feishu"
-        )
+    func testPresentationShowsOnlySelectedDocumentMarkdownWithoutIndexChrome() {
+        let connector = makeConnector()
+        let document = makeDocument(id: "doc-1", title: "Project Plan")
 
         let presentation = KnowledgeSourceContentPresentation(
             connector: connector,
             documents: [document],
             selectedDocumentID: "doc-1",
             selectedMarkdown: "# Project Plan",
-            statusMessage: "Imported 1 document"
+            statusMessage: "Refreshed 1 document"
         )
 
         XCTAssertEqual(presentation.state, .documents)
-        XCTAssertEqual(presentation.documentRows.map(\.title), ["Project Plan"])
-        XCTAssertEqual(presentation.documentRows.first?.isSelected, true)
         XCTAssertEqual(presentation.markdown, "# Project Plan")
-        XCTAssertEqual(presentation.statusMessage, "Imported 1 document")
+        XCTAssertFalse(presentation.showsDocumentList)
+        XCTAssertFalse(presentation.showsRefreshAction)
+        XCTAssertFalse(presentation.showsConfigureAction)
+        XCTAssertNil(presentation.statusMessage)
     }
 
-    func testPresentationClearsMarkdownWhenSelectedDocumentDoesNotMatchCurrentRows() {
-        let connector = KnowledgeConnectorInstanceConfig(
-            id: "feishu-main",
-            connectorID: .feishuImport,
-            displayName: "飞书文档",
-            sourcePath: "doc-token",
-            isEnabled: true
-        )
+    func testPresentationStripsFrontmatterBeforeMarkdownPreview() {
+        let connector = makeConnector()
         let document = makeDocument(id: "doc-1", title: "Project Plan")
 
-        let missingSelectionPresentation = KnowledgeSourceContentPresentation(
+        let presentation = KnowledgeSourceContentPresentation(
+            connector: connector,
+            documents: [document],
+            selectedDocumentID: "doc-1",
+            selectedMarkdown: """
+            ---
+            source: feishu
+            title: Project Plan
+            ---
+
+            # Project Plan
+
+            **Important** item
+            """,
+            statusMessage: nil
+        )
+
+        XCTAssertEqual(
+            presentation.markdown,
+            """
+            # Project Plan
+
+            **Important** item
+            """
+        )
+    }
+
+    func testPresentationClearsMarkdownWhenSelectedDocumentDoesNotMatchCurrentSource() {
+        let connector = makeConnector()
+        let document = makeDocument(id: "doc-1", title: "Project Plan")
+
+        let presentation = KnowledgeSourceContentPresentation(
             connector: connector,
             documents: [document],
             selectedDocumentID: "stale-doc",
@@ -86,78 +89,10 @@ final class KnowledgeSourceContentViewTests: XCTestCase {
             statusMessage: nil
         )
 
-        XCTAssertNil(missingSelectionPresentation.markdown)
-        XCTAssertFalse(missingSelectionPresentation.documentRows.contains { $0.isSelected })
-
-        let unselectedPresentation = KnowledgeSourceContentPresentation(
-            connector: connector,
-            documents: [document],
-            selectedDocumentID: nil,
-            selectedMarkdown: "# Unmatched",
-            statusMessage: nil
-        )
-
-        XCTAssertNil(unselectedPresentation.markdown)
-        XCTAssertFalse(unselectedPresentation.documentRows.contains { $0.isSelected })
+        XCTAssertNil(presentation.markdown)
     }
 
-    func testPresentationDocumentSubtitlePrefersSourcePathThenRemoteURLThenMimeType() {
-        let connector = KnowledgeConnectorInstanceConfig(
-            id: "feishu-main",
-            connectorID: .feishuImport,
-            displayName: "飞书文档",
-            sourcePath: "doc-token",
-            isEnabled: true
-        )
-        let sourcePathDocument = makeDocument(
-            id: "doc-1",
-            title: "Source Path",
-            sourcePath: "/Users/me/plan.md",
-            remoteURL: "https://example.com/plan",
-            mimeType: "text/markdown"
-        )
-        let remoteURLDocument = makeDocument(
-            id: "doc-2",
-            title: "Remote URL",
-            sourcePath: nil,
-            remoteURL: "https://example.com/remote",
-            mimeType: "application/pdf"
-        )
-        let mimeTypeDocument = makeDocument(
-            id: "doc-3",
-            title: "MIME Type",
-            sourcePath: nil,
-            remoteURL: nil,
-            mimeType: "text/plain"
-        )
-        let blankSourcePathDocument = makeDocument(
-            id: "doc-4",
-            title: "Blank Source Path",
-            sourcePath: "   ",
-            remoteURL: "https://example.com/fallback",
-            mimeType: "text/html"
-        )
-
-        let presentation = KnowledgeSourceContentPresentation(
-            connector: connector,
-            documents: [sourcePathDocument, remoteURLDocument, mimeTypeDocument, blankSourcePathDocument],
-            selectedDocumentID: nil,
-            selectedMarkdown: nil,
-            statusMessage: nil
-        )
-
-        XCTAssertEqual(
-            presentation.documentRows.map(\.subtitle),
-            [
-                "/Users/me/plan.md",
-                "https://example.com/remote",
-                "text/plain",
-                "https://example.com/fallback"
-            ]
-        )
-    }
-
-    func testPresentationShowsDisabledStateForDisabledConnector() {
+    func testPresentationShowsDisabledStateWithoutRefreshAction() {
         let connector = KnowledgeConnectorInstanceConfig(
             id: "drive-main",
             connectorID: .googleDriveImport,
@@ -176,15 +111,22 @@ final class KnowledgeSourceContentViewTests: XCTestCase {
 
         XCTAssertEqual(presentation.state, .disabled)
         XCTAssertEqual(presentation.emptyTitle, "Connector disabled")
-        XCTAssertFalse(presentation.showsSyncNow)
+        XCTAssertFalse(presentation.showsRefreshAction)
+    }
+
+    private func makeConnector() -> KnowledgeConnectorInstanceConfig {
+        KnowledgeConnectorInstanceConfig(
+            id: "feishu-main",
+            connectorID: .feishuImport,
+            displayName: "飞书文档",
+            sourcePath: "doc-token",
+            isEnabled: true
+        )
     }
 
     private func makeDocument(
         id: String,
-        title: String,
-        sourcePath: String? = nil,
-        remoteURL: String? = nil,
-        mimeType: String = "text/markdown"
+        title: String
     ) -> ImportedKnowledgeDocument {
         ImportedKnowledgeDocument(
             id: id,
@@ -192,9 +134,9 @@ final class KnowledgeSourceContentViewTests: XCTestCase {
             connectorID: .feishuImport,
             remoteID: "remote-\(id)",
             title: title,
-            sourcePath: sourcePath,
-            remoteURL: remoteURL,
-            mimeType: mimeType,
+            sourcePath: "/tmp/\(id).md",
+            remoteURL: nil,
+            mimeType: "text/markdown",
             contentHash: "hash-\(id)",
             remoteUpdatedAt: nil,
             firstImportedAt: Date(timeIntervalSince1970: 1_778_000_000),

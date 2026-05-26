@@ -188,7 +188,7 @@ struct DailyMarkdownView: View {
                     .frame(width: 2)
                     .padding(.vertical, 4)
 
-                MarkdownParagraphContent(markdown: paragraph.text)
+                MarkdownPreviewContent(markdown: paragraph.text)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
@@ -1192,7 +1192,7 @@ enum DailyMarkdownRenderer {
     }
 }
 
-private struct MarkdownParagraphContent: View {
+struct MarkdownPreviewContent: View {
     let markdown: String
 
     var body: some View {

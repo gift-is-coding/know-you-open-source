@@ -234,34 +234,8 @@ struct MainWindowView: View {
                 .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
                 .onboardingCoachmarkTarget(.sourcesPanel)
             case .otherSourceManager, .knowledgeConnector, .knowledgeDocument:
-                GeometryReader { proxy in
-                    VStack(alignment: .leading, spacing: 18) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Local Storage")
-                                .font(.headline)
-                            Text("Add Source documents are copied into KnowYou local storage as Markdown. Source files are not modified.")
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Sync Rules")
-                                .font(.headline)
-                            Text("Daily import can run on a schedule, and manual Import Now is always available.")
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Text("Duplicates are matched by source identity and content hash.")
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Text("KnowYou diary exports are skipped during imports to avoid Obsidian export/import loops.")
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .padding(20)
-                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-                }
-                .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
+                Color.clear
+                    .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 0)
             }
         }
     }
@@ -413,21 +387,7 @@ struct MainWindowView: View {
                         selectedDocumentID: appState.selectedKnowledgeDocument?.id,
                         selectedMarkdown: appState.selectedKnowledgeDocumentMarkdown,
                         statusMessage: appState.knowledgeImportStatusMessage
-                    ),
-                    onSyncNow: {
-                        Task { @MainActor in
-                            await appState.importKnowledgeNow()
-                        }
-                    },
-                    onSelectDocument: { documentID in
-                        appState.selectKnowledgeDocument(
-                            connectorInstanceID: connectorInstanceID,
-                            documentID: documentID
-                        )
-                    },
-                    onConfigure: {
-                        appState.selectOtherSourceManager(focusAddConnector: false)
-                    }
+                    )
                 )
             } else {
                 Text("Connector not found")

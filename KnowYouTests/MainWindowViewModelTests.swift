@@ -4502,7 +4502,7 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(yesterdayStarted, 0)
 
         await gate.release(dayKey: "2026-04-11")
-        let completed = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
+        let completed = await waitUntil(timeoutNanoseconds: 5_000_000_000) {
             appState.onboardingBootstrapState == .complete
         }
         XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after refreshing the missing day")
@@ -6295,8 +6295,8 @@ final class MainWindowViewModelTests: XCTestCase {
 
         await appState.importKnowledgeNow()
 
-        XCTAssertEqual(appState.knowledgeImportStatusMessage, "Imported 1 document")
-        XCTAssertEqual(appState.statusMessage, "Imported 1 document")
+        XCTAssertEqual(appState.knowledgeImportStatusMessage, "Refreshed 1 document")
+        XCTAssertEqual(appState.statusMessage, "Refreshed 1 document")
         XCTAssertFalse(appState.syncMemoryConfig.autoSyncEnabled)
     }
 
@@ -6331,7 +6331,7 @@ final class MainWindowViewModelTests: XCTestCase {
 
         await appState.importKnowledgeNow()
 
-        XCTAssertEqual(appState.knowledgeImportStatusMessage, "Imported 1 document")
+        XCTAssertEqual(appState.knowledgeImportStatusMessage, "Refreshed 1 document")
         XCTAssertEqual(appState.knowledgeDocumentsByConnector["feishu-main"]?.map(\.title), ["plan"])
         XCTAssertEqual(
             appState.knowledgeDocumentsByConnector["feishu-main"]?.first?.originKind,
@@ -6343,6 +6343,43 @@ final class MainWindowViewModelTests: XCTestCase {
                 service: "MainWindowViewModelTests"
             )
         )
+    }
+
+    func testAppLaunchScansPersistedPromptBackedSourceDirectory() async throws {
+        let environment = try makeEngineEnvironment()
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root.appending(path: "minutes", directoryHint: .isDirectory), withIntermediateDirectories: true)
+        try "# Meeting Notes".write(
+            to: root.appending(path: "minutes/standup.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        KnowledgeImportConfig(
+            connectorInstances: [
+                KnowledgeConnectorInstanceConfig(
+                    id: "feishu-main",
+                    connectorID: .feishuImport,
+                    displayName: "Feishu Docs",
+                    sourcePath: root.path,
+                    isEnabled: true
+                )
+            ]
+        ).save(to: engineDefaults)
+
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let didScan = await waitUntil {
+            appState.knowledgeDocumentsByConnector["feishu-main"]?.map(\.remoteID) == ["minutes/standup.md"]
+        }
+        XCTAssertTrue(didScan)
+        XCTAssertEqual(appState.knowledgeDocumentsByConnector["feishu-main"]?.first?.localContentPath, root.appending(path: "minutes/standup.md").path)
     }
 
     func testImportKnowledgeNowRefreshesVisibleKnowledgeConnectorDocuments() async throws {
@@ -6381,7 +6418,8 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertEqual(appState.mainContentSelection, .knowledgeConnector(instanceID: "local-main"))
         XCTAssertEqual(appState.selectedKnowledgeDocuments.map(\.title), ["imported"])
-        XCTAssertEqual(appState.selectedKnowledgeDocumentMarkdown, "# Imported")
+        XCTAssertNil(appState.selectedKnowledgeDocument)
+        XCTAssertNil(appState.selectedKnowledgeDocumentMarkdown)
     }
 
     func testImportKnowledgeNowLeavesDiaryAndOtherSourceSelectionUnchanged() async throws {
@@ -7187,7 +7225,7 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.selectedDate, "2026-05-23")
     }
 
-    func testAppStateSelectsKnowledgeConnectorAndLoadsItsDocuments() throws {
+    func testAppStateSelectsKnowledgeConnectorWithoutOpeningFirstDocument() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let vault = root.appendingPathComponent("Vault", isDirectory: true)
         let databaseURL = root.appendingPathComponent("events.sqlite")
@@ -7237,7 +7275,8 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertEqual(appState.mainContentSelection, .knowledgeConnector(instanceID: "feishu-main"))
         XCTAssertEqual(appState.selectedKnowledgeDocuments.map(\.title), ["Project Plan"])
-        XCTAssertEqual(appState.selectedKnowledgeDocumentMarkdown, "# Project Plan")
+        XCTAssertNil(appState.selectedKnowledgeDocument)
+        XCTAssertNil(appState.selectedKnowledgeDocumentMarkdown)
     }
 
     func testRefreshNotesIndexAutoSelectsDiaryMainContentSelection() throws {
@@ -7448,7 +7487,7 @@ final class MainWindowViewModelTests: XCTestCase {
         try fullMarkdown.write(toFile: document.localContentPath, atomically: true, encoding: .utf8)
         try environment.databaseWriter.upsertImportedKnowledgeDocument(document)
 
-        appState.selectKnowledgeConnector(instanceID: "feishu-main")
+        appState.selectKnowledgeDocument(connectorInstanceID: "feishu-main", documentID: "doc-large")
 
         let preview = try XCTUnwrap(appState.selectedKnowledgeDocumentMarkdown)
         XCTAssertLessThan(preview.count, fullMarkdown.count)

@@ -2,6 +2,34 @@ import XCTest
 @testable import KnowYou
 
 final class KnowledgeImportCoordinatorTests: XCTestCase {
+    func testFileBackedScanReferencesOriginalSourceFile() async throws {
+        let fixture = try makeFixture(now: Date(timeIntervalSince1970: 1_778_100_025))
+        let sourceRoot = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer {
+            try? FileManager.default.removeItem(at: fixture.root)
+            try? FileManager.default.removeItem(at: sourceRoot)
+        }
+        let sourceURL = sourceRoot.appending(path: "minutes/team.md")
+        try FileManager.default.createDirectory(at: sourceURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "# Team Minutes".write(to: sourceURL, atomically: true, encoding: .utf8)
+        let connector = FileBackedPlatformKnowledgeConnector(
+            connectorInstanceID: "feishu-main",
+            connectorID: .feishuImport,
+            rootURL: sourceRoot
+        )
+
+        let result = await fixture.coordinator.sync(connectors: [connector])
+
+        XCTAssertEqual(result.succeededConnectorInstanceIDs, ["feishu-main"])
+        XCTAssertEqual(result.changedDocumentCount, 1)
+        let document = try XCTUnwrap(fixture.databaseWriter.fetchImportedKnowledgeDocuments(connectorInstanceID: "feishu-main").first)
+        XCTAssertEqual(document.remoteID, "minutes/team.md")
+        XCTAssertEqual(document.localContentPath, sourceURL.path)
+        XCTAssertEqual(document.sourcePath, sourceURL.path)
+        XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: document.localContentPath), encoding: .utf8), "# Team Minutes")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: URL(fileURLWithPath: document.localMetadataPath).deletingLastPathComponent().appending(path: "content.md").path))
+    }
+
     func testSyncContinuesWhenOneConnectorFailsAndPersistsSuccessfulDocuments() async throws {
         let fixture = try makeFixture(now: Date(timeIntervalSince1970: 1_778_100_000))
         defer { try? FileManager.default.removeItem(at: fixture.root) }

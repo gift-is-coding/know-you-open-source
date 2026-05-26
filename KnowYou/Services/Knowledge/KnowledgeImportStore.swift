@@ -11,6 +11,12 @@ struct KnowledgeImportSnapshot: Equatable, Sendable {
     var contentMarkdown: String
     var remoteUpdatedAt: Date?
     var originKind: String
+    var contentStorageMode: KnowledgeImportContentStorageMode = .copyToCache
+}
+
+enum KnowledgeImportContentStorageMode: String, Codable, Equatable, Sendable {
+    case copyToCache
+    case referenceSourceFile
 }
 
 struct KnowledgeImportSaveResult: Equatable, Sendable {
@@ -55,7 +61,7 @@ struct KnowledgeImportStore {
         writeLock.lock()
         defer { writeLock.unlock() }
 
-        let contentURL = directory.appending(path: "content.md")
+        let contentURL = try contentURL(for: snapshot, in: directory)
         let metadataURL = directory.appending(path: "metadata.json")
         let existingMetadata: ImportedKnowledgeDocument?
         let shouldRewriteStaleMetadata: Bool
@@ -115,7 +121,12 @@ struct KnowledgeImportStore {
             originKind: snapshot.originKind
         )
         let data = try JSONEncoder.knowledgeImport().encode(document)
-        try writePreparedDocument(markdown: snapshot.contentMarkdown, metadata: data, to: directory)
+        switch snapshot.contentStorageMode {
+        case .copyToCache:
+            try writePreparedDocument(markdown: snapshot.contentMarkdown, metadata: data, to: directory)
+        case .referenceSourceFile:
+            try writeReferenceMetadata(data, to: metadataURL)
+        }
         return KnowledgeImportSaveResult(
             document: document,
             didChange: Self.didChange(document, comparedTo: authorityDocument)
@@ -162,6 +173,19 @@ struct KnowledgeImportStore {
             .appending(path: snapshot.connectorID.rawValue, directoryHint: .isDirectory)
             .appending(path: Self.safePathComponent(snapshot.connectorInstanceID), directoryHint: .isDirectory)
             .appending(path: Self.safePathComponent(documentID), directoryHint: .isDirectory)
+    }
+
+    private func contentURL(for snapshot: KnowledgeImportSnapshot, in directory: URL) throws -> URL {
+        switch snapshot.contentStorageMode {
+        case .copyToCache:
+            return directory.appending(path: "content.md")
+        case .referenceSourceFile:
+            guard let sourcePath = snapshot.sourcePath?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  sourcePath.isEmpty == false else {
+                throw KnowledgeImportStoreError.missingReferenceSourcePath(remoteID: snapshot.remoteID)
+            }
+            return URL(fileURLWithPath: sourcePath)
+        }
     }
 
     private static func validateExistingDocument(
@@ -274,6 +298,7 @@ struct KnowledgeImportStore {
             let data = try JSONEncoder.knowledgeImport().encode(normalizedDocument)
             try fileManager.createDirectory(at: metadataURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: metadataURL, options: .atomic)
+            removeStaleCopiedContentIfNeeded(contentURL: contentURL, metadataURL: metadataURL)
         }
         return normalizedDocument
     }
@@ -311,6 +336,25 @@ struct KnowledgeImportStore {
             try? fileManager.removeItem(at: temporaryDirectory)
             throw error
         }
+    }
+
+    private func writeReferenceMetadata(_ data: Data, to metadataURL: URL) throws {
+        try fileManager.createDirectory(at: metadataURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: metadataURL, options: .atomic)
+
+        let staleCopiedContentURL = metadataURL.deletingLastPathComponent().appending(path: "content.md")
+        if fileManager.fileExists(atPath: staleCopiedContentURL.path) {
+            try? fileManager.removeItem(at: staleCopiedContentURL)
+        }
+    }
+
+    private func removeStaleCopiedContentIfNeeded(contentURL: URL, metadataURL: URL) {
+        let staleCopiedContentURL = metadataURL.deletingLastPathComponent().appending(path: "content.md")
+        guard contentURL.standardizedFileURL.path != staleCopiedContentURL.standardizedFileURL.path,
+              fileManager.fileExists(atPath: staleCopiedContentURL.path) else {
+            return
+        }
+        try? fileManager.removeItem(at: staleCopiedContentURL)
     }
 
     private static func safePathComponent(_ value: String) -> String {
@@ -354,6 +398,7 @@ private extension JSONDecoder {
 }
 
 private enum KnowledgeImportStoreError: Error, CustomStringConvertible {
+    case missingReferenceSourcePath(remoteID: String)
     case existingDocumentIdentityMismatch(
         expectedConnectorInstanceID: String,
         expectedConnectorID: KnowledgeConnectorID,
@@ -365,6 +410,8 @@ private enum KnowledgeImportStoreError: Error, CustomStringConvertible {
 
     var description: String {
         switch self {
+        case .missingReferenceSourcePath(let remoteID):
+            return "Reference snapshot is missing sourcePath for \(remoteID)"
         case let .existingDocumentIdentityMismatch(
             expectedConnectorInstanceID,
             expectedConnectorID,

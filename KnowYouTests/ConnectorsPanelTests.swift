@@ -51,10 +51,27 @@ final class ConnectorsPanelTests: XCTestCase {
         XCTAssertFalse(presentation.showsDailyMemoryExport)
         XCTAssertFalse(presentation.showsHeaderAddConnector)
         XCTAssertFalse(presentation.showsConnectedSection)
+        XCTAssertTrue(presentation.usesModalPromptGeneration)
+        XCTAssertFalse(presentation.showsInlineExternalPrompt)
         XCTAssertEqual(
             presentation.addSourceCards.first { $0.id == "feishu" }?.localDirectory,
             "/Users/me/Library/Application Support/KnowYou/ExternalSources/feishu"
         )
+        XCTAssertEqual(
+            presentation.addSourceCards.map(\.brandAssetName),
+            [nil, nil, "SourceLogoObsidian", "SourceLogoFeishu", "SourceLogoNotion", "SourceLogoGoogleDrive"]
+        )
+    }
+
+    func testExternalSourcePromptDefaultImportTimeIsElevenAM() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        let date = ExternalSourcePromptPresentation.defaultImportTime(calendar: calendar)
+        let components = calendar.dateComponents([.hour, .minute], from: date)
+
+        XCTAssertEqual(components.hour, 11)
+        XCTAssertEqual(components.minute, 0)
     }
 
     func testAddSourceRootFoldsConnectedSourcesIntoSingleSourceCardList() throws {
@@ -82,7 +99,7 @@ final class ConnectorsPanelTests: XCTestCase {
                     ]
                 ),
                 syncMemoryStatusMessage: nil,
-                knowledgeImportStatusMessage: "Imported 2 documents"
+                knowledgeImportStatusMessage: "Refreshed 2 documents"
             ),
             surface: .otherSourceRoot,
             externalSourcesRootURL: root
@@ -91,12 +108,12 @@ final class ConnectorsPanelTests: XCTestCase {
         XCTAssertFalse(presentation.showsConnectedSection)
         XCTAssertEqual(presentation.panelPresentation.importRows.map(\.title), ["Notion"])
         let notionCard = try XCTUnwrap(presentation.addSourceCards.first { $0.id == "notion" })
-        XCTAssertEqual(notionCard.status, "Connected")
+        XCTAssertEqual(notionCard.status, "Linked")
         XCTAssertEqual(notionCard.detail, sourcePath)
-        XCTAssertEqual(notionCard.primaryActionTitle, "Sync Now")
+        XCTAssertEqual(notionCard.primaryActionTitle, "Refresh")
     }
 
-    func testPromptBackedSourceShowsNeedsFirstSyncWhenLocalDirectoryIsEmpty() throws {
+    func testPromptBackedSourceShowsNeedsFirstScanWhenLocalDirectoryIsEmpty() throws {
         let root = try makeTemporaryDirectory()
         let feishuURL = root.appending(path: "feishu", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: feishuURL, withIntermediateDirectories: true)
@@ -122,7 +139,7 @@ final class ConnectorsPanelTests: XCTestCase {
         )
 
         let feishuCard = try XCTUnwrap(presentation.addSourceCards.first { $0.id == "feishu" })
-        XCTAssertEqual(feishuCard.status, "Needs first sync")
+        XCTAssertEqual(feishuCard.status, "Needs first scan")
         XCTAssertEqual(feishuCard.primaryActionTitle, "Generate Prompt")
     }
 
@@ -211,6 +228,44 @@ final class ConnectorsPanelTests: XCTestCase {
         XCTAssertEqual(presentation.importRows.map(\.detail), ["/vault", "workspace@example.com"])
         XCTAssertEqual(presentation.syncMemoryStatusMessage, "Export ready")
         XCTAssertEqual(presentation.knowledgeImportStatusMessage, "Import ready")
+    }
+
+    func testConfiguredLocalAndObsidianSourcesUseLinkedAndRefreshCopy() {
+        let presentation = ConnectorsManagementPresentation(
+            panelPresentation: ConnectorsPanelPresentation(
+                syncMemoryConfig: .default,
+                knowledgeImportConfig: KnowledgeImportConfig(
+                    connectorInstances: [
+                        KnowledgeConnectorInstanceConfig(
+                            id: "local-main",
+                            connectorID: .localFolderImport,
+                            displayName: "Research",
+                            sourcePath: "/Users/me/Research",
+                            isEnabled: true
+                        ),
+                        KnowledgeConnectorInstanceConfig(
+                            id: "obsidian-main",
+                            connectorID: .obsidianImport,
+                            displayName: "Obsidian Vault",
+                            sourcePath: "/Users/me/Obsidian",
+                            isEnabled: true
+                        ),
+                    ]
+                ),
+                syncMemoryStatusMessage: nil,
+                knowledgeImportStatusMessage: nil
+            ),
+            surface: .otherSourceRoot
+        )
+
+        let localCard = presentation.addSourceCards.first { $0.id == "local-folder" }
+        let obsidianCard = presentation.addSourceCards.first { $0.id == "obsidian" }
+        XCTAssertEqual(localCard?.status, "Linked")
+        XCTAssertEqual(localCard?.primaryActionTitle, "Refresh")
+        XCTAssertTrue(localCard?.detail.contains("Reference only") == true)
+        XCTAssertEqual(obsidianCard?.status, "Linked")
+        XCTAssertEqual(obsidianCard?.primaryActionTitle, "Refresh")
+        XCTAssertTrue(obsidianCard?.detail.contains("Reference only") == true)
     }
 
     private func makeTime(hour: Int, minute: Int) -> Date {

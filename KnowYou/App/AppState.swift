@@ -777,6 +777,7 @@ final class AppState {
             updateNotificationAccessStatus(using: environment.notificationReader)
             refreshEngineStatuses()
             refreshNotesIndex()
+            queueInitialLinkedSourceScanIfNeeded()
             if bootstrapServices {
                 queueEndOfDayReminderBootstrap()
                 restoreOnboardingProgress(
@@ -819,6 +820,7 @@ final class AppState {
             updateNotificationAccessStatus(using: environment.notificationReader)
             refreshEngineStatuses()
             refreshNotesIndex()
+            queueInitialLinkedSourceScanIfNeeded()
             statusMessage = "Capture services ready"
             queueEndOfDayReminderBootstrap()
             restoreOnboardingProgress(
@@ -864,7 +866,9 @@ final class AppState {
         mainContentSelection = .knowledgeConnector(instanceID: instanceID)
         readerFocus = .dateList
         refreshKnowledgeDocumentTree()
-        reloadKnowledgeDocuments(connectorInstanceID: instanceID)
+        selectedKnowledgeDocuments = fetchKnowledgeDocuments(connectorInstanceID: instanceID)
+        selectedKnowledgeDocument = nil
+        selectedKnowledgeDocumentMarkdown = nil
     }
 
     func selectKnowledgeDocument(connectorInstanceID: String, documentID: String) {
@@ -916,13 +920,6 @@ final class AppState {
         guard isPresentingOnboardingDemo else { return }
         selectedStoryParagraphID = nil
         selectedStorySourceEvents = []
-    }
-
-    private func reloadKnowledgeDocuments(connectorInstanceID: String) {
-        refreshKnowledgeDocumentTree()
-        selectedKnowledgeDocuments = fetchKnowledgeDocuments(connectorInstanceID: connectorInstanceID)
-        selectedKnowledgeDocument = selectedKnowledgeDocuments.first
-        selectedKnowledgeDocumentMarkdown = loadKnowledgeDocumentMarkdown(selectedKnowledgeDocument)
     }
 
     private func refreshKnowledgeDocumentTree() {
@@ -1226,12 +1223,23 @@ final class AppState {
             )
             if config.isImportEnabled {
                 let timeSummary = String(format: "%02d:%02d", config.dailyImportHour, config.dailyImportMinute)
-                setKnowledgeImportStatus("Knowledge import enabled for \(timeSummary)")
+                setKnowledgeImportStatus("Source scan enabled for \(timeSummary)")
             } else {
-                setKnowledgeImportStatus("Knowledge import disabled")
+                setKnowledgeImportStatus("Source scan disabled")
             }
         } catch {
-            setKnowledgeImportStatus("Knowledge import setup failed: \(error.localizedDescription)")
+            setKnowledgeImportStatus("Source scan setup failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func queueInitialLinkedSourceScanIfNeeded() {
+        guard knowledgeImportConfig.connectorInstances.contains(where: \.isEnabled),
+              ProcessInfo.processInfo.arguments.contains("--import-knowledge-now") == false else {
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            await self?.importKnowledgeNow()
         }
     }
 
@@ -1247,13 +1255,13 @@ final class AppState {
 
     func importKnowledgeNow() async {
         guard let environment else {
-            setKnowledgeImportStatus("Knowledge import unavailable")
+            setKnowledgeImportStatus("Source scan unavailable")
             return
         }
 
         let connectors = makeKnowledgeImportConnectors(from: knowledgeImportConfig)
         guard !connectors.isEmpty else {
-            setKnowledgeImportStatus("No Knowledge Imports enabled")
+            setKnowledgeImportStatus("No linked sources enabled")
             return
         }
 
@@ -1264,7 +1272,7 @@ final class AppState {
         )
         let result = await coordinator.sync(connectors: connectors)
         let noun = result.changedDocumentCount == 1 ? "document" : "documents"
-        setKnowledgeImportStatus("Imported \(result.changedDocumentCount) \(noun)")
+        setKnowledgeImportStatus("Refreshed \(result.changedDocumentCount) \(noun)")
         refreshKnowledgeDocumentTree()
         refreshVisibleKnowledgeSelectionAfterImport()
     }
@@ -1276,7 +1284,9 @@ final class AppState {
                 selectOtherSourceManager(focusAddConnector: false)
                 return
             }
-            reloadKnowledgeDocuments(connectorInstanceID: instanceID)
+            selectedKnowledgeDocuments = fetchKnowledgeDocuments(connectorInstanceID: instanceID)
+            selectedKnowledgeDocument = nil
+            selectedKnowledgeDocumentMarkdown = nil
         case .knowledgeDocument(let connectorInstanceID, let documentID):
             guard knowledgeImportConfig.connectorInstances.contains(where: { $0.id == connectorInstanceID }) else {
                 selectOtherSourceManager(focusAddConnector: false)

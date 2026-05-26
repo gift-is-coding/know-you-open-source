@@ -148,7 +148,8 @@ struct FileKnowledgeSnapshotScanner: @unchecked Sendable {
                     mimeType: mimeType,
                     contentMarkdown: contentMarkdown,
                     remoteUpdatedAt: resourceValues.contentModificationDate,
-                    originKind: originKind
+                    originKind: originKind,
+                    contentStorageMode: .referenceSourceFile
                 )
             )
         }

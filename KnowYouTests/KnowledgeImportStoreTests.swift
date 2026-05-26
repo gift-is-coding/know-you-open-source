@@ -3,6 +3,44 @@ import XCTest
 @testable import KnowYou
 
 final class KnowledgeImportStoreTests: XCTestCase {
+    func testSaveFileBackedSnapshotReferencesSourceFileWithoutCopyingContent() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let sourceRoot = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: sourceRoot)
+        }
+        try FileManager.default.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+        let sourceURL = sourceRoot.appending(path: "minutes/team.md")
+        try FileManager.default.createDirectory(at: sourceURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "# Team Minutes".write(to: sourceURL, atomically: true, encoding: .utf8)
+        let store = KnowledgeImportStore(rootDirectory: root, fileManager: .default)
+        let snapshot = KnowledgeImportSnapshot(
+            connectorInstanceID: "feishu-main",
+            connectorID: .feishuImport,
+            remoteID: "minutes/team.md",
+            title: "Team",
+            sourcePath: sourceURL.path,
+            remoteURL: nil,
+            mimeType: "text/markdown",
+            contentMarkdown: "# Team Minutes",
+            remoteUpdatedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            originKind: "feishu-local-file",
+            contentStorageMode: .referenceSourceFile
+        )
+
+        let document = try store.save(snapshot, now: Date(timeIntervalSince1970: 1_778_000_100))
+
+        XCTAssertEqual(document.localContentPath, sourceURL.path)
+        XCTAssertEqual(document.sourcePath, sourceURL.path)
+        XCTAssertEqual(document.contentHash, sha256Hex("# Team Minutes"))
+        XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: document.localContentPath), encoding: .utf8), "# Team Minutes")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: document.localMetadataPath))
+        let metadataDocument = try decodeDocument(atPath: document.localMetadataPath)
+        XCTAssertEqual(metadataDocument, document)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: URL(fileURLWithPath: document.localMetadataPath).deletingLastPathComponent().appending(path: "content.md").path))
+    }
+
     func testSaveSnapshotWritesContentAndMetadata() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }

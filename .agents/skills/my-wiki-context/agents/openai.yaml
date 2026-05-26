@@ -1,0 +1,3 @@
+name: my-wiki-context
+description: Retrieve private KnowYou My Wiki context for agent tasks using the local MCP server.
+version: 0.1.0

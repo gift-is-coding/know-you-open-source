@@ -151,11 +151,12 @@ Materialize 到 `raw/sources` 时，文件名必须避免冲突，同时保留�
 1. 从 diary 文件、imported knowledge document rows、manual My Wiki sources 刷新 catalog。
 2. 只对新发现 source 应用默认 inclusion。
 3. 保留已有用户选择。
-4. 将 included sources 以稳定层级路径 materialize 到 `raw/sources`。
-5. 构建 ingest plan，只包含 `contentHash` 不同于 `lastIndexedHash` 的 included source，或 summary 缺失的 included source。
-6. 只对计划内 source 运行 `llm_wiki`。
-7. 成功后更新 `lastIndexedHash`、`lastIndexedAt`、`wikiSummaryPath`，并清除之前的错误。
-8. 失败时记录 `lastIngestError`，不覆盖之前成功的 checkpoint。
+4. 如果某个 source 在本次刷新中消失：已经 indexed 的历史记录保留，继续显示已处理状态；从未 indexed 的临时记录可以移除，避免污染 source catalog。
+5. 将 included sources 以稳定层级路径 materialize 到 `raw/sources`。
+6. 构建 ingest plan，只包含 `contentHash` 不同于 `lastIndexedHash` 的 included source，或 summary 缺失的 included source。
+7. 只对计划内 source 运行 `llm_wiki`。
+8. 成功后更新 `lastIndexedHash`、`lastIndexedAt`、`wikiSummaryPath`，并清除之前的错误。
+9. 失败时记录 `lastIngestError`，不覆盖之前成功的 checkpoint。
 
 Headless `llm_wiki` runner 应接受显式 source list 或 manifest。它不应该通过扫描 `raw/sources` 下所有 Markdown 文件来决定 eligible source set。
 

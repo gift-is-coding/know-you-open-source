@@ -412,7 +412,10 @@ struct MyWikiSourceCatalogSnapshot: Codable, Equatable, Sendable {
                 merged.append(MyWikiSourceCatalogRecord(candidate: candidate))
             }
         }
-        merged.append(contentsOf: existingByID.values.sorted { $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending })
+        let retainedHistoricalRecords = existingByID.values
+            .filter { $0.lastIndexedHash != nil }
+            .sorted { $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending }
+        merged.append(contentsOf: retainedHistoricalRecords)
         return MyWikiSourceCatalogSnapshot(records: merged)
     }
 

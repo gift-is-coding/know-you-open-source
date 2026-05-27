@@ -78,6 +78,41 @@ final class MyWikiSourceCatalogTests: XCTestCase {
         XCTAssertEqual(refreshed.records[0].status, .excludedIndexed)
     }
 
+    func testMissingUnindexedRecordsAreDroppedOnMerge() throws {
+        var snapshot = MyWikiSourceCatalogStore.emptySnapshot()
+        snapshot.records = [
+            MyWikiSourceCatalogRecord.fixture(
+                sourceID: "external:stale",
+                included: true,
+                relativePath: "Projects/stale.md"
+            )
+        ]
+
+        let refreshed = snapshot.merged(with: [])
+
+        XCTAssertTrue(refreshed.records.isEmpty)
+    }
+
+    func testMissingIndexedRecordsAreRetainedOnMerge() throws {
+        var indexedRecord = MyWikiSourceCatalogRecord.fixture(
+            sourceID: "external:indexed",
+            included: false,
+            relativePath: "Projects/indexed.md"
+        )
+        indexedRecord.lastIndexedHash = "hash-indexed"
+        indexedRecord.lastIndexedAt = Date(timeIntervalSince1970: 200)
+
+        var snapshot = MyWikiSourceCatalogStore.emptySnapshot()
+        snapshot.records = [indexedRecord]
+
+        let refreshed = snapshot.merged(with: [])
+
+        XCTAssertEqual(refreshed.records, [indexedRecord])
+        XCTAssertEqual(refreshed.records[0].included, false)
+        XCTAssertEqual(refreshed.records[0].lastIndexedHash, "hash-indexed")
+        XCTAssertEqual(refreshed.records[0].lastIndexedAt, Date(timeIntervalSince1970: 200))
+    }
+
     func testChangedIncludedSourceReportsChanged() throws {
         var record = MyWikiSourceCatalogRecord.fixture(
             sourceID: "diary:2026-05-27",
@@ -130,6 +165,31 @@ final class MyWikiSourceCatalogTests: XCTestCase {
 
         XCTAssertEqual(loaded.records, snapshot.records)
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appending(path: ".knowyou/source-catalog.json").path))
+    }
+
+    func testStoreUpdateLoadsMutatesSavesAndReturnsSnapshot() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let store = MyWikiSourceCatalogStore(projectRoot: root)
+        try store.save(MyWikiSourceCatalogSnapshot(records: [
+            MyWikiSourceCatalogRecord.fixture(
+                sourceID: "diary:2026-05-27",
+                included: true,
+                relativePath: "2026-05-27.md"
+            )
+        ]))
+
+        let returned = try store.update { snapshot in
+            snapshot.records[0].included = false
+            snapshot.records[0].lastIndexedHash = "hash-a"
+        }
+
+        let loaded = try store.load()
+        XCTAssertEqual(returned.records, loaded.records)
+        XCTAssertEqual(loaded.records[0].included, false)
+        XCTAssertEqual(loaded.records[0].lastIndexedHash, "hash-a")
     }
 }
 

@@ -168,7 +168,10 @@ struct MyWikiSourceCatalogSnapshot: Codable, Equatable, Sendable {
             }
         }
 
-        mergedRecords.append(contentsOf: existingByID.values.sorted(by: Self.sortRecordsByRelativePath))
+        let retainedHistoricalRecords = existingByID.values
+            .filter { $0.lastIndexedHash != nil }
+            .sorted(by: Self.sortRecordsByRelativePath)
+        mergedRecords.append(contentsOf: retainedHistoricalRecords)
         return MyWikiSourceCatalogSnapshot(records: mergedRecords)
     }
 
@@ -284,6 +287,8 @@ struct MyWikiSourceCatalogTreeBuilder {
 }
 
 struct MyWikiSourceCatalogStore {
+    private static let writeLocks = MyWikiSourceCatalogStoreWriteLocks()
+
     let projectRoot: URL
     let fileManager: FileManager
 
@@ -315,7 +320,38 @@ struct MyWikiSourceCatalogStore {
         try data.write(to: catalogURL, options: .atomic)
     }
 
+    func update(
+        _ transform: (inout MyWikiSourceCatalogSnapshot) throws -> Void
+    ) throws -> MyWikiSourceCatalogSnapshot {
+        let writeLock = Self.writeLocks.lock(for: catalogURL.path)
+        writeLock.lock()
+        defer { writeLock.unlock() }
+
+        var snapshot = try load()
+        try transform(&snapshot)
+        try save(snapshot)
+        return snapshot
+    }
+
     private var catalogURL: URL {
         projectRoot.appending(path: ".knowyou/source-catalog.json")
+    }
+}
+
+private final class MyWikiSourceCatalogStoreWriteLocks: @unchecked Sendable {
+    private let guardLock = NSLock()
+    private var locksByPath: [String: NSLock] = [:]
+
+    func lock(for path: String) -> NSLock {
+        guardLock.lock()
+        defer { guardLock.unlock() }
+
+        if let existingLock = locksByPath[path] {
+            return existingLock
+        }
+
+        let newLock = NSLock()
+        locksByPath[path] = newLock
+        return newLock
     }
 }

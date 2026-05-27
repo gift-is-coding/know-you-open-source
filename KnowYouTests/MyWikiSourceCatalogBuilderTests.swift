@@ -269,6 +269,52 @@ final class MyWikiSourceCatalogBuilderTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: project.appending(path: ".knowyou/ingest-manifest.json").path))
     }
 
+    func testMaterializeRebuildsManifestMetadataFromCatalogRecord() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let project = root.appending(path: "project", directoryHint: .isDirectory)
+        let external = root.appending(path: "external/Projects/AI/notes.md")
+        try FileManager.default.createDirectory(at: external.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "# External".write(to: external, atomically: true, encoding: .utf8)
+        let record = catalogRecord(
+            sourceID: "doc-1",
+            included: true,
+            contentHash: "catalog-hash",
+            relativePath: "Local Folder/local-main/Projects/AI/notes.md",
+            sourcePath: external.path,
+            rawSourcePath: "raw/sources/Local Folder/local-main/Projects/AI/notes.md",
+            folderContext: "Local Folder/local-main/Projects/AI",
+            sourceKind: .externalDocument
+        )
+        let snapshot = MyWikiSourceCatalogSnapshot(records: [record])
+        let tamperedPlan = MyWikiSourceIngestPlan(sources: [
+            MyWikiSourceIngestSource(
+                sourcePath: "raw/sources/Local Folder/local-main/Projects/AI/notes.md",
+                sourceID: "doc-1",
+                displayTitle: "Tampered title",
+                folderContext: "Tampered/context",
+                sourceKind: .diary,
+                contentHash: "tampered-hash"
+            )
+        ])
+
+        let result = try MyWikiSourceCatalogBuilder().materialize(
+            plan: tamperedPlan,
+            from: snapshot,
+            projectRoot: project
+        )
+
+        let manifestData = try Data(contentsOf: result.manifestURL)
+        let manifest = try JSONDecoder.knowledgeImport().decode(MyWikiSourceIngestPlan.self, from: manifestData)
+        let source = try XCTUnwrap(manifest.sources.first)
+        XCTAssertEqual(source.sourceID, "doc-1")
+        XCTAssertEqual(source.sourcePath, "raw/sources/Local Folder/local-main/Projects/AI/notes.md")
+        XCTAssertEqual(source.displayTitle, "doc-1")
+        XCTAssertEqual(source.folderContext, "Local Folder/local-main/Projects/AI")
+        XCTAssertEqual(source.sourceKind, .externalDocument)
+        XCTAssertEqual(source.contentHash, "catalog-hash")
+    }
+
     func testMarkSuccessAndFailureCheckpointBehavior() throws {
         let date = Date(timeIntervalSince1970: 1_779_000_000)
         var previous = catalogRecord(

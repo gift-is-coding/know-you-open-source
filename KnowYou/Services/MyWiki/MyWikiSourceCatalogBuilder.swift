@@ -90,7 +90,7 @@ struct MyWikiSourceCatalogBuilder {
                 )
             }
             let destination = try rawSourceURL(record.rawSourcePath, under: projectRoot)
-            return (source: source, record: record, destination: destination)
+            return (source: Self.ingestSource(for: record), record: record, destination: destination)
         }
 
         var materializedCount = 0

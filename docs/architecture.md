@@ -15,6 +15,7 @@ KnowYou 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 - 为每天生成两种输出工件：
   - `YYYY-MM-DD.story.json`：UI 主读取工件
   - `YYYY-MM-DD.md`：Markdown 导出工件
+- 维护统一 Todo inbox，把每日候选待办归集到 SQLite 中的任务状态源
 - 在主界面中以 story-first 的方式阅读每天内容，并查看段落对应的原始来源
 
 ## 2. 系统总览
@@ -22,7 +23,7 @@ KnowYou 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 当前运行时系统由 6 层组成，另有一条独立的分发链路：
 
 1. 采集层：剪贴板监听、通知数据库读取与导入
-2. 存储与调度层：SQLite、run 记录、刷新日志、today-only 定时自动化
+2. 存储与调度层：SQLite、run 记录、todo_items、刷新日志、today-only 定时自动化
 3. 生成层：本地 fallback story 生成、可选云端/CLI 总结器、Markdown 组合
 4. 连接器层：Daily Memory Export 单向导出、Add Source 本地引用扫描、prompt-backed 外部目录、LaunchAgent 定时运行
 5. 提醒层：晚间回顾 planner、本地通知权限与调度
@@ -48,6 +49,9 @@ flowchart LR
     L --> M[write .story.json]
     L --> N[compose Markdown]
     N --> O[write .md]
+    L --> TB[TodoReconciler / TodoCompletionSweep]
+    TB --> TC[TodoStore / todo_items]
+    TC --> P[MainWindowView]
     L --> P[MainWindowView]
     F --> Q[OnboardingView]
     E --> P
@@ -105,6 +109,7 @@ flowchart LR
 - 维护 UI 状态与服务状态
 - 管理选中日期、选中 story、选中段落及其来源事件
 - 触发“按天刷新”、今日通知补同步与 today-only 自动刷新
+- 维护统一 Todo inbox 状态、每日候选待办的归集状态，以及日记刷新后的自动归集/完成 sweep
 - 持久化 onboarding 进度，并在完成后触发一次性今天+昨天 bootstrap
 
 `AppEnvironment` 本身则负责组装主要依赖，包括数据库、隐私过滤器、采集器、composer 与 summarizer，见 [AppEnvironment.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppEnvironment.swift)。
@@ -156,6 +161,20 @@ Add Source 与 Daily Memory Export 是边界不同的能力。Daily Memory Expor
 `Add Source` 主页面只呈现一个 `Sources` 列表。Local Folder 和 Obsidian 直接指向本地目录；Feishu/Lark、Notion、Google Drive 的主动作是 `Generate Prompt`，用弹窗展示 prompt 生成器，默认 daily 且本地时间 11:00，让用户复制到 Codex / Cloud Code 创建每日或每周定时同步任务。Daily Memory Export 保留底层能力和独立配置面板，但不再与 Add Source 混在同一个导入入口里。
 
 `MainContentSelection` 避免把非 diary 页面编码成日期字符串。刷新完成后，`AppState.importKnowledgeNow()` 只刷新用户当前仍在查看的 knowledge 页面；如果用户停留在 connector root，只更新左侧文件树且不自动打开第一篇文档；如果用户正在阅读某个 source 文档，则保持该文档选择并重新加载 Markdown。Source 阅读状态不显示第三栏说明面板，避免和左侧文件树形成重复索引。
+
+### 3.5 Unified Todo
+
+统一 Todo inbox 是 app 内 SQLite 数据，而不是每日 Markdown 的派生状态。每日 `# 待办事项` 只保留“候选待办”的叙事职责，`todo_items` 才记录 open/completed、来源日期、来源事件、创建/完成时间、完成证据、归集方式与完成方式。
+
+刷新某一天日记成功后，`AppState` 会：
+
+1. 从当天 story 中提取 0-3 个未完成的明确候选待办
+2. 通过 `TodoReconciler` 把候选项和现有 todo 交给 summarizer 做语义 `create/merge/ignore` 判断
+3. 只对高置信 `create` 自动写入 `TodoStore`，高置信 `merge` 只补充来源证据
+4. 通过 `TodoCompletionSweep` 用新 story 证据保守判断 open todo 是否已经完成
+5. 在 summarizer 不可用或返回不可解析结果时进入 degraded 状态，不做自动归集或自动完成，保留手动 `Add to Todo`
+
+`TodoStore` 是 `DatabaseWriter` 之上的 todo 持久化边界，负责创建、合并来源证据、读取排序和完成标记。它不执行外部动作：v1 的“自动解决”只表示根据后续证据标记完成。
 
 当前 `AppState` 也负责晚间回顾提醒配置与通知后的前台路由：
 
@@ -275,10 +294,11 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 - 标记异常中断的 orphan run 为 failed
 - 查询最近一次成功生成的日期
 
-当前逻辑上至少有两类持久化对象：
+当前逻辑上至少有三类持久化对象：
 
 - `events`
 - `runs`
+- `todo_items`
 
 事件的核心结构定义在 [EventRecord.swift](/Users/wutianfu/Code/know-you/KnowYou/Domain/EventRecord.swift)：
 
@@ -311,6 +331,8 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 其中 `.story.json` 仍是 UI 的主交互工件，`.md` 主要承担可移植导出。主阅读器会继续用 `.story.json` 里的段落和 `sourceEventIDs` 维护段落级 source link，并在正文区按 Markdown 富文本渲染 story 段落；`Source Notes` 不在中间栏显示，而是继续通过右侧来源面板承接追溯交互。onboarding 首屏与权限页都会把这个“本地 Markdown”事实直接展示给用户。
 
+每日 Markdown 里的 `# 待办事项` 不再承担任务状态源职责。它可以显示当天候选待办，但 open/completed、完成证据和排序都来自 SQLite `todo_items`。
+
 ## 7. 生成层
 
 ### 7.1 DailyStory 数据模型
@@ -335,6 +357,7 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 4. 调用结构化 summarizer；手动刷新会先尝试默认引擎，失败后再并行尝试其它绿色引擎
 5. 只有合法结构化结果才写 `.story.json` 与 `.md`
 6. 写入刷新日志，并更新 UI 状态、run 状态与状态栏信息
+7. 基于新 story 运行 Todo 自动归集和完成 sweep；自动逻辑 degraded 时只更新提示，不改写 todo 状态
 
 其中：
 
@@ -365,6 +388,7 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 - `今日总结` 使用 bullet list
 - `详情` 使用 `##` 二级标题组织事务线程
 - `待办事项` 使用 Markdown task list
+- `待办事项` 只允许 0-3 个明确、可执行、尚未完成的候选项；泛泛建议、重复项、无证据项和已经完成的事项应为空
 
 这意味着 `.story.json` 仍然维持“段落 + sourceEventIDs”的交互模型，但段落文本本身已经升级为可渲染的 Markdown 片段。
 
@@ -518,11 +542,14 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 - [DateSidebarView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Sidebar/DateSidebarView.swift)
 - [DailyMarkdownView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Reader/DailyMarkdownView.swift)
+- [TodoInboxView.swift](/Users/wutianfu/Documents/code/know-you/KnowYou/UI/Todo/TodoInboxView.swift)
 
 当前界面能力包括：
 
 - 日期按 `MM-dd EEE` 格式显示
+- 左侧一级导航包含 `Todo` 入口，展示 open 数量，并把 open todo 放在 completed 之前
 - story 段落可点击选中
+- `DailyMarkdownView` 会在待办候选行旁显示 `Add to Todo` 或 `In Todo`
 - 中栏段落按 Markdown 富文本渲染，而不是原样 plain text 输出
 - 中栏会根据当天语言显示显式标题：`今日小记` 或 `Story`
 - 键盘或点击切换段落时，中栏会自动滚动到当前选中段落，避免选中状态离开可视区域

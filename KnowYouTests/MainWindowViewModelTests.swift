@@ -23,6 +23,16 @@ private struct HandlerSummarizer: SummaryGenerating {
     }
 }
 
+private func neutralTodoAutomationResponse(for markdown: String) -> String? {
+    if markdown.localizedCaseInsensitiveContains("reconciled into the app's unified Todo inbox") {
+        return #"{"decisions":[]}"#
+    }
+    if markdown.localizedCaseInsensitiveContains("Conservatively decide whether open todos") {
+        return #"{"completed":[]}"#
+    }
+    return nil
+}
+
 private actor PlainSummarizerRecorder {
     private var callCount = 0
     private var lastDayKey: String?
@@ -50,6 +60,9 @@ private final class RecordingPlainSummarizer: SummaryGenerating, @unchecked Send
     }
 
     func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
+        if let response = neutralTodoAutomationResponse(for: markdown) {
+            return response
+        }
         await recorder.record(dayKey: dayKey, markdown: markdown, context: context)
         return response
     }
@@ -108,6 +121,9 @@ private final class RecordingIncrementalSummarizer: SummaryGenerating, Increment
     }
 
     func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
+        if let response = neutralTodoAutomationResponse(for: markdown) {
+            return response
+        }
         await recorder.recordSummarize()
         return summarizeResponse
     }
@@ -164,6 +180,9 @@ private final class RecordingOnboardingBootstrapSummarizer: IncrementalSummaryGe
     var failingIncrementalChunkByDay: [String: Int] = [:]
 
     func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
+        if let response = neutralTodoAutomationResponse(for: markdown) {
+            return response
+        }
         let eventIDs = Self.extractEventIDs(from: markdown)
         _ = await recorder.record(dayKey: dayKey, kind: .fullRecovery, eventIDs: eventIDs)
         return Self.fullRecoveryResponse(dayKey: dayKey, eventIDs: eventIDs)
@@ -2578,6 +2597,143 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: vaultURL.appending(path: "2026-04-09.md").path))
         XCTAssertTrue(appState.pendingBackfillDays.isEmpty)
+    }
+
+    func testRefreshSelectedDayPromotesHighConfidenceTodoCandidate() async throws {
+        let dayKey = "2026-05-27"
+        let eventID = UUID()
+        let candidateID = "\(dayKey)|daily-journal-0|send the investor recap"
+        let writer = try DatabaseWriter.inMemory()
+        try writer.insert(
+            EventRecord(
+                id: eventID,
+                sourceType: .notification,
+                sourceApp: "Mail",
+                capturedAt: Date(timeIntervalSince1970: 1_778_000_000),
+                dayKey: dayKey,
+                text: "Please send the investor recap by Friday",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "todo-high-confidence"
+            )
+        )
+        let environment = try makeTodoEnvironment(
+            writer: writer,
+            summarizer: HandlerSummarizer { _, markdown, _ in
+                if markdown.contains("\"sections\"") {
+                    return Self.todoStoryResponse(eventID: eventID, todoText: "# To-do\n\n- [ ] Send the investor recap")
+                }
+                if markdown.contains("\"decisions\"") {
+                    return """
+                    {"decisions":[{"candidateID":"\(candidateID)","action":"create","confidence":"high","targetTodoID":null,"reason":"Specific future action."}]}
+                    """
+                }
+                return #"{"completed":[]}"#
+            }
+        )
+        let appState = AppState(environment: environment, bootstrapServices: false)
+
+        appState.selectDate(dayKey)
+        await appState.refreshSelectedDay(now: Date(timeIntervalSince1970: 1_778_000_100))
+
+        XCTAssertEqual(appState.todoItems.map(\.title), ["Send the investor recap"])
+        XCTAssertEqual(appState.todoItems.first?.promotionKind, .auto)
+        XCTAssertEqual(appState.todoItems.first?.status, .open)
+        XCTAssertEqual(appState.selectedTodoCandidatePresentations.first?.statusTitle, "In Todo")
+    }
+
+    func testRefreshSelectedDayLeavesLowConfidenceTodoCandidateForManualAdd() async throws {
+        let dayKey = "2026-05-27"
+        let eventID = UUID()
+        let candidateID = "\(dayKey)|daily-journal-0|keep thinking about launch"
+        let writer = try DatabaseWriter.inMemory()
+        try writer.insert(
+            EventRecord(
+                id: eventID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: Date(timeIntervalSince1970: 1_778_000_000),
+                dayKey: dayKey,
+                text: "Keep thinking about launch",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "todo-low-confidence"
+            )
+        )
+        let environment = try makeTodoEnvironment(
+            writer: writer,
+            summarizer: HandlerSummarizer { _, markdown, _ in
+                if markdown.contains("\"sections\"") {
+                    return Self.todoStoryResponse(eventID: eventID, todoText: "# To-do\n\n- [ ] Keep thinking about launch")
+                }
+                if markdown.contains("\"decisions\"") {
+                    return """
+                    {"decisions":[{"candidateID":"\(candidateID)","action":"create","confidence":"low","targetTodoID":null,"reason":"Vague suggestion."}]}
+                    """
+                }
+                return #"{"completed":[]}"#
+            }
+        )
+        let appState = AppState(environment: environment, bootstrapServices: false)
+
+        appState.selectDate(dayKey)
+        await appState.refreshSelectedDay(now: Date(timeIntervalSince1970: 1_778_000_100))
+
+        XCTAssertTrue(appState.todoItems.isEmpty)
+        XCTAssertEqual(appState.selectedTodoCandidatePresentations.first?.statusTitle, "Add to Todo")
+
+        appState.addTodoCandidate(id: candidateID)
+
+        XCTAssertEqual(appState.todoItems.map(\.title), ["Keep thinking about launch"])
+        XCTAssertEqual(appState.todoItems.first?.promotionKind, .manual)
+    }
+
+    func testRefreshSelectedDayCompletesOpenTodoFromEvidenceSweep() async throws {
+        let dayKey = "2026-05-27"
+        let evidenceID = UUID()
+        let writer = try DatabaseWriter.inMemory()
+        let todo = try writer.createTodo(
+            title: "Send the investor recap",
+            sourceDayKey: dayKey,
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_000),
+            promotionKind: .manual
+        )
+        try writer.insert(
+            EventRecord(
+                id: evidenceID,
+                sourceType: .notification,
+                sourceApp: "Mail",
+                capturedAt: Date(timeIntervalSince1970: 1_778_000_200),
+                dayKey: dayKey,
+                text: "Investor recap was sent and acknowledged",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "todo-completion-evidence"
+            )
+        )
+        let environment = try makeTodoEnvironment(
+            writer: writer,
+            summarizer: HandlerSummarizer { _, markdown, _ in
+                if markdown.contains("\"sections\"") {
+                    return Self.todoStoryResponse(eventID: evidenceID, todoText: "# Details\n\nInvestor recap was sent and acknowledged.")
+                }
+                if markdown.contains("\"decisions\"") {
+                    return #"{"decisions":[]}"#
+                }
+                return """
+                {"completed":[{"todoID":"\(todo.id)","evidenceEventIDs":["\(evidenceID.uuidString)"],"reason":"The recap was sent."}]}
+                """
+            }
+        )
+        let appState = AppState(environment: environment, bootstrapServices: false)
+
+        appState.selectDate(dayKey)
+        await appState.refreshSelectedDay(now: Date(timeIntervalSince1970: 1_778_000_300))
+
+        XCTAssertEqual(appState.todoItems.first?.status, .completed)
+        XCTAssertEqual(appState.todoItems.first?.completionKind, .evidenceSweep)
+        XCTAssertEqual(appState.todoItems.first?.completionEvidenceEventIDs, [evidenceID])
     }
 
     func testRefreshSelectedDayDoesNotMaskTodayGenerationFailure() async throws {
@@ -7684,6 +7840,34 @@ final class MainWindowViewModelTests: XCTestCase {
                 model: nil,
                 pipelineVersion: "diary-story-v1",
                 curatedEventCount: 1
+            )
+        )
+    }
+
+    nonisolated private static func todoStoryResponse(eventID: UUID, todoText: String) -> String {
+        let escapedText = todoText
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return """
+        {"sections":[{"id":"daily-journal","paragraphs":[{"text":"\(escapedText)","sourceEventIDs":["\(eventID.uuidString)"]}]}]}
+        """
+    }
+
+    private func makeTodoEnvironment(
+        writer: DatabaseWriter,
+        summarizer: any SummaryGenerating
+    ) throws -> AppEnvironment {
+        let vaultURL = URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: vaultURL, withIntermediateDirectories: true)
+        return AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: vaultURL,
+            databaseWriter: writer,
+            summarizer: summarizer,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
             )
         )
     }

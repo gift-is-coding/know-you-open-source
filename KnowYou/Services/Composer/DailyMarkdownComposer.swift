@@ -114,7 +114,11 @@ struct DailyMarkdownComposer {
         - The "\(journalHeadings.details)" section should use markdown second-level headings (##) for the main workstreams or threads of the day.
         - Each Details workstream should be its own paragraph in the JSON output instead of combining all Details subsections into one large paragraph.
         - Do not fragment the day into tiny paragraphs. Split only when a workstream or thread is genuinely distinct.
+        - The "\(journalHeadings.todo)" section is only a daily candidate list for the unified Todo inbox; it may be empty.
+        - The "\(journalHeadings.todo)" section should contain 0-3 clear, actionable, unresolved todo items.
         - The "\(journalHeadings.todo)" section should use markdown task list items like - [ ].
+        - Do not include vague suggestions, generic keep-going advice, review-later reminders, or maintenance ideas as todo items.
+        - Do not invent todo items without evidence, and do not include items that the source events already show as done.
         - Markdown headings, bullet lists, and task lists are allowed inside paragraph text and should be used deliberately.
         - Only reference sourceEventIDs that appear below.
         - Put all narrative paragraphs inside the single daily-journal section.
@@ -261,7 +265,11 @@ struct DailyMarkdownComposer {
         - Re-evaluate "\(headings.encouragement)" as the current end-of-day tone and return it in "encouragementToReplace".
         - Rewrite "\(headings.summary)" as the current full summary state and return it in "summaryBulletsToReplace".
         - Append only the new markdown blocks needed for "\(headings.details)" and return them in "detailBlocksToAppend".
-        - Rewrite "\(headings.todo)" as the current full to-do state and return it in "todoItemsToReplace".
+        - Rewrite "\(headings.todo)" as a sparse daily candidate list for the unified Todo inbox and return it in "todoItemsToReplace".
+        - The "\(headings.todo)" candidate list may be empty and must contain 0-3 clear future action items.
+        - Do not repeat old todo items unless they are still clearly unresolved after reading the new events.
+        - Do not include items that the new events show as already completed, sent, submitted, confirmed, scheduled, or agreed.
+        - Do not include vague suggestions; every todo needs a clear future action and direct source evidence.
         - Do not repeat detail threads that are already covered in the existing details anchor.
         - Keep the writing language aligned with the existing diary. If the existing diary is empty or malformed, infer the language from the new events.
         - "encouragementToReplace.sourceEventIDs" may use only these existing encouragement IDs plus the new event IDs: \(encouragementAnchorIDs.isEmpty ? "(none)" : encouragementAnchorIDs)
@@ -1064,7 +1072,7 @@ struct DailyMarkdownComposer {
         _ items: [JournalIncrementalItem],
         heading: String
     ) -> JournalMarkdownBlock {
-        let normalizedItems = items.map { item -> JournalIncrementalItem in
+        let normalizedItems = items.prefix(3).map { item -> JournalIncrementalItem in
             let line = item.text.hasPrefix("- [") ? item.text : "- [ ] \(item.text)"
             return JournalIncrementalItem(text: line, sourceEventIDs: item.sourceEventIDs)
         }

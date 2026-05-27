@@ -9,8 +9,10 @@ struct DailyMarkdownView: View {
     let refreshLogNotice: String?
     let isGenerating: Bool
     let isActive: Bool
+    let todoCandidates: [DailyTodoCandidatePresentation]
     let onSelectParagraph: (String) -> Void
     let onFocusStory: () -> Void
+    let onAddTodoCandidate: (String) -> Void
     let onRefresh: () -> Void
     let onTodayFullRefresh: () -> Void
     let canFullRefresh: Bool
@@ -176,31 +178,44 @@ struct DailyMarkdownView: View {
     private func paragraphRow(_ paragraph: DailyStoryParagraph) -> some View {
         let isSelected = isActive && paragraph.id == selectedParagraphID
         let isHovered = hoveredParagraphID == paragraph.id
+        let paragraphTodoCandidates = todoCandidates.filter { $0.paragraphID == paragraph.id }
 
-        Button {
-            onFocusStory()
-            onSelectParagraph(paragraph.id)
-        } label: {
-            HStack(alignment: .top, spacing: 0) {
-                // Left accent bar (only when selected)
-                Rectangle()
-                    .fill(isSelected ? Color.accentColor : Color.clear)
-                    .frame(width: 2)
-                    .padding(.vertical, 4)
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                onFocusStory()
+                onSelectParagraph(paragraph.id)
+            } label: {
+                HStack(alignment: .top, spacing: 0) {
+                    // Left accent bar (only when selected)
+                    Rectangle()
+                        .fill(isSelected ? Color.accentColor : Color.clear)
+                        .frame(width: 2)
+                        .padding(.vertical, 4)
 
-                MarkdownPreviewContent(markdown: paragraph.text)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
+                    MarkdownPreviewContent(markdown: paragraph.text)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                }
+                .background(
+                    isSelected
+                        ? Color.accentColor.opacity(0.07)
+                        : (isHovered ? Color.primary.opacity(0.04) : Color.clear)
+                )
+                .contentShape(Rectangle())
             }
-            .background(
-                isSelected
-                    ? Color.accentColor.opacity(0.07)
-                    : (isHovered ? Color.primary.opacity(0.04) : Color.clear)
-            )
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+
+            if !paragraphTodoCandidates.isEmpty {
+                DailyTodoCandidateActionsView(
+                    candidates: paragraphTodoCandidates,
+                    onAddTodoCandidate: onAddTodoCandidate
+                )
+                .padding(.leading, 16)
+                .padding(.trailing, 14)
+                .padding(.bottom, 10)
+            }
         }
-        .buttonStyle(.plain)
         .onHover { hovering in
             hoveredParagraphID = hovering ? paragraph.id : nil
         }
@@ -237,6 +252,31 @@ struct DailyMarkdownView: View {
 
     private var isRefreshing: Bool {
         refreshJob?.inFlight == true
+    }
+}
+
+private struct DailyTodoCandidateActionsView: View {
+    let candidates: [DailyTodoCandidatePresentation]
+    let onAddTodoCandidate: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(candidates) { candidate in
+                HStack(spacing: 8) {
+                    Text(candidate.title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    Spacer(minLength: 12)
+                    Button(candidate.statusTitle) {
+                        onAddTodoCandidate(candidate.id)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(candidate.isTracked)
+                    .help(candidate.isTracked ? "Already in Todo" : "Add to Todo")
+                }
+            }
+        }
     }
 }
 

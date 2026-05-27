@@ -42,6 +42,14 @@ struct MainWindowView: View {
                         switch appState.mainContentSelection {
                         case .diary:
                             diaryReaderView
+                        case .todo:
+                            TodoInboxView(
+                                items: appState.todoItems,
+                                automationStatusMessage: appState.todoAutomationStatusMessage,
+                                onComplete: { id in
+                                    appState.completeTodoItem(id: id)
+                                }
+                            )
                         case .otherSourceManager(let focusAddConnector):
                             otherSourceManagementView(focusAddConnector: focusAddConnector)
                         case .knowledgeConnector(let instanceID):
@@ -188,9 +196,14 @@ struct MainWindowView: View {
             knowledgeDocumentsByConnector: appState.knowledgeDocumentsByConnector,
             isActive: mode == .journal && appState.readerFocus == .dateList,
             isKnowledgeOntologySelected: mode == .knowledgeOntology,
+            todoOpenCount: appState.openTodoCount,
             onSelectDiaryDate: { dayKey in
                 mode = .journal
                 appState.selectDate(dayKey)
+            },
+            onOpenTodo: {
+                mode = .journal
+                appState.openTodoInbox()
             },
             onSelectOtherSource: { focusAddConnector in
                 mode = .journal
@@ -254,6 +267,7 @@ struct MainWindowView: View {
             refreshLogNotice: appState.refreshLogNotice(for: appState.selectedDate),
             isGenerating: appState.isGeneratingJournal(for: appState.selectedDate),
             isActive: appState.readerFocus == .storyParagraphs,
+            todoCandidates: appState.selectedTodoCandidatePresentations,
             onSelectParagraph: { paragraphID in
                 appState.focusStoryParagraphs()
                 appState.selectStoryParagraph(paragraphID)
@@ -261,6 +275,9 @@ struct MainWindowView: View {
             },
             onFocusStory: {
                 appState.focusStoryParagraphs()
+            },
+            onAddTodoCandidate: { candidateID in
+                appState.addTodoCandidate(id: candidateID)
             },
             onRefresh: {
                 Task { @MainActor in
@@ -291,7 +308,7 @@ struct MainWindowView: View {
                 )
                 .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
                 .onboardingCoachmarkTarget(.sourcesPanel)
-            case .otherSourceManager, .knowledgeConnector, .knowledgeDocument:
+            case .todo, .otherSourceManager, .knowledgeConnector, .knowledgeDocument:
                 Color.clear
                     .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 0)
             }
@@ -302,6 +319,8 @@ struct MainWindowView: View {
         switch appState.mainContentSelection {
         case .diary(let dayKey):
             return dayKey.map { "diary:\($0)" } ?? "diary-root"
+        case .todo:
+            return "todo-root"
         case .otherSourceManager:
             return "add-source"
         case .knowledgeConnector(let instanceID):

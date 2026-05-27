@@ -8,7 +8,9 @@ struct DateSidebarView: View {
     let knowledgeDocumentsByConnector: [String: [ImportedKnowledgeDocument]]
     let isActive: Bool
     let isKnowledgeOntologySelected: Bool
+    let todoOpenCount: Int
     let onSelectDiaryDate: (String) -> Void
+    let onOpenTodo: () -> Void
     let onSelectOtherSource: (_ focusAddConnector: Bool) -> Void
     let onSelectKnowledgeConnector: (String) -> Void
     let onSelectKnowledgeDocument: (String, String) -> Void
@@ -46,6 +48,7 @@ struct DateSidebarView: View {
             .padding(.bottom, 6)
 
             List(selection: activeBinding) {
+                rootRow(presentation.todoRootItem)
                 rootRow(presentation.sourceRootItem)
 
                 DisclosureGroup(isExpanded: $isDiaryGroupExpanded) {
@@ -141,6 +144,7 @@ struct DateSidebarView: View {
         DateSidebarPresentation(
             dates: dates,
             selectedItemID: selectedItemID,
+            todoOpenCount: todoOpenCount,
             knowledgeImportConfig: knowledgeImportConfig,
             knowledgeDocumentsByConnector: knowledgeDocumentsByConnector
         )
@@ -183,6 +187,14 @@ struct DateSidebarView: View {
                     Text(item.title)
                         .foregroundStyle(item.isEnabled ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                     Spacer()
+                    if let badgeCount = item.badgeCount, badgeCount > 0 {
+                        Text("\(badgeCount)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.primary.opacity(0.08)))
+                    }
                 }
                 .contentShape(Rectangle())
             }
@@ -306,6 +318,8 @@ struct DateSidebarView: View {
 
     private func handleSelectionAction(_ action: SidebarSelectionAction?) {
         switch action {
+        case .todo:
+            onOpenTodo()
         case .diaryDate(let dayKey):
             onSelectDiaryDate(dayKey)
         case .otherSource(let focusAddConnector):
@@ -322,6 +336,8 @@ struct DateSidebarView: View {
     static func selectionAction(for itemID: String) -> SidebarSelectionAction? {
         if let dayKey = dayKeyForSelection(itemID) {
             return .diaryDate(dayKey)
+        } else if itemID == "todo-root" {
+            return .todo
         } else if itemID == "add-source" || itemID == "other-source" {
             return .otherSource(focusAddConnector: false)
         } else if itemID.hasPrefix("document:") {
@@ -421,6 +437,7 @@ struct SidebarIconMetrics: Equatable {
 }
 
 enum SidebarSelectionAction: Equatable {
+    case todo
     case diaryDate(String)
     case otherSource(focusAddConnector: Bool)
     case knowledgeConnector(String)
@@ -435,6 +452,7 @@ struct SidebarRootItem: Identifiable, Equatable {
     let isSelected: Bool
     let isEnabled: Bool
     let showsAddButton: Bool
+    let badgeCount: Int?
     let children: [SidebarRootItem]
     let selectionAction: SidebarSelectionAction?
 
@@ -450,6 +468,7 @@ struct SidebarRootItem: Identifiable, Equatable {
         isSelected: Bool,
         isEnabled: Bool,
         showsAddButton: Bool,
+        badgeCount: Int? = nil,
         children: [SidebarRootItem] = [],
         selectionAction: SidebarSelectionAction? = nil
     ) {
@@ -460,12 +479,14 @@ struct SidebarRootItem: Identifiable, Equatable {
         self.isSelected = isSelected
         self.isEnabled = isEnabled
         self.showsAddButton = showsAddButton
+        self.badgeCount = badgeCount
         self.children = children
         self.selectionAction = selectionAction
     }
 }
 
 struct DateSidebarPresentation {
+    let todoRootItem: SidebarRootItem
     let sourceRootItem: SidebarRootItem
     let diaryRootItem: SidebarRootItem
     let sourceItems: [SidebarRootItem]
@@ -476,6 +497,7 @@ struct DateSidebarPresentation {
     init(
         dates: [String],
         selectedItemID: String?,
+        todoOpenCount: Int = 0,
         knowledgeImportConfig: KnowledgeImportConfig = .default,
         knowledgeDocumentsByConnector: [String: [ImportedKnowledgeDocument]] = [:],
         today: Date = Date(),
@@ -490,6 +512,16 @@ struct DateSidebarPresentation {
         var monthBuckets: [Date: [DateSidebarItem]] = [:]
         var specialItems: [DateSidebarItem] = []
 
+        todoRootItem = SidebarRootItem(
+            id: "todo-root",
+            title: "Todo",
+            systemImage: "checklist",
+            isSelected: selectedItemID == "todo-root",
+            isEnabled: true,
+            showsAddButton: false,
+            badgeCount: todoOpenCount,
+            selectionAction: .todo
+        )
         sourceRootItem = SidebarRootItem(
             id: "add-source",
             title: "Add Source",
@@ -565,7 +597,7 @@ struct DateSidebarPresentation {
                 )
             ]
         }
-        rootItems = [sourceRootItem, diaryRootItem] + sourceItems
+        rootItems = [todoRootItem, sourceRootItem, diaryRootItem] + sourceItems
         sections = diarySections
     }
 

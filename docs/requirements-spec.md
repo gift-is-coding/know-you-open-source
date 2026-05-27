@@ -16,11 +16,12 @@ KnowYou 的目标是把用户每天电脑上的零散上下文转成一份可阅
 
 KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsidian 插件，也不是多端同步产品。
 
-当前项目包含三类用户可见产物：
+当前项目包含五类用户可见产物：
 
 - 应用内三栏阅读器
 - 每日 Markdown 文件
 - 每日结构化 `.story.json` 文件
+- 应用内统一 Todo inbox
 - 外部 memory 渠道同步（Obsidian / OpenClaw）
 - 外部知识源导入后的本地 Markdown 缓存
 
@@ -28,6 +29,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 
 - `.story.json` 用于驱动应用内阅读体验
 - `.md` 用于导出、归档和在外部工具中阅读
+- 统一 Todo inbox 用于保存任务 open/completed 状态；每日 Markdown 只显示候选待办，不作为状态源
 
 ## 3. 目标用户
 
@@ -67,6 +69,10 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 
 当应用存在新版本时，用户应能在主窗口左上标题栏看到一个明确但不打扰正文阅读的更新提醒，并在点击后理解当前版本、可用版本以及更新动作。
 
+### 4.7 管理统一待办
+
+用户应能从左侧 `Todo` 入口查看统一待办。open todo 必须优先展示，completed todo 必须保留并排在底部。每日生成的候选待办可以被高置信自动归集，也可以由用户在日记里手动点击 `Add to Todo` 转入。
+
 ## 5. 功能范围
 
 ### 5.1 In Scope
@@ -81,6 +87,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 每日 Markdown 导出
 - story-first 三栏阅读器
 - 段落级 source link
+- 统一 Todo inbox、每日候选待办手动转入、证据驱动自动完成标记
 - 真实阅读器上的 onboarding coachmarks 与 settings 配置
 - 左下角 `...` 二级菜单中的 `Connectors`
 - Daily Memory Export 到 Obsidian / OpenClaw
@@ -105,6 +112,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 通用全文检索、完整标签管理系统、知识图谱界面
 - 浏览器历史、邮件、日历等更多信号源
 - 主界面中的原始 Markdown 编辑模式
+- 自动发送消息、创建日程、修改外部文件或替用户执行外部任务
 - App Store 分发约束下的沙盒化方案
 - 支持外部知识源到本地缓存的单向导入，但不支持双向外部知识库编辑
 
@@ -142,6 +150,8 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 系统必须通过内容哈希避免重复事件无限累积
 - 系统必须在 onboarding 的首屏明确说明日记会以本地 Markdown 文件形式保存在当前 Mac 上
 - 系统必须把每次刷新写成独立日志文件，存放在应用支持目录下
+- 系统必须在 SQLite 中保存统一 todo 状态，字段至少包括标题、open/completed、来源日期、来源事件 ID、创建/完成时间、完成证据、归集方式和完成方式
+- 统一 todo 必须按语义去重/合并来源证据；completed todo 不得删除，读取时必须排在 open todo 之后
 
 ## 6.4 生成需求
 
@@ -160,6 +170,12 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
   - `# 待办事项`
 - 当前 diary prompt 不得生成 `# 今日节奏`
 - `今日总结` 必须使用 bullet list，`详情` 必须按事务线程使用 `##` 子标题，`待办事项` 必须使用 Markdown task list
+- `待办事项` 必须只生成 0-3 个明确、可执行、尚未完成的候选项；没有足够证据时必须允许为空
+- `待办事项` 不得生成泛泛建议、重复项、无证据推测，或文本中已经显示完成/已发送/已提交/已约定的事项
+- 每日日记刷新成功后，系统必须用 summarizer 对候选待办与现有 todo 做语义 `create/merge/ignore` 归集；只有高置信 `create` 可以自动写入统一 todo
+- 低置信或无法判断的候选待办不得自动入库，但必须能在日记阅读区手动 `Add to Todo`
+- 每日日记刷新成功后，系统必须用后续证据保守判断 open todo 是否完成；只有明确出现已完成、已发送、已提交、已约定等证据时才能自动标记 completed，并保存 evidence event ID
+- 当 summarizer 不可用、失败或返回不可解析结果时，自动归集和自动完成必须进入 degraded 状态，不得静默使用低质量规则替代；手动 `Add to Todo` 必须继续可用
 - `详情` 中的每个事务线程都应成为独立的 story paragraph，并各自保留自己的 `sourceEventIDs`
 - 当前产品不对 `详情` 段落数量设置硬性上限，分段质量主要由 prompt 约束“合理分段、避免碎片化”
 - 当前产品不向用户暴露 raw diary prompt 编辑能力；prompt 变更只通过内置 canonical prompt、代码和测试管理
@@ -237,12 +253,15 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 阅读器当前必须支持：
 
 - 选择日期后加载该日 story
+- 左侧必须提供 `Todo` 一级入口，并展示 open todo 数量
+- `Todo` 页面必须展示 open todo 在上、completed todo 在下；用户必须能手动标记 open todo 为 completed
 - 点击段落后查看其来源事件
 - 当 `详情` 被拆成多个事务段时，点击不同 `详情` 子段必须切换到各自对应的 source detail
 - 查看该日全部来源事件
 - 按当前选中日期重生成内容
 - 在刷新按钮旁以内联方式显示当前选中日期的刷新阶段、完成结果或错误信息
 - 在中间 story 阅读区按 Markdown 富文本显示段落内容，而不是仅以 plain text 呈现
+- 在中间 story 阅读区的待办候选旁，系统必须根据统一 todo 状态显示 `Add to Todo` 或 `In Todo`
 - 在中间阅读区显示明确的 story 层级标题，如 `今日小记` / `Story`
 - 在键盘上下切换 story 段落时，当前选中段落必须保持在可视区域内
 - 右侧 source detail card 应在 `sourceApp` 文本前显示渠道 logo；已识别渠道显示本地品牌 asset，未识别渠道回退为通用 icon

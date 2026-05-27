@@ -183,6 +183,31 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("do not add a quote author"), prompt)
     }
 
+    func testStoryPromptKeepsTodoCandidatesSparseAndActionableForUnifiedInbox() {
+        let composer = DailyMarkdownComposer()
+        let events = [
+            EventRecord(
+                id: UUID(),
+                sourceType: .notification,
+                sourceApp: "Mail",
+                capturedAt: Date(timeIntervalSince1970: 1_778_000_000),
+                dayKey: "2026-05-27",
+                text: "Please send the investor recap by Friday",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "todo-prompt"
+            )
+        ]
+
+        let prompt = composer.storyPrompt(dayKey: "2026-05-27", events: events)
+
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("0-3"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("may be empty"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("clear, actionable, unresolved"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("do not include vague suggestions"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("do not invent todo items without evidence"), prompt)
+    }
+
     func testStoryPromptUsesEnglishDiaryHeadingsForEnglishDominantDay() {
         let composer = DailyMarkdownComposer()
         let events = [
@@ -586,9 +611,56 @@ final class DailyMarkdownComposerTests: XCTestCase {
         XCTAssertTrue(prompt.contains("\"todoItemsToReplace\""), prompt)
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("rewrite \"# Summary\" as the current full summary state"), prompt)
         XCTAssertTrue(prompt.localizedCaseInsensitiveContains("append only the new markdown blocks needed for \"# Details\""), prompt)
-        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("rewrite \"# To-do\" as the current full to-do state"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("rewrite \"# To-do\" as a sparse daily candidate list"), prompt)
         XCTAssertFalse(prompt.contains("all events"), prompt)
         XCTAssertFalse(prompt.contains("# 你今天做得很棒"), prompt)
+    }
+
+    func testIncrementalPromptKeepsTodoCandidatesConservativeAndNonRepeating() {
+        let composer = DailyMarkdownComposer()
+        let oldID = UUID()
+        let newID = UUID()
+        let existingStory = DailyStory(
+            dayKey: "2026-05-27",
+            generatedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-todo",
+                            text: "# To-do\n\n- [ ] Send the investor recap",
+                            sourceEventIDs: [oldID]
+                        )
+                    ]
+                )
+            ]
+        )
+        let newEvent = EventRecord(
+            id: newID,
+            sourceType: .notification,
+            sourceApp: "Mail",
+            capturedAt: Date(timeIntervalSince1970: 1_778_000_400),
+            dayKey: "2026-05-27",
+            text: "Investor recap was already sent",
+            auditText: nil,
+            privacyAction: .keep,
+            contentHash: "todo-incremental-prompt"
+        )
+
+        let prompt = composer.incrementalPrompt(
+            dayKey: "2026-05-27",
+            existingStory: existingStory,
+            newEvents: [newEvent],
+            allEvents: []
+        )
+
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("0-3"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("may be empty"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("do not repeat old todo items"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("already completed"), prompt)
+        XCTAssertTrue(prompt.localizedCaseInsensitiveContains("clear future action"), prompt)
     }
 
     func testIncrementalPromptTruncatesLongNewEventTextToPromptBudget() {

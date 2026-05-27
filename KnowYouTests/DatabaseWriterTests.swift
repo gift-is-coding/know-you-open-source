@@ -201,6 +201,97 @@ final class DatabaseWriterTests: XCTestCase {
         XCTAssertEqual(try writer.fetchLatestSuccessfulRunDay(runType: "daily-note"), "2026-04-08")
     }
 
+    func testTodoItemsPersistAndFetchOpenBeforeCompleted() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let openEventID = UUID()
+        let doneEventID = UUID()
+        let open = try writer.createTodo(
+            title: "Send the investor recap",
+            sourceDayKey: "2026-05-27",
+            sourceEventIDs: [openEventID],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_000),
+            promotionKind: .auto
+        )
+        let completed = try writer.createTodo(
+            title: "Confirm Friday meeting time",
+            sourceDayKey: "2026-05-27",
+            sourceEventIDs: [doneEventID],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_100),
+            promotionKind: .manual
+        )
+
+        try writer.completeTodo(
+            id: completed.id,
+            completedAt: Date(timeIntervalSince1970: 1_778_000_200),
+            completionKind: .manual,
+            evidenceEventIDs: []
+        )
+
+        let items = try writer.fetchTodoItems()
+
+        XCTAssertEqual(items.map(\.id), [open.id, completed.id])
+        XCTAssertEqual(items.map(\.status), [.open, .completed])
+        XCTAssertEqual(items.first?.sourceEventIDs, [openEventID])
+        XCTAssertEqual(items.last?.completedAt, Date(timeIntervalSince1970: 1_778_000_200))
+        XCTAssertEqual(items.last?.completionKind, .manual)
+    }
+
+    func testTodoCreationMergesDuplicateNormalizedTitles() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let firstEventID = UUID()
+        let secondEventID = UUID()
+
+        let first = try writer.createTodo(
+            title: "Send the investor recap",
+            sourceDayKey: "2026-05-27",
+            sourceEventIDs: [firstEventID],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_000),
+            promotionKind: .auto
+        )
+        let duplicate = try writer.createTodo(
+            title: "  send the investor recap.  ",
+            sourceDayKey: "2026-05-28",
+            sourceEventIDs: [secondEventID],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_300),
+            promotionKind: .manual
+        )
+
+        let items = try writer.fetchTodoItems()
+
+        XCTAssertEqual(first.id, duplicate.id)
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items.first?.title, "Send the investor recap")
+        XCTAssertEqual(Set(items.first?.sourceEventIDs ?? []), Set([firstEventID, secondEventID]))
+        XCTAssertEqual(items.first?.promotionKind, .auto)
+    }
+
+    func testTodoEvidenceCompletionRecordsEvidenceAndKeepsCompletedAtBottom() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let sourceEventID = UUID()
+        let evidenceEventID = UUID()
+        let todo = try writer.createTodo(
+            title: "Submit the launch checklist",
+            sourceDayKey: "2026-05-27",
+            sourceEventIDs: [sourceEventID],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_000),
+            promotionKind: .auto
+        )
+
+        try writer.completeTodo(
+            id: todo.id,
+            completedAt: Date(timeIntervalSince1970: 1_778_000_500),
+            completionKind: .evidenceSweep,
+            evidenceEventIDs: [evidenceEventID]
+        )
+
+        let item = try XCTUnwrap(writer.fetchTodoItems().first)
+
+        XCTAssertEqual(item.status, .completed)
+        XCTAssertEqual(item.completedAt, Date(timeIntervalSince1970: 1_778_000_500))
+        XCTAssertEqual(item.completionKind, .evidenceSweep)
+        XCTAssertEqual(item.completionEvidenceEventIDs, [evidenceEventID])
+    }
+
     func testNotificationCollectorIngestsSnapshot() throws {
         let writer = try DatabaseWriter.inMemory()
         let filter = PrivacyFilter()

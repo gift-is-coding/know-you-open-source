@@ -5,6 +5,7 @@ final class AppEnvironment {
     let databaseURL: URL
     var vaultURL: URL
     let databaseWriter: DatabaseWriter
+    let todoStore: TodoStore
     let privacyFilter: PrivacyFilter
     let clipboardWatcher: ClipboardWatcher
     let notificationCollector: NotificationCollector
@@ -69,6 +70,7 @@ final class AppEnvironment {
         self.databaseURL = databaseURL
         self.vaultURL = vaultURL
         self.databaseWriter = databaseWriter
+        self.todoStore = TodoStore(databaseWriter: databaseWriter)
         self.privacyFilter = privacyFilter
         self.notificationReader = notificationReader
         self.composer = DailyMarkdownComposer()

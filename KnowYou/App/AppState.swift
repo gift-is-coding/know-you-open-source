@@ -35,6 +35,7 @@ enum ReaderFocusZone: Hashable {
 
 enum MainContentSelection: Equatable {
     case diary(dayKey: String?)
+    case todo
     case otherSourceManager(focusAddConnector: Bool)
     case knowledgeConnector(instanceID: String)
     case knowledgeDocument(connectorInstanceID: String, documentID: String)
@@ -576,6 +577,10 @@ final class AppState {
     var selectedDayEvents: [EventRecord] = []
     var selectedMarkdownText: String?
     var selectedSourceNotesMarkdown: String?
+    var todoItems: [UnifiedTodoItem] = []
+    var selectedTodoCandidates: [DailyTodoCandidate] = []
+    var trackedTodoCandidateIDs: Set<String> = []
+    var todoAutomationStatusMessage: String?
     var refreshLogNoticesByDay: [String: String] = [:]
     var readerFocus: ReaderFocusZone = .dateList
     var mainContentSelection: MainContentSelection = .diary(dayKey: nil)
@@ -779,6 +784,7 @@ final class AppState {
             updateNotificationAccessStatus(using: environment.notificationReader)
             refreshEngineStatuses()
             refreshNotesIndex()
+            refreshTodoItems(using: environment)
             queueInitialLinkedSourceScanIfNeeded()
             if bootstrapServices {
                 queueEndOfDayReminderBootstrap()
@@ -822,6 +828,7 @@ final class AppState {
             updateNotificationAccessStatus(using: environment.notificationReader)
             refreshEngineStatuses()
             refreshNotesIndex()
+            refreshTodoItems(using: environment)
             queueInitialLinkedSourceScanIfNeeded()
             statusMessage = "Capture services ready"
             queueEndOfDayReminderBootstrap()
@@ -840,6 +847,17 @@ final class AppState {
 
     var shouldShowUpdatePill: Bool {
         updateOffer != nil
+    }
+
+    var openTodoCount: Int {
+        todoItems.filter { $0.status == .open }.count
+    }
+
+    var selectedTodoCandidatePresentations: [DailyTodoCandidatePresentation] {
+        DailyTodoCandidatePresentation.make(
+            candidates: selectedTodoCandidates,
+            trackedCandidateIDs: trackedTodoCandidateIDs
+        )
     }
 
     var endOfDayReminderStatusSummary: String {
@@ -862,6 +880,52 @@ final class AppState {
     func selectOtherSourceManager(focusAddConnector: Bool) {
         mainContentSelection = .otherSourceManager(focusAddConnector: focusAddConnector)
         readerFocus = .dateList
+    }
+
+    func openTodoInbox() {
+        mainContentSelection = .todo
+        readerFocus = .dateList
+        refreshTodoItems()
+    }
+
+    func addTodoCandidate(id candidateID: String) {
+        guard let environment,
+              let candidate = selectedTodoCandidates.first(where: { $0.id == candidateID })
+        else {
+            return
+        }
+
+        do {
+            _ = try environment.todoStore.createTodo(
+                title: candidate.title,
+                sourceDayKey: candidate.sourceDayKey,
+                sourceEventIDs: candidate.sourceEventIDs,
+                createdAt: currentDate(),
+                promotionKind: .manual
+            )
+            refreshTodoItems(using: environment)
+            updateTrackedTodoCandidateIDs()
+            todoAutomationStatusMessage = nil
+        } catch {
+            todoAutomationStatusMessage = "Todo could not be added: \(error.localizedDescription)"
+        }
+    }
+
+    func completeTodoItem(id: String) {
+        guard let environment else { return }
+
+        do {
+            try environment.todoStore.completeTodo(
+                id: id,
+                completedAt: currentDate(),
+                completionKind: .manual,
+                evidenceEventIDs: []
+            )
+            refreshTodoItems(using: environment)
+            updateTrackedTodoCandidateIDs()
+        } catch {
+            todoAutomationStatusMessage = "Todo could not be completed: \(error.localizedDescription)"
+        }
     }
 
     func selectKnowledgeConnector(instanceID: String) {
@@ -922,6 +986,110 @@ final class AppState {
         guard isPresentingOnboardingDemo else { return }
         selectedStoryParagraphID = nil
         selectedStorySourceEvents = []
+    }
+
+    private func refreshTodoItems(using environment: AppEnvironment? = nil) {
+        guard let environment = environment ?? self.environment else {
+            todoItems = []
+            trackedTodoCandidateIDs = []
+            return
+        }
+
+        todoItems = (try? environment.todoStore.fetchTodoItems()) ?? []
+        updateTrackedTodoCandidateIDs()
+    }
+
+    private func updateTrackedTodoCandidateIDs() {
+        let knownNormalizedTitles = Set(todoItems.map(\.normalizedTitle))
+        trackedTodoCandidateIDs = Set(
+            selectedTodoCandidates
+                .filter { knownNormalizedTitles.contains($0.normalizedTitle) }
+                .map(\.id)
+        )
+    }
+
+    private func setSelectedTodoCandidates(from story: DailyStory) {
+        selectedTodoCandidates = DailyTodoCandidate.extract(from: story)
+        updateTrackedTodoCandidateIDs()
+    }
+
+    private func processTodosAfterRefresh(
+        dayKey: String,
+        story: DailyStory,
+        events: [EventRecord]
+    ) async {
+        _ = events
+        guard let environment else { return }
+
+        let candidates = DailyTodoCandidate.extract(from: story)
+        selectedTodoCandidates = candidates
+        refreshTodoItems(using: environment)
+
+        let reconciler = TodoReconciler(summarizer: environment.summarizer)
+        let reconciliation = (try? await reconciler.reconcile(
+            candidates: candidates,
+            existingTodos: todoItems,
+            dayKey: dayKey
+        )) ?? TodoReconciliationResult(decisions: [], isDegraded: true)
+
+        if reconciliation.isDegraded {
+            if !candidates.isEmpty || todoItems.contains(where: { $0.status == .open }) {
+                todoAutomationStatusMessage = "Todo automation degraded: no available LLM result; manual add still works."
+            }
+            updateTrackedTodoCandidateIDs()
+            return
+        }
+
+        let candidatesByID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+        for decision in reconciliation.highConfidenceCreates {
+            guard let candidate = candidatesByID[decision.candidateID] else { continue }
+            _ = try? environment.todoStore.createTodo(
+                title: candidate.title,
+                sourceDayKey: candidate.sourceDayKey,
+                sourceEventIDs: candidate.sourceEventIDs,
+                createdAt: currentDate(),
+                promotionKind: .auto
+            )
+        }
+        for decision in reconciliation.highConfidenceMerges {
+            guard let candidate = candidatesByID[decision.candidateID],
+                  let targetTodoID = decision.targetTodoID
+            else {
+                continue
+            }
+            try? environment.todoStore.mergeTodoEvidence(
+                id: targetTodoID,
+                sourceEventIDs: candidate.sourceEventIDs
+            )
+        }
+
+        refreshTodoItems(using: environment)
+        let openTodos = todoItems.filter { $0.status == .open }
+        let sweep = (try? await TodoCompletionSweep(summarizer: environment.summarizer).sweep(
+            openTodos: openTodos,
+            story: story,
+            dayKey: dayKey
+        )) ?? TodoCompletionSweepResult(completions: [], isDegraded: true)
+
+        if sweep.isDegraded {
+            if !openTodos.isEmpty {
+                todoAutomationStatusMessage = "Todo completion sweep degraded: no available LLM result."
+            }
+        } else {
+            for completion in sweep.completions {
+                try? environment.todoStore.completeTodo(
+                    id: completion.todoID,
+                    completedAt: currentDate(),
+                    completionKind: .evidenceSweep,
+                    evidenceEventIDs: completion.evidenceEventIDs
+                )
+            }
+            todoAutomationStatusMessage = nil
+        }
+
+        refreshTodoItems(using: environment)
+        selectedTodoCandidates = candidates
+        updateTrackedTodoCandidateIDs()
     }
 
     private func refreshKnowledgeDocumentTree() {
@@ -1305,7 +1473,7 @@ final class AppState {
                 selectedKnowledgeDocument = documents.first
                 selectedKnowledgeDocumentMarkdown = loadKnowledgeDocumentMarkdown(selectedKnowledgeDocument)
             }
-        case .diary, .otherSourceManager:
+        case .diary, .todo, .otherSourceManager:
             break
         }
     }
@@ -4080,6 +4248,7 @@ extension AppState {
         dayRefreshStatus.lastRefreshedAt = Date()
         dayRefreshStatus.lastError = nil
         dayRefreshStatus.detail = detail
+        await processTodosAfterRefresh(dayKey: dayKey, story: story, events: events)
         await reevaluateEndOfDayReminder(for: dayKey, now: currentDate(), story: story, events: events)
     }
 
@@ -4190,6 +4359,8 @@ extension AppState {
             selectedMarkdownURL = nil
             selectedMarkdownText = nil
             selectedSourceNotesMarkdown = nil
+            selectedTodoCandidates = []
+            trackedTodoCandidateIDs = []
             return
         }
         guard let environment else {
@@ -4199,6 +4370,8 @@ extension AppState {
             selectedDayEvents = []
             selectedMarkdownText = nil
             selectedSourceNotesMarkdown = nil
+            selectedTodoCandidates = []
+            trackedTodoCandidateIDs = []
             return
         }
 
@@ -4218,6 +4391,7 @@ extension AppState {
         selectedSourceNotesMarkdown =
             markdown.flatMap(extractSourceNotesMarkdown(from:))
             ?? generatedSourceNotesMarkdown(from: events)
+        setSelectedTodoCandidates(from: story)
         let paragraphs = story.sections.flatMap(\.paragraphs)
         if let rememberedID = paragraphSelectionByDay[dayKey],
            paragraphs.contains(where: { $0.id == rememberedID }) {
@@ -4263,6 +4437,8 @@ extension AppState {
         selectedDayEvents = OnboardingDemoStory.demoEvents
         selectedMarkdownText = nil
         selectedSourceNotesMarkdown = generatedSourceNotesMarkdown(from: OnboardingDemoStory.demoEvents)
+        selectedTodoCandidates = []
+        trackedTodoCandidateIDs = []
         if let selectedStoryParagraphID,
            selectedStoryParagraphs.contains(where: { $0.id == selectedStoryParagraphID }) == false {
             self.selectedStoryParagraphID = nil
@@ -4279,6 +4455,8 @@ extension AppState {
         selectedDayEvents = OnboardingDemoStory.demoEvents
         selectedMarkdownText = nil
         selectedSourceNotesMarkdown = generatedSourceNotesMarkdown(from: OnboardingDemoStory.demoEvents)
+        selectedTodoCandidates = []
+        trackedTodoCandidateIDs = []
         if let selectedStoryParagraphID,
            selectedStoryParagraphs.contains(where: { $0.id == selectedStoryParagraphID }) == false {
             self.selectedStoryParagraphID = nil
@@ -4468,7 +4646,7 @@ extension AppState {
                 setSelectedDiaryDate(firstDate)
                 loadDayPresentation(for: firstDate)
             }
-        case .otherSourceManager, .knowledgeConnector, .knowledgeDocument:
+        case .todo, .otherSourceManager, .knowledgeConnector, .knowledgeDocument:
             break
         }
     }

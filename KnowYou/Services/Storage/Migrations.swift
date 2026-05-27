@@ -117,6 +117,22 @@ enum Migrations {
             try db.rename(table: "knowledge_import_documents_repaired", to: "knowledge_import_documents")
         }
 
+        migrator.registerMigration("createTodoItems") { db in
+            try db.create(table: "todo_items", ifNotExists: true) { table in
+                table.column("id", .text).primaryKey()
+                table.column("title", .text).notNull()
+                table.column("normalizedTitle", .text).notNull().unique()
+                table.column("status", .text).notNull()
+                table.column("sourceDayKey", .text).notNull()
+                table.column("sourceEventIDsJSON", .text).notNull()
+                table.column("createdAt", .datetime).notNull()
+                table.column("completedAt", .datetime)
+                table.column("completionEvidenceEventIDsJSON", .text).notNull()
+                table.column("promotionKind", .text).notNull()
+                table.column("completionKind", .text)
+            }
+        }
+
         return migrator
     }
 }

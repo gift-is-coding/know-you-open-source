@@ -61,6 +61,24 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.diarySections.first?.items.map(\.title), ["Today", "Yesterday"])
     }
 
+    func testSidebarPresentationShowsTodoRootAboveSourcesWithOpenCount() {
+        let presentation = DateSidebarPresentation(
+            dates: ["2026-05-23"],
+            selectedItemID: "todo-root",
+            todoOpenCount: 2,
+            knowledgeImportConfig: .default,
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        XCTAssertEqual(presentation.todoRootItem.id, "todo-root")
+        XCTAssertEqual(presentation.todoRootItem.title, "Todo")
+        XCTAssertEqual(presentation.todoRootItem.badgeCount, 2)
+        XCTAssertEqual(presentation.todoRootItem.selectionAction, .todo)
+        XCTAssertTrue(presentation.todoRootItem.isSelected)
+        XCTAssertEqual(Array(presentation.rootItems.prefix(3)).map(\.id), ["todo-root", "add-source", "diary-root"])
+    }
+
     func testSidebarPresentationAddsConnectorInstancesAsRootItems() {
         let config = KnowledgeImportConfig(
             isImportEnabled: true,
@@ -325,6 +343,7 @@ final class DailyMarkdownViewTests: XCTestCase {
 
     @MainActor
     func testDateSidebarSelectionActionRoutesRootAndConnectorIDs() {
+        XCTAssertEqual(DateSidebarView.selectionAction(for: "todo-root"), .todo)
         XCTAssertEqual(DateSidebarView.selectionAction(for: "diary:2026-05-23"), .diaryDate("2026-05-23"))
         XCTAssertEqual(DateSidebarView.selectionAction(for: "add-source"), .otherSource(focusAddConnector: false))
         XCTAssertNil(DateSidebarView.selectionAction(for: "connector:feishu-main"))
@@ -357,7 +376,9 @@ final class DailyMarkdownViewTests: XCTestCase {
             knowledgeDocumentsByConnector: [:],
             isActive: true,
             isKnowledgeOntologySelected: false,
+            todoOpenCount: 0,
             onSelectDiaryDate: { _ in },
+            onOpenTodo: {},
             onSelectOtherSource: { _ in },
             onSelectKnowledgeConnector: { _ in },
             onSelectKnowledgeDocument: { _, _ in },
@@ -703,6 +724,68 @@ final class DailyMarkdownViewTests: XCTestCase {
         }
         XCTAssertEqual(tasks.map(\.isCompleted), [false, true])
         XCTAssertEqual(tasks.map(\.content.plainText), ["跟进会议", "完成文档"])
+    }
+
+    func testDailyTodoCandidateExtractorReadsOpenTasksFromTodoParagraphs() throws {
+        let sourceEventID = UUID()
+        let story = DailyStory(
+            dayKey: "2026-05-27",
+            generatedAt: Date(timeIntervalSince1970: 1_778_000_000),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-todo",
+                            text: """
+                            # To-do
+
+                            - [ ] Send the investor recap
+                            - [x] Confirmed the already-done item
+                            - [ ] 约定周五会议时间
+                            """,
+                            sourceEventIDs: [sourceEventID]
+                        )
+                    ]
+                )
+            ]
+        )
+
+        let candidates = DailyTodoCandidate.extract(from: story)
+
+        XCTAssertEqual(candidates.map(\.title), ["Send the investor recap", "约定周五会议时间"])
+        XCTAssertEqual(candidates.map(\.paragraphID), ["daily-journal-todo", "daily-journal-todo"])
+        XCTAssertEqual(candidates.first?.sourceDayKey, "2026-05-27")
+        XCTAssertEqual(candidates.first?.sourceEventIDs, [sourceEventID])
+    }
+
+    func testDailyTodoCandidatePresentationMarksTrackedItems() {
+        let tracked = DailyTodoCandidate(
+            id: "tracked",
+            title: "Send the investor recap",
+            normalizedTitle: "send the investor recap",
+            sourceDayKey: "2026-05-27",
+            sourceEventIDs: [],
+            paragraphID: "daily-journal-todo"
+        )
+        let untracked = DailyTodoCandidate(
+            id: "untracked",
+            title: "约定周五会议时间",
+            normalizedTitle: "约定周五会议时间",
+            sourceDayKey: "2026-05-27",
+            sourceEventIDs: [],
+            paragraphID: "daily-journal-todo"
+        )
+
+        let presentations = DailyTodoCandidatePresentation.make(
+            candidates: [tracked, untracked],
+            trackedCandidateIDs: Set(["tracked"])
+        )
+
+        XCTAssertEqual(presentations.map(\.title), ["Send the investor recap", "约定周五会议时间"])
+        XCTAssertEqual(presentations.map(\.statusTitle), ["In Todo", "Add to Todo"])
+        XCTAssertEqual(presentations.map(\.isTracked), [true, false])
     }
 
     func testMarkdownRendererPreservesLegacyDetailsMarkdownInsideOneParagraph() {

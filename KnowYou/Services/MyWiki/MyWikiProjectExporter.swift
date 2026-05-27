@@ -166,6 +166,10 @@ struct MyWikiProjectExporter {
         """
     }
 
+    static func exportedDiaryMarkdownForCatalog(dayKey: String, markdown: String) -> String {
+        exportedDiaryMarkdown(dayKey: dayKey, markdown: markdown)
+    }
+
     private static let purposeMarkdown = """
     # Project Purpose
 

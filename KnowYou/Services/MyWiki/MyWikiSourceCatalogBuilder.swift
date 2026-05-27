@@ -27,7 +27,7 @@ struct MyWikiSourceCatalogBuilder {
 
     func refreshCatalog(
         projectRoot: URL,
-        sourceVault: URL,
+        sourceVault: URL?,
         importedDocuments: [ImportedKnowledgeDocument]
     ) throws -> MyWikiSourceCatalogSnapshot {
         let candidates = try diaryCandidates(sourceVault: sourceVault)
@@ -51,7 +51,9 @@ struct MyWikiSourceCatalogBuilder {
                 switch record.status {
                 case .pending, .changed, .failed:
                     return true
-                case .indexed, .notIncluded, .excludedIndexed:
+                case .indexed:
+                    return record.wikiSummaryPath == nil
+                case .notIncluded, .excludedIndexed:
                     return false
                 }
             }
@@ -76,11 +78,25 @@ struct MyWikiSourceCatalogBuilder {
         projectRoot: URL
     ) throws -> MyWikiSourceMaterializationResult {
         let recordsByID = Dictionary(uniqueKeysWithValues: snapshot.records.map { ($0.sourceID, $0) })
+        let materializationSources = try plan.sources.map { source in
+            guard let record = recordsByID[source.sourceID] else {
+                throw MyWikiSourceCatalogBuilderError.unknownPlannedSource(source.sourceID)
+            }
+            guard source.sourcePath == record.rawSourcePath else {
+                throw MyWikiSourceCatalogBuilderError.planSourcePathMismatch(
+                    sourceID: source.sourceID,
+                    plannedPath: source.sourcePath,
+                    catalogPath: record.rawSourcePath
+                )
+            }
+            let destination = try rawSourceURL(record.rawSourcePath, under: projectRoot)
+            return (source: source, record: record, destination: destination)
+        }
 
         var materializedCount = 0
-        for source in plan.sources {
-            guard let record = recordsByID[source.sourceID] else { continue }
-            let destination = try projectRelativeURL(source.sourcePath, under: projectRoot)
+        for materializationSource in materializationSources {
+            let record = materializationSource.record
+            let destination = materializationSource.destination
             try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
 
             switch record.sourceKind {
@@ -100,7 +116,8 @@ struct MyWikiSourceCatalogBuilder {
 
         let manifestURL = projectRoot.appending(path: ".knowyou/ingest-manifest.json")
         try fileManager.createDirectory(at: manifestURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let data = try JSONEncoder.knowledgeImport().encode(plan)
+        let manifestPlan = MyWikiSourceIngestPlan(sources: materializationSources.map(\.source))
+        let data = try JSONEncoder.knowledgeImport().encode(manifestPlan)
         try data.write(to: manifestURL, options: .atomic)
 
         return MyWikiSourceMaterializationResult(
@@ -138,7 +155,8 @@ struct MyWikiSourceCatalogBuilder {
         return updated
     }
 
-    private func diaryCandidates(sourceVault: URL) throws -> [MyWikiSourceCandidate] {
+    private func diaryCandidates(sourceVault: URL?) throws -> [MyWikiSourceCandidate] {
+        guard let sourceVault else { return [] }
         guard fileManager.fileExists(atPath: sourceVault.path) else { return [] }
 
         let files = try fileManager.contentsOfDirectory(
@@ -265,8 +283,9 @@ struct MyWikiSourceCatalogBuilder {
         try fileManager.copyItem(at: source, to: destination)
     }
 
-    private func projectRelativeURL(_ relativePath: String, under projectRoot: URL) throws -> URL {
-        guard let normalized = normalizedRelativePath(relativePath) else {
+    private func rawSourceURL(_ relativePath: String, under projectRoot: URL) throws -> URL {
+        guard let normalized = validatedProjectRelativePath(relativePath),
+              normalized.hasPrefix("raw/sources/") else {
             throw MyWikiSourceCatalogBuilderError.unsafeProjectRelativePath(relativePath)
         }
         let destination = projectRoot.appending(path: normalized)
@@ -276,6 +295,22 @@ struct MyWikiSourceCatalogBuilder {
             throw MyWikiSourceCatalogBuilderError.unsafeProjectRelativePath(relativePath)
         }
         return destination
+    }
+
+    private func validatedProjectRelativePath(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false, trimmed.hasPrefix("/") == false else { return nil }
+
+        let slashNormalized = trimmed.replacingOccurrences(of: "\\", with: "/")
+        let rawComponents = slashNormalized.split(separator: "/").map(String.init)
+        guard rawComponents.isEmpty == false else { return nil }
+        guard rawComponents.allSatisfy({ component in
+            component.isEmpty == false && component != "." && component != ".."
+        }) else {
+            return nil
+        }
+
+        return rawComponents.joined(separator: "/")
     }
 
     private static func ingestSource(for record: MyWikiSourceCatalogRecord) -> MyWikiSourceIngestSource {
@@ -341,21 +376,29 @@ struct MyWikiSourceCatalogBuilder {
     }
 
     private func wikiSummaryPath(for record: MyWikiSourceCatalogRecord) -> String {
-        let basename = record.sourceID
-            .map { character -> Character in
-                character.isLetter || character.isNumber || character == "-" || character == "_" ? character : "-"
-            }
-        return "wiki/sources/\(String(basename)).md"
+        let rawBasename = URL(fileURLWithPath: record.rawSourcePath)
+            .deletingPathExtension()
+            .lastPathComponent
+        let summaryBasename = rawBasename.isEmpty ? record.sourceID : rawBasename
+        return "wiki/sources/\(summaryBasename).md"
     }
 }
 
 private enum MyWikiSourceCatalogBuilderError: LocalizedError {
     case unsafeProjectRelativePath(String)
+    case unknownPlannedSource(String)
+    case planSourcePathMismatch(sourceID: String, plannedPath: String, catalogPath: String)
 
     var errorDescription: String? {
         switch self {
         case .unsafeProjectRelativePath(let path):
             return "Unsafe My Wiki source catalog project-relative path: \(path)"
+        case .unknownPlannedSource(let sourceID):
+            return "My Wiki source ingest plan references an unknown source: \(sourceID)"
+        case .planSourcePathMismatch(let sourceID, let plannedPath, let catalogPath):
+            return """
+            My Wiki source ingest plan path mismatch for \(sourceID): planned \(plannedPath), catalog \(catalogPath)
+            """
         }
     }
 }

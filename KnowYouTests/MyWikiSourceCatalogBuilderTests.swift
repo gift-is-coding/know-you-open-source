@@ -65,6 +65,35 @@ final class MyWikiSourceCatalogBuilderTests: XCTestCase {
         XCTAssertFalse(record.included)
     }
 
+    func testRefreshCatalogSkipsMissingVaultButStillDiscoversExternalAndManualSources() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let project = root.appending(path: "project", directoryHint: .isDirectory)
+        let manual = project.appending(path: "raw/sources/Manual Imports/manual.md")
+        try FileManager.default.createDirectory(at: manual.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "# Manual".write(to: manual, atomically: true, encoding: .utf8)
+        let external = root.appending(path: "external/notes.md")
+        try FileManager.default.createDirectory(at: external.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "# External".write(to: external, atomically: true, encoding: .utf8)
+        let document = importedDocument(
+            id: "doc-1",
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "notes.md",
+            title: "notes.md",
+            sourcePath: external.path,
+            localContentPath: external.path
+        )
+
+        let snapshot = try MyWikiSourceCatalogBuilder().refreshCatalog(
+            projectRoot: project,
+            sourceVault: nil,
+            importedDocuments: [document]
+        )
+
+        XCTAssertEqual(snapshot.records.map(\.sourceKind), [.externalDocument, .manualFile])
+    }
+
     func testManualDiscoveryDefaultsIncludedUnderManualImports() throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -104,6 +133,28 @@ final class MyWikiSourceCatalogBuilderTests: XCTestCase {
 
         XCTAssertEqual(plan.sources.map(\.sourceID), ["changed", "failed"])
         XCTAssertEqual(emptyPlan.sources, [])
+    }
+
+    func testIngestPlanIncludesIndexedSourceWhenWikiSummaryPathIsMissing() throws {
+        var indexedWithoutSummary = catalogRecord(
+            sourceID: "indexed-without-summary",
+            included: true,
+            contentHash: "hash-indexed"
+        )
+        indexedWithoutSummary.lastIndexedHash = "hash-indexed"
+        indexedWithoutSummary.wikiSummaryPath = nil
+        var indexedWithSummary = catalogRecord(
+            sourceID: "indexed-with-summary",
+            included: true,
+            contentHash: "hash-indexed"
+        )
+        indexedWithSummary.lastIndexedHash = "hash-indexed"
+        indexedWithSummary.wikiSummaryPath = "wiki/sources/indexed-with-summary.md"
+        let snapshot = MyWikiSourceCatalogSnapshot(records: [indexedWithSummary, indexedWithoutSummary])
+
+        let plan = MyWikiSourceCatalogBuilder().ingestPlan(snapshot: snapshot, maxSources: nil)
+
+        XCTAssertEqual(plan.sources.map(\.sourceID), ["indexed-without-summary"])
     }
 
     func testMaterializeWritesNestedSourcesAndManifest() throws {
@@ -177,9 +228,58 @@ final class MyWikiSourceCatalogBuilderTests: XCTestCase {
         XCTAssertEqual(preserved, "# Manual\n\nAlready materialized.")
     }
 
+    func testMaterializeRejectsTamperedPlanSourcePathAndDoesNotOverwriteProjectFiles() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let project = root.appending(path: "project", directoryHint: .isDirectory)
+        let external = root.appending(path: "external/notes.md")
+        try FileManager.default.createDirectory(at: external.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "# External".write(to: external, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: project.appending(path: "wiki"), withIntermediateDirectories: true)
+        try "# Safe Index".write(to: project.appending(path: "wiki/index.md"), atomically: true, encoding: .utf8)
+        let record = catalogRecord(
+            sourceID: "doc-1",
+            included: true,
+            contentHash: "hash-doc",
+            relativePath: "Local Folder/local-main/notes.md",
+            sourcePath: external.path,
+            rawSourcePath: "raw/sources/Local Folder/local-main/notes.md",
+            folderContext: "Local Folder/local-main",
+            sourceKind: .externalDocument
+        )
+        let snapshot = MyWikiSourceCatalogSnapshot(records: [record])
+        let tamperedPlan = MyWikiSourceIngestPlan(sources: [
+            MyWikiSourceIngestSource(
+                sourcePath: "wiki/index.md",
+                sourceID: "doc-1",
+                displayTitle: "doc-1",
+                folderContext: "Local Folder/local-main",
+                sourceKind: .externalDocument,
+                contentHash: "hash-doc"
+            )
+        ])
+
+        XCTAssertThrowsError(try MyWikiSourceCatalogBuilder().materialize(
+            plan: tamperedPlan,
+            from: snapshot,
+            projectRoot: project
+        ))
+        let preserved = try String(contentsOf: project.appending(path: "wiki/index.md"), encoding: .utf8)
+        XCTAssertEqual(preserved, "# Safe Index")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: project.appending(path: ".knowyou/ingest-manifest.json").path))
+    }
+
     func testMarkSuccessAndFailureCheckpointBehavior() throws {
         let date = Date(timeIntervalSince1970: 1_779_000_000)
-        var previous = catalogRecord(sourceID: "previous", included: true, contentHash: "hash-current")
+        var previous = catalogRecord(
+            sourceID: "diary:2026-05-27",
+            included: true,
+            contentHash: "hash-current",
+            relativePath: "My Diary/2026-05-27.md",
+            rawSourcePath: "raw/sources/My Diary/knowyou-diary-2026-05-27.md",
+            folderContext: "My Diary",
+            sourceKind: .diary
+        )
         previous.lastIndexedHash = "hash-old"
         previous.lastIndexedAt = Date(timeIntervalSince1970: 1_778_000_000)
         let snapshot = MyWikiSourceCatalogSnapshot(records: [previous])
@@ -190,7 +290,7 @@ final class MyWikiSourceCatalogBuilderTests: XCTestCase {
         XCTAssertEqual(succeeded.records[0].lastIndexedHash, "hash-current")
         XCTAssertEqual(succeeded.records[0].lastIndexedAt, date)
         XCTAssertNil(succeeded.records[0].lastIngestError)
-        XCTAssertEqual(succeeded.records[0].wikiSummaryPath, "wiki/sources/previous.md")
+        XCTAssertEqual(succeeded.records[0].wikiSummaryPath, "wiki/sources/knowyou-diary-2026-05-27.md")
 
         let failed = MyWikiSourceCatalogBuilder().mark(
             plan: plan,

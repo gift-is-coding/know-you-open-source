@@ -29,7 +29,7 @@ struct EngineConfigurationSection: View {
                 Text(SummarizerType.codexCLI.displayName).tag(SummarizerType.codexCLI)
                 Text(SummarizerType.geminiCLI.displayName).tag(SummarizerType.geminiCLI)
                 Text(SummarizerType.openclawCLI.displayName).tag(SummarizerType.openclawCLI)
-                Text(SummarizerType.openAI.displayName).tag(SummarizerType.openAI)
+                Text(SummarizerType.llmAPI.displayName).tag(SummarizerType.llmAPI)
             }
             .pickerStyle(.menu)
 
@@ -55,8 +55,8 @@ struct EngineConfigurationSection: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
-        case .openAI:
-            SecureField("OpenAI API Key", text: $summarizerConfig.openAIKey)
+        case .llmAPI:
+            SecureField("LLM API Key", text: $summarizerConfig.openAIKey)
                 .textFieldStyle(.roundedBorder)
 
         case .codexAuth:
@@ -81,9 +81,9 @@ struct EngineConfigurationSection: View {
     private var configurationHint: String {
         switch summarizerConfig.type {
         case .none:
-            return "Select Claude Code, Codex, Gemini, or OpenAI to activate the writer."
-        case .openAI:
-            return "The API key stays on this Mac and is used only when KnowYou asks the selected engine to shape the diary."
+            return "Select Claude Code, Codex, Gemini, or LLM API to activate the writer."
+        case .llmAPI:
+            return "The API key stays on this Mac and is used only when KnowYou asks the active provider to shape the diary."
         case .codexAuth:
             return "Sign in once with Codex CLI; KnowYou reuses that local login and refreshes it without shelling out to codex exec."
         case .claudeCLI:

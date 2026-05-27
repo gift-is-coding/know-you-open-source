@@ -267,6 +267,18 @@ private actor EngineAttemptRecorder {
     }
 }
 
+private actor LLMAPIProviderProbeRecorder {
+    private var providerIDs: [LLMAPIProviderID] = []
+
+    func record(_ config: SummarizerConfig) {
+        providerIDs.append(config.activeLLMAPIProviderID)
+    }
+
+    func values() -> [LLMAPIProviderID] {
+        providerIDs
+    }
+}
+
 private actor ParallelAttemptRecorder {
     private var started: [DiaryEngine] = []
     private var cancelled: [DiaryEngine] = []
@@ -1213,7 +1225,7 @@ final class MainWindowViewModelTests: XCTestCase {
             defaults.removePersistentDomain(forName: defaultsSuiteName)
         }
         var summarizerConfig = SummarizerConfig.default
-        summarizerConfig.defaultEngine = .openAI
+        summarizerConfig.defaultEngine = .llmAPI
         let appState = AppState(
             environment: environment,
             bootstrapServices: false,
@@ -5045,7 +5057,7 @@ final class MainWindowViewModelTests: XCTestCase {
 
     func testRefreshServiceStatusesPreservesSummarizerRuntimeHistory() {
         var config = SummarizerConfig.default
-        config.defaultEngine = .openAI
+        config.defaultEngine = .llmAPI
         let appState = AppState(
             bootstrapServices: false,
             summarizerConfig: config,
@@ -5055,7 +5067,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         let completedAt = Date(timeIntervalSince1970: 1_775_000_000)
         appState.summarizerStatus = SummarizerRuntimeStatus(
-            mode: "OpenAI API",
+            mode: "LLM API",
             isConfigured: true,
             lastCompletedAt: completedAt,
             lastError: "timed out"
@@ -5134,7 +5146,7 @@ final class MainWindowViewModelTests: XCTestCase {
             lastVerifiedAt: Date(timeIntervalSince1970: 1_775_150_000),
             configurationSignature: "codex|/tmp/codex"
         )
-        appState.engineStatuses[.openAI] = EngineRuntimeStatus(
+        appState.engineStatuses[.llmAPI] = EngineRuntimeStatus(
             state: .yellow,
             detail: "API configuration changed. Retest required.",
             lastVerifiedAt: nil,
@@ -5143,7 +5155,7 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertEqual(appState.defaultEngine.displayName, "Codex (CLI)")
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
-        XCTAssertEqual(appState.engineStatuses[.openAI]?.state, .yellow)
+        XCTAssertEqual(appState.engineStatuses[.llmAPI]?.state, .yellow)
     }
 
     func testApplyEngineConfigKeepsGreenDefaultActiveWhenNewEngineProbeFails() async throws {
@@ -5177,16 +5189,16 @@ final class MainWindowViewModelTests: XCTestCase {
         appState.selectDefaultEngine(.codexCLI)
 
         var editedConfig = initialConfig
-        editedConfig.defaultEngine = .openAI
+        editedConfig.defaultEngine = .llmAPI
         editedConfig.apiBaseURL = "https://example.com/v1/responses"
         editedConfig.apiModel = "gpt-5"
         editedConfig.apiToken = "token-test-123"
 
         appState.applyEngineConfig(editedConfig)
-        await appState.retestEngine(.openAI)
+        await appState.retestEngine(.llmAPI)
 
         XCTAssertEqual(appState.defaultEngine, .codexCLI)
-        XCTAssertEqual(appState.engineStatuses[.openAI]?.state, .yellow)
+        XCTAssertEqual(appState.engineStatuses[.llmAPI]?.state, .yellow)
 
         let activeSummarizer = try XCTUnwrap(appState.environment?.summarizer as? CLISummarizer)
         XCTAssertEqual(activeSummarizer.tool, .codex)
@@ -5279,7 +5291,7 @@ final class MainWindowViewModelTests: XCTestCase {
 
     func testYellowEngineCanBecomeDefaultChoiceWithoutBlockingGreenSelection() {
         var config = SummarizerConfig.default
-        config.defaultEngine = .openAI
+        config.defaultEngine = .llmAPI
         config.apiBaseURL = "https://example.com/v1/responses"
         config.apiModel = "gpt-5"
         config.apiToken = "token-test-123"
@@ -5359,7 +5371,7 @@ final class MainWindowViewModelTests: XCTestCase {
     func testEditingAPIConfigReturnsAPIRowToYellowUntilRetested() async throws {
         let executableURL = try makeStubExecutable(named: "codex")
         var config = SummarizerConfig.default
-        config.defaultEngine = .openAI
+        config.defaultEngine = .llmAPI
         config.apiBaseURL = "https://example.com/v1/responses"
         config.apiModel = "gpt-5"
         config.apiToken = "token-test-123"
@@ -5374,7 +5386,7 @@ final class MainWindowViewModelTests: XCTestCase {
             keychain: engineKeychain,
             keychainService: "MainWindowViewModelTests"
         )
-        appState.engineStatuses[.openAI] = EngineRuntimeStatus(
+        appState.engineStatuses[.llmAPI] = EngineRuntimeStatus(
             state: .green,
             detail: "API returned an expected acknowledgement.",
             lastVerifiedAt: verifiedAt,
@@ -5390,13 +5402,150 @@ final class MainWindowViewModelTests: XCTestCase {
         config.apiModel = "gpt-5-mini"
         appState.applyEngineConfig(config)
 
-        XCTAssertEqual(appState.engineStatuses[.openAI]?.state, .yellow)
-        XCTAssertEqual(appState.engineStatuses[.openAI]?.lastVerifiedAt, verifiedAt)
+        XCTAssertEqual(appState.engineStatuses[.llmAPI]?.state, .yellow)
+        XCTAssertEqual(appState.engineStatuses[.llmAPI]?.lastVerifiedAt, verifiedAt)
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.lastVerifiedAt, verifiedAt)
 
         let summarizer = try XCTUnwrap(appState.environment?.summarizer as? CloudSummarizer)
         XCTAssertEqual(summarizer.model, "gpt-5-mini")
+    }
+
+    func testInitLoadsLegacyOpenAIEngineAsLLMAPI() throws {
+        engineDefaults.set("openAI", forKey: "summarizerDefaultEngine")
+        engineDefaults.set("https://api.openai.com/v1/responses", forKey: "summarizerAPIBaseURL")
+        engineDefaults.set("gpt-5", forKey: "summarizerAPIModel")
+        engineKeychain.save(
+            "sk-legacy-appstate",
+            forKey: "summarizerAPIToken",
+            service: "MainWindowViewModelTests"
+        )
+
+        let environment = try makeEngineEnvironment()
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertEqual(appState.defaultEngine, .llmAPI)
+        let signature = appState.engineStatuses[.llmAPI]?.configurationSignature ?? ""
+        XCTAssertTrue(signature.contains("llmAPI|openAI|https://api.openai.com/v1/responses|gpt-5|openai_responses|"))
+        XCTAssertTrue(signature.contains(SHA256Hasher.hash("sk-legacy-appstate")))
+        XCTAssertFalse(signature.contains("sk-legacy-appstate"))
+    }
+
+    func testApplyEngineConfigSwitchesActiveLLMAPIProviderAndPersistsIt() throws {
+        var config = SummarizerConfig.default
+        config.defaultEngine = .llmAPI
+        config.activeLLMAPIProviderID = .deepSeek
+        config.apiBaseURL = "https://api.deepseek.com"
+        config.apiModel = "deepseek-v4-pro"
+        config.apiToken = "sk-deepseek-test"
+
+        let environment = try makeEngineEnvironment()
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        appState.applyEngineConfig(config)
+
+        XCTAssertEqual(appState.defaultEngine, .llmAPI)
+        let summarizer = try XCTUnwrap(appState.environment?.summarizer as? CloudSummarizer)
+        XCTAssertEqual(summarizer.providerConfig.id, .deepSeek)
+        XCTAssertEqual(summarizer.model, "deepseek-v4-pro")
+
+        let loaded = SummarizerConfig.load(
+            from: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        XCTAssertEqual(loaded.defaultEngine, .llmAPI)
+        XCTAssertEqual(loaded.activeLLMAPIProviderID, .deepSeek)
+        XCTAssertEqual(loaded.apiToken, "sk-deepseek-test")
+    }
+
+    func testLLMAPIStatusSignatureUsesActiveProviderAndHashedToken() {
+        var config = SummarizerConfig.default
+        config.defaultEngine = .llmAPI
+        config.activeLLMAPIProviderID = .openRouter
+        config.apiBaseURL = "https://openrouter.ai/api/v1"
+        config.apiModel = "openai/gpt-5"
+        config.apiToken = "sk-router-secret"
+
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let signature = appState.engineStatuses[.llmAPI]?.configurationSignature ?? ""
+        XCTAssertTrue(signature.contains("llmAPI|openRouter|https://openrouter.ai/api/v1|openai/gpt-5|openai_chat|"))
+        XCTAssertTrue(signature.contains(SHA256Hasher.hash("sk-router-secret")))
+        XCTAssertFalse(signature.contains("sk-router-secret"))
+    }
+
+    func testTestingInactiveLLMAPIProviderDoesNotOverwriteActiveEngineStatus() async {
+        let recorder = LLMAPIProviderProbeRecorder()
+        let activeVerifiedAt = Date(timeIntervalSince1970: 1_775_300_500)
+        let probeVerifiedAt = Date(timeIntervalSince1970: 1_775_300_600)
+        var config = SummarizerConfig.default
+        config.defaultEngine = .llmAPI
+        config.activeLLMAPIProviderID = .openAI
+        config.apiBaseURL = "https://api.openai.com/v1/responses"
+        config.apiModel = "gpt-5"
+        config.apiToken = "sk-openai-test"
+        config.setLLMAPIProviderConfig(
+            LLMAPIProviderConfig(
+                id: .deepSeek,
+                baseURL: "https://api.deepseek.com",
+                model: "deepseek-v4-pro",
+                wireFormat: .openAIChat,
+                apiToken: "sk-deepseek-test"
+            )
+        )
+
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            probeEngine: { engine, probeConfig, _ in
+                await recorder.record(probeConfig)
+                return EngineProbeResult(
+                    engine: engine,
+                    state: .green,
+                    detail: "DeepSeek returned non-empty text.",
+                    verifiedAt: probeVerifiedAt
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.engineStatuses[.llmAPI] = EngineRuntimeStatus(
+            state: .green,
+            detail: "OpenAI returned non-empty text.",
+            lastVerifiedAt: activeVerifiedAt,
+            configurationSignature: "active-provider-signature"
+        )
+
+        let inactiveStatus = await appState.testLLMAPIProvider(.deepSeek, draftConfig: config)
+
+        let probedProviderIDs = await recorder.values()
+        XCTAssertEqual(probedProviderIDs, [.deepSeek])
+        XCTAssertEqual(inactiveStatus.state, .green)
+        XCTAssertEqual(inactiveStatus.detail, "DeepSeek returned non-empty text.")
+        XCTAssertEqual(appState.engineStatuses[.llmAPI]?.detail, "OpenAI returned non-empty text.")
+        XCTAssertEqual(appState.engineStatuses[.llmAPI]?.lastVerifiedAt, activeVerifiedAt)
+        XCTAssertEqual(appState.engineStatuses[.llmAPI]?.configurationSignature, "active-provider-signature")
     }
 
     func testRetestEngineDiscardsStaleProbeResultWhenConfigChangesMidFlight() async throws {
@@ -6646,7 +6795,7 @@ final class MainWindowViewModelTests: XCTestCase {
 
     func testEnvironmentInitInfersRuntimeEngineFromInjectedSummarizerForStatusBookkeeping() async throws {
         var persistedConfig = SummarizerConfig.default
-        persistedConfig.defaultEngine = .openAI
+        persistedConfig.defaultEngine = .llmAPI
         persistedConfig.apiBaseURL = "https://example.com/v1/responses"
         persistedConfig.apiModel = "gpt-5"
         persistedConfig.apiToken = "token-test-123"
@@ -6684,7 +6833,7 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.lastVerifiedAt, verifiedAt)
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.configurationSignature, "codex|\(executableURL.path)")
-        XCTAssertEqual(appState.engineStatuses[.openAI]?.lastVerifiedAt, nil)
+        XCTAssertEqual(appState.engineStatuses[.llmAPI]?.lastVerifiedAt, nil)
     }
 
     func testInitPreservesPersistedUnverifiedDefaultEngineChoice() throws {

@@ -93,8 +93,12 @@ final class MyWikiSourceLibraryPresentationTests: XCTestCase {
     func testSourceLibraryLayoutGivesMajorityWidthToSourceTree() {
         XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.minimumWidth, 1040)
         XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.minimumHeight, 680)
+        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.preferredWidth, 1360)
+        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.preferredHeight, 820)
+        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.managementColumnWidth, 360)
         XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.sourceTreeWidthRatio, 0.65)
         XCTAssertLessThanOrEqual(MyWikiSourceLibraryLayoutPolicy.sourceTreeWidthRatio, 0.70)
+        XCTAssertTrue(MyWikiSourceLibraryLayoutPolicy.usesScrollableManagementPane)
     }
 
     func testInvertVisibleOnlyMutatesMatchingSourceIDs() {

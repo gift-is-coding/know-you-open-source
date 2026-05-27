@@ -10,7 +10,9 @@
 
 My Wiki 左侧进度区域改为状态卡加独立 `Manage Sources` 按钮。状态卡不再响应点击，避免把“看进度”和“管理 source”混成同一个动作。详情页 `More` 菜单保留管理入口，并统一使用 `Manage Sources` / `Update My Wiki` 文案。
 
-`MyWikiSourceLibraryView` 改成宽工作台，最小宽度约 1080、高度约 680。左侧约 68% 宽度只负责标题、状态、搜索和 source tree；右侧固定管理栏负责 `Update My Wiki`、状态统计、status filter、visible 批量操作、`Manual Uploads` 导入区和 `Close`。
+`MyWikiSourceLibraryView` 改成宽工作台，最小宽度约 1280、高度约 760，首选尺寸约 1480x900。左侧约 68% 宽度只负责标题、状态、搜索和 source tree；右侧固定管理栏负责 `Update My Wiki`、状态统计、status filter、visible 批量操作、`Manual Uploads` 导入区和 `Close`。右侧管理栏必须可滚动，避免在较小屏幕或 sheet 约束下裁掉导入区和底部动作。
+
+`Manage Sources` 入口按钮必须是明确的文字按钮，而不是只剩一个小 icon。按钮保持 folder 图标，但需要有足够点击面积和完整 label，避免用户把它误认为一个无说明的小设置按钮。
 
 Source 选择语义保持“自动保存 + 手动更新”。include/exclude、目录选择、include visible、exclude visible、invert visible 仍会立即写入 `.knowyou/source-catalog.json`；`Close` 只关闭面板，不保存也不处理，因为保存已经自动完成；`Update My Wiki` 才调用 My Wiki ingest flow。
 

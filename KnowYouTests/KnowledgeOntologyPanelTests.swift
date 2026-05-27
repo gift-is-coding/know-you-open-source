@@ -245,6 +245,8 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
     func testSourceLibraryEntryUsesExplicitManageSourcesButton() {
         XCTAssertTrue(MyWikiSourceLibraryEntryPolicy.showsManageSourcesButton)
         XCTAssertFalse(MyWikiSourceLibraryEntryPolicy.progressCardOpensSourceLibrary)
+        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryEntryPolicy.manageButtonMinWidth, 160)
+        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryEntryPolicy.manageButtonMinHeight, 40)
     }
 
     func testDetailMoreMenuIncludesAgentContextAction() {

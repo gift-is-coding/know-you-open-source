@@ -250,6 +250,8 @@ enum MyWikiProgressRefreshPolicy {
 enum MyWikiSourceLibraryEntryPolicy {
     static let showsManageSourcesButton = true
     static let progressCardOpensSourceLibrary = false
+    static let manageButtonMinWidth: CGFloat = 168
+    static let manageButtonMinHeight: CGFloat = 42
 }
 
 enum MyWikiDetailMaintenancePolicy {

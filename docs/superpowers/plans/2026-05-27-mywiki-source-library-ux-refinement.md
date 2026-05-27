@@ -18,13 +18,14 @@
 
 3. 更新 My Wiki 入口：
    - `MyWikiPanel` 的 progress 区域改成非点击状态卡。
-   - 在状态卡旁增加 `Manage Sources` 按钮。
+   - 在状态卡旁增加明确的大号 `Manage Sources` 按钮，保留 folder 图标但不能压缩成小 icon。
    - Source Library sheet 接收 `isUpdatingSources` 和 `onUpdateSources`，用于面板内触发 `Update My Wiki`。
    - `MyWikiDetailView` 菜单统一改为 `Update My Wiki` 和 `Manage Sources`。
 
 4. 更新 Source Library UI：
-   - 面板调整为约 1080x680 的左右布局。
+   - 面板调整为最小约 1280x760、首选约 1480x900 的左右布局。
    - 左侧专注 source tree；右侧放状态统计、筛选、批量操作、`Manual Uploads` 导入区、`Update My Wiki`、`Close`。
+   - 右侧管理栏加入滚动兜底，确保导入区和底部按钮在较小窗口下仍可访问。
    - `Drop`/`Import` 只复制文件并 reload catalog，不触发 ingest。
    - `Close` 只关闭窗口；保存由选择变更即时完成。
 

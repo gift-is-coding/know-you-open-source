@@ -223,9 +223,15 @@ struct MyWikiPanel: View {
                     isShowingSourceLibrary = true
                 } label: {
                     Label("Manage Sources", systemImage: "folder")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(
+                            minWidth: MyWikiSourceLibraryEntryPolicy.manageButtonMinWidth,
+                            minHeight: MyWikiSourceLibraryEntryPolicy.manageButtonMinHeight
+                        )
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.small)
+                .controlSize(.large)
+                .fixedSize(horizontal: true, vertical: false)
             }
         }
     }

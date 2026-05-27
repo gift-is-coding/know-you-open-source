@@ -17,10 +17,13 @@ enum MyWikiSourceLibraryActionCopy {
 }
 
 enum MyWikiSourceLibraryLayoutPolicy {
-    static let minimumWidth: CGFloat = 1080
-    static let minimumHeight: CGFloat = 680
+    static let minimumWidth: CGFloat = 1280
+    static let minimumHeight: CGFloat = 760
+    static let preferredWidth: CGFloat = 1480
+    static let preferredHeight: CGFloat = 900
     static let sourceTreeWidthRatio: CGFloat = 0.68
-    static let managementColumnWidth: CGFloat = 330
+    static let managementColumnWidth: CGFloat = 380
+    static let usesScrollableManagementPane = true
 }
 
 struct MyWikiSourceLibraryView: View {
@@ -55,11 +58,12 @@ struct MyWikiSourceLibraryView: View {
             sourceTreePane
             managementPane
         }
-        .padding(24)
+        .padding(32)
         .frame(
-            minWidth: MyWikiSourceLibraryLayoutPolicy.minimumWidth,
-            minHeight: MyWikiSourceLibraryLayoutPolicy.minimumHeight
+            width: MyWikiSourceLibraryLayoutPolicy.preferredWidth,
+            height: MyWikiSourceLibraryLayoutPolicy.preferredHeight
         )
+        .frame(minWidth: MyWikiSourceLibraryLayoutPolicy.minimumWidth, minHeight: MyWikiSourceLibraryLayoutPolicy.minimumHeight)
         .background(MyWikiTheme.contentBackground)
         .foregroundStyle(.primary)
         .onAppear(perform: reload)
@@ -103,10 +107,16 @@ struct MyWikiSourceLibraryView: View {
                 .keyboardShortcut(.cancelAction)
             }
 
-            updatePanel
-            summaryPanel
-            filterAndBatchPanel
-            manualUploadsPanel
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    updatePanel
+                    summaryPanel
+                    filterAndBatchPanel
+                    manualUploadsPanel
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(.bottom, 2)
+            }
             Spacer(minLength: 0)
         }
         .frame(width: MyWikiSourceLibraryLayoutPolicy.managementColumnWidth)

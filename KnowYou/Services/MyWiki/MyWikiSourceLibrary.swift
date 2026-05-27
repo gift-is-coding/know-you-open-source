@@ -92,7 +92,7 @@ struct MyWikiSourceLibrary {
     }
 
     private func rawSourcesDirectory(projectRoot: URL) -> URL {
-        projectRoot.appending(path: "raw/sources", directoryHint: .isDirectory)
+        projectRoot.appending(path: "raw/sources/Manual Imports", directoryHint: .isDirectory)
     }
 
     private func sourceSummaryURL(for sourceURL: URL, projectRoot: URL) -> URL? {

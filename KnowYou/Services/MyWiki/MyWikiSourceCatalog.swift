@@ -21,6 +21,12 @@ enum MyWikiSourceSelectionState: Hashable, Sendable {
     case mixed
 }
 
+enum MyWikiSourceCatalogBulkAction: Sendable {
+    case includeVisible
+    case excludeVisible
+    case invertVisible
+}
+
 struct MyWikiSourceCandidate: Equatable, Sendable {
     var sourceID: String
     var sourceKind: MyWikiSourceKind
@@ -155,6 +161,22 @@ struct MyWikiSourceCatalogRecord: Codable, Equatable, Identifiable, Sendable {
 struct MyWikiSourceCatalogSnapshot: Codable, Equatable, Sendable {
     var records: [MyWikiSourceCatalogRecord]
 
+    mutating func apply(action: MyWikiSourceCatalogBulkAction, visibleSourceIDs: [String]) {
+        let visibleSourceIDs = Set(visibleSourceIDs)
+        guard visibleSourceIDs.isEmpty == false else { return }
+
+        for index in records.indices where visibleSourceIDs.contains(records[index].sourceID) {
+            switch action {
+            case .includeVisible:
+                records[index].included = true
+            case .excludeVisible:
+                records[index].included = false
+            case .invertVisible:
+                records[index].included.toggle()
+            }
+        }
+    }
+
     func merged(with candidates: [MyWikiSourceCandidate]) -> MyWikiSourceCatalogSnapshot {
         var existingByID = Dictionary(uniqueKeysWithValues: records.map { ($0.sourceID, $0) })
         var mergedRecords: [MyWikiSourceCatalogRecord] = []
@@ -195,6 +217,58 @@ struct MyWikiSourceCatalogSnapshot: Codable, Equatable, Sendable {
             return lhs.relativePath.localizedStandardCompare(rhs.relativePath) == .orderedAscending
         }
 
+        return lhs.sourceID.localizedStandardCompare(rhs.sourceID) == .orderedAscending
+    }
+}
+
+struct MyWikiSourceLibraryPresentation: Equatable, Sendable {
+    var snapshot: MyWikiSourceCatalogSnapshot
+    var query: String
+    var statusFilter: MyWikiSourceProcessingStatus?
+    var visibleRecords: [MyWikiSourceCatalogRecord]
+    var tree: MyWikiSourceCatalogNode
+    var totalCount: Int
+    var includedCount: Int
+    var pendingCount: Int
+    var changedCount: Int
+    var failedCount: Int
+
+    init(
+        snapshot: MyWikiSourceCatalogSnapshot,
+        query: String = "",
+        statusFilter: MyWikiSourceProcessingStatus? = nil
+    ) {
+        self.snapshot = snapshot
+        self.query = query
+        self.statusFilter = statusFilter
+        self.totalCount = snapshot.records.count
+        self.includedCount = snapshot.records.filter(\.included).count
+        self.pendingCount = snapshot.records.filter { $0.status == .pending }.count
+        self.changedCount = snapshot.records.filter { $0.status == .changed }.count
+        self.failedCount = snapshot.records.filter { $0.status == .failed }.count
+
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        self.visibleRecords = snapshot.records
+            .filter { record in
+                guard normalizedQuery.isEmpty == false else { return true }
+                return record.displayTitle.lowercased().contains(normalizedQuery)
+                    || record.relativePath.lowercased().contains(normalizedQuery)
+            }
+            .filter { record in
+                guard let statusFilter else { return true }
+                return record.status == statusFilter
+            }
+            .sorted(by: Self.sortRecords)
+        self.tree = MyWikiSourceCatalogTreeBuilder().build(records: visibleRecords)
+    }
+
+    private static func sortRecords(
+        _ lhs: MyWikiSourceCatalogRecord,
+        _ rhs: MyWikiSourceCatalogRecord
+    ) -> Bool {
+        if lhs.relativePath != rhs.relativePath {
+            return lhs.relativePath.localizedStandardCompare(rhs.relativePath) == .orderedAscending
+        }
         return lhs.sourceID.localizedStandardCompare(rhs.sourceID) == .orderedAscending
     }
 }

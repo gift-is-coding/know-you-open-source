@@ -86,7 +86,7 @@ struct MyWikiPanel: View {
         }
         .sheet(isPresented: $isShowingSourceLibrary) {
             if let projectRoot {
-                MyWikiSourceLibraryView(projectRoot: projectRoot) {
+                MyWikiSourceLibraryView(projectRoot: projectRoot, sourceVault: sourceVault) {
                     loadIngestProgress()
                     loadDashboard()
                 }

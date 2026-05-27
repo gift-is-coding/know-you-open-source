@@ -22,7 +22,7 @@ vi.mock("@/lib/llm-client", () => ({
 }))
 
 import { INGEST_CACHE_PIPELINE_VERSION } from "@/lib/ingest"
-import { runKnowYouIngest } from "./knowyou-ingest"
+import { runKnowYouIngest, runKnowYouIngestCli } from "./knowyou-ingest"
 
 beforeEach(() => {
   pendingResponses = []
@@ -143,6 +143,158 @@ describe("KnowYou headless ingest runner", () => {
       expect(await fileExists(path.join(tmp.path, "wiki/sources/knowyou-diary-2026-05-11.md"))).toBe(true)
       expect(await fileExists(path.join(tmp.path, "wiki/sources/knowyou-diary-2026-05-10.md"))).toBe(false)
     } finally {
+      await tmp.cleanup()
+    }
+  })
+
+  it("ingests only manifest-listed sources and passes folder context into prompts", async () => {
+    const tmp = await createTempProject("knowyou-headless-manifest")
+    try {
+      await fs.mkdir(path.join(tmp.path, "raw/sources/My Diary"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, ".knowyou"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
+      await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Purpose\n\nBuild My Wiki.")
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+      await writeFileRaw(
+        path.join(tmp.path, "raw/sources/My Diary/knowyou-diary-2026-05-27.md"),
+        "# 2026-05-27\n\nDiscussed source catalog handoff with Task 2.",
+      )
+      await writeFileRaw(
+        path.join(tmp.path, "raw/sources/skip-me.md"),
+        "# Skip me\n\nThis source must not be ingested by a manifest run.",
+      )
+      const manifestPath = path.join(tmp.path, ".knowyou/ingest-manifest.json")
+      await writeFileRaw(
+        manifestPath,
+        JSON.stringify({
+          sources: [
+            {
+              sourcePath: "raw/sources/My Diary/knowyou-diary-2026-05-27.md",
+              sourceID: "diary-2026-05-27",
+              displayTitle: "May 27 Diary",
+              folderContext: "My Diary > 2026 > May",
+              sourceKind: "diary",
+              contentHash: "abc123",
+            },
+          ],
+        }),
+      )
+
+      pendingResponses = [
+        "Analysis for May 27.",
+        sourceSummaryBlock("2026-05-27"),
+      ]
+
+      const status = await runKnowYouIngest({
+        projectPath: tmp.path,
+        provider: "openai",
+        model: "test-model",
+        manifestPath,
+      })
+
+      const promptText = streamedPrompts.join("\n\n")
+      expect(status.sourcesProcessed).toBe(1)
+      expect(status.sourcesTotal).toBe(1)
+      expect(promptText).toContain("knowyou-diary-2026-05-27.md")
+      expect(promptText).toContain("**Folder context:** My Diary > 2026 > May")
+      expect(promptText).not.toContain("skip-me.md")
+      expect(await fileExists(path.join(tmp.path, "wiki/sources/knowyou-diary-2026-05-27.md"))).toBe(true)
+    } finally {
+      await tmp.cleanup()
+    }
+  })
+
+  it("rejects manifest source paths that resolve outside raw/sources", async () => {
+    const tmp = await createTempProject("knowyou-headless-manifest-unsafe")
+    try {
+      await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, ".knowyou"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
+      await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Purpose\n\nBuild My Wiki.")
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+      const manifestPath = path.join(tmp.path, ".knowyou/ingest-manifest.json")
+      await writeFileRaw(
+        manifestPath,
+        JSON.stringify({
+          sources: [
+            {
+              sourcePath: "raw/sources/../../wiki/index.md",
+              folderContext: "Unsafe",
+            },
+          ],
+        }),
+      )
+
+      await expect(
+        runKnowYouIngest({
+          projectPath: tmp.path,
+          provider: "openai",
+          model: "test-model",
+          manifestPath,
+        }),
+      ).rejects.toThrow("Manifest sourcePath must stay inside raw/sources")
+    } finally {
+      await tmp.cleanup()
+    }
+  })
+
+  it("accepts --manifest through the CLI", async () => {
+    const tmp = await createTempProject("knowyou-headless-manifest-cli")
+    const stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
+    const stderrWrite = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    const originalExitCode = process.exitCode
+    process.exitCode = undefined
+    try {
+      await fs.mkdir(path.join(tmp.path, "raw/sources/My Diary"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, ".knowyou"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
+      await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Purpose\n\nBuild My Wiki.")
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+      await writeFileRaw(
+        path.join(tmp.path, "raw/sources/My Diary/knowyou-diary-2026-05-28.md"),
+        "# 2026-05-28\n\nCLI manifest source.",
+      )
+      await writeFileRaw(path.join(tmp.path, "raw/sources/skip-me.md"), "# Skip me\n")
+      const manifestPath = path.join(tmp.path, ".knowyou/ingest-manifest.json")
+      await writeFileRaw(
+        manifestPath,
+        JSON.stringify({
+          sources: [
+            {
+              sourcePath: "raw/sources/My Diary/knowyou-diary-2026-05-28.md",
+              folderContext: "My Diary > CLI",
+            },
+          ],
+        }),
+      )
+
+      pendingResponses = [
+        "Analysis for May 28.",
+        sourceSummaryBlock("2026-05-28"),
+      ]
+
+      await runKnowYouIngestCli([
+        "--project",
+        tmp.path,
+        "--provider",
+        "openai",
+        "--model",
+        "test-model",
+        "--manifest",
+        manifestPath,
+      ])
+
+      expect(process.exitCode).toBeUndefined()
+      expect(stdoutWrite).toHaveBeenCalledWith(expect.stringContaining('"sourcesTotal":1'))
+      expect(streamedPrompts.join("\n\n")).toContain("**Folder context:** My Diary > CLI")
+      expect(streamedPrompts.join("\n\n")).not.toContain("skip-me.md")
+    } finally {
+      process.exitCode = originalExitCode
+      stdoutWrite.mockRestore()
+      stderrWrite.mockRestore()
       await tmp.cleanup()
     }
   })

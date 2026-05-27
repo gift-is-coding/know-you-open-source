@@ -11,6 +11,7 @@ interface IngestOptions {
   provider?: LlmConfig["provider"]
   model?: string
   maxSources?: number
+  manifestPath?: string
 }
 
 interface IngestStatus {
@@ -35,6 +36,24 @@ interface MyWikiSchemaCategory {
 
 interface MyWikiSchemaFile {
   categories?: MyWikiSchemaCategory[]
+}
+
+interface ManifestSource {
+  sourcePath: string
+  sourceID?: string
+  displayTitle?: string
+  folderContext?: string
+  sourceKind?: string
+  contentHash?: string
+}
+
+interface IngestManifest {
+  sources?: ManifestSource[]
+}
+
+interface SourceToIngest {
+  fullPath: string
+  manifestSource?: ManifestSource
 }
 
 const defaultMyWikiCategories: MyWikiSchemaCategory[] = [
@@ -172,6 +191,9 @@ function parseArgs(argv: string[]): IngestOptions {
     } else if (arg === "--max-sources" && next) {
       options.maxSources = Number(next)
       index += 1
+    } else if (arg === "--manifest" && next) {
+      options.manifestPath = next
+      index += 1
     }
   }
   if (!options.projectPath) {
@@ -214,6 +236,60 @@ async function listSources(projectPath: string, maxSources?: number): Promise<st
   }
 
   return [...pending, ...alreadyIndexed].slice(0, maxSources)
+}
+
+function normalizePathForComparison(filePath: string): string {
+  return filePath.replace(/\\/g, "/")
+}
+
+function validateManifestSourcePath(projectPath: string, sourcePath: unknown, index: number): string {
+  if (typeof sourcePath !== "string" || sourcePath.trim().length === 0) {
+    throw new Error(`Manifest source at index ${index} must include a non-empty sourcePath string.`)
+  }
+
+  const normalizedInput = sourcePath.replace(/\\/g, "/")
+  if (path.isAbsolute(normalizedInput) || path.win32.isAbsolute(normalizedInput)) {
+    throw new Error(`Manifest sourcePath must be relative: ${sourcePath}`)
+  }
+  if (!normalizedInput.startsWith("raw/sources/")) {
+    throw new Error(`Manifest sourcePath must start with raw/sources/: ${sourcePath}`)
+  }
+
+  const projectRoot = path.resolve(projectPath)
+  const sourceRoot = normalizePathForComparison(path.resolve(projectRoot, "raw", "sources"))
+  const resolvedPath = normalizePathForComparison(path.resolve(projectRoot, normalizedInput))
+  if (resolvedPath !== sourceRoot && !resolvedPath.startsWith(`${sourceRoot}/`)) {
+    throw new Error(`Manifest sourcePath must stay inside raw/sources: ${sourcePath}`)
+  }
+
+  return resolvedPath
+}
+
+async function loadManifestSourceMap(projectPath: string, manifestPath: string): Promise<Map<string, ManifestSource>> {
+  const resolvedManifestPath = path.isAbsolute(manifestPath)
+    ? manifestPath
+    : path.resolve(projectPath, manifestPath)
+  let parsed: IngestManifest
+  try {
+    parsed = JSON.parse(await fs.readFile(resolvedManifestPath, "utf-8")) as IngestManifest
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new Error(`Failed to read ingest manifest: ${message}`)
+  }
+
+  if (!Array.isArray(parsed.sources)) {
+    throw new Error("Malformed ingest manifest: sources must be an array.")
+  }
+
+  const sources = new Map<string, ManifestSource>()
+  parsed.sources.forEach((source, index) => {
+    if (!source || typeof source !== "object") {
+      throw new Error(`Malformed ingest manifest: source at index ${index} must be an object.`)
+    }
+    const fullPath = validateManifestSourcePath(projectPath, source.sourcePath, index)
+    sources.set(fullPath, source)
+  })
+  return sources
 }
 
 function sourceSummaryPath(projectPath: string, sourcePath: string): string {
@@ -297,7 +373,12 @@ export async function runKnowYouIngest(options: IngestOptions): Promise<IngestSt
   resetStores(projectPath, llmConfig)
   await ensureMyWikiOutputContract(projectPath)
 
-  const sources = await listSources(projectPath, options.maxSources)
+  const manifestSources = options.manifestPath
+    ? await loadManifestSourceMap(projectPath, options.manifestPath)
+    : undefined
+  const sources: SourceToIngest[] = manifestSources
+    ? [...manifestSources.entries()].map(([fullPath, manifestSource]) => ({ fullPath, manifestSource }))
+    : (await listSources(projectPath, options.maxSources)).map((fullPath) => ({ fullPath }))
   if (sources.length === 0) {
     throw new Error("No Markdown sources found in raw/sources.")
   }
@@ -313,8 +394,14 @@ export async function runKnowYouIngest(options: IngestOptions): Promise<IngestSt
   })
 
   let processed = 0
-  for (const sourcePath of sources) {
-    const written = await autoIngest(projectPath, sourcePath, llmConfig)
+  for (const source of sources) {
+    const written = await autoIngest(
+      projectPath,
+      source.fullPath,
+      llmConfig,
+      undefined,
+      source.manifestSource?.folderContext,
+    )
     written.forEach((filePath) => filesWritten.add(filePath))
     processed += 1
     await writeStatus(projectPath, {

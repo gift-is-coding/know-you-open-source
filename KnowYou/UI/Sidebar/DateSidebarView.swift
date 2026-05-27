@@ -7,7 +7,6 @@ struct DateSidebarView: View {
     let knowledgeImportConfig: KnowledgeImportConfig
     let knowledgeDocumentsByConnector: [String: [ImportedKnowledgeDocument]]
     let isActive: Bool
-    let isKnowledgeOntologySelected: Bool
     let onSelectDiaryDate: (String) -> Void
     let onSelectOtherSource: (_ focusAddConnector: Bool) -> Void
     let onSelectKnowledgeConnector: (String) -> Void
@@ -23,29 +22,8 @@ struct DateSidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Button(action: onOpenKnowledgeOntology) {
-                HStack(spacing: 8) {
-                    Image(systemName: "point.3.connected.trianglepath.dotted")
-                    Text("My Wiki")
-                    Spacer(minLength: 0)
-                }
-                .font(.system(size: 13, weight: .semibold))
-                .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
-                .padding(.horizontal, 12)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isKnowledgeOntologySelected ? Color.accentColor.opacity(0.16) : Color.clear)
-            )
-            .foregroundStyle(isKnowledgeOntologySelected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-            .padding(.horizontal, 8)
-            .padding(.top, 10)
-            .padding(.bottom, 6)
-
             List(selection: activeBinding) {
+                rootRow(presentation.myWikiRootItem)
                 rootRow(presentation.sourceRootItem)
 
                 DisclosureGroup(isExpanded: $isDiaryGroupExpanded) {
@@ -195,8 +173,8 @@ struct DateSidebarView: View {
                     Image(systemName: "plus")
                 }
                 .buttonStyle(.borderless)
-                .help("Add Source")
-                .accessibilityLabel("Add Source")
+                .help("Add Other Source")
+                .accessibilityLabel("Add Other Source")
                 .accessibilityIdentifier("add-source-add-button")
             }
         }
@@ -314,6 +292,8 @@ struct DateSidebarView: View {
             onSelectKnowledgeConnector(instanceID)
         case .knowledgeDocument(let instanceID, let documentID):
             onSelectKnowledgeDocument(instanceID, documentID)
+        case .knowledgeOntology:
+            onOpenKnowledgeOntology()
         case nil:
             break
         }
@@ -322,6 +302,8 @@ struct DateSidebarView: View {
     static func selectionAction(for itemID: String) -> SidebarSelectionAction? {
         if let dayKey = dayKeyForSelection(itemID) {
             return .diaryDate(dayKey)
+        } else if itemID == "my-wiki" {
+            return .knowledgeOntology
         } else if itemID == "add-source" || itemID == "other-source" {
             return .otherSource(focusAddConnector: false)
         } else if itemID.hasPrefix("document:") {
@@ -423,6 +405,7 @@ struct SidebarIconMetrics: Equatable {
 enum SidebarSelectionAction: Equatable {
     case diaryDate(String)
     case otherSource(focusAddConnector: Bool)
+    case knowledgeOntology
     case knowledgeConnector(String)
     case knowledgeDocument(String, String)
 }
@@ -466,6 +449,7 @@ struct SidebarRootItem: Identifiable, Equatable {
 }
 
 struct DateSidebarPresentation {
+    let myWikiRootItem: SidebarRootItem
     let sourceRootItem: SidebarRootItem
     let diaryRootItem: SidebarRootItem
     let sourceItems: [SidebarRootItem]
@@ -490,9 +474,18 @@ struct DateSidebarPresentation {
         var monthBuckets: [Date: [DateSidebarItem]] = [:]
         var specialItems: [DateSidebarItem] = []
 
+        myWikiRootItem = SidebarRootItem(
+            id: "my-wiki",
+            title: "My Wiki",
+            systemImage: "point.3.connected.trianglepath.dotted",
+            isSelected: selectedItemID == "my-wiki",
+            isEnabled: true,
+            showsAddButton: false,
+            selectionAction: .knowledgeOntology
+        )
         sourceRootItem = SidebarRootItem(
             id: "add-source",
-            title: "Add Source",
+            title: "Other Source",
             systemImage: "plus.square.on.square",
             isSelected: selectedItemID == "add-source" || selectedItemID == "other-source",
             isEnabled: true,
@@ -565,7 +558,7 @@ struct DateSidebarPresentation {
                 )
             ]
         }
-        rootItems = [sourceRootItem, diaryRootItem] + sourceItems
+        rootItems = [myWikiRootItem, sourceRootItem, diaryRootItem] + sourceItems
         sections = diarySections
     }
 

@@ -158,6 +158,11 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertTrue(KnowYouMainWindowLaunchPolicy.usesAppKitPresenter)
     }
 
+    func testMainWindowWorkspacePolicyKeepsToolbarStableAcrossSidebarModes() {
+        XCTAssertTrue(MainWindowWorkspacePolicy.usesUnifiedNavigationSplitViewAcrossModes)
+        XCTAssertTrue(MainWindowWorkspacePolicy.keepsEngineSelectorInGlobalToolbar)
+    }
+
     func testDetailPresentationShowsMarkdownPageByDefault() {
         let entry = MyWikiEntry(
             id: "adam-wu",

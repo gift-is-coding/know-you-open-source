@@ -149,11 +149,11 @@ Add Source 与 Daily Memory Export 是边界不同的能力。Daily Memory Expor
 
 文件型 source 的正文保留在原始路径。KnowYou 在 `Application Support/KnowYou/KnowledgeSources/` 下只保存 metadata JSON，并在 SQLite 中记录 connector instance、remote identity、content hash、扫描状态和 tombstone；`localContentPath` 指向原始本地文件。Feishu/Lark、Notion、Google Drive 的默认源目录位于 `Application Support/KnowYou/ExternalSources/<platform>/`；KnowYou 只扫描这些目录下的 `.md`、`.markdown`、`.txt` 文件。Obsidian 扫描默认跳过 `<vault>/KnowYou/Daily Memories/`，并跳过带有 `knowyou_export: daily_memory` marker 的文件，避免把 KnowYou 自己导出的日记再扫回来。
 
-### 3.4 Add Source Navigation
+### 3.4 Other Source Navigation
 
-主窗口左侧导航现在把 `Add Source` 作为独立入口，而不是可折叠父目录。`My Diary` 是内置来源，负责按天生成的 diary 内容；Local Folder、Obsidian、Feishu/Lark、Notion、Google Drive 等连接器添加后也作为平行的一级来源出现。连接器 root 和 folder 点击只展开或折叠本地路径推导出的文件树，不会在主区域打开第二份索引；点击 Markdown/TXT 叶子后，主区域直接进入 Markdown preview。侧边栏优先使用已有品牌 logo，并在从本地路径推导文件树时去掉重复的 connector root 文件夹名，避免 Obsidian vault 下多出一层同名目录。
+主窗口左侧导航现在把 `My Wiki`、`Other Source`、`My Diary` 渲染为同一组一级 root row。`My Wiki` 只切换中间内容区，不替换窗口框架；右上角 engine selector 始终保留在全局 toolbar 中，不随左侧入口切换移动。`Other Source` 复用既有 Add Source/source management route；`My Diary` 是内置来源，负责按天生成的 diary 内容；Local Folder、Obsidian、Feishu/Lark、Notion、Google Drive 等连接器添加后也作为平行的一级来源出现。连接器 root 和 folder 点击只展开或折叠本地路径推导出的文件树，不会在主区域打开第二份索引；点击 Markdown/TXT 叶子后，主区域直接进入 Markdown preview。侧边栏优先使用已有品牌 logo，并在从本地路径推导文件树时去掉重复的 connector root 文件夹名，避免 Obsidian vault 下多出一层同名目录。
 
-`Add Source` 主页面只呈现一个 `Sources` 列表。Local Folder 和 Obsidian 直接指向本地目录；Feishu/Lark、Notion、Google Drive 的主动作是 `Generate Prompt`，用弹窗展示 prompt 生成器，默认 daily 且本地时间 11:00，让用户复制到 Codex / Cloud Code 创建每日或每周定时同步任务。Daily Memory Export 保留底层能力和独立配置面板，但不再与 Add Source 混在同一个导入入口里。
+`Other Source` 主页面只呈现一个 `Sources` 列表。Local Folder 和 Obsidian 直接指向本地目录；Feishu/Lark、Notion、Google Drive 的主动作是 `Generate Prompt`，用弹窗展示 prompt 生成器，默认 daily 且本地时间 11:00，让用户复制到 Codex / Cloud Code 创建每日或每周定时同步任务。Daily Memory Export 保留底层能力和独立配置面板，但不再与 Other Source 的导入入口混在一起。
 
 `MainContentSelection` 避免把非 diary 页面编码成日期字符串。刷新完成后，`AppState.importKnowledgeNow()` 只刷新用户当前仍在查看的 knowledge 页面；如果用户停留在 connector root，只更新左侧文件树且不自动打开第一篇文档；如果用户正在阅读某个 source 文档，则保持该文档选择并重新加载 Markdown。Source 阅读状态不显示第三栏说明面板，避免和左侧文件树形成重复索引。
 

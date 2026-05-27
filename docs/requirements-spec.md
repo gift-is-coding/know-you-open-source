@@ -192,17 +192,19 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 单个 source 扫描失败不得阻塞其他 source。
 - 用户必须能手动触发 `Refresh`，它只重新扫描本地目录。
 - 当启用每日 source scan 时，系统必须安装独立于 Daily Memory Export 的用户级 `LaunchAgent`。
-- 侧边栏必须始终显示 `Add Source` 一级目录。
-- `Add Source` 必须是独立入口，不得折叠或收起其他来源。
+- 侧边栏必须始终显示 `My Wiki`、`Other Source`、`My Diary` 三个同级一级入口。
+- `My Wiki`、`Other Source`、`My Diary` 必须使用同一套 sidebar row 组件、字号、图标尺寸、行高和选中态。
+- 右上角 engine selector 必须固定在主窗口全局 toolbar 中，不得随 `My Wiki`、`Other Source`、`My Diary` 的内容切换改变位置或变成页面内部组件。
+- `Other Source` 必须是独立入口，不得折叠或收起其他来源。
 - `My Diary` 必须作为内置来源与 Obsidian、Local Folder、Feishu/Lark、Notion、Google Drive 等外部来源平行呈现。
-- `Add Source` 必须打开来源管理页，而不是混合资料总览页。
-- `Add Source` 主页面不得展示 Daily Memory Export；Daily Memory Export 必须保留底层能力，但不得与 Add Source 的导入流程混在一起。
-- `Add Source` 主页面必须说明本地资料以 reference-only 方式读取，源文件不会被复制或修改，并说明去重与 Obsidian 日记导出回环规避规则。
-- `Add Source` 主页面不得出现顶部重复的 `Add Connector` 入口，所有未连接、已连接或异常来源必须在一个 `Sources` 列表中呈现。
-- `Add Source` 主页面不得提供泛化的 `Add API` 选项；外部平台必须以平台名称或本地文件来源名称呈现。
+- `Other Source` 必须打开来源管理页，而不是混合资料总览页。
+- `Other Source` 主页面不得展示 Daily Memory Export；Daily Memory Export 必须保留底层能力，但不得与 Other Source 的导入流程混在一起。
+- `Other Source` 主页面必须说明本地资料以 reference-only 方式读取，源文件不会被复制或修改，并说明去重与 Obsidian 日记导出回环规避规则。
+- `Other Source` 主页面不得出现顶部重复的 `Add Connector` 入口，所有未连接、已连接或异常来源必须在一个 `Sources` 列表中呈现。
+- `Other Source` 主页面不得提供泛化的 `Add API` 选项；外部平台必须以平台名称或本地文件来源名称呈现。
 - Feishu/Lark、Notion 和 Google Drive 的 `Generate Prompt` 必须打开弹窗，不得在 `Sources` 列表下方插入 inline prompt 表单。
 - Prompt 生成器默认更新频率为 daily，默认更新时间为本地时间 `11:00`。
-- 添加 source 后，该 source 必须作为 `Add Source` 下的并列来源条目出现。
+- 添加 source 后，该 source 必须作为 `Other Source` 管理的并列来源条目出现。
 - 点击连接器来源条目必须在侧边栏展开或折叠该来源的路径层级；点击 Markdown/TXT 文档叶子必须打开 Markdown 预览。
 - Add Source 卡片和侧边栏来源条目必须优先使用已有真实品牌 logo；Obsidian、Feishu/Lark、Notion、Google Drive 不得使用泛化系统图标。
 - 侧边栏文件树必须从 connector root 下的相对路径展示；如果导入路径重复包含 connector root 文件夹名，不得多显示一层同名包装目录。

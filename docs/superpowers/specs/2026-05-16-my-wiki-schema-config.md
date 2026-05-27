@@ -28,7 +28,7 @@ wiki/                # LLM Wiki 生成的页面
 
 ### 2. Category 和 View 分离
 
-`People`、`Projects`、`Events` 是 ontology category；`Recent`、`All`、`Needs Review` 是 view。  
+`People`、`Projects`、`Events` 是 ontology category；`Recent`、`All`、`Needs Review` 是 view。
 `Recent` 不应成为 LLM 输出目录，也不应写入 `wiki/recent/`，它只是 UI 根据 entries 的 mentions/source dates 派生出的排序视图。
 
 ### 3. 默认推荐配置只是 preset，不是硬编码产品真理

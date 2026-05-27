@@ -242,7 +242,12 @@ function normalizePathForComparison(filePath: string): string {
   return filePath.replace(/\\/g, "/")
 }
 
-function validateManifestSourcePath(projectPath: string, sourcePath: unknown, index: number): string {
+async function validateManifestSourcePath(
+  projectPath: string,
+  sourceRootRealPath: string,
+  sourcePath: unknown,
+  index: number,
+): Promise<string> {
   if (typeof sourcePath !== "string" || sourcePath.trim().length === 0) {
     throw new Error(`Manifest source at index ${index} must include a non-empty sourcePath string.`)
   }
@@ -262,6 +267,18 @@ function validateManifestSourcePath(projectPath: string, sourcePath: unknown, in
     throw new Error(`Manifest sourcePath must stay inside raw/sources: ${sourcePath}`)
   }
 
+  let sourceRealPath: string
+  try {
+    sourceRealPath = normalizePathForComparison(await fs.realpath(resolvedPath))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new Error(`Manifest sourcePath file does not exist or cannot be resolved: ${sourcePath} (${message})`)
+  }
+
+  if (sourceRealPath !== sourceRootRealPath && !sourceRealPath.startsWith(`${sourceRootRealPath}/`)) {
+    throw new Error(`Manifest sourcePath must stay inside raw/sources: ${sourcePath}`)
+  }
+
   return resolvedPath
 }
 
@@ -277,18 +294,24 @@ async function loadManifestSourceMap(projectPath: string, manifestPath: string):
     throw new Error(`Failed to read ingest manifest: ${message}`)
   }
 
-  if (!Array.isArray(parsed.sources)) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || !Array.isArray(parsed.sources)) {
     throw new Error("Malformed ingest manifest: sources must be an array.")
   }
 
+  const sourceRootRealPath = normalizePathForComparison(
+    await fs.realpath(path.resolve(projectPath, "raw", "sources")),
+  )
   const sources = new Map<string, ManifestSource>()
-  parsed.sources.forEach((source, index) => {
+  for (const [index, source] of parsed.sources.entries()) {
     if (!source || typeof source !== "object") {
       throw new Error(`Malformed ingest manifest: source at index ${index} must be an object.`)
     }
-    const fullPath = validateManifestSourcePath(projectPath, source.sourcePath, index)
+    const fullPath = await validateManifestSourcePath(projectPath, sourceRootRealPath, source.sourcePath, index)
+    if (sources.has(fullPath)) {
+      throw new Error(`Duplicate manifest sourcePath: ${source.sourcePath}`)
+    }
     sources.set(fullPath, source)
-  })
+  }
   return sources
 }
 

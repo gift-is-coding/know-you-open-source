@@ -240,6 +240,112 @@ describe("KnowYou headless ingest runner", () => {
     }
   })
 
+  it("rejects manifest source symlinks that target files outside raw/sources", async () => {
+    const tmp = await createTempProject("knowyou-headless-manifest-symlink")
+    try {
+      await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, ".knowyou"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
+      await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Purpose\n\nBuild My Wiki.")
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+      await writeFileRaw(path.join(tmp.path, "secret.md"), "# Secret\n\nThis file is outside raw sources.")
+      await fs.symlink(path.join(tmp.path, "secret.md"), path.join(tmp.path, "raw/sources/link.md"))
+      const manifestPath = path.join(tmp.path, ".knowyou/ingest-manifest.json")
+      await writeFileRaw(
+        manifestPath,
+        JSON.stringify({
+          sources: [
+            {
+              sourcePath: "raw/sources/link.md",
+              folderContext: "Unsafe symlink",
+            },
+          ],
+        }),
+      )
+
+      pendingResponses = [
+        "Analysis for symlink.",
+        sourceSummaryBlock("link"),
+      ]
+
+      await expect(
+        runKnowYouIngest({
+          projectPath: tmp.path,
+          provider: "openai",
+          model: "test-model",
+          manifestPath,
+        }),
+      ).rejects.toThrow("Manifest sourcePath must stay inside raw/sources")
+    } finally {
+      await tmp.cleanup()
+    }
+  })
+
+  it("rejects malformed top-level manifest JSON", async () => {
+    const tmp = await createTempProject("knowyou-headless-manifest-null")
+    try {
+      await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, ".knowyou"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
+      await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Purpose\n\nBuild My Wiki.")
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+      const manifestPath = path.join(tmp.path, ".knowyou/ingest-manifest.json")
+      await writeFileRaw(manifestPath, "null")
+
+      await expect(
+        runKnowYouIngest({
+          projectPath: tmp.path,
+          provider: "openai",
+          model: "test-model",
+          manifestPath,
+        }),
+      ).rejects.toThrow("Malformed ingest manifest")
+    } finally {
+      await tmp.cleanup()
+    }
+  })
+
+  it("rejects duplicate manifest source paths", async () => {
+    const tmp = await createTempProject("knowyou-headless-manifest-duplicate")
+    try {
+      await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, ".knowyou"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
+      await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Purpose\n\nBuild My Wiki.")
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+      await writeFileRaw(path.join(tmp.path, "raw/sources/duplicate.md"), "# Duplicate\n")
+      const manifestPath = path.join(tmp.path, ".knowyou/ingest-manifest.json")
+      await writeFileRaw(
+        manifestPath,
+        JSON.stringify({
+          sources: [
+            { sourcePath: "raw/sources/duplicate.md", folderContext: "First" },
+            { sourcePath: "raw/sources/duplicate.md", folderContext: "Second" },
+          ],
+        }),
+      )
+
+      pendingResponses = [
+        "Analysis for duplicate.",
+        sourceSummaryBlock("duplicate"),
+      ]
+
+      await expect(
+        runKnowYouIngest({
+          projectPath: tmp.path,
+          provider: "openai",
+          model: "test-model",
+          manifestPath,
+        }),
+      ).rejects.toThrow("Duplicate manifest sourcePath")
+    } finally {
+      await tmp.cleanup()
+    }
+  })
+
   it("accepts --manifest through the CLI", async () => {
     const tmp = await createTempProject("knowyou-headless-manifest-cli")
     const stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true)

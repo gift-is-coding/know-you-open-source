@@ -90,11 +90,14 @@ struct MyWikiPanel: View {
                 MyWikiSourceLibraryView(
                     projectRoot: projectRoot,
                     sourceVault: sourceVault,
-                    importedDocuments: importedDocuments
-                ) {
-                    loadIngestProgress()
-                    loadDashboard()
-                }
+                    importedDocuments: importedDocuments,
+                    isUpdatingSources: isSyncing,
+                    onDidChange: {
+                        loadIngestProgress()
+                        loadDashboard()
+                    },
+                    onUpdateSources: syncDiaries
+                )
             } else {
                 Text("My Wiki folder is not available.")
                     .padding(24)
@@ -205,43 +208,80 @@ struct MyWikiPanel: View {
 
     @ViewBuilder
     private var ingestProgressView: some View {
-        if let ingestProgress {
-            Button {
-                isShowingSourceLibrary = true
-            } label: {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Text(ingestProgress.title)
-                            .font(.system(size: 12, weight: .semibold))
-                        Spacer()
-                        Text(ingestProgress.detail)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    GeometryReader { proxy in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(MyWikiTheme.controlBackground)
-                            Capsule()
-                                .fill(progressColor(for: ingestProgress.state))
-                                .frame(width: max(0, proxy.size.width * ingestProgress.fraction))
-                        }
-                    }
-                    .frame(height: 4)
+        HStack(alignment: .center, spacing: 8) {
+            Group {
+                if let ingestProgress {
+                    ingestProgressStatusCard(ingestProgress)
+                } else {
+                    sourceCatalogStatusCard
                 }
-                .padding(10)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(MyWikiTheme.cardBackground)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(MyWikiTheme.border, lineWidth: 1)
-                        )
-                    )
             }
-            .buttonStyle(.plain)
+            .layoutPriority(1)
+
+            if MyWikiSourceLibraryEntryPolicy.showsManageSourcesButton {
+                Button {
+                    isShowingSourceLibrary = true
+                } label: {
+                    Label("Manage Sources", systemImage: "folder")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
         }
+    }
+
+    private func ingestProgressStatusCard(_ ingestProgress: MyWikiIngestProgress) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(ingestProgress.title)
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                Text(ingestProgress.detail)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(MyWikiTheme.controlBackground)
+                    Capsule()
+                        .fill(progressColor(for: ingestProgress.state))
+                        .frame(width: max(0, proxy.size.width * ingestProgress.fraction))
+                }
+            }
+            .frame(height: 4)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(MyWikiTheme.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(MyWikiTheme.border, lineWidth: 1)
+                )
+        )
+    }
+
+    private var sourceCatalogStatusCard: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Sources")
+                .font(.system(size: 12, weight: .semibold))
+            Text("Choose which documents My Wiki can process.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(MyWikiTheme.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(MyWikiTheme.border, lineWidth: 1)
+                )
+        )
     }
 
     @ViewBuilder

@@ -221,6 +221,31 @@ struct MyWikiSourceCatalogSnapshot: Codable, Equatable, Sendable {
     }
 }
 
+enum MyWikiSourceLibraryDisplayPolicy {
+    static let manualImportsStorageRoot = "Manual Imports"
+    static let manualUploadsDisplayRoot = "Manual Uploads"
+
+    static func displayRelativePath(for record: MyWikiSourceCatalogRecord) -> String {
+        guard record.sourceKind == .manualFile else {
+            return record.relativePath
+        }
+        return displayRelativePath(forRawRelativePath: record.relativePath)
+    }
+
+    static func displayRelativePath(forRawRelativePath relativePath: String) -> String {
+        if relativePath == manualImportsStorageRoot {
+            return manualUploadsDisplayRoot
+        }
+
+        let prefix = "\(manualImportsStorageRoot)/"
+        guard relativePath.hasPrefix(prefix) else {
+            return relativePath
+        }
+
+        return "\(manualUploadsDisplayRoot)/\(relativePath.dropFirst(prefix.count))"
+    }
+}
+
 struct MyWikiSourceLibraryPresentation: Equatable, Sendable {
     var snapshot: MyWikiSourceCatalogSnapshot
     var query: String
@@ -251,15 +276,19 @@ struct MyWikiSourceLibraryPresentation: Equatable, Sendable {
         self.visibleRecords = snapshot.records
             .filter { record in
                 guard normalizedQuery.isEmpty == false else { return true }
+                let displayRelativePath = MyWikiSourceLibraryDisplayPolicy.displayRelativePath(for: record)
                 return record.displayTitle.lowercased().contains(normalizedQuery)
                     || record.relativePath.lowercased().contains(normalizedQuery)
+                    || displayRelativePath.lowercased().contains(normalizedQuery)
             }
             .filter { record in
                 guard let statusFilter else { return true }
                 return record.status == statusFilter
             }
             .sorted(by: Self.sortRecords)
-        self.tree = MyWikiSourceCatalogTreeBuilder().build(records: visibleRecords)
+        self.tree = MyWikiSourceCatalogTreeBuilder(
+            displayPath: MyWikiSourceLibraryDisplayPolicy.displayRelativePath(for:)
+        ).build(records: visibleRecords)
     }
 
     private static func sortRecords(
@@ -288,6 +317,12 @@ struct MyWikiSourceCatalogNode: Identifiable, Equatable, Sendable {
 }
 
 struct MyWikiSourceCatalogTreeBuilder {
+    private let displayPath: (MyWikiSourceCatalogRecord) -> String
+
+    init(displayPath: @escaping (MyWikiSourceCatalogRecord) -> String = { $0.relativePath }) {
+        self.displayPath = displayPath
+    }
+
     func build(records: [MyWikiSourceCatalogRecord]) -> MyWikiSourceCatalogNode {
         let children = buildChildren(records: records, prefix: "", depth: 0)
         return MyWikiSourceCatalogNode(
@@ -301,7 +336,7 @@ struct MyWikiSourceCatalogTreeBuilder {
 
     private func buildChildren(records: [MyWikiSourceCatalogRecord], prefix: String, depth: Int) -> [MyWikiSourceCatalogNode] {
         let sortedRecords = records.sorted {
-            $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
+            displayPath($0).localizedStandardCompare(displayPath($1)) == .orderedAscending
         }
         let leaves = sortedRecords.filter { pathComponents(for: $0).count == depth + 1 }
         let nested = sortedRecords.filter { pathComponents(for: $0).count > depth + 1 }
@@ -356,7 +391,7 @@ struct MyWikiSourceCatalogTreeBuilder {
     }
 
     private func pathComponents(for record: MyWikiSourceCatalogRecord) -> [String] {
-        record.relativePath.split(separator: "/").map(String.init)
+        displayPath(record).split(separator: "/").map(String.init)
     }
 }
 

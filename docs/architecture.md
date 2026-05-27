@@ -674,7 +674,7 @@ sequenceDiagram
 
 My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责是把已经生成的日记 Markdown 整理成更容易阅读和检索的个人 wiki：可追溯的来源、具体实体、长期概念、近期活动和需要复核的线索。
 
-当前实现采用“KnowYou 轻量页面 + 持久 Source Catalog + LLM Wiki 后端 pipeline + schema 兼容适配层”的结构。默认后端 schema 复用 llm_wiki 原生 `Sources / Entities / Concepts`，KnowYou 只增加 source metadata/tags，不再强行拆成 People/Projects/Events 等细分类。分类和视图由项目级 `mywiki.schema.json` 驱动；`schema.md` 是从该配置生成的轻量 LLM-readable guide。Source Catalog 是进入 LLM 处理前的授权和 checkpoint 边界：diary 默认 included 但可取消，external source 默认 opt-in，manual imports 保留层级。默认生成目标和两阶段 prompt 保持 LLM Wiki 原生 `autoIngest` 行为，KnowYou 不再用动态 My Wiki generation target 或单独页面正文 prompt 替换它。LLM Wiki headless ingest 是唯一可信页面生成路径；KnowYou 负责准备 schema、刷新 catalog、materialize 已选择且需要处理的 source、触发 pipeline、读取 markdown/frontmatter 并展示简洁 UI。
+当前实现采用“KnowYou 轻量页面 + 持久 Source Catalog + LLM Wiki 后端 pipeline + schema 兼容适配层”的结构。默认后端 schema 复用 llm_wiki 原生 `Sources / Entities / Concepts`，KnowYou 只增加 source metadata/tags，不再强行拆成 People/Projects/Events 等细分类。分类和视图由项目级 `mywiki.schema.json` 驱动；`schema.md` 是从该配置生成的轻量 LLM-readable guide。Source Catalog 是进入 LLM 处理前的授权和 checkpoint 边界：diary 默认 included 但可取消，external source 默认 opt-in，manual imports 保留层级并在 UI 中显示为 `Manual Uploads`。默认生成目标和两阶段 prompt 保持 LLM Wiki 原生 `autoIngest` 行为，KnowYou 不再用动态 My Wiki generation target 或单独页面正文 prompt 替换它。LLM Wiki headless ingest 是唯一可信页面生成路径；KnowYou 负责准备 schema、刷新 catalog、materialize 已选择且需要处理的 source、触发 pipeline、读取 markdown/frontmatter 并展示简洁 UI。
 
 - [MyWikiProjectExporter.swift](../KnowYou/Services/MyWiki/MyWikiProjectExporter.swift) 创建 My Wiki 项目结构；旧 `syncDiaries` 仍保留兼容路径，新的 Update My Wiki 路径由 Source Catalog materialization 负责写入 diary raw source
 - [MyWikiSourceCatalog.swift](../KnowYou/Services/MyWiki/MyWikiSourceCatalog.swift) 定义持久 catalog record、inclusion state、processing status、tree node 和 `.knowyou/source-catalog.json` store。它保存用户选择、content hash、last indexed checkpoint、source 层级和已生成 summary 路径，不复制完整正文
@@ -691,8 +691,8 @@ My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责
 - [MyWikiMCPCommand.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/Services/MyWiki/MyWikiMCPCommand.swift) 提供内置 stdio MCP server：`KnowYou --my-wiki-mcp --project-root <path>`。它直接向 agent 暴露 `my_wiki_context` 和 `my_wiki_read_page`，不依赖 Node、npm、下载依赖或外部 helper。MCP 不由 KnowYou UI 常驻启动，而由 Codex、Claude Code、Claude Desktop、Cursor、Gemini CLI、OpenClaw 等 MCP client 在需要 tool 时启动一个轻量 KnowYou 子进程
 - `Tools/MyWikiMCP` 只保留为开发期/兼容性 wrapper，不是用户默认配置路径；`.agents/skills/my-wiki-context` 是给支持 Skill 的 agent 的使用说明
 - [MyWikiAgentConnectionSheet.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/UI/MyWiki/MyWikiAgentConnectionSheet.swift) 提供 `Use My Wiki in Agents` 入口。默认 UX 是选择内置 agent 后点击 `Add My Wiki`：Codex 写入带 `# BEGIN/END KnowYou My Wiki MCP` 标记的 `~/.codex/config.toml` 受控配置块；Claude Code、Claude Desktop、Cursor、Gemini CLI 和 OpenClaw 合并写入各自 JSON MCP 配置；Codex、Claude Code、Cursor、Gemini CLI 和 OpenClaw 同步安装 `my-wiki-context` Skill；generic MCP 配置保留在 `Advanced MCP Config`
-- [MyWikiSourceLibrary.swift](../KnowYou/Services/MyWiki/MyWikiSourceLibrary.swift) 与 [MyWikiSourceLibraryView.swift](../KnowYou/UI/MyWiki/MyWikiSourceLibraryView.swift) 提供分层 Source Library 管理入口。UI 从 Source Catalog snapshot 渲染 diary、external documents 和 manual imports，支持 title/path 搜索、status filter、目录三态选择、include/exclude/invert visible 批量操作和 summary 链接；手动导入仍支持选择文件夹、多文件导入和拖拽，但新文件放入 `raw/sources/Manual Imports`
-- [MyWikiPanel.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底 My Wiki 工作区：左侧是高密度可折叠索引，分类顺序为 `Entities`、`Concepts`、`Sources`，每个分类默认显示 10 个 name-only 条目；超过 10 个时用当前分类底部的 `Show more (N)` 原地展开，并用 `Show less` 收回，不再进入分类全量列表页。`Entities` 下方提供 `人物`、`项目`、`组织`、`其他` 标签筛选，基于 `tags`，不改变底层 category。Header 和详情页 `More` 菜单都提供 `Use My Wiki in Agents`
+- [MyWikiSourceLibrary.swift](../KnowYou/Services/MyWiki/MyWikiSourceLibrary.swift) 与 [MyWikiSourceLibraryView.swift](../KnowYou/UI/MyWiki/MyWikiSourceLibraryView.swift) 提供分层 Source Library 管理入口。UI 从 Source Catalog snapshot 渲染 diary、external documents 和 manual imports，支持 title/path 搜索、status filter、目录三态选择、include/exclude/invert visible 批量操作和 summary 链接；手动导入支持选择文件夹、多文件导入和拖拽，新文件仍放入 `raw/sources/Manual Imports`，但展示 root 是 `Manual Uploads`。导入只刷新 catalog，不触发 ingest；选择变更自动保存，`Update My Wiki` 才运行处理
+- [MyWikiPanel.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底 My Wiki 工作区：左侧是高密度可折叠索引，分类顺序为 `Entities`、`Concepts`、`Sources`，每个分类默认显示 10 个 name-only 条目；超过 10 个时用当前分类底部的 `Show more (N)` 原地展开，并用 `Show less` 收回，不再进入分类全量列表页。左侧 source/progress 区域把进度卡作为纯状态展示，旁边提供 `Manage Sources` 按钮；`Entities` 下方提供 `人物`、`项目`、`组织`、`其他` 标签筛选，基于 `tags`，不改变底层 category。Header 和详情页 `More` 菜单都提供 `Use My Wiki in Agents`
 - [MyWikiDetailView.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiDetailView.swift) 提供 LLM Wiki 风格详情页，顶部 header 展示 summary，正文区域默认展示完整 `markdownBody`，并保留 Recent Mentions、Related、Duplicate Suggestions 等 metadata 区；不再重复渲染独立 Summary 卡片；`Sources` 放在详情最后，仍可点击打开原 source
 
 数据流如下：
@@ -701,7 +701,7 @@ My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责
 flowchart LR
     A["KnowYou Vault: YYYY-MM-DD.md"] --> B["MyWikiSourceCatalogBuilder"]
     AA["ImportedKnowledgeDocument rows"] --> B
-    AB["Manual Imports"] --> B
+    AB["Manual Uploads UI / raw Manual Imports"] --> B
     B --> C[".knowyou/source-catalog.json"]
     C --> D["selected pending/changed sources"]
     D --> E["raw/sources + .knowyou/ingest-manifest.json"]
@@ -713,7 +713,7 @@ flowchart LR
     I["左侧栏 My Wiki"] --> G
 ```
 
-My Wiki 只处理用户授权进入 catalog 的 source。KnowYou diary 默认可用但可取消选择；外部 source 只在用户主动 include 后进入 ingest；取消选择已处理 source 不删除旧 `wiki/sources`、entity 或 concept 输出。不直接导出未经额外授权的 SQLite 原始事件。用户界面避免暴露内部工程术语，把复杂关系计算、结构化文件和 llm_wiki 开发入口留在底层；主界面保留 `My Wiki`、搜索、可折叠分类索引、详情阅读、编辑和确认式合并。`Open Project`、journal count、last date 等维护信息不占主界面，而进入 `More` 菜单或状态弹窗。
+My Wiki 只处理用户授权进入 catalog 的 source。KnowYou diary 默认可用但可取消选择；外部 source 只在用户主动 include 后进入 ingest；手动 drop/import 只进入 `Manual Uploads` 并保持 pending，不会自动处理；取消选择已处理 source 不删除旧 `wiki/sources`、entity 或 concept 输出。不直接导出未经额外授权的 SQLite 原始事件。用户界面避免暴露内部工程术语，把复杂关系计算、结构化文件和 llm_wiki 开发入口留在底层；主界面保留 `My Wiki`、搜索、可折叠分类索引、详情阅读、编辑和确认式合并。`Open Project`、journal count、last date 等维护信息不占主界面，而进入 `More` 菜单或状态弹窗。
 
 ## 12. 当前架构约束
 

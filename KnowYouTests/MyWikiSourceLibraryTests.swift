@@ -34,6 +34,31 @@ final class MyWikiSourceLibraryTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "raw/sources/Manual Imports/image.png").path))
     }
 
+    func testImportedFilesReloadAsIncludedPendingManualUploads() throws {
+        let root = try makeProjectRoot()
+        let sourceFolder = root.appending(path: "external", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: sourceFolder, withIntermediateDirectories: true)
+        let markdown = sourceFolder.appending(path: "meeting.md")
+        try "# Meeting".write(to: markdown, atomically: true, encoding: .utf8)
+
+        _ = try MyWikiSourceLibrary().importFiles([markdown], projectRoot: root)
+        let snapshot = try MyWikiSourceCatalogBuilder().refreshCatalog(
+            projectRoot: root,
+            sourceVault: nil,
+            importedDocuments: []
+        )
+
+        let record = try XCTUnwrap(snapshot.records.first)
+        XCTAssertEqual(record.sourceKind, .manualFile)
+        XCTAssertEqual(record.relativePath, "Manual Imports/meeting.md")
+        XCTAssertEqual(MyWikiSourceLibraryDisplayPolicy.displayRelativePath(for: record), "Manual Uploads/meeting.md")
+        XCTAssertTrue(record.included)
+        XCTAssertEqual(record.status, .pending)
+
+        let presentation = MyWikiSourceLibraryPresentation(snapshot: snapshot)
+        XCTAssertEqual(presentation.tree.children.map(\.title), ["Manual Uploads"])
+    }
+
     func testImportFilesAvoidsOverwritingExistingRawSources() throws {
         let root = try makeProjectRoot()
         try writeRawSource(root: root, name: "meeting.md", contents: "Existing")

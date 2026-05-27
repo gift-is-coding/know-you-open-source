@@ -2,17 +2,40 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
+enum MyWikiSourceLibraryActionCopy {
+    static let closeTitle = "Close"
+    static let updateTitle = "Update My Wiki"
+    static let updatingTitle = "Updating My Wiki..."
+    static let manualUploadsTitle = "Manual Uploads"
+    static let defaultStatusMessage = "Choose which sources are included in My Wiki."
+    static let autosaveExplanation = "Selections are saved automatically. Update My Wiki processes included pending or changed sources."
+    static let manualUploadsExplanation = "Drop or import Markdown/text files here. They are added to Manual Uploads and stay pending until you run Update My Wiki."
+
+    static func importedStatusMessage(importedCount: Int) -> String {
+        "Imported \(importedCount) source file(s) into Manual Uploads. Click Update My Wiki to process them."
+    }
+}
+
+enum MyWikiSourceLibraryLayoutPolicy {
+    static let minimumWidth: CGFloat = 1080
+    static let minimumHeight: CGFloat = 680
+    static let sourceTreeWidthRatio: CGFloat = 0.68
+    static let managementColumnWidth: CGFloat = 330
+}
+
 struct MyWikiSourceLibraryView: View {
     let projectRoot: URL
     var sourceVault: URL?
     var importedDocuments: [ImportedKnowledgeDocument] = []
+    var isUpdatingSources = false
     var onDidChange: () -> Void = {}
+    var onUpdateSources: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
     @State private var snapshot = MyWikiSourceCatalogStore.emptySnapshot()
     @State private var query = ""
     @State private var statusFilter: MyWikiSourceProcessingStatus?
-    @State private var statusMessage = "Choose which sources are included in My Wiki."
+    @State private var statusMessage = MyWikiSourceLibraryActionCopy.defaultStatusMessage
     @State private var isDropTargeted = false
 
     private var presentation: MyWikiSourceLibraryPresentation {
@@ -28,37 +51,165 @@ struct MyWikiSourceLibraryView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            header
-            dropTarget
-            controls
-            sourceList
+        HStack(alignment: .top, spacing: 24) {
+            sourceTreePane
+            managementPane
         }
         .padding(24)
-        .frame(minWidth: 680, minHeight: 620)
+        .frame(
+            minWidth: MyWikiSourceLibraryLayoutPolicy.minimumWidth,
+            minHeight: MyWikiSourceLibraryLayoutPolicy.minimumHeight
+        )
         .background(MyWikiTheme.contentBackground)
         .foregroundStyle(.primary)
         .onAppear(perform: reload)
+        .onChange(of: isUpdatingSources) { wasUpdating, isUpdating in
+            if wasUpdating, isUpdating == false {
+                statusMessage = "Source catalog refreshed."
+                reload()
+            }
+        }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 14) {
+    private var sourceTreePane: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Source Library")
+                    .font(.system(size: 26, weight: .semibold))
+                Text(statusMessage)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            sourceSearchField
+            sourceList
+        }
+        .frame(
+            minWidth: MyWikiSourceLibraryLayoutPolicy.minimumWidth
+                * MyWikiSourceLibraryLayoutPolicy.sourceTreeWidthRatio,
+            maxWidth: .infinity,
+            maxHeight: .infinity,
+            alignment: .topLeading
+        )
+    }
+
+    private var managementPane: some View {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Source Library")
-                        .font(.system(size: 26, weight: .semibold))
-                    Text(statusMessage)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                }
                 Spacer()
-                Button("Done") {
+                Button(MyWikiSourceLibraryActionCopy.closeTitle) {
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
             }
 
-            HStack(spacing: 10) {
+            updatePanel
+            summaryPanel
+            filterAndBatchPanel
+            manualUploadsPanel
+            Spacer(minLength: 0)
+        }
+        .frame(width: MyWikiSourceLibraryLayoutPolicy.managementColumnWidth)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var updatePanel: some View {
+        sideSection {
+            VStack(alignment: .leading, spacing: 10) {
+                Button {
+                    statusMessage = "My Wiki update started."
+                    onUpdateSources()
+                } label: {
+                    Label(
+                        isUpdatingSources
+                            ? MyWikiSourceLibraryActionCopy.updatingTitle
+                            : MyWikiSourceLibraryActionCopy.updateTitle,
+                        systemImage: "arrow.triangle.2.circlepath"
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isUpdatingSources)
+
+                Text(MyWikiSourceLibraryActionCopy.autosaveExplanation)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var summaryPanel: some View {
+        sideSection(title: "Status") {
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: 8),
+                GridItem(.flexible(), spacing: 8),
+            ], spacing: 8) {
+                summaryBadge("\(presentation.totalCount)", "total")
+                summaryBadge("\(presentation.includedCount)", "included")
+                summaryBadge("\(presentation.pendingCount)", "pending")
+                summaryBadge("\(presentation.changedCount)", "changed")
+                summaryBadge("\(presentation.failedCount)", "failed")
+            }
+            Text("\(presentation.visibleRecords.count) visible")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var filterAndBatchPanel: some View {
+        sideSection(title: "Selection") {
+            Menu {
+                Button("All Statuses") {
+                    statusFilter = nil
+                }
+                Divider()
+                ForEach(MyWikiSourceProcessingStatus.allCasesForSourceLibrary, id: \.self) { status in
+                    Button(status.rawValue) {
+                        statusFilter = status
+                    }
+                }
+            } label: {
+                Label(statusFilter?.rawValue ?? "All Statuses", systemImage: "line.3.horizontal.decrease.circle")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Button {
+                applyBulkAction(.includeVisible)
+            } label: {
+                Label("Include Visible", systemImage: "checkmark.circle")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .disabled(presentation.visibleRecords.isEmpty)
+
+            Button {
+                applyBulkAction(.excludeVisible)
+            } label: {
+                Label("Exclude Visible", systemImage: "minus.circle")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .disabled(presentation.visibleRecords.isEmpty)
+
+            Button {
+                applyBulkAction(.invertVisible)
+            } label: {
+                Label("Invert Visible", systemImage: "arrow.triangle.2.circlepath")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .disabled(presentation.visibleRecords.isEmpty)
+        }
+    }
+
+    private var manualUploadsPanel: some View {
+        sideSection(title: MyWikiSourceLibraryActionCopy.manualUploadsTitle) {
+            Text(MyWikiSourceLibraryActionCopy.manualUploadsExplanation)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            dropTarget
+
+            HStack(spacing: 8) {
                 Button {
                     chooseFolder()
                 } label: {
@@ -70,30 +221,19 @@ struct MyWikiSourceLibraryView: View {
                 } label: {
                     Label("Import Files", systemImage: "doc.badge.plus")
                 }
-
-                Spacer()
-
-                summaryBadge("\(presentation.totalCount)", "total")
-                summaryBadge("\(presentation.includedCount)", "included")
-                summaryBadge("\(presentation.pendingCount)", "pending")
-                summaryBadge("\(presentation.changedCount)", "changed")
-                summaryBadge("\(presentation.failedCount)", "failed")
             }
         }
     }
 
     private var dropTarget: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             Image(systemName: "tray.and.arrow.down")
-                .font(.system(size: 24, weight: .semibold))
-            Text("Drop Markdown or text files here")
-                .font(.system(size: 14, weight: .semibold))
-            Text("Imported files are added to Manual Imports and can be included or excluded below.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 21, weight: .semibold))
+            Text("Drop Markdown or text here")
+                .font(.system(size: 13, weight: .semibold))
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 22)
+        .padding(.vertical, 14)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(isDropTargeted ? Color.blue.opacity(0.18) : MyWikiTheme.controlBackground)
@@ -113,74 +253,29 @@ struct MyWikiSourceLibraryView: View {
         }
     }
 
-    private var controls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("Search title or path", text: $query)
-                    .textFieldStyle(.plain)
-                if query.isEmpty == false {
-                    Button {
-                        query = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(MyWikiTheme.controlBackground)
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(MyWikiTheme.border, lineWidth: 1))
-            )
-
-            HStack(spacing: 8) {
-                Menu {
-                    Button("All Statuses") {
-                        statusFilter = nil
-                    }
-                    Divider()
-                    ForEach(MyWikiSourceProcessingStatus.allCasesForSourceLibrary, id: \.self) { status in
-                        Button(status.rawValue) {
-                            statusFilter = status
-                        }
-                    }
-                } label: {
-                    Label(statusFilter?.rawValue ?? "All Statuses", systemImage: "line.3.horizontal.decrease.circle")
-                }
-
+    private var sourceSearchField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Search title or path", text: $query)
+                .textFieldStyle(.plain)
+            if query.isEmpty == false {
                 Button {
-                    applyBulkAction(.includeVisible)
+                    query = ""
                 } label: {
-                    Label("Include Visible", systemImage: "checkmark.circle")
+                    Image(systemName: "xmark.circle.fill")
                 }
-                .disabled(presentation.visibleRecords.isEmpty)
-
-                Button {
-                    applyBulkAction(.excludeVisible)
-                } label: {
-                    Label("Exclude Visible", systemImage: "minus.circle")
-                }
-                .disabled(presentation.visibleRecords.isEmpty)
-
-                Button {
-                    applyBulkAction(.invertVisible)
-                } label: {
-                    Label("Invert Visible", systemImage: "arrow.triangle.2.circlepath")
-                }
-                .disabled(presentation.visibleRecords.isEmpty)
-
-                Spacer()
-
-                Text("\(presentation.visibleRecords.count) visible")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
             }
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(MyWikiTheme.controlBackground)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(MyWikiTheme.border, lineWidth: 1))
+        )
     }
 
     private var sourceList: some View {
@@ -196,6 +291,7 @@ struct MyWikiSourceLibraryView: View {
             }
             .padding(.vertical, 2)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var emptyState: some View {
@@ -262,7 +358,7 @@ struct MyWikiSourceLibraryView: View {
                 Text(record.displayTitle)
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
-                Text(record.relativePath)
+                Text(MyWikiSourceLibraryDisplayPolicy.displayRelativePath(for: record))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -296,6 +392,27 @@ struct MyWikiSourceLibraryView: View {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(MyWikiTheme.border, lineWidth: 1))
     }
 
+    private func sideSection<Content: View>(
+        title: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let title {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(MyWikiTheme.cardBackground)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(MyWikiTheme.border, lineWidth: 1))
+        )
+    }
+
     private func selectionButton(
         state: MyWikiSourceSelectionState,
         action: @escaping () -> Void
@@ -318,6 +435,7 @@ struct MyWikiSourceLibraryView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .background(
@@ -368,7 +486,9 @@ struct MyWikiSourceLibraryView: View {
         if result.importedFileNames.isEmpty {
             statusMessage = "No supported Markdown or text files were imported."
         } else {
-            statusMessage = "Imported \(result.importedFileNames.count) source file(s) into Manual Imports."
+            statusMessage = MyWikiSourceLibraryActionCopy.importedStatusMessage(
+                importedCount: result.importedFileNames.count
+            )
         }
         reload()
         onDidChange()
@@ -381,7 +501,9 @@ struct MyWikiSourceLibraryView: View {
                 sourceVault: sourceVault,
                 importedDocuments: importedDocuments
             )
-            statusMessage = "Choose which sources are included in My Wiki."
+            if statusMessage.isEmpty || statusMessage == MyWikiSourceLibraryActionCopy.defaultStatusMessage {
+                statusMessage = MyWikiSourceLibraryActionCopy.defaultStatusMessage
+            }
         } catch {
             statusMessage = error.localizedDescription
         }

@@ -247,6 +247,11 @@ enum MyWikiProgressRefreshPolicy {
     }
 }
 
+enum MyWikiSourceLibraryEntryPolicy {
+    static let showsManageSourcesButton = true
+    static let progressCardOpensSourceLibrary = false
+}
+
 enum MyWikiDetailMaintenancePolicy {
     static func showsDuplicateSuggestionCard(duplicateSuggestionCount: Int) -> Bool {
         duplicateSuggestionCount > 0

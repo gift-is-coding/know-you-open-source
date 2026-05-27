@@ -7,6 +7,7 @@ final class MyWikiSourceLibraryPresentationTests: XCTestCase {
             record(sourceID: "pending", included: true, relativePath: "My Diary/2026-05-27.md"),
             record(
                 sourceID: "indexed",
+                sourceKind: .manualFile,
                 included: true,
                 relativePath: "Manual Imports/indexed.md",
                 contentHash: "hash-indexed",
@@ -30,8 +31,8 @@ final class MyWikiSourceLibraryPresentationTests: XCTestCase {
     func testQueryMatchesTitleAndPath() {
         let snapshot = MyWikiSourceCatalogSnapshot(records: [
             record(sourceID: "design", displayTitle: "Product Strategy", relativePath: "Local Folder/main/notes.md"),
-            record(sourceID: "path", displayTitle: "Readme", relativePath: "Manual Imports/Research/AI.md"),
-            record(sourceID: "hidden", displayTitle: "Finance", relativePath: "Manual Imports/Budget.md")
+            record(sourceID: "path", sourceKind: .manualFile, displayTitle: "Readme", relativePath: "Manual Imports/Research/AI.md"),
+            record(sourceID: "hidden", sourceKind: .manualFile, displayTitle: "Finance", relativePath: "Manual Imports/Budget.md")
         ])
 
         XCTAssertEqual(
@@ -42,22 +43,58 @@ final class MyWikiSourceLibraryPresentationTests: XCTestCase {
             MyWikiSourceLibraryPresentation(snapshot: snapshot, query: "Research").visibleRecords.map(\.sourceID),
             ["path"]
         )
+        XCTAssertEqual(
+            MyWikiSourceLibraryPresentation(snapshot: snapshot, query: "Manual Uploads").visibleRecords.map(\.sourceID),
+            ["hidden", "path"]
+        )
     }
 
     func testStatusFilterLimitsVisibleRecords() {
-        var indexed = record(sourceID: "indexed", included: true, relativePath: "Manual Imports/indexed.md")
+        var indexed = record(sourceID: "indexed", sourceKind: .manualFile, included: true, relativePath: "Manual Imports/indexed.md")
         indexed.lastIndexedHash = indexed.contentHash
         let snapshot = MyWikiSourceCatalogSnapshot(records: [
-            record(sourceID: "pending", included: true, relativePath: "Manual Imports/pending.md"),
+            record(sourceID: "pending", sourceKind: .manualFile, included: true, relativePath: "Manual Imports/pending.md"),
             indexed,
-            record(sourceID: "excluded", included: false, relativePath: "Manual Imports/excluded.md")
+            record(sourceID: "excluded", sourceKind: .manualFile, included: false, relativePath: "Manual Imports/excluded.md")
         ])
 
         let presentation = MyWikiSourceLibraryPresentation(snapshot: snapshot, statusFilter: .indexed)
 
         XCTAssertEqual(presentation.visibleRecords.map(\.sourceID), ["indexed"])
-        XCTAssertEqual(presentation.tree.children.map(\.title), ["Manual Imports"])
+        XCTAssertEqual(presentation.tree.children.map(\.title), ["Manual Uploads"])
         XCTAssertEqual(presentation.tree.children.first?.children.map(\.title), ["indexed"])
+    }
+
+    func testManualImportsAreDisplayedAsManualUploadsWithoutChangingRawPath() throws {
+        let manual = record(
+            sourceID: "manual",
+            sourceKind: .manualFile,
+            relativePath: "Manual Imports/Research/AI.md"
+        )
+        let snapshot = MyWikiSourceCatalogSnapshot(records: [manual])
+
+        let presentation = MyWikiSourceLibraryPresentation(snapshot: snapshot)
+
+        XCTAssertEqual(MyWikiSourceLibraryDisplayPolicy.displayRelativePath(for: manual), "Manual Uploads/Research/AI.md")
+        XCTAssertEqual(presentation.visibleRecords.first?.relativePath, "Manual Imports/Research/AI.md")
+        XCTAssertEqual(presentation.tree.children.map(\.title), ["Manual Uploads"])
+        let manualUploads = try XCTUnwrap(presentation.tree.children.first)
+        XCTAssertNil(manualUploads.children.first { $0.title == "Manual Imports" })
+    }
+
+    func testSourceLibraryActionCopyClarifiesAutosaveAndManualUpdate() {
+        XCTAssertEqual(MyWikiSourceLibraryActionCopy.closeTitle, "Close")
+        XCTAssertEqual(MyWikiSourceLibraryActionCopy.updateTitle, "Update My Wiki")
+        XCTAssertEqual(MyWikiSourceLibraryActionCopy.manualUploadsTitle, "Manual Uploads")
+        XCTAssertTrue(MyWikiSourceLibraryActionCopy.autosaveExplanation.contains("saved automatically"))
+        XCTAssertTrue(MyWikiSourceLibraryActionCopy.autosaveExplanation.contains("Update My Wiki"))
+    }
+
+    func testSourceLibraryLayoutGivesMajorityWidthToSourceTree() {
+        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.minimumWidth, 1040)
+        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.minimumHeight, 680)
+        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.sourceTreeWidthRatio, 0.65)
+        XCTAssertLessThanOrEqual(MyWikiSourceLibraryLayoutPolicy.sourceTreeWidthRatio, 0.70)
     }
 
     func testInvertVisibleOnlyMutatesMatchingSourceIDs() {
@@ -93,6 +130,7 @@ final class MyWikiSourceLibraryPresentationTests: XCTestCase {
 
     private func record(
         sourceID: String,
+        sourceKind: MyWikiSourceKind = .externalDocument,
         displayTitle: String? = nil,
         included: Bool = true,
         relativePath: String = "Manual Imports/file.md",
@@ -102,7 +140,7 @@ final class MyWikiSourceLibraryPresentationTests: XCTestCase {
     ) -> MyWikiSourceCatalogRecord {
         MyWikiSourceCatalogRecord(
             sourceID: sourceID,
-            sourceKind: .externalDocument,
+            sourceKind: sourceKind,
             connectorInstanceID: nil,
             connectorID: nil,
             displayTitle: displayTitle ?? URL(fileURLWithPath: relativePath).deletingPathExtension().lastPathComponent,

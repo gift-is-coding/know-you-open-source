@@ -399,7 +399,7 @@ onboarding 的配置约束为：
 - 主窗口左侧栏必须提供 `My Wiki` 入口
 - 点击 `My Wiki` 后，主内容区必须切换到黑色背景的 My Wiki 首页，而不是打开旧式 toolbar sheet
 - My Wiki 首页必须优先展示用户可理解的内容：搜索、来源、实体、概念、关系线索和需要复核的线索
-- 面向用户的 My Wiki 控件、按钮和栏目文案必须使用英文，例如 `Organize Journals`、`Sources`、`Entities`、`Concepts`
+- 面向用户的 My Wiki 控件、按钮和栏目文案必须使用英文，例如 `Update My Wiki`、`Manage Sources`、`Sources`、`Entities`、`Concepts`
 - 点击 My Wiki 条目后，右侧详情栏必须显示该条目的标题、分类、摘要、近期提及、相关项和完整 Markdown 正文；不得停留在静态 placeholder。摘要只在顶部 header 中显示，不得再重复渲染一个独立 `Summary` 卡片。`Sources` 必须放在详情内容最后，仍可点击打开 source
 - My Wiki 主界面不得重复显示分类 tabs 和分组标题；左侧只保留搜索与可展开分组
 - My Wiki 分类必须从项目级 `mywiki.schema.json` 读取，不得写死在 Swift UI enum 或固定 tabs 中
@@ -411,8 +411,12 @@ onboarding 的配置约束为：
 - 用户可见分类名称必须来自 schema；默认不强行拆分 People/Projects/Topics 等细分类。旧 `wiki/people`、`wiki/organizations`、`wiki/projects`、`wiki/events` 必须读入 `Entities`，旧 `wiki/topics`、`wiki/decisions`、`wiki/preferences`、`wiki/follow-ups`、`wiki/summaries` 必须读入 `Concepts`
 - 主界面不得展示 `tag:` 一类内部字段；别名应展示为 `Also known as`，关系应展示为 `Related`
 - `Open Project`、journal count、last date 等维护信息必须进入 `More > Wiki Status / Reveal Wiki Folder`，不得占据主阅读界面
-- `More` 菜单必须提供 `Source Library` 入口，展示持久分层 source catalog，而不是只展示已复制的 raw files。该 catalog 必须包含 My Diary、外部 connector 文档和手动导入文档，并保留 source folder 层级
+- My Wiki 左侧进度区域必须把 progress card 作为纯状态展示，并在旁边提供明确的 `Manage Sources` 按钮；不得要求用户点击进度卡片才能打开 source 管理
+- `More` 菜单必须提供 `Manage Sources` 入口，展示持久分层 source catalog，而不是只展示已复制的 raw files。该 catalog 必须包含 My Diary、外部 connector 文档和手动导入文档，并保留 source folder 层级
 - `Source Library` 必须支持按 title/path 搜索、按 processing status 过滤、目录三态选择、单个 source include/exclude，以及 `Include Visible`、`Exclude Visible`、`Invert Visible` 批量操作
+- `Source Library` 必须使用宽面板和左右布局：左侧主要展示 source tree，右侧展示状态统计、筛选、批量操作、`Manual Uploads` 导入区、`Update My Wiki` 和 `Close`
+- 手动 drop/import 的文件必须复制到底层 `raw/sources/Manual Imports`，但 UI root 必须显示为 `Manual Uploads`；导入后默认 included 且 `Pending`，但不得自动进入 ingest
+- Source 选择变更必须立即保存到 `.knowyou/source-catalog.json`；`Close` 只关闭窗口，只有点击 `Update My Wiki` 才能触发 My Wiki ingest
 - My Diary source 首次出现时必须默认 included，但用户可以取消选择；external connector source 首次出现时必须默认 not included，只有用户主动 include 后才允许进入 My Wiki ingest
 - 已经 indexed 的 source 被取消选择时，系统不得删除旧 `wiki/sources`、entity 或 concept 输出；该 source 应显示为 `Excluded, indexed` 并从后续 ingest plan 排除
 - 已经 indexed 且内容未变的 source 再次 included 时不得重复处理；内容 hash 变化后应显示为 `Changed` 并进入下一次 Update My Wiki

@@ -42,9 +42,9 @@ struct MyWikiDetailView: View {
             Spacer()
 
             Menu("More") {
-                Button(isSyncing ? "Organizing Journals..." : "Organize Journals", action: onOrganizeJournals)
+                Button(isSyncing ? "Updating My Wiki..." : "Update My Wiki", action: onOrganizeJournals)
                     .disabled(isSyncing)
-                Button("Source Library", action: onManageSources)
+                Button("Manage Sources", action: onManageSources)
                 Button("Use My Wiki in Agents", action: onUseInAgents)
                 Divider()
                 Button("Find duplicates", action: onFindDuplicates)

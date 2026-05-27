@@ -303,7 +303,7 @@ struct MyWikiSourceCatalogStore {
         }
 
         let data = try Data(contentsOf: url)
-        return try JSONDecoder.myWikiSourceCatalog().decode(MyWikiSourceCatalogSnapshot.self, from: data)
+        return try JSONDecoder.knowledgeImport().decode(MyWikiSourceCatalogSnapshot.self, from: data)
     }
 
     func save(_ snapshot: MyWikiSourceCatalogSnapshot) throws {
@@ -311,56 +311,11 @@ struct MyWikiSourceCatalogStore {
             at: catalogURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let data = try JSONEncoder.myWikiSourceCatalog().encode(snapshot)
+        let data = try JSONEncoder.knowledgeImport().encode(snapshot)
         try data.write(to: catalogURL, options: .atomic)
     }
 
     private var catalogURL: URL {
         projectRoot.appending(path: ".knowyou/source-catalog.json")
-    }
-}
-
-private extension JSONEncoder {
-    static func myWikiSourceCatalog() -> JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = MyWikiSourceCatalogDateCoding.encodingStrategy
-        return encoder
-    }
-}
-
-private extension JSONDecoder {
-    static func myWikiSourceCatalog() -> JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = MyWikiSourceCatalogDateCoding.decodingStrategy
-        return decoder
-    }
-}
-
-private enum MyWikiSourceCatalogDateCoding {
-    static let encodingStrategy: JSONEncoder.DateEncodingStrategy = .custom { date, encoder in
-        var container = encoder.singleValueContainer()
-        try container.encode(iso8601WithFractionalSeconds().string(from: date))
-    }
-
-    static let decodingStrategy: JSONDecoder.DateDecodingStrategy = .custom { decoder in
-        let container = try decoder.singleValueContainer()
-        let value = try container.decode(String.self)
-        if let date = iso8601WithFractionalSeconds().date(from: value) ?? iso8601().date(from: value) {
-            return date
-        }
-        throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO-8601 date: \(value)")
-    }
-
-    private static func iso8601WithFractionalSeconds() -> ISO8601DateFormatter {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }
-
-    private static func iso8601() -> ISO8601DateFormatter {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
     }
 }

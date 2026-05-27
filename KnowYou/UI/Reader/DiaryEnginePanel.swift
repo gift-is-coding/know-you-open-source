@@ -62,7 +62,7 @@ struct DiaryEnginePanel: View {
                         }
                         .disabled(!row.canBecomeDefault || row.isDefault)
 
-                        if row.engine == .openAI {
+                        if row.engine == .llmAPI {
                             Button("Configure", action: onConfigureAPI)
                         } else {
                             Button(row.testButtonTitle) {

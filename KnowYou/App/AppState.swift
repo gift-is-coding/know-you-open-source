@@ -541,7 +541,7 @@ final class AppState {
         .codexCLI,
         .geminiCLI,
         .openclawCLI,
-        .openAI,
+        .llmAPI,
     ]
     private static let knowledgeDocumentMarkdownPreviewByteLimit = 256_000
     private static let knowledgeDocumentMarkdownPreviewTruncationMarker = "\n\n[Preview truncated]"
@@ -1645,6 +1645,42 @@ final class AppState {
         reconcileDefaultEngineAfterStatusChange()
         retestingEngines.remove(engine)
         isRetestingEngines = !retestingEngines.isEmpty
+    }
+
+    func testLLMAPIProvider(
+        _ providerID: LLMAPIProviderID,
+        draftConfig: SummarizerConfig
+    ) async -> EngineRuntimeStatus {
+        var configSnapshot = draftConfig
+        configSnapshot.defaultEngine = .llmAPI
+        configSnapshot.activeLLMAPIProviderID = providerID
+        let configurationSignature = Self.configurationSignature(
+            for: .llmAPI,
+            config: configSnapshot,
+            environment: processEnvironment
+        )
+        let result = await probeEngine(.llmAPI, configSnapshot, processEnvironment)
+        let status = EngineRuntimeStatus(
+            state: result.state,
+            detail: result.detail,
+            lastVerifiedAt: result.verifiedAt,
+            configurationSignature: configurationSignature
+        )
+
+        if providerID == summarizerConfig.activeLLMAPIProviderID,
+           Self.configurationSignature(
+            for: .llmAPI,
+            config: summarizerConfig,
+            environment: processEnvironment
+           ) == configurationSignature {
+            engineStatuses[.llmAPI] = status
+            if defaultEngine == .llmAPI, result.state == .green {
+                refreshActiveSummarizer()
+            }
+            reconcileDefaultEngineAfterStatusChange()
+        }
+
+        return status
     }
 
     func selectDefaultEngine(_ engine: DiaryEngine) {
@@ -4817,7 +4853,7 @@ extension AppState {
             generationMode: mode,
             engineKind: engine.rawValue,
             engineLabel: engine.displayName,
-            model: engine == .openAI
+            model: engine == .llmAPI
                 ? summarizerConfig.apiModel.trimmingCharacters(in: .whitespacesAndNewlines)
                 : nil,
             pipelineVersion: "diary-story-v1",
@@ -4881,7 +4917,7 @@ extension AppState {
                 lastVerifiedAt: nil,
                 configurationSignature: signature
             )
-        case .openAI:
+        case .llmAPI:
             if !config.apiConfigurationIsComplete {
                 return EngineRuntimeStatus(
                     state: .gray,
@@ -4937,11 +4973,17 @@ extension AppState {
         switch engine {
         case .none:
             return "none"
-        case .openAI:
+        case .llmAPI:
+            let providerConfig = config.activeLLMAPIProviderConfig
+            let token = providerConfig.apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            let tokenSignature = token.isEmpty ? "token:empty" : "token:\(SHA256Hasher.hash(token))"
             return [
-                config.apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
-                config.apiModel.trimmingCharacters(in: .whitespacesAndNewlines),
-                config.apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                "llmAPI",
+                providerConfig.id.rawValue,
+                providerConfig.baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                providerConfig.model.trimmingCharacters(in: .whitespacesAndNewlines),
+                providerConfig.wireFormat.rawValue,
+                tokenSignature
             ].joined(separator: "|")
         case .codexAuth:
             return "codexAuth|\((environment["CODEX_HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "~/.codex")"
@@ -4992,7 +5034,7 @@ extension AppState {
     private static func inferEngine(from summarizer: SummaryGenerating?) -> DiaryEngine? {
         switch summarizer {
         case is CloudSummarizer:
-            return .openAI
+            return .llmAPI
         case is CodexDirectSummarizer:
             return .codexAuth
         case let summarizer as CLISummarizer:
@@ -5019,10 +5061,9 @@ extension AppState {
 
         switch summarizer {
         case let summarizer as CloudSummarizer:
-            reconciled.defaultEngine = .openAI
-            reconciled.apiBaseURL = summarizer.apiURL.absoluteString
-            reconciled.apiModel = summarizer.model
-            reconciled.apiToken = summarizer.apiKey
+            reconciled.defaultEngine = .llmAPI
+            reconciled.activeLLMAPIProviderID = summarizer.providerConfig.id
+            reconciled.setLLMAPIProviderConfig(summarizer.providerConfig)
         case is CodexDirectSummarizer:
             reconciled.defaultEngine = .codexAuth
         case let summarizer as CLISummarizer:

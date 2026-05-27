@@ -26,7 +26,7 @@ struct EngineProbe: Sendable {
         switch engine {
         case .none:
             return makeResult(engine: engine, state: .gray, detail: "No engine selected.", verifiedAt: nil)
-        case .openAI:
+        case .llmAPI:
             return await probeAPI(config: engineConfig)
         case .codexAuth:
             return await probeCodexAuth(environment: environment)
@@ -76,51 +76,28 @@ struct EngineProbe: Sendable {
     }
 
     private func probeAPI(config: SummarizerConfig) async -> EngineProbeResult {
-        let baseURL = trimmedAPIBaseURL(config.apiBaseURL)
-        let model = config.apiModel.trimmingCharacters(in: .whitespacesAndNewlines)
-        let token = config.apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let providerConfig = config.activeLLMAPIProviderConfig
+        let providerName = providerConfig.descriptor.displayName
 
         guard
-            config.apiConfigurationIsComplete,
-            let baseURL
+            providerConfig.isComplete,
+            providerConfig.validatedBaseURL() != nil
         else {
             return makeResult(
-                engine: .openAI,
+                engine: .llmAPI,
                 state: .gray,
                 detail: "API configuration is incomplete.",
                 verifiedAt: nil
             )
         }
 
-        var request = URLRequest(url: baseURL)
-        request.httpMethod = "POST"
-        request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(
-            ResponsesRequest(
-                model: model,
-                input: "Reply with OK."
-            )
-        )
-
         do {
-            let (data, response) = try await session.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse,
-                  (200..<300).contains(httpResponse.statusCode)
-            else {
-                return makeResult(
-                    engine: .openAI,
-                    state: .yellow,
-                    detail: "API request failed.",
-                    verifiedAt: Date()
-                )
-            }
-
-            let payload = try JSONDecoder().decode(ResponsesResponse.self, from: data)
-            let outputText = payload.outputText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let client = LLMAPIClient(providerConfig: providerConfig, session: session)
+            let outputText = try await client.complete(input: "Reply with OK.")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !outputText.isEmpty else {
                 return makeResult(
-                    engine: .openAI,
+                    engine: .llmAPI,
                     state: .yellow,
                     detail: "API response did not include any text.",
                     verifiedAt: Date()
@@ -128,14 +105,14 @@ struct EngineProbe: Sendable {
             }
 
             return makeResult(
-                engine: .openAI,
+                engine: .llmAPI,
                 state: .green,
-                detail: "API returned non-empty text.",
+                detail: "\(providerName) returned non-empty text.",
                 verifiedAt: Date()
             )
         } catch {
             return makeResult(
-                engine: .openAI,
+                engine: .llmAPI,
                 state: .yellow,
                 detail: "API request failed: \(error.localizedDescription)",
                 verifiedAt: Date()
@@ -190,24 +167,6 @@ struct EngineProbe: Sendable {
         )
     }
 
-    private func trimmedAPIBaseURL(_ value: String) -> URL? {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return nil
-        }
-
-        guard
-            let components = URLComponents(string: trimmed),
-            let scheme = components.scheme?.lowercased(),
-            (scheme == "http" || scheme == "https"),
-            components.host != nil
-        else {
-            return nil
-        }
-
-        return components.url
-    }
-
     private func tool(for engine: DiaryEngine) -> CLISummarizer.Tool? {
         switch engine {
         case .claudeCLI:
@@ -218,7 +177,7 @@ struct EngineProbe: Sendable {
             return .gemini
         case .openclawCLI:
             return .openclaw
-        case .none, .openAI, .codexAuth:
+        case .none, .llmAPI, .codexAuth:
             return nil
         }
     }
@@ -233,7 +192,7 @@ struct EngineProbe: Sendable {
             return "gemini"
         case .openclawCLI:
             return "openclaw"
-        case .none, .openAI, .codexAuth:
+        case .none, .llmAPI, .codexAuth:
             return ""
         }
     }
@@ -248,14 +207,9 @@ struct EngineProbe: Sendable {
             return config.geminiCLIPath
         case .openclawCLI:
             return config.openclawCLIPath
-        case .none, .openAI, .codexAuth:
+        case .none, .llmAPI, .codexAuth:
             return ""
         }
     }
 
-}
-
-private struct ResponsesRequest: Encodable {
-    let model: String
-    let input: String
 }

@@ -89,7 +89,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 左上标题栏更新提醒胶囊与更新 sheet
 - 晚间回顾本地通知提醒
 - 可选 diary engine：
-  - OpenAI API
+  - LLM API
   - Codex Auth
   - Claude Code CLI
   - Codex CLI

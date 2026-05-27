@@ -12,6 +12,7 @@ struct MainWindowView: View {
     @State private var isShowingEnginePanel = false
     @State private var isShowingAPIDetail = false
     @State private var apiConfigDraft = SummarizerConfig.load()
+    @State private var apiProviderStatuses: [LLMAPIProviderID: EngineRuntimeStatus] = [:]
     @State private var isTestingAPIConnection = false
     @State private var mode: MainWindowMode = .journal
     @State private var selectedMyWikiEntry: MyWikiEntry?
@@ -143,9 +144,10 @@ struct MainWindowView: View {
             }
         }
         .sheet(isPresented: $isShowingAPIDetail) {
-            APIDetailSheet(
+            LLMAPIDetailSheet(
                 config: $apiConfigDraft,
-                status: appState.engineStatuses[.openAI] ?? EngineRuntimeStatus(),
+                activeStatus: appState.engineStatuses[.llmAPI] ?? EngineRuntimeStatus(),
+                providerStatuses: apiProviderStatuses,
                 isTesting: isTestingAPIConnection,
                 onClose: {
                     isShowingAPIDetail = false
@@ -154,7 +156,8 @@ struct MainWindowView: View {
                     saveAPIConfig()
                     isShowingAPIDetail = false
                 },
-                onTest: testAPIConnection
+                onTestProvider: testAPIProvider,
+                onSetActive: setActiveAPIProvider
             )
         }
         .sheet(
@@ -514,23 +517,34 @@ struct MainWindowView: View {
 
     private func openAPIDetail() {
         apiConfigDraft = SummarizerConfig.load()
-        apiConfigDraft.defaultEngine = .openAI
+        apiConfigDraft.defaultEngine = .llmAPI
+        apiProviderStatuses = [
+            apiConfigDraft.activeLLMAPIProviderID: appState.engineStatuses[.llmAPI] ?? EngineRuntimeStatus()
+        ]
         isShowingEnginePanel = false
         isShowingAPIDetail = true
     }
 
     private func saveAPIConfig() {
         var config = apiConfigDraft
-        config.defaultEngine = .openAI
+        config.defaultEngine = .llmAPI
         appState.applyEngineConfig(config)
         apiConfigDraft = config
+        apiProviderStatuses[config.activeLLMAPIProviderID] = appState.engineStatuses[.llmAPI] ?? EngineRuntimeStatus()
     }
 
-    private func testAPIConnection() {
+    private func setActiveAPIProvider(_ providerID: LLMAPIProviderID) {
+        apiConfigDraft.activeLLMAPIProviderID = providerID
         saveAPIConfig()
+    }
+
+    private func testAPIProvider(_ providerID: LLMAPIProviderID) {
+        saveAPIConfig()
+        let draft = apiConfigDraft
         isTestingAPIConnection = true
         Task { @MainActor in
-            await appState.retestEngine(.openAI)
+            let status = await appState.testLLMAPIProvider(providerID, draftConfig: draft)
+            apiProviderStatuses[providerID] = status
             isTestingAPIConnection = false
         }
     }

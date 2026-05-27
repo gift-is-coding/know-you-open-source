@@ -74,7 +74,7 @@
 		A10000010000000000000033 /* EngineProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000033 /* EngineProbe.swift */; };
 		A10000010000000000000034 /* DiaryEngineSelectorButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000034 /* DiaryEngineSelectorButton.swift */; };
 		A10000010000000000000035 /* DiaryEnginePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000035 /* DiaryEnginePanel.swift */; };
-		A10000010000000000000036 /* APIDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000036 /* APIDetailSheet.swift */; };
+		A10000010000000000000036 /* LLMAPIDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000036 /* LLMAPIDetailSheet.swift */; };
 		A10000010000000000000037 /* SettingsMetadataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000037 /* SettingsMetadataTests.swift */; };
 		A10000010000000000000038 /* AppSupportMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000038 /* AppSupportMetadata.swift */; };
 		A1000001000000000000003A /* ManualDiaryRefreshTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000003A /* ManualDiaryRefreshTests.swift */; };
@@ -250,7 +250,7 @@
 		A10001010000000000000033 /* EngineProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineProbe.swift; sourceTree = "<group>"; };
 		A10001010000000000000034 /* DiaryEngineSelectorButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryEngineSelectorButton.swift; sourceTree = "<group>"; };
 		A10001010000000000000035 /* DiaryEnginePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryEnginePanel.swift; sourceTree = "<group>"; };
-		A10001010000000000000036 /* APIDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIDetailSheet.swift; sourceTree = "<group>"; };
+		A10001010000000000000036 /* LLMAPIDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMAPIDetailSheet.swift; sourceTree = "<group>"; };
 		A10001010000000000000037 /* SettingsMetadataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsMetadataTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000038 /* AppSupportMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSupportMetadata.swift; sourceTree = "<group>"; };
 		A1000101000000000000003A /* ManualDiaryRefreshTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualDiaryRefreshTests.swift; sourceTree = "<group>"; };
@@ -447,7 +447,7 @@
 			children = (
 				A10001010000000000000034 /* DiaryEngineSelectorButton.swift */,
 				A10001010000000000000035 /* DiaryEnginePanel.swift */,
-				A10001010000000000000036 /* APIDetailSheet.swift */,
+				A10001010000000000000036 /* LLMAPIDetailSheet.swift */,
 				A10001010000000000000006 /* DailyMarkdownView.swift */,
 			);
 			path = Reader;
@@ -905,7 +905,7 @@
 				B20000010000000000000004 /* CodexAuthStore.swift in Sources */,
 				B20000010000000000000006 /* CodexOAuthRefresher.swift in Sources */,
 				B20000010000000000000008 /* CodexDirectSummarizer.swift in Sources */,
-				A10000010000000000000036 /* APIDetailSheet.swift in Sources */,
+				A10000010000000000000036 /* LLMAPIDetailSheet.swift in Sources */,
 				A10000010000000000000035 /* DiaryEnginePanel.swift in Sources */,
 				A10000010000000000000041 /* SyncMemoryPathDetector.swift in Sources */,
 				A10000010000000000000043 /* SyncMemoryChannel.swift in Sources */,

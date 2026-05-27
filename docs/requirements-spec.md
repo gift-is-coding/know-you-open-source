@@ -411,7 +411,12 @@ onboarding 的配置约束为：
 - 用户可见分类名称必须来自 schema；默认不强行拆分 People/Projects/Topics 等细分类。旧 `wiki/people`、`wiki/organizations`、`wiki/projects`、`wiki/events` 必须读入 `Entities`，旧 `wiki/topics`、`wiki/decisions`、`wiki/preferences`、`wiki/follow-ups`、`wiki/summaries` 必须读入 `Concepts`
 - 主界面不得展示 `tag:` 一类内部字段；别名应展示为 `Also known as`，关系应展示为 `Related`
 - `Open Project`、journal count、last date 等维护信息必须进入 `More > Wiki Status / Reveal Wiki Folder`，不得占据主阅读界面
-- `More` 菜单必须提供轻量 `Source Library` 入口，允许用户选择文件夹、导入文件或拖拽素材，并能区分全局 source 处理进度与单个 entity 的 evidence source 数
+- `More` 菜单必须提供 `Source Library` 入口，展示持久分层 source catalog，而不是只展示已复制的 raw files。该 catalog 必须包含 My Diary、外部 connector 文档和手动导入文档，并保留 source folder 层级
+- `Source Library` 必须支持按 title/path 搜索、按 processing status 过滤、目录三态选择、单个 source include/exclude，以及 `Include Visible`、`Exclude Visible`、`Invert Visible` 批量操作
+- My Diary source 首次出现时必须默认 included，但用户可以取消选择；external connector source 首次出现时必须默认 not included，只有用户主动 include 后才允许进入 My Wiki ingest
+- 已经 indexed 的 source 被取消选择时，系统不得删除旧 `wiki/sources`、entity 或 concept 输出；该 source 应显示为 `Excluded, indexed` 并从后续 ingest plan 排除
+- 已经 indexed 且内容未变的 source 再次 included 时不得重复处理；内容 hash 变化后应显示为 `Changed` 并进入下一次 Update My Wiki
+- Source Catalog 状态必须保存在 My Wiki project 本地 `.knowyou/source-catalog.json` 中，至少记录 stable source identity、inclusion state、content hash、last indexed checkpoint、raw source path、summary path 和 folder context
 - `Edit` 必须统一编辑 display name、aliases 与 summary
 - 改名保存前必须检测同分类 title 或 slug 冲突；有冲突时不得直接覆盖，必须引导用户保留当前名称、另选名称或进入合并审核
 - 主动发现疑似重复实体必须由用户显式触发或仅在有真实候选时提示；系统不得固定展示假的 duplicate 状态
@@ -420,11 +425,13 @@ onboarding 的配置约束为：
 - 没有生成内容时，首页也必须保留这些核心栏目位置，并用空状态说明下一步是整理日记
 - 系统必须能创建 My Wiki 项目结构，包括 `purpose.md`、`mywiki.schema.json`、`schema.md`、`raw/sources/` 和 schema 中声明的各个 `wiki/` 目录
 - 默认 schema 目录必须使用 `wiki/sources`、`wiki/entities`、`wiki/concepts`；读取层仍需兼容 legacy People/Projects/Topics/Preferences/Follow-ups/Summaries 等旧目录，但不得默认创建这些旧目录
-- 系统必须能把已有 `YYYY-MM-DD.md` 日记同步为 `raw/sources/knowyou-diary-YYYY-MM-DD.md`
-- 重复同步同一天日记必须覆盖稳定文件名，不得生成重复文件
+- 系统必须能把已有 `YYYY-MM-DD.md` 日记通过 Source Catalog materialization 写入 `raw/sources/My Diary/knowyou-diary-YYYY-MM-DD.md`，并保留 `knowyou`、`diary` source tags
+- 重复 materialize 同一天日记必须覆盖稳定文件名，不得生成重复文件
 - My Wiki 必须尽量复用 `ThirdParty/llm_wiki` 的后端 pipeline，包括 LLM ingest、cache、search、page merge、source traceability、dedup/review 和 vector store；普通用户首页不得直接暴露复杂工作台
-- 默认 My Wiki pipeline 每次运行最多处理 3 个 source，并且在限定批量时优先选择还没有 `wiki/sources/<source>.md` 的最新 raw source；旧生成内容清理后重跑也必须按小批次逐步推进
+- `Update My Wiki` 必须先刷新 Source Catalog，再只把 included 且 pending、changed、failed，或 summary 缺失的 source materialize 到 `raw/sources` 并写入显式 ingest manifest；external source 仅出现在 catalog 中不得被静默 ingest
+- 默认 My Wiki pipeline 每次运行最多处理 3 个 manifest source；旧生成内容清理后重跑也必须按小批次逐步推进
 - LLM Wiki headless runner 对原生 `Sources / Entities / Concepts` schema 不得生成 KnowYou 自定义 output contract，必须尽量复用 llm_wiki 默认生成路径；非原生自定义目录可把 schema 信息写入 guide，但默认 pipeline 不得因此替换 llm_wiki 原生 prompt
+- LLM Wiki headless runner 收到 manifest 时必须只处理 manifest 内列出的 project-relative `raw/sources` 路径，并把 source 的 `folderContext` 传给原生 `autoIngest`；它不得通过扫描整个 `raw/sources` 目录决定本次 eligible source set
 - 默认 My Wiki 生成必须保留 LLM Wiki 原生 generation targets 和两阶段 `autoIngest` prompt；KnowYou 不得用动态 My Wiki generation target 或单独页面正文 prompt 替换原生 prompt。KnowYou 只允许在 schema/purpose 层追加轻量标签提示
 - LLM Wiki `auto` 输出语言模式必须跟随 source 主语言，但保留人名、产品名、工具名、缩写和英文术语原文；翻译或中文解释只能进入 aliases、tags 或正文说明。显式用户语言设置仍可强制输出语言
 - My Wiki 的正式本体抽取、关系发现、去重、总结和 agent context 必须使用 LLM 语义能力，不得用 keyword/regex/starter extractor 伪造可信本体页

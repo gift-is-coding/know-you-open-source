@@ -198,6 +198,46 @@ final class MyWikiSourceCatalogBuilderTests: XCTestCase {
         XCTAssertEqual(manifest.sources.first?.sourcePath, "raw/sources/Local Folder/local-main/Projects/AI/notes.md")
     }
 
+    func testMaterializeDiaryWritesKnowYouFrontmatterUnderMyDiary() throws {
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let vault = root.appending(path: "vault", directoryHint: .isDirectory)
+        let project = root.appending(path: "project", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try """
+        # 2026-05-27
+
+        Diary content should keep KnowYou source tags.
+        """.write(to: vault.appending(path: "2026-05-27.md"), atomically: true, encoding: .utf8)
+
+        let builder = MyWikiSourceCatalogBuilder()
+        let snapshot = try builder.refreshCatalog(
+            projectRoot: project,
+            sourceVault: vault,
+            importedDocuments: []
+        )
+        let plan = builder.ingestPlan(snapshot: snapshot, maxSources: nil)
+
+        let result = try builder.materialize(plan: plan, from: snapshot, projectRoot: project)
+
+        XCTAssertEqual(result.materializedCount, 1)
+        let exported = try String(
+            contentsOf: project.appending(path: "raw/sources/My Diary/knowyou-diary-2026-05-27.md"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(exported.contains("type: knowyou-diary"), exported)
+        XCTAssertTrue(exported.contains("day: 2026-05-27"), exported)
+        XCTAssertTrue(exported.contains("tags: [knowyou, diary]"), exported)
+        XCTAssertTrue(exported.contains("Diary content should keep KnowYou source tags."), exported)
+
+        let manifestData = try Data(contentsOf: result.manifestURL)
+        let manifest = try JSONDecoder.knowledgeImport().decode(MyWikiSourceIngestPlan.self, from: manifestData)
+        let source = try XCTUnwrap(manifest.sources.first)
+        XCTAssertEqual(source.sourceID, "diary:2026-05-27")
+        XCTAssertEqual(source.sourceKind, .diary)
+        XCTAssertEqual(source.folderContext, "My Diary")
+    }
+
     func testMaterializeLeavesManualSourceInPlaceWhenAlreadyUnderRawSources() throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

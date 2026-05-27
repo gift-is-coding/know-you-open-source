@@ -5,6 +5,7 @@ struct KnowledgeOntologyPanel: View {
     let projectRoot: URL?
     let developmentSourceURL: URL
     let bundledHelperAppURL: URL?
+    let importedDocuments: [ImportedKnowledgeDocument]
     @Binding var selectedEntry: MyWikiEntry?
 
     var body: some View {
@@ -13,6 +14,7 @@ struct KnowledgeOntologyPanel: View {
             projectRoot: projectRoot,
             developmentSourceURL: developmentSourceURL,
             bundledHelperAppURL: bundledHelperAppURL,
+            importedDocuments: importedDocuments,
             selectedEntry: $selectedEntry
         )
     }

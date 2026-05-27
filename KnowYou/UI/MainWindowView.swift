@@ -223,6 +223,7 @@ struct MainWindowView: View {
                 projectRoot: knowledgeOntologyProjectRoot,
                 developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL(),
                 bundledHelperAppURL: KnowledgeOntologyLauncher.defaultBundledHelperAppURL(),
+                importedDocuments: appState.knowledgeDocumentsByConnector.values.flatMap { $0 },
                 selectedEntry: $selectedMyWikiEntry
             )
             .frame(minWidth: 860, maxWidth: .infinity, maxHeight: .infinity)

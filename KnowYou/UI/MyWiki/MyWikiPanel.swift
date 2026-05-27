@@ -6,6 +6,7 @@ struct MyWikiPanel: View {
     let projectRoot: URL?
     let developmentSourceURL: URL
     let bundledHelperAppURL: URL?
+    let importedDocuments: [ImportedKnowledgeDocument]
     @Binding var selectedEntry: MyWikiEntry?
 
     @State private var query = ""
@@ -86,7 +87,11 @@ struct MyWikiPanel: View {
         }
         .sheet(isPresented: $isShowingSourceLibrary) {
             if let projectRoot {
-                MyWikiSourceLibraryView(projectRoot: projectRoot, sourceVault: sourceVault) {
+                MyWikiSourceLibraryView(
+                    projectRoot: projectRoot,
+                    sourceVault: sourceVault,
+                    importedDocuments: importedDocuments
+                ) {
                     loadIngestProgress()
                     loadDashboard()
                 }
@@ -412,25 +417,54 @@ struct MyWikiPanel: View {
     }
 
     private func syncDiaries() {
-        guard let sourceVault, let projectRoot else { return }
+        guard let projectRoot else { return }
         guard !isSyncing else { return }
         isSyncing = true
-        statusMessage = "Organizing journals..."
+        statusMessage = "Updating My Wiki sources..."
         loadIngestProgress()
 
         let target = pipelineTarget
+        let sourceVault = sourceVault
+        let importedDocuments = importedDocuments
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
                 do {
-                    let result = try KnowledgeOntologyProjectExporter().syncDiaries(
+                    try MyWikiProjectExporter().ensureProject(at: projectRoot)
+
+                    let builder = MyWikiSourceCatalogBuilder()
+                    var snapshot = try builder.refreshCatalog(
+                        projectRoot: projectRoot,
                         sourceVault: sourceVault,
+                        importedDocuments: importedDocuments
+                    )
+                    let plan = builder.ingestPlan(
+                        snapshot: snapshot,
+                        maxSources: MyWikiIngestBatchPolicy.maxSourcesPerRun
+                    )
+
+                    guard plan.sources.isEmpty == false else {
+                        return "My Wiki sources are already up to date."
+                    }
+
+                    let materialized = try builder.materialize(
+                        plan: plan,
+                        from: snapshot,
                         projectRoot: projectRoot
                     )
+
                     do {
-                        try MyWikiPipelineBridge().runIngest(target: target, projectRoot: projectRoot)
-                        return "Organized \(result.exportedFileNames.count) journals and refreshed My Wiki."
+                        try MyWikiPipelineBridge().runIngest(
+                            target: target,
+                            projectRoot: projectRoot,
+                            manifestURL: materialized.manifestURL
+                        )
+                        snapshot = builder.mark(plan: plan, succeededIn: snapshot, at: Date())
+                        try MyWikiSourceCatalogStore(projectRoot: projectRoot).save(snapshot)
+                        return "Updated \(materialized.materializedCount) My Wiki source(s)."
                     } catch {
-                        return "Organized \(result.exportedFileNames.count) journals; \(error.localizedDescription)"
+                        snapshot = builder.mark(plan: plan, failedWith: error.localizedDescription, in: snapshot)
+                        try? MyWikiSourceCatalogStore(projectRoot: projectRoot).save(snapshot)
+                        return "My Wiki source update failed: \(error.localizedDescription)"
                     }
                 } catch {
                     return error.localizedDescription

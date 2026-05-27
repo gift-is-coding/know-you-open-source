@@ -1822,17 +1822,19 @@ Modify `syncDiaries()` in `MyWikiPanel`:
 
 ```swift
 private func syncDiaries() {
-    guard let sourceVault, let projectRoot else { return }
+    guard let projectRoot else { return }
     guard !isSyncing else { return }
     isSyncing = true
     statusMessage = "Updating My Wiki sources..."
     loadIngestProgress()
 
     let target = pipelineTarget
+    let sourceVault = sourceVault
     let importedDocuments = importedDocuments
     Task {
         let outcome = await Task.detached(priority: .userInitiated) {
             do {
+                try MyWikiProjectExporter().ensureProject(at: projectRoot)
                 let builder = MyWikiSourceCatalogBuilder()
                 var snapshot = try builder.refreshCatalog(
                     projectRoot: projectRoot,

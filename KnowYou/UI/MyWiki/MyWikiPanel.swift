@@ -17,7 +17,8 @@ struct MyWikiPanel: View {
     @State private var isSyncing = false
     @State private var expandedCategoryIDs: Set<String> = []
     @State private var showingAllCategoryIDs: Set<String> = []
-    @State private var selectedEntityFacetID: String?
+    @State private var selectedTagByCategoryID: [String: String] = [:]
+    @State private var expandedTagFacetCategoryIDs: Set<String> = []
     @State private var editingEntry: MyWikiEntry?
     @State private var conflictMessage: String?
     @State private var isShowingStatus = false
@@ -148,6 +149,7 @@ struct MyWikiPanel: View {
                 MyWikiDetailView(
                     entry: selectedEntry,
                     duplicateSuggestionCount: duplicateSuggestions.count,
+                    duplicateSuggestionAffectedCount: selectedEntry.map(duplicateSuggestionCount) ?? 0,
                     isSyncing: isSyncing,
                     onEdit: { entry in
                         conflictMessage = nil
@@ -359,8 +361,8 @@ struct MyWikiPanel: View {
             }
             .frame(height: 34)
 
-            if category == .entity && expandedCategoryIDs.contains(category.id) {
-                entityFacetChips()
+            if expandedCategoryIDs.contains(category.id), sectionPresentation.tagFacets.isEmpty == false {
+                tagFacetChips(category: category, facets: sectionPresentation.tagFacets)
                     .padding(.bottom, 4)
             }
 
@@ -391,27 +393,40 @@ struct MyWikiPanel: View {
             query: query,
             expandedCategoryIDs: expandedCategoryIDs,
             showingAllCategoryIDs: showingAllCategoryIDs,
-            selectedEntityFacetID: selectedEntityFacetID,
+            selectedTagByCategoryID: selectedTagByCategoryID,
             previewLimit: MyWikiIndexPreviewPolicy.defaultVisibleLimit
         )
     }
 
-    private func entityFacetChips() -> some View {
-        FlowLayout(spacing: 6) {
-            entityFacetButton(title: "All", isSelected: selectedEntityFacetID == nil) {
-                selectedEntityFacetID = nil
-                showingAllCategoryIDs.remove(MyWikiCategory.entity.id)
+    private func tagFacetChips(category: MyWikiCategory, facets: [MyWikiTagFacet]) -> some View {
+        let selectedTag = selectedTagByCategoryID[category.id]
+        let isExpanded = expandedTagFacetCategoryIDs.contains(category.id)
+        let visibleFacets = MyWikiTagFacetDisplayPolicy.visibleFacets(facets, isExpanded: isExpanded)
+        return FlowLayout(spacing: 6) {
+            tagFacetButton(title: "All", isSelected: selectedTag == nil) {
+                selectedTagByCategoryID[category.id] = nil
+                showingAllCategoryIDs.remove(category.id)
             }
-            ForEach(MyWikiEntityFacet.defaults) { facet in
-                entityFacetButton(title: facet.title, isSelected: selectedEntityFacetID == facet.id) {
-                    selectedEntityFacetID = selectedEntityFacetID == facet.id ? nil : facet.id
-                    showingAllCategoryIDs.remove(MyWikiCategory.entity.id)
+            ForEach(visibleFacets) { facet in
+                let isSelected = selectedTag == facet.id
+                tagFacetButton(title: "\(facet.title) \(facet.count)", isSelected: isSelected) {
+                    selectedTagByCategoryID[category.id] = isSelected ? nil : facet.id
+                    showingAllCategoryIDs.remove(category.id)
+                }
+            }
+            if MyWikiTagFacetDisplayPolicy.canExpand(facets, isExpanded: isExpanded)
+                || MyWikiTagFacetDisplayPolicy.canCollapse(facets, isExpanded: isExpanded) {
+                tagFacetButton(
+                    title: MyWikiTagFacetDisplayPolicy.toggleTitle(for: facets, isExpanded: isExpanded),
+                    isSelected: false
+                ) {
+                    toggleTagFacets(category)
                 }
             }
         }
     }
 
-    private func entityFacetButton(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+    private func tagFacetButton(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 12, weight: .semibold))
@@ -463,6 +478,14 @@ struct MyWikiPanel: View {
             showingAllCategoryIDs.remove(category.id)
         } else {
             showingAllCategoryIDs.insert(category.id)
+        }
+    }
+
+    private func toggleTagFacets(_ category: MyWikiCategory) {
+        if expandedTagFacetCategoryIDs.contains(category.id) {
+            expandedTagFacetCategoryIDs.remove(category.id)
+        } else {
+            expandedTagFacetCategoryIDs.insert(category.id)
         }
     }
 
@@ -603,6 +626,12 @@ struct MyWikiPanel: View {
         } catch {
             statusMessage = error.localizedDescription
         }
+    }
+
+    private func duplicateSuggestionCount(for entry: MyWikiEntry) -> Int {
+        duplicateSuggestions.filter { suggestion in
+            suggestion.entries.contains { $0.id == entry.id }
+        }.count
     }
 
     private func mergeSuggestion(_ suggestion: MyWikiDuplicateSuggestion, canonicalID: String) {
@@ -844,28 +873,6 @@ private struct MyWikiEditSheet: View {
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { $0.isEmpty == false }
-    }
-}
-
-private extension MyWikiCategory {
-    var badgeForeground: Color {
-        switch id {
-        case MyWikiCategory.person.id: return Color(red: 0.56, green: 0.76, blue: 1)
-        case MyWikiCategory.project.id: return Color(red: 0.5, green: 0.9, blue: 0.63)
-        case MyWikiCategory.event.id: return Color(red: 1, green: 0.68, blue: 0.42)
-        case MyWikiCategory.preference.id: return Color(red: 0.92, green: 0.84, blue: 0.48)
-        default: return .secondary
-        }
-    }
-
-    var badgeBackground: Color {
-        switch id {
-        case MyWikiCategory.person.id: return Color.blue.opacity(0.18)
-        case MyWikiCategory.project.id: return Color.green.opacity(0.16)
-        case MyWikiCategory.event.id: return Color.orange.opacity(0.16)
-        case MyWikiCategory.preference.id: return Color.yellow.opacity(0.14)
-        default: return Color.primary.opacity(0.08)
-        }
     }
 }
 

@@ -198,7 +198,7 @@ final class MyWikiSourceCatalogBuilderTests: XCTestCase {
         XCTAssertEqual(manifest.sources.first?.sourcePath, "raw/sources/Local Folder/local-main/Projects/AI/notes.md")
     }
 
-    func testMaterializeDiaryWritesKnowYouFrontmatterUnderMyDiary() throws {
+    func testMaterializeDiaryWritesRawMarkdownUnderMyDiary() throws {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         let vault = root.appending(path: "vault", directoryHint: .isDirectory)
@@ -225,10 +225,7 @@ final class MyWikiSourceCatalogBuilderTests: XCTestCase {
             contentsOf: project.appending(path: "raw/sources/My Diary/knowyou-diary-2026-05-27.md"),
             encoding: .utf8
         )
-        XCTAssertTrue(exported.contains("type: knowyou-diary"), exported)
-        XCTAssertTrue(exported.contains("day: 2026-05-27"), exported)
-        XCTAssertTrue(exported.contains("tags: [knowyou, diary]"), exported)
-        XCTAssertTrue(exported.contains("Diary content should keep KnowYou source tags."), exported)
+        XCTAssertEqual(exported, "# 2026-05-27\n\nDiary content should keep KnowYou source tags.\n")
 
         let manifestData = try Data(contentsOf: result.manifestURL)
         let manifest = try JSONDecoder.knowledgeImport().decode(MyWikiSourceIngestPlan.self, from: manifestData)

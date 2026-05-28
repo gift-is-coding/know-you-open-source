@@ -811,6 +811,29 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentations.map(\.isTracked), [true, false])
     }
 
+    func testMarkdownRendererParsesPipeTables() {
+        let markdown = """
+        | Date | Source claim | Implication |
+        | --- | --- | --- |
+        | 2026-04-28 | AI Force was reused by johnson-gq1-cheng. | Platform base. |
+        | 2026-05-14 | AI Force relates to workflow and agents. | Training system. |
+        """
+
+        let blocks = DailyMarkdownRenderer.blocks(from: markdown)
+
+        XCTAssertEqual(blocks.count, 1)
+        guard case .table(let table) = blocks[0] else {
+            return XCTFail("Expected table block")
+        }
+        XCTAssertEqual(table.headers.map(\.plainText), ["Date", "Source claim", "Implication"])
+        XCTAssertEqual(table.rows.count, 2)
+        XCTAssertEqual(table.rows.first?.map(\.plainText), [
+            "2026-04-28",
+            "AI Force was reused by johnson-gq1-cheng.",
+            "Platform base."
+        ])
+    }
+
     func testMarkdownRendererPreservesLegacyDetailsMarkdownInsideOneParagraph() {
         let markdown = """
         # 详情

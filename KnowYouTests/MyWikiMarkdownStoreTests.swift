@@ -2,128 +2,53 @@ import XCTest
 @testable import KnowYou
 
 final class MyWikiMarkdownStoreTests: XCTestCase {
-    func testLoadsCustomSchemaCategoryWithoutChangingSwiftEnum() throws {
+    func testLoadsOnlyNativeLlmWikiDirectoriesAndIgnoresSchemaAndLegacyDirectories() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let schema = MyWikiSchemaConfig(
-            id: "custom",
-            displayName: "Custom",
-            categories: [
-                MyWikiCategoryDefinition(
-                    id: "relationships",
-                    displayName: "Relationships",
-                    singularName: "Relationship",
-                    directory: "wiki/relationships",
-                    frontmatterTypes: ["relationship"],
-                    extractionGuidance: "Relationships between entities.",
-                    detailSections: ["Summary", "Sources"]
-                )
-            ],
-            views: []
-        )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        try encoder.encode(schema).write(to: root.appending(path: "mywiki.schema.json"))
-        try FileManager.default.createDirectory(at: root.appending(path: "wiki/relationships"), withIntermediateDirectories: true)
         try """
-        ---
-        type: relationship
-        title: Huang Shan and Lenovo Platform
-        sources: ["knowyou-diary-2026-05-14.md"]
-        ---
-
-        # Huang Shan and Lenovo Platform
-
-        Huang Shan is responsible for hardware acceleration boundaries.
-        """.write(to: root.appending(path: "wiki/relationships/huang-shan-lenovo.md"), atomically: true, encoding: .utf8)
-
-        let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
-
-        XCTAssertEqual(snapshot.categories.map(\.id), ["relationships"])
-        XCTAssertEqual(snapshot.entries(for: "relationships").map(\.title), ["Huang Shan and Lenovo Platform"])
-        XCTAssertEqual(snapshot.entries(for: "relationships").first?.category.singularTitle, "Relationship")
-    }
-
-    func testDefaultSchemaReadsNativeAndLegacyDirectoriesIntoLlmWikiCategories() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
-        defer { try? FileManager.default.removeItem(at: root) }
+        {"categories":[{"id":"relationships","displayName":"Relationships","singularName":"Relationship","directory":"wiki/relationships","frontmatterTypes":["relationship"],"extractionGuidance":"Custom guidance","detailSections":["Summary"]}]}
+        """.write(to: root.appending(path: "mywiki.schema.json"), atomically: true, encoding: .utf8)
 
         try FileManager.default.createDirectory(at: root.appending(path: "wiki/entities"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: root.appending(path: "wiki/concepts"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appending(path: "wiki/sources"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: root.appending(path: "wiki/people"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appending(path: "wiki/relationships"), withIntermediateDirectories: true)
 
         try page(type: "entity", title: "Huang Shan", body: "Huang Shan coordinates hardware acceleration boundaries.")
             .write(to: root.appending(path: "wiki/entities/huang-shan.md"), atomically: true, encoding: .utf8)
         try page(type: "concept", title: "Agentic Engineering", body: "Agentic engineering is a recurring working pattern.")
             .write(to: root.appending(path: "wiki/concepts/agentic-engineering.md"), atomically: true, encoding: .utf8)
-        try page(type: "person", title: "Alex", body: "Alex remains readable from legacy People pages.")
+        try page(type: "source", title: "Diary 2026-05-14", body: "Source summary.")
+            .write(to: root.appending(path: "wiki/sources/knowyou-diary-2026-05-14.md"), atomically: true, encoding: .utf8)
+        try page(type: "person", title: "Alex", body: "Legacy people pages are ignored.")
             .write(to: root.appending(path: "wiki/people/alex.md"), atomically: true, encoding: .utf8)
+        try page(type: "relationship", title: "Huang Shan and Lenovo", body: "Custom schema pages are ignored.")
+            .write(to: root.appending(path: "wiki/relationships/huang-shan-lenovo.md"), atomically: true, encoding: .utf8)
 
         let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
 
-        XCTAssertEqual(MyWikiCategory.source.frontmatterType, "source")
-        XCTAssertEqual(MyWikiCategory.entity.frontmatterType, "entity")
-        XCTAssertEqual(MyWikiCategory.concept.frontmatterType, "concept")
         XCTAssertEqual(snapshot.categories.map(\.id), ["sources", "entities", "concepts"])
-        XCTAssertEqual(snapshot.entities.map(\.title), ["Alex", "Huang Shan"])
+        XCTAssertEqual(snapshot.sources.map(\.title), ["Diary 2026-05-14"])
+        XCTAssertEqual(snapshot.entities.map(\.title), ["Huang Shan"])
         XCTAssertEqual(snapshot.concepts.map(\.title), ["Agentic Engineering"])
-        XCTAssertEqual(snapshot.primaryEntries.map(\.category.id).sorted(), ["concepts", "entities", "entities"])
+        XCTAssertEqual(snapshot.primaryEntries.map(\.category.id).sorted(), ["concepts", "entities"])
+        XCTAssertTrue(snapshot.entries(for: "relationships").isEmpty)
+        XCTAssertTrue(snapshot.entries(for: "people").isEmpty)
     }
 
-    func testLoadsDashboardSnapshotFromMarkdownFolders() throws {
+    func testLoadsAliasesRelatedMentionsAndMarkdownBodyFromNativeEntityPage() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        try FileManager.default.createDirectory(at: root.appending(path: "wiki/people"), withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: root.appending(path: "wiki/projects"), withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: root.appending(path: "wiki/themes"), withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: root.appending(path: "wiki/summaries"), withIntermediateDirectories: true)
-
+        try FileManager.default.createDirectory(at: root.appending(path: "wiki/entities"), withIntermediateDirectories: true)
         try """
         ---
-        type: person
-        title: Alex
-        sources: ["knowyou-diary-2026-05-12.md"]
-        ---
-
-        # Alex
-
-        最近一起讨论 My Wiki 的产品轻量化。
-        """.write(to: root.appending(path: "wiki/people/alex.md"), atomically: true, encoding: .utf8)
-
-        try """
-        ---
-        type: project
-        title: KnowYou
-        sources: ["knowyou-diary-2026-05-12.md"]
-        ---
-
-        # KnowYou
-
-        从日记工具升级为个人 My Wiki。
-        """.write(to: root.appending(path: "wiki/projects/knowyou.md"), atomically: true, encoding: .utf8)
-
-        let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
-
-        XCTAssertEqual(snapshot.entities.map(\.title), ["Alex", "KnowYou"])
-        XCTAssertTrue(snapshot.entities[0].summary.contains("产品轻量化"))
-        XCTAssertEqual(snapshot.entities[0].sourceNames, ["knowyou-diary-2026-05-12.md"])
-    }
-
-    func testLoadsAliasesRelatedMentionsAndMarkdownBodyFromWikiPage() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        try FileManager.default.createDirectory(at: root.appending(path: "wiki/people"), withIntermediateDirectories: true)
-        try """
-        ---
-        type: person
+        type: entity
         title: Huang Shan
         aliases: ["黄山", "huang-shan"]
         related: ["lenovo", "cloud-platform"]
@@ -140,7 +65,7 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
 
         - 2026-05-14: Discussed K8S scheduling boundaries.
         - 2026-05-07: Clarified platform certification.
-        """.write(to: root.appending(path: "wiki/people/huang-shan.md"), atomically: true, encoding: .utf8)
+        """.write(to: root.appending(path: "wiki/entities/huang-shan.md"), atomically: true, encoding: .utf8)
 
         let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
 
@@ -158,10 +83,10 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        try FileManager.default.createDirectory(at: root.appending(path: "wiki/people"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appending(path: "wiki/entities"), withIntermediateDirectories: true)
         try """
         ---
-        type: person
+        type: entity
         title: Adam Wu
         description: Adam coordinates the Lenovo knowledge-platform workstream.
         sources: ["knowyou-diary-2026-05-06.md"]
@@ -170,7 +95,7 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
         # Adam Wu
 
         This longer body should not replace the explicit description.
-        """.write(to: root.appending(path: "wiki/people/adam-wu.md"), atomically: true, encoding: .utf8)
+        """.write(to: root.appending(path: "wiki/entities/adam-wu.md"), atomically: true, encoding: .utf8)
 
         let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
 
@@ -182,10 +107,10 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        try FileManager.default.createDirectory(at: root.appending(path: "wiki/people"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appending(path: "wiki/entities"), withIntermediateDirectories: true)
         try """
         ---
-        type: person
+        type: entity
         title: Adam Wu
         sources: ["knowyou-diary-2026-05-06.md"]
         ---
@@ -199,7 +124,7 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
         ## Recent Mentions
 
         - 2026-05-06: Adam agreed to include the right colleagues.
-        """.write(to: root.appending(path: "wiki/people/adam-wu.md"), atomically: true, encoding: .utf8)
+        """.write(to: root.appending(path: "wiki/entities/adam-wu.md"), atomically: true, encoding: .utf8)
 
         let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
 
@@ -214,10 +139,10 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        try FileManager.default.createDirectory(at: root.appending(path: "wiki/people"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appending(path: "wiki/entities"), withIntermediateDirectories: true)
         try """
         ---
-        type: person
+        type: entity
         title: Adam Wu
         sources: ["knowyou-diary-2026-05-06.md"]
         ---
@@ -227,48 +152,26 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
         Adam helps connect knowledge-platform planning across teams.
 
         A second paragraph has extra detail that should stay in the markdown body.
-        """.write(to: root.appending(path: "wiki/people/adam-wu.md"), atomically: true, encoding: .utf8)
+        """.write(to: root.appending(path: "wiki/entities/adam-wu.md"), atomically: true, encoding: .utf8)
 
         let snapshot = try MyWikiMarkdownStore(fileManager: .default).loadDashboard(projectRoot: root)
 
         XCTAssertEqual(snapshot.entities.first?.summary, "Adam helps connect knowledge-platform planning across teams.")
     }
 
-    func testLoadDashboardSkipsStarterExtractorPages() throws {
+    func testLoadsStarterMetadataAndAiToolPagesFromNativeDirectories() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        try FileManager.default.createDirectory(at: root.appending(path: "wiki/people"), withIntermediateDirectories: true)
-        try page(title: "Adam", aliases: [], body: "Adam appears as a real person mentioned in the journal evidence below.")
+        try FileManager.default.createDirectory(at: root.appending(path: "wiki/entities"), withIntermediateDirectories: true)
+        try page(title: "Codex", tags: ["agent"], body: "Codex agent appears in journals.")
             .replacingOccurrences(of: "confidence: medium", with: "confidence: medium\ngenerated_by: KnowYou My Wiki starter extractor")
-            .write(to: root.appending(path: "wiki/people/adam.md"), atomically: true, encoding: .utf8)
-        try page(title: "Adam Wu", aliases: [], body: "Adam coordinates the Lenovo knowledge-platform workstream.")
-            .write(to: root.appending(path: "wiki/people/adam-wu.md"), atomically: true, encoding: .utf8)
+            .write(to: root.appending(path: "wiki/entities/codex.md"), atomically: true, encoding: .utf8)
 
         let snapshot = try MyWikiMarkdownStore().loadDashboard(projectRoot: root)
 
-        XCTAssertEqual(snapshot.entities.map(\.title), ["Adam Wu"])
-    }
-
-    func testHidesStarterGeneratedAiToolsFromPeopleAndProjects() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        try FileManager.default.createDirectory(at: root.appending(path: "wiki/people"), withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: root.appending(path: "wiki/projects"), withIntermediateDirectories: true)
-        try page(title: "Codex", aliases: [], body: "Codex agent appears in journals.")
-            .replacingOccurrences(of: "confidence: medium", with: "confidence: medium\ngenerated_by: KnowYou My Wiki starter extractor")
-            .write(to: root.appending(path: "wiki/people/codex.md"), atomically: true, encoding: .utf8)
-        try page(title: "Claude / Cowork", aliases: [], body: "Claude and Cowork agent workflow.")
-            .replacingOccurrences(of: "type: person", with: "type: project")
-            .replacingOccurrences(of: "confidence: medium", with: "confidence: medium\ngenerated_by: KnowYou My Wiki starter extractor")
-            .write(to: root.appending(path: "wiki/projects/claude-cowork.md"), atomically: true, encoding: .utf8)
-
-        let snapshot = try MyWikiMarkdownStore().loadDashboard(projectRoot: root)
-
-        XCTAssertTrue(snapshot.entities.isEmpty)
+        XCTAssertEqual(snapshot.entities.map(\.title), ["Codex"])
     }
 
     func testMarkdownPreviewCapsLargeEntryBodiesForResponsiveSelection() {
@@ -288,26 +191,27 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
         XCTAssertTrue(presentation.isMarkdownTruncated)
     }
 
-    func testLoadsTagsFromFrontmatterForEntityFacets() throws {
+    func testDynamicTagFacetsComeFromFrontmatterAndSortByFrequency() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
         let entities = root.appending(path: "wiki/entities", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: entities, withIntermediateDirectories: true)
-        try page(
-            title: "Token Hub",
-            aliases: [],
-            tags: ["project", "platform"],
-            body: "Token Hub is a platform project."
-        )
+        try page(title: "Token Hub", tags: ["platform", "agent"], body: "Token Hub is a platform project.")
             .write(to: entities.appending(path: "token-hub.md"), atomically: true, encoding: .utf8)
+        try page(title: "AI Force", tags: ["platform"], body: "AI Force is reused as a platform foundation.")
+            .write(to: entities.appending(path: "ai-force.md"), atomically: true, encoding: .utf8)
+        try page(title: "No Tags", tags: [], body: "This entry has no tags.")
+            .write(to: entities.appending(path: "no-tags.md"), atomically: true, encoding: .utf8)
 
         let snapshot = try MyWikiMarkdownStore().loadDashboard(projectRoot: root)
-        let tokenHub = try XCTUnwrap(snapshot.entities.first)
+        let facets = MyWikiTagFacet.facets(for: snapshot.entities)
 
-        XCTAssertEqual(tokenHub.tags, ["project", "platform"])
-        XCTAssertTrue(MyWikiEntityFacet.projects.matches(tokenHub))
+        XCTAssertEqual(facets.map(\.title), ["platform", "agent"])
+        XCTAssertEqual(facets.map(\.count), [2, 1])
+        XCTAssertTrue(facets[0].matches(snapshot.entities.first { $0.title == "Token Hub" }!))
+        XCTAssertFalse(facets[1].matches(snapshot.entities.first { $0.title == "AI Force" }!))
     }
 
     func testRenameServiceUpdatesTitleAliasesAndDetectsNameConflict() throws {
@@ -315,12 +219,12 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let people = root.appending(path: "wiki/people", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: people, withIntermediateDirectories: true)
+        let entities = root.appending(path: "wiki/entities", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: entities, withIntermediateDirectories: true)
         try page(title: "Huang Shan", aliases: ["黄山"], body: "Original summary.")
-            .write(to: people.appending(path: "huang-shan.md"), atomically: true, encoding: .utf8)
-        try page(title: "Billy", aliases: [], body: "Existing person.")
-            .write(to: people.appending(path: "billy.md"), atomically: true, encoding: .utf8)
+            .write(to: entities.appending(path: "huang-shan.md"), atomically: true, encoding: .utf8)
+        try page(title: "Billy", aliases: [], body: "Existing entity.")
+            .write(to: entities.appending(path: "billy.md"), atomically: true, encoding: .utf8)
 
         let store = MyWikiMarkdownStore(fileManager: .default)
         var snapshot = try store.loadDashboard(projectRoot: root)
@@ -356,22 +260,22 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let people = root.appending(path: "wiki/people", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: people, withIntermediateDirectories: true)
+        let entities = root.appending(path: "wiki/entities", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: entities, withIntermediateDirectories: true)
         try page(
             title: "Huang Shan",
             aliases: ["黄山"],
             related: ["lenovo"],
             sources: ["knowyou-diary-2026-05-14.md"],
             body: "Hardware platform owner."
-        ).write(to: people.appending(path: "huang-shan.md"), atomically: true, encoding: .utf8)
+        ).write(to: entities.appending(path: "huang-shan.md"), atomically: true, encoding: .utf8)
         try page(
             title: "黄山",
             aliases: ["huang-shan"],
             related: ["cloud-platform"],
             sources: ["knowyou-diary-2026-05-07.md"],
             body: "Platform certification owner."
-        ).write(to: people.appending(path: "huang-shan-cn.md"), atomically: true, encoding: .utf8)
+        ).write(to: entities.appending(path: "huang-shan-cn.md"), atomically: true, encoding: .utf8)
 
         let service = MyWikiDuplicateService(fileManager: .default)
         let suggestions = try service.findDuplicateSuggestions(projectRoot: root)
@@ -399,22 +303,22 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let people = root.appending(path: "wiki/people", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: people, withIntermediateDirectories: true)
+        let entities = root.appending(path: "wiki/entities", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: entities, withIntermediateDirectories: true)
         try page(
             title: "郭强",
             aliases: [],
             related: ["my-ai-builder"],
             sources: ["knowyou-diary-2026-04-28.md"],
             body: "Asked about My AI Builder positioning."
-        ).write(to: people.appending(path: "guo-qiang.md"), atomically: true, encoding: .utf8)
+        ).write(to: entities.appending(path: "guo-qiang.md"), atomically: true, encoding: .utf8)
         try page(
             title: "郭强",
             aliases: [],
             related: ["field-data-engineering"],
             sources: ["knowyou-diary-2026-05-14.md"],
             body: "Defined the FDE three-layer closed loop."
-        ).write(to: people.appending(path: "qiang-guo.md"), atomically: true, encoding: .utf8)
+        ).write(to: entities.appending(path: "qiang-guo.md"), atomically: true, encoding: .utf8)
 
         let suggestions = try MyWikiDuplicateService().findDuplicateSuggestions(projectRoot: root)
 
@@ -422,12 +326,12 @@ final class MyWikiMarkdownStoreTests: XCTestCase {
     }
 
     private func page(
-        type: String = "person",
+        type: String = "entity",
         title: String,
         aliases: [String] = [],
         related: [String] = [],
         sources: [String] = [],
-        tags: [String] = ["person"],
+        tags: [String] = [],
         body: String
     ) -> String {
         """

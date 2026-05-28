@@ -8,56 +8,30 @@ struct MyWikiMarkdownStore {
     }
 
     func loadDashboard(projectRoot: URL) throws -> MyWikiDashboardSnapshot {
-        let schema = try loadSchema(projectRoot: projectRoot)
         var entriesByCategoryID: [String: [MyWikiEntry]] = [:]
-        for definition in schema.categories {
-            entriesByCategoryID[definition.id] = try loadEntries(
-                category: MyWikiCategory(definition: definition),
-                definition: definition,
-                projectRoot: projectRoot
-            )
+        for category in MyWikiCategory.nativeCategories {
+            entriesByCategoryID[category.id] = try loadEntries(category: category, projectRoot: projectRoot)
         }
 
-        return MyWikiDashboardSnapshot(schema: schema, entriesByCategoryID: entriesByCategoryID)
-    }
-
-    private func loadSchema(projectRoot: URL) throws -> MyWikiSchemaConfig {
-        let schemaURL = projectRoot.appending(path: "mywiki.schema.json")
-        guard fileManager.fileExists(atPath: schemaURL.path) else {
-            return try MyWikiSchemaConfig.defaultPersonalContext()
-        }
-
-        let data = try Data(contentsOf: schemaURL)
-        return try JSONDecoder().decode(MyWikiSchemaConfig.self, from: data)
+        return MyWikiDashboardSnapshot(entriesByCategoryID: entriesByCategoryID)
     }
 
     private func loadEntries(
         category: MyWikiCategory,
-        definition: MyWikiCategoryDefinition,
         projectRoot: URL
     ) throws -> [MyWikiEntry] {
-        var files: [URL] = []
-        var seenPaths: Set<String> = []
+        let directory = projectRoot.appending(path: "wiki/\(category.id)", directoryHint: .isDirectory)
+        guard fileManager.fileExists(atPath: directory.path) else { return [] }
 
-        for folder in definition.directoryCandidates {
-            let directory = projectRoot.appending(path: folder, directoryHint: .isDirectory)
-            guard fileManager.fileExists(atPath: directory.path) else { continue }
-
-            let folderFiles = try fileManager.contentsOfDirectory(
-                at: directory,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            )
-            .filter { $0.pathExtension.lowercased() == "md" }
-
-            for file in folderFiles where seenPaths.insert(file.path).inserted {
-                files.append(file)
-            }
-        }
-
+        let files = try fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )
+        .filter { $0.pathExtension.lowercased() == "md" }
         guard files.isEmpty == false else { return [] }
 
-        return try files.compactMap { file in
+        return try files.map { file in
             try loadEntry(file: file, category: category)
         }
         .sorted {
@@ -65,12 +39,12 @@ struct MyWikiMarkdownStore {
         }
     }
 
-    private func loadEntry(file: URL, category: MyWikiCategory) throws -> MyWikiEntry? {
+    private func loadEntry(file: URL, category: MyWikiCategory) throws -> MyWikiEntry {
         let markdown = try String(contentsOf: file, encoding: .utf8)
         let parsed = Self.parseMarkdown(markdown)
         let title = parsed.frontmatter["title"] ?? Self.titleFromFileName(file.deletingPathExtension().lastPathComponent)
 
-        let entry = MyWikiEntry(
+        return MyWikiEntry(
             id: file.deletingPathExtension().lastPathComponent,
             title: title,
             category: category,
@@ -84,34 +58,6 @@ struct MyWikiMarkdownStore {
             markdownBody: parsed.body.trimmingCharacters(in: .whitespacesAndNewlines),
             fileURL: file
         )
-        return Self.shouldLoad(entry: entry, frontmatter: parsed.frontmatter, body: parsed.body) ? entry : nil
-    }
-
-    private static func shouldLoad(entry: MyWikiEntry, frontmatter: [String: String], body: String) -> Bool {
-        let normalizedTitle = MyWikiRenameService.slug(for: entry.title)
-        let generatedBy = frontmatter["generated_by"]?.lowercased() ?? ""
-        let isStarterPage = generatedBy.contains("starter extractor")
-        if isStarterPage {
-            return false
-        }
-        let toolOrAgentSlugs = [
-            "codex",
-            "claude",
-            "cowork",
-            "chatgpt",
-            "openai",
-            "gemini",
-            "openclaw"
-        ]
-        let knownToolOrAgent = toolOrAgentSlugs.contains(normalizedTitle)
-        guard knownToolOrAgent else { return true }
-        if entry.category == .person { return false }
-
-        let text = ([entry.summary] + entry.aliases + entry.related + [body])
-            .joined(separator: " ")
-            .lowercased()
-        let toolSignals = ["agent", "cli", "llm", "model", "tool", "assistant", "ai"]
-        return toolSignals.contains { text.contains($0) } == false
     }
 
     private static func parseMarkdown(_ markdown: String) -> (frontmatter: [String: String], body: String) {

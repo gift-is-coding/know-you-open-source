@@ -6,7 +6,7 @@ import { useWikiStore } from "@/stores/wiki-store"
 
 vi.mock("@/commands/fs", () => realFs)
 
-let pendingResponses: string[] = []
+let pendingResponses: Array<string | Error> = []
 let streamedPrompts: string[] = []
 vi.mock("@/lib/llm-client", () => ({
   streamChat: vi.fn(async (_cfg, messages, callbacks) => {
@@ -16,6 +16,9 @@ vi.mock("@/lib/llm-client", () => ({
         .join("\n\n"),
     )
     const response = pendingResponses.shift() ?? ""
+    if (response instanceof Error) {
+      throw response
+    }
     callbacks.onToken(response)
     callbacks.onDone()
   }),
@@ -30,9 +33,9 @@ beforeEach(() => {
 })
 
 describe("KnowYou headless ingest runner", () => {
-  it("uses a cache version that invalidates pre-tag native-schema outputs", () => {
-    expect(INGEST_CACHE_PIPELINE_VERSION).toContain("v3")
-    expect(INGEST_CACHE_PIPELINE_VERSION).toContain("native-prompt-tags")
+  it("uses a cache version that invalidates pre-context-removal outputs", () => {
+    expect(INGEST_CACHE_PIPELINE_VERSION).toContain("v5")
+    expect(INGEST_CACHE_PIPELINE_VERSION).toContain("native-contextless")
   })
 
   it("reuses autoIngest to materialize wiki pages from raw journal sources", async () => {
@@ -40,8 +43,12 @@ describe("KnowYou headless ingest runner", () => {
     try {
       await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
       await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
-      await writeFileRaw(path.join(tmp.path, "schema.md"), "# Schema\n\nCreate entity pages.")
-      await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Purpose\n\nBuild My Wiki.")
+      await writeFileRaw(
+        path.join(tmp.path, "schema.md"),
+        "# My Wiki Schema\n\nDo not copy secrets. person, project, organization, or other.",
+      )
+      await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Project Purpose\n\nBuild My Wiki.")
+      await writeFileRaw(path.join(tmp.path, "mywiki.schema.json"), "{}")
       await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
       await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
       await writeFileRaw(
@@ -88,8 +95,14 @@ describe("KnowYou headless ingest runner", () => {
       expect(status.sourcesProcessed).toBe(1)
       expect(status.sourcesTotal).toBe(1)
       expect(await fileExists(path.join(tmp.path, "wiki/entities/huang-shan.md"))).toBe(true)
-      expect(await readFileRaw(path.join(tmp.path, "schema.md"))).not.toContain("KNOWYOU_MY_WIKI_OUTPUT_CONTRACT")
-      expect(await readFileRaw(path.join(tmp.path, "schema.md"))).not.toContain("Do not write `wiki/entities/`")
+      expect(await fileExists(path.join(tmp.path, "schema.md"))).toBe(false)
+      expect(await fileExists(path.join(tmp.path, "purpose.md"))).toBe(false)
+      expect(await fileExists(path.join(tmp.path, "mywiki.schema.json"))).toBe(false)
+      const promptText = streamedPrompts.join("\n\n")
+      expect(promptText).not.toContain("My Wiki Schema")
+      expect(promptText).not.toContain("Project Purpose")
+      expect(promptText).not.toContain("person, project, organization, or other")
+      expect(promptText).not.toContain("Do not copy secrets")
       expect(await readFileRaw(path.join(tmp.path, ".llm-wiki/last-ingest-status.json"))).toContain(
         '"status": "succeeded"',
       )
@@ -106,7 +119,6 @@ describe("KnowYou headless ingest runner", () => {
     try {
       await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
       await fs.mkdir(path.join(tmp.path, "wiki/sources"), { recursive: true })
-      await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Purpose\n\nBuild My Wiki.")
       await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
       await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
 
@@ -200,6 +212,47 @@ describe("KnowYou headless ingest runner", () => {
       expect(promptText).toContain("**Folder context:** My Diary > 2026 > May")
       expect(promptText).not.toContain("skip-me.md")
       expect(await fileExists(path.join(tmp.path, "wiki/sources/knowyou-diary-2026-05-27.md"))).toBe(true)
+    } finally {
+      await tmp.cleanup()
+    }
+  })
+
+  it("can resume by skipping already indexed source summaries", async () => {
+    const tmp = await createTempProject("knowyou-headless-skip-indexed")
+    try {
+      await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki/sources"), { recursive: true })
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+
+      for (const day of ["10", "11", "12"]) {
+        await writeFileRaw(
+          path.join(tmp.path, `raw/sources/knowyou-diary-2026-05-${day}.md`),
+          `# 2026-05-${day}\n\nJournal content for ${day}.`,
+        )
+      }
+      await writeFileRaw(path.join(tmp.path, "wiki/sources/knowyou-diary-2026-05-10.md"), "# Already indexed 10\n")
+
+      pendingResponses = [
+        "Analysis for May 11.",
+        sourceSummaryBlock("2026-05-11"),
+        "Analysis for May 12.",
+        sourceSummaryBlock("2026-05-12"),
+      ]
+
+      const status = await runKnowYouIngest({
+        projectPath: tmp.path,
+        provider: "openai",
+        model: "test-model",
+        skipIndexed: true,
+      })
+
+      expect(status.status).toBe("succeeded")
+      expect(status.sourcesProcessed).toBe(2)
+      expect(status.sourcesTotal).toBe(2)
+      expect(streamedPrompts.join("\n")).not.toContain("knowyou-diary-2026-05-10.md")
+      expect(streamedPrompts.join("\n")).toContain("knowyou-diary-2026-05-11.md")
+      expect(streamedPrompts.join("\n")).toContain("knowyou-diary-2026-05-12.md")
     } finally {
       await tmp.cleanup()
     }
@@ -405,13 +458,51 @@ describe("KnowYou headless ingest runner", () => {
     }
   })
 
-  it("generates the My Wiki output contract from mywiki.schema.json", async () => {
-    const tmp = await createTempProject("knowyou-headless-schema-contract")
+  it("can continue after one source fails and report the failed source", async () => {
+    const tmp = await createTempProject("knowyou-headless-continue-on-error")
     try {
       await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
       await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
-      await writeFileRaw(path.join(tmp.path, "schema.md"), "# Schema\n")
-      await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Purpose\n\nBuild My Wiki.")
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+      await writeFileRaw(path.join(tmp.path, "raw/sources/knowyou-diary-2026-05-10.md"), "# 2026-05-10\n\nBad source.")
+      await writeFileRaw(path.join(tmp.path, "raw/sources/knowyou-diary-2026-05-11.md"), "# 2026-05-11\n\nGood source.")
+
+      pendingResponses = [
+        new Error("analysis timeout"),
+        "Analysis for May 11.",
+        sourceSummaryBlock("2026-05-11"),
+      ]
+
+      const status = await runKnowYouIngest({
+        projectPath: tmp.path,
+        provider: "openai",
+        model: "test-model",
+        continueOnError: true,
+      })
+
+      expect(status.status).toBe("failed")
+      expect(status.sourcesProcessed).toBe(1)
+      expect(status.sourcesTotal).toBe(2)
+      expect(status.failedSources).toEqual([
+        {
+          source: "knowyou-diary-2026-05-10.md",
+          message: "analysis timeout",
+        },
+      ])
+      expect(await fileExists(path.join(tmp.path, "wiki/sources/knowyou-diary-2026-05-11.md"))).toBe(true)
+    } finally {
+      await tmp.cleanup()
+    }
+  })
+
+  it("does not inject custom My Wiki schema into native llm_wiki prompts", async () => {
+    const tmp = await createTempProject("knowyou-headless-schema-ignored")
+    try {
+      await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
+      await writeFileRaw(path.join(tmp.path, "schema.md"), "# My Wiki Schema\n\nRelationships should go to wiki/relationships.")
+      await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Project Purpose\n\nBuild My Wiki.")
       await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
       await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
       await writeFileRaw(
@@ -441,15 +532,15 @@ describe("KnowYou headless ingest runner", () => {
       pendingResponses = [
         "来源包含黄山、联想和 My Wiki 之间的关系线索。",
         [
-          "---FILE: wiki/relationships/huang-shan-lenovo-my-wiki.md---",
+          "---FILE: wiki/entities/huang-shan.md---",
           "---",
-          "type: relationship",
-          "title: Huang Shan, Lenovo, and My Wiki",
+          "type: entity",
+          "title: Huang Shan",
           "sources: [knowyou-diary-2026-05-15.md]",
-          "related: []",
+          "related: [lenovo, my-wiki]",
           "---",
           "",
-          "# Huang Shan, Lenovo, and My Wiki",
+          "# Huang Shan",
           "",
           "## Summary",
           "",
@@ -464,22 +555,21 @@ describe("KnowYou headless ingest runner", () => {
         model: "test-model",
       })
 
-      const schemaMarkdown = await readFileRaw(path.join(tmp.path, "schema.md"))
-      expect(schemaMarkdown).toContain("Relationships")
-      expect(schemaMarkdown).toContain("wiki/relationships")
-      expect(schemaMarkdown).toContain("`relationship`")
-      expect(schemaMarkdown).toContain("KNOWYOU_MY_WIKI_OUTPUT_CONTRACT")
-      expect(schemaMarkdown).toContain("Do not write `wiki/entities/`")
-      expect(schemaMarkdown).not.toContain("wiki/themes/")
-      expect(schemaMarkdown).not.toContain("wiki/open-loops/")
-      expect(await fileExists(path.join(tmp.path, "wiki/relationships/huang-shan-lenovo-my-wiki.md"))).toBe(true)
+      const promptText = streamedPrompts.join("\n\n")
+      expect(await fileExists(path.join(tmp.path, "schema.md"))).toBe(false)
+      expect(await fileExists(path.join(tmp.path, "purpose.md"))).toBe(false)
+      expect(await fileExists(path.join(tmp.path, "mywiki.schema.json"))).toBe(false)
+      expect(promptText).not.toContain("Relationships should go to wiki/relationships")
+      expect(promptText).not.toContain("Project Purpose")
+      expect(promptText).not.toContain("My Wiki Schema")
+      expect(await fileExists(path.join(tmp.path, "wiki/entities/huang-shan.md"))).toBe(true)
     } finally {
       await tmp.cleanup()
     }
   })
 
-  it("replaces legacy generic ontology schema instead of appending to it", async () => {
-    const tmp = await createTempProject("knowyou-headless-clean-schema")
+  it("removes stale schema and purpose prompt files instead of rewriting them", async () => {
+    const tmp = await createTempProject("knowyou-headless-remove-schema")
     try {
       await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
       await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
@@ -496,6 +586,7 @@ describe("KnowYou headless ingest runner", () => {
         ].join("\n"),
       )
       await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Purpose\n\nBuild My Wiki.")
+      await writeFileRaw(path.join(tmp.path, "mywiki.schema.json"), "{}")
       await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
       await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
       await writeFileRaw(
@@ -528,17 +619,9 @@ describe("KnowYou headless ingest runner", () => {
         model: "test-model",
       })
 
-      const schemaMarkdown = await readFileRaw(path.join(tmp.path, "schema.md"))
-      expect(schemaMarkdown).toContain("# My Wiki Schema")
-      expect(schemaMarkdown).toContain("Sources")
-      expect(schemaMarkdown).toContain("Entities")
-      expect(schemaMarkdown).toContain("Concepts")
-      expect(schemaMarkdown).not.toContain("KNOWYOU_MY_WIKI_OUTPUT_CONTRACT")
-      expect(schemaMarkdown).not.toContain("Do not write `wiki/entities/`")
-      expect(schemaMarkdown).not.toContain("## entity | wiki/entities/")
-      expect(schemaMarkdown).not.toContain("## concept | wiki/concepts/")
-      expect(schemaMarkdown).not.toContain("Use this for named entities.")
-      expect(schemaMarkdown).not.toContain("Use this for concepts.")
+      expect(await fileExists(path.join(tmp.path, "schema.md"))).toBe(false)
+      expect(await fileExists(path.join(tmp.path, "purpose.md"))).toBe(false)
+      expect(await fileExists(path.join(tmp.path, "mywiki.schema.json"))).toBe(false)
     } finally {
       await tmp.cleanup()
     }
@@ -549,8 +632,6 @@ describe("KnowYou headless ingest runner", () => {
     try {
       await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
       await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
-      await writeFileRaw(path.join(tmp.path, "schema.md"), "# Schema\n")
-      await writeFileRaw(path.join(tmp.path, "purpose.md"), "# Purpose\n\nBuild My Wiki.")
       await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
       await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
       await writeFileRaw(
@@ -588,7 +669,7 @@ describe("KnowYou headless ingest runner", () => {
       expect(promptText).toContain("SOURCE LANGUAGE MODE: English")
       expect(promptText).toContain("Preserve proper nouns")
       expect(promptText).toContain("translations or explanations as aliases")
-      expect(promptText).toContain("person, project, organization, or other")
+      expect(promptText).not.toContain("person, project, organization, or other")
       expect(promptText).not.toContain("MANDATORY OUTPUT LANGUAGE: Chinese")
       expect(promptText).not.toContain("standard Chinese transliteration")
     } finally {

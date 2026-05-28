@@ -2,6 +2,8 @@
 
 This document is the canonical release path for outside-the-App-Store macOS builds.
 
+For version bump rules, see [KnowYou Versioning](release-versioning.md).
+
 ## One-Time Machine Setup
 
 Store Apple notarization credentials in the login keychain:

@@ -28,6 +28,11 @@
 		870000010000000000000001 /* MyWikiSourceLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870001010000000000000001 /* MyWikiSourceLibrary.swift */; };
 		870000010000000000000002 /* MyWikiSourceLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870001010000000000000002 /* MyWikiSourceLibraryTests.swift */; };
 		870000010000000000000003 /* MyWikiSourceLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870001010000000000000003 /* MyWikiSourceLibraryView.swift */; };
+		880000010000000000000001 /* MyWikiSourceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 880001010000000000000001 /* MyWikiSourceCatalog.swift */; };
+		880000010000000000000002 /* MyWikiSourceCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 880001010000000000000002 /* MyWikiSourceCatalogTests.swift */; };
+		880000010000000000000003 /* MyWikiSourceCatalogBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 880001010000000000000003 /* MyWikiSourceCatalogBuilder.swift */; };
+		880000010000000000000004 /* MyWikiSourceCatalogBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 880001010000000000000004 /* MyWikiSourceCatalogBuilderTests.swift */; };
+		880000010000000000000005 /* MyWikiSourceLibraryPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 880001010000000000000005 /* MyWikiSourceLibraryPresentationTests.swift */; };
 		A10000010000000000000001 /* KnowYouApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000001 /* KnowYouApp.swift */; };
 		A10000010000000000000002 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000002 /* AppEnvironment.swift */; };
 		A10000010000000000000003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000003 /* AppState.swift */; };
@@ -193,6 +198,11 @@
 		870001010000000000000001 /* MyWikiSourceLibrary.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiSourceLibrary.swift; sourceTree = "<group>"; };
 		870001010000000000000002 /* MyWikiSourceLibraryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiSourceLibraryTests.swift; sourceTree = "<group>"; };
 		870001010000000000000003 /* MyWikiSourceLibraryView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiSourceLibraryView.swift; sourceTree = "<group>"; };
+		880001010000000000000001 /* MyWikiSourceCatalog.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiSourceCatalog.swift; sourceTree = "<group>"; };
+		880001010000000000000002 /* MyWikiSourceCatalogTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiSourceCatalogTests.swift; sourceTree = "<group>"; };
+		880001010000000000000003 /* MyWikiSourceCatalogBuilder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiSourceCatalogBuilder.swift; sourceTree = "<group>"; };
+		880001010000000000000004 /* MyWikiSourceCatalogBuilderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiSourceCatalogBuilderTests.swift; sourceTree = "<group>"; };
+		880001010000000000000005 /* MyWikiSourceLibraryPresentationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiSourceLibraryPresentationTests.swift; sourceTree = "<group>"; };
 		E60001010000000000000001 /* MyWikiContextPackServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiContextPackServiceTests.swift; sourceTree = "<group>"; };
 		E60001010000000000000002 /* MyWikiContextPackCommandTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiContextPackCommandTests.swift; sourceTree = "<group>"; };
 		E60001010000000000000003 /* MyWikiAgentConfigurationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiAgentConfigurationTests.swift; sourceTree = "<group>"; };
@@ -365,6 +375,8 @@
 				850001010000000000000002 /* MyWikiNavigationResolver.swift */,
 				860001010000000000000001 /* MyWikiIngestProgressStore.swift */,
 				870001010000000000000001 /* MyWikiSourceLibrary.swift */,
+				880001010000000000000001 /* MyWikiSourceCatalog.swift */,
+				880001010000000000000003 /* MyWikiSourceCatalogBuilder.swift */,
 			);
 			path = MyWiki;
 			sourceTree = "<group>";
@@ -533,6 +545,9 @@
 				850001010000000000000001 /* MyWikiNavigationResolverTests.swift */,
 				860001010000000000000002 /* MyWikiIngestProgressStoreTests.swift */,
 				870001010000000000000002 /* MyWikiSourceLibraryTests.swift */,
+				880001010000000000000002 /* MyWikiSourceCatalogTests.swift */,
+				880001010000000000000004 /* MyWikiSourceCatalogBuilderTests.swift */,
+				880001010000000000000005 /* MyWikiSourceLibraryPresentationTests.swift */,
 				830001010000000000000007 /* MyWikiPipelineBridgeTests.swift */,
 				830001010000000000000009 /* MyWikiAgentContextProviderTests.swift */,
 				E60001010000000000000001 /* MyWikiContextPackServiceTests.swift */,
@@ -955,6 +970,8 @@
 				850000010000000000000002 /* MyWikiNavigationResolver.swift in Sources */,
 				860000010000000000000001 /* MyWikiIngestProgressStore.swift in Sources */,
 				870000010000000000000001 /* MyWikiSourceLibrary.swift in Sources */,
+				880000010000000000000001 /* MyWikiSourceCatalog.swift in Sources */,
+				880000010000000000000003 /* MyWikiSourceCatalogBuilder.swift in Sources */,
 				830000010000000000000003 /* MyWikiModels.swift in Sources */,
 				830000010000000000000005 /* MyWikiPanel.swift in Sources */,
 				830000010000000000000006 /* MyWikiDetailView.swift in Sources */,
@@ -1023,6 +1040,9 @@
 				850000010000000000000001 /* MyWikiNavigationResolverTests.swift in Sources */,
 				860000010000000000000002 /* MyWikiIngestProgressStoreTests.swift in Sources */,
 				870000010000000000000002 /* MyWikiSourceLibraryTests.swift in Sources */,
+				880000010000000000000002 /* MyWikiSourceCatalogTests.swift in Sources */,
+				880000010000000000000004 /* MyWikiSourceCatalogBuilderTests.swift in Sources */,
+				880000010000000000000005 /* MyWikiSourceLibraryPresentationTests.swift in Sources */,
 				830000010000000000000007 /* MyWikiPipelineBridgeTests.swift in Sources */,
 				830000010000000000000009 /* MyWikiAgentContextProviderTests.swift in Sources */,
 				E60000010000000000000001 /* MyWikiContextPackServiceTests.swift in Sources */,

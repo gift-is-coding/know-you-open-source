@@ -158,6 +158,11 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertTrue(KnowYouMainWindowLaunchPolicy.usesAppKitPresenter)
     }
 
+    func testMainWindowWorkspacePolicyKeepsToolbarStableAcrossSidebarModes() {
+        XCTAssertTrue(MainWindowWorkspacePolicy.usesUnifiedNavigationSplitViewAcrossModes)
+        XCTAssertTrue(MainWindowWorkspacePolicy.keepsEngineSelectorInGlobalToolbar)
+    }
+
     func testDetailPresentationShowsMarkdownPageByDefault() {
         let entry = MyWikiEntry(
             id: "adam-wu",
@@ -235,6 +240,15 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
 
     func testDetailMoreMenuIncludesSourceManagementAction() {
         XCTAssertTrue(MyWikiDetailMoreMenuPolicy.includesSourceLibrary)
+    }
+
+    func testSourceLibraryEntryUsesExplicitManageSourcesButton() {
+        XCTAssertTrue(MyWikiSourceLibraryEntryPolicy.showsManageSourcesButton)
+        XCTAssertFalse(MyWikiSourceLibraryEntryPolicy.progressCardOpensSourceLibrary)
+        XCTAssertEqual(MyWikiSourceLibraryEntryPolicy.manageButtonTitle, "Set Digest Files")
+        XCTAssertLessThanOrEqual(MyWikiSourceLibraryEntryPolicy.manageButtonIconSize, 14)
+        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryEntryPolicy.manageButtonMinWidth, 144)
+        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryEntryPolicy.manageButtonMinHeight, 34)
     }
 
     func testDetailMoreMenuIncludesAgentContextAction() {

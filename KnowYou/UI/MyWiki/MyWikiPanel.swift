@@ -6,6 +6,7 @@ struct MyWikiPanel: View {
     let projectRoot: URL?
     let developmentSourceURL: URL
     let bundledHelperAppURL: URL?
+    let importedDocuments: [ImportedKnowledgeDocument]
     @Binding var selectedEntry: MyWikiEntry?
 
     @State private var query = ""
@@ -86,10 +87,17 @@ struct MyWikiPanel: View {
         }
         .sheet(isPresented: $isShowingSourceLibrary) {
             if let projectRoot {
-                MyWikiSourceLibraryView(projectRoot: projectRoot) {
-                    loadIngestProgress()
-                    loadDashboard()
-                }
+                MyWikiSourceLibraryView(
+                    projectRoot: projectRoot,
+                    sourceVault: sourceVault,
+                    importedDocuments: importedDocuments,
+                    isUpdatingSources: isSyncing,
+                    onDidChange: {
+                        loadIngestProgress()
+                        loadDashboard()
+                    },
+                    onUpdateSources: syncDiaries
+                )
             } else {
                 Text("My Wiki folder is not available.")
                     .padding(24)
@@ -200,43 +208,90 @@ struct MyWikiPanel: View {
 
     @ViewBuilder
     private var ingestProgressView: some View {
-        if let ingestProgress {
-            Button {
-                isShowingSourceLibrary = true
-            } label: {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Text(ingestProgress.title)
-                            .font(.system(size: 12, weight: .semibold))
-                        Spacer()
-                        Text(ingestProgress.detail)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    GeometryReader { proxy in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(MyWikiTheme.controlBackground)
-                            Capsule()
-                                .fill(progressColor(for: ingestProgress.state))
-                                .frame(width: max(0, proxy.size.width * ingestProgress.fraction))
-                        }
-                    }
-                    .frame(height: 4)
+        HStack(alignment: .center, spacing: 8) {
+            Group {
+                if let ingestProgress {
+                    ingestProgressStatusCard(ingestProgress)
+                } else {
+                    sourceCatalogStatusCard
                 }
-                .padding(10)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(MyWikiTheme.cardBackground)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(MyWikiTheme.border, lineWidth: 1)
-                        )
-                    )
             }
-            .buttonStyle(.plain)
+            .layoutPriority(1)
+
+            if MyWikiSourceLibraryEntryPolicy.showsManageSourcesButton {
+                Button {
+                    isShowingSourceLibrary = true
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: MyWikiSourceLibraryEntryPolicy.manageButtonSystemImage)
+                            .font(.system(size: MyWikiSourceLibraryEntryPolicy.manageButtonIconSize, weight: .medium))
+                        Text(MyWikiSourceLibraryEntryPolicy.manageButtonTitle)
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                        .frame(
+                            minWidth: MyWikiSourceLibraryEntryPolicy.manageButtonMinWidth,
+                            minHeight: MyWikiSourceLibraryEntryPolicy.manageButtonMinHeight
+                        )
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .fixedSize(horizontal: true, vertical: false)
+            }
         }
+    }
+
+    private func ingestProgressStatusCard(_ ingestProgress: MyWikiIngestProgress) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(ingestProgress.title)
+                    .font(.system(size: 12, weight: .semibold))
+                Spacer()
+                Text(ingestProgress.detail)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(MyWikiTheme.controlBackground)
+                    Capsule()
+                        .fill(progressColor(for: ingestProgress.state))
+                        .frame(width: max(0, proxy.size.width * ingestProgress.fraction))
+                }
+            }
+            .frame(height: 4)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(MyWikiTheme.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(MyWikiTheme.border, lineWidth: 1)
+                )
+        )
+    }
+
+    private var sourceCatalogStatusCard: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Sources")
+                .font(.system(size: 12, weight: .semibold))
+            Text("Choose which documents My Wiki can process.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(MyWikiTheme.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(MyWikiTheme.border, lineWidth: 1)
+                )
+        )
     }
 
     @ViewBuilder
@@ -412,25 +467,54 @@ struct MyWikiPanel: View {
     }
 
     private func syncDiaries() {
-        guard let sourceVault, let projectRoot else { return }
+        guard let projectRoot else { return }
         guard !isSyncing else { return }
         isSyncing = true
-        statusMessage = "Organizing journals..."
+        statusMessage = "Updating My Wiki sources..."
         loadIngestProgress()
 
         let target = pipelineTarget
+        let sourceVault = sourceVault
+        let importedDocuments = importedDocuments
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
                 do {
-                    let result = try KnowledgeOntologyProjectExporter().syncDiaries(
+                    try MyWikiProjectExporter().ensureProject(at: projectRoot)
+
+                    let builder = MyWikiSourceCatalogBuilder()
+                    var snapshot = try builder.refreshCatalog(
+                        projectRoot: projectRoot,
                         sourceVault: sourceVault,
+                        importedDocuments: importedDocuments
+                    )
+                    let plan = builder.ingestPlan(
+                        snapshot: snapshot,
+                        maxSources: MyWikiIngestBatchPolicy.maxSourcesPerRun
+                    )
+
+                    guard plan.sources.isEmpty == false else {
+                        return "My Wiki sources are already up to date."
+                    }
+
+                    let materialized = try builder.materialize(
+                        plan: plan,
+                        from: snapshot,
                         projectRoot: projectRoot
                     )
+
                     do {
-                        try MyWikiPipelineBridge().runIngest(target: target, projectRoot: projectRoot)
-                        return "Organized \(result.exportedFileNames.count) journals and refreshed My Wiki."
+                        try MyWikiPipelineBridge().runIngest(
+                            target: target,
+                            projectRoot: projectRoot,
+                            manifestURL: materialized.manifestURL
+                        )
+                        snapshot = builder.mark(plan: plan, succeededIn: snapshot, at: Date())
+                        try MyWikiSourceCatalogStore(projectRoot: projectRoot).save(snapshot)
+                        return "Updated \(materialized.materializedCount) My Wiki source(s)."
                     } catch {
-                        return "Organized \(result.exportedFileNames.count) journals; \(error.localizedDescription)"
+                        snapshot = builder.mark(plan: plan, failedWith: error.localizedDescription, in: snapshot)
+                        try? MyWikiSourceCatalogStore(projectRoot: projectRoot).save(snapshot)
+                        return "My Wiki source update failed: \(error.localizedDescription)"
                     }
                 } catch {
                     return error.localizedDescription

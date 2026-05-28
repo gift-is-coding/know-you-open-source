@@ -6,6 +6,11 @@ private enum MainWindowMode {
     case knowledgeOntology
 }
 
+enum MainWindowWorkspacePolicy {
+    static let usesUnifiedNavigationSplitViewAcrossModes = true
+    static let keepsEngineSelectorInGlobalToolbar = true
+}
+
 struct MainWindowView: View {
     @Environment(AppState.self) private var appState
     @State private var keyMonitor: Any?
@@ -31,30 +36,13 @@ struct MainWindowView: View {
     }
 
     var body: some View {
-        Group {
-            if mode == .knowledgeOntology {
-                knowledgeOntologyWorkspace
-            } else {
-                NavigationSplitView {
-                    sidebar
-                        .navigationSplitViewColumnWidth(min: 180, ideal: 220)
-                } content: {
-                    Group {
-                        switch appState.mainContentSelection {
-                        case .diary:
-                            diaryReaderView
-                        case .otherSourceManager(let focusAddConnector):
-                            otherSourceManagementView(focusAddConnector: focusAddConnector)
-                        case .knowledgeConnector(let instanceID):
-                            knowledgeSourceView(connectorInstanceID: instanceID)
-                        case .knowledgeDocument(let instanceID, _):
-                            knowledgeSourceView(connectorInstanceID: instanceID)
-                        }
-                    }
-                } detail: {
-                    detailPane
-                }
-            }
+        NavigationSplitView {
+            sidebar
+                .navigationSplitViewColumnWidth(min: 180, ideal: 220)
+        } content: {
+            mainContentPane
+        } detail: {
+            detailPane
         }
         .frame(minWidth: 1240, minHeight: 720)
         .overlay(alignment: .top) {
@@ -189,8 +177,7 @@ struct MainWindowView: View {
             selectedItemID: selectedSidebarItemID,
             knowledgeImportConfig: appState.knowledgeImportConfig,
             knowledgeDocumentsByConnector: appState.knowledgeDocumentsByConnector,
-            isActive: mode == .journal && appState.readerFocus == .dateList,
-            isKnowledgeOntologySelected: mode == .knowledgeOntology,
+            isActive: mode == .knowledgeOntology || (mode == .journal && appState.readerFocus == .dateList),
             onSelectDiaryDate: { dayKey in
                 mode = .journal
                 appState.selectDate(dayKey)
@@ -214,23 +201,37 @@ struct MainWindowView: View {
         )
     }
 
-    private var knowledgeOntologyWorkspace: some View {
-        HStack(spacing: 0) {
-            sidebar
-                .frame(width: 228)
+    @ViewBuilder
+    private var mainContentPane: some View {
+        if mode == .knowledgeOntology {
+            knowledgeOntologyContent
+        } else {
+            switch appState.mainContentSelection {
+            case .diary:
+                diaryReaderView
+            case .otherSourceManager(let focusAddConnector):
+                otherSourceManagementView(focusAddConnector: focusAddConnector)
+            case .knowledgeConnector(let instanceID):
+                knowledgeSourceView(connectorInstanceID: instanceID)
+            case .knowledgeDocument(let instanceID, _):
+                knowledgeSourceView(connectorInstanceID: instanceID)
+            }
+        }
+    }
 
-            Divider()
-
+    private var knowledgeOntologyContent: some View {
+        ZStack {
+            Color.black
             KnowledgeOntologyPanel(
                 sourceVault: appState.environment?.vaultURL,
                 projectRoot: knowledgeOntologyProjectRoot,
                 developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL(),
                 bundledHelperAppURL: KnowledgeOntologyLauncher.defaultBundledHelperAppURL(),
+                importedDocuments: appState.knowledgeDocumentsByConnector.values.flatMap { $0 },
                 selectedEntry: $selectedMyWikiEntry
             )
             .frame(minWidth: 860, maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color.black)
     }
 
     private var currentEngineTitle: String {
@@ -285,23 +286,31 @@ struct MainWindowView: View {
 
     private var detailPane: some View {
         Group {
-            switch appState.mainContentSelection {
-            case .diary:
-                StorySourceDetailView(
-                    selectedParagraph: appState.selectedStoryParagraph,
-                    selectedEvents: appState.selectedStorySourceEvents,
-                    allEvents: appState.selectedDayEvents
-                )
-                .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
-                .onboardingCoachmarkTarget(.sourcesPanel)
-            case .otherSourceManager, .knowledgeConnector, .knowledgeDocument:
+            if mode == .knowledgeOntology {
                 Color.clear
                     .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 0)
+            } else {
+                switch appState.mainContentSelection {
+                case .diary:
+                    StorySourceDetailView(
+                        selectedParagraph: appState.selectedStoryParagraph,
+                        selectedEvents: appState.selectedStorySourceEvents,
+                        allEvents: appState.selectedDayEvents
+                    )
+                    .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
+                    .onboardingCoachmarkTarget(.sourcesPanel)
+                case .otherSourceManager, .knowledgeConnector, .knowledgeDocument:
+                    Color.clear
+                        .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 0)
+                }
             }
         }
     }
 
     private var selectedSidebarItemID: String? {
+        if mode == .knowledgeOntology {
+            return "my-wiki"
+        }
         switch appState.mainContentSelection {
         case .diary(let dayKey):
             return dayKey.map { "diary:\($0)" } ?? "diary-root"

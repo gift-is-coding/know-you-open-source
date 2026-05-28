@@ -45,12 +45,26 @@ struct MainWindowView: View {
                         case .todo:
                             TodoInboxView(
                                 items: appState.todoItems,
+                                reviewCandidates: appState.todoReviewCandidates,
+                                closeRecommendations: appState.todoCloseRecommendations,
                                 automationStatusMessage: appState.todoAutomationStatusMessage,
                                 onAdd: { title in
                                     appState.addTodo(title: title)
                                 },
+                                onAddCandidate: { id in
+                                    appState.addTodoCandidate(id: id)
+                                },
+                                onDismissCandidate: { id in
+                                    appState.dismissTodoReviewCandidate(id: id)
+                                },
                                 onComplete: { id in
                                     appState.completeTodoItem(id: id)
+                                },
+                                onCloseRecommendation: { id in
+                                    appState.closeTodoRecommendation(id: id)
+                                },
+                                onKeepRecommendation: { id in
+                                    appState.keepTodoCloseRecommendation(id: id)
                                 }
                             )
                         case .otherSourceManager(let focusAddConnector):

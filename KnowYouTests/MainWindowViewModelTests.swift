@@ -2681,11 +2681,59 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertTrue(appState.todoItems.isEmpty)
         XCTAssertEqual(appState.selectedTodoCandidatePresentations.first?.statusTitle, "Add to Todo")
+        XCTAssertEqual(appState.todoReviewCandidates.map(\.title), ["Keep thinking about launch"])
+        XCTAssertEqual(appState.todoReviewCandidates.first?.recommendedActionTitle, "Add")
 
         appState.addTodoCandidate(id: candidateID)
 
         XCTAssertEqual(appState.todoItems.map(\.title), ["Keep thinking about launch"])
         XCTAssertEqual(appState.todoItems.first?.promotionKind, .manual)
+        XCTAssertTrue(appState.todoReviewCandidates.isEmpty)
+    }
+
+    func testDismissTodoReviewCandidateRemovesItFromInboxWithoutCreatingTodo() async throws {
+        let dayKey = "2026-05-27"
+        let eventID = UUID()
+        let candidateID = "\(dayKey)|daily-journal-0|check codex build output"
+        let writer = try DatabaseWriter.inMemory()
+        try writer.insert(
+            EventRecord(
+                id: eventID,
+                sourceType: .clipboard,
+                sourceApp: "Codex",
+                capturedAt: Date(timeIntervalSince1970: 1_778_000_000),
+                dayKey: dayKey,
+                text: "Check Codex build output after the worktree run",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "todo-temporary-candidate"
+            )
+        )
+        let environment = try makeTodoEnvironment(
+            writer: writer,
+            summarizer: HandlerSummarizer { _, markdown, _ in
+                if markdown.contains("\"sections\"") {
+                    return Self.todoStoryResponse(eventID: eventID, todoText: "# To-do\n\n- [ ] Check Codex build output")
+                }
+                if markdown.contains("\"decisions\"") {
+                    return """
+                    {"decisions":[{"candidateID":"\(candidateID)","action":"ignore","confidence":"high","targetTodoID":null,"reason":"Temporary development-tool follow-up, not a durable todo."}]}
+                    """
+                }
+                return #"{"completed":[]}"#
+            }
+        )
+        let appState = AppState(environment: environment, bootstrapServices: false)
+
+        appState.selectDate(dayKey)
+        await appState.refreshSelectedDay(now: Date(timeIntervalSince1970: 1_778_000_100))
+
+        XCTAssertEqual(appState.todoReviewCandidates.map(\.title), ["Check Codex build output"])
+
+        appState.dismissTodoReviewCandidate(id: candidateID)
+
+        XCTAssertTrue(appState.todoReviewCandidates.isEmpty)
+        XCTAssertTrue(appState.todoItems.isEmpty)
     }
 
     func testManualTodoEntryCreatesMarkdownBackedInboxItem() throws {
@@ -2754,7 +2802,7 @@ final class MainWindowViewModelTests: XCTestCase {
                     return #"{"decisions":[]}"#
                 }
                 return """
-                {"completed":[{"todoID":"\(todo.id)","evidenceEventIDs":["\(evidenceID.uuidString)"],"reason":"The recap was sent."}]}
+                {"completed":[{"todoID":"\(todo.id)","confidence":"high","evidenceEventIDs":["\(evidenceID.uuidString)"],"reason":"The recap was sent."}]}
                 """
             }
         )
@@ -2766,6 +2814,65 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.todoItems.first?.status, .completed)
         XCTAssertEqual(appState.todoItems.first?.completionKind, .evidenceSweep)
         XCTAssertEqual(appState.todoItems.first?.completionEvidenceEventIDs, [evidenceID])
+    }
+
+    func testRefreshSelectedDayShowsMediumConfidenceCompletionAsCloseRecommendation() async throws {
+        let dayKey = "2026-05-27"
+        let evidenceID = UUID()
+        let writer = try DatabaseWriter.inMemory()
+        let todo = try writer.createTodo(
+            title: "Polish the Todo workbench",
+            sourceDayKey: dayKey,
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_000),
+            promotionKind: .manual
+        )
+        try writer.insert(
+            EventRecord(
+                id: evidenceID,
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: Date(timeIntervalSince1970: 1_778_000_200),
+                dayKey: dayKey,
+                text: "The Todo workbench mockup was accepted, but implementation is still pending",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "todo-medium-completion"
+            )
+        )
+        let environment = try makeTodoEnvironment(
+            writer: writer,
+            summarizer: HandlerSummarizer { _, markdown, _ in
+                if markdown.contains("\"sections\"") {
+                    return Self.todoStoryResponse(eventID: evidenceID, todoText: "# Details\n\nThe Todo workbench mockup was accepted.")
+                }
+                if markdown.contains("\"decisions\"") {
+                    return #"{"decisions":[]}"#
+                }
+                return """
+                {"completed":[{"todoID":"\(todo.id)","confidence":"medium","evidenceEventIDs":["\(evidenceID.uuidString)"],"reason":"The mockup appears accepted, but implementation remains pending."}]}
+                """
+            }
+        )
+        let appState = AppState(environment: environment, bootstrapServices: false)
+
+        appState.selectDate(dayKey)
+        await appState.refreshSelectedDay(now: Date(timeIntervalSince1970: 1_778_000_300))
+
+        XCTAssertEqual(appState.todoItems.first?.status, .open)
+        XCTAssertEqual(appState.todoCloseRecommendations.map(\.todoID), [todo.id])
+        XCTAssertEqual(appState.todoCloseRecommendations.first?.title, "Polish the Todo workbench")
+
+        appState.keepTodoCloseRecommendation(id: todo.id)
+
+        XCTAssertTrue(appState.todoCloseRecommendations.isEmpty)
+        XCTAssertEqual(appState.todoItems.first?.status, .open)
+
+        await appState.refreshSelectedDay(now: Date(timeIntervalSince1970: 1_778_000_400))
+        appState.closeTodoRecommendation(id: todo.id)
+
+        XCTAssertEqual(appState.todoItems.first?.status, .completed)
+        XCTAssertTrue(appState.todoCloseRecommendations.isEmpty)
     }
 
     func testRefreshSelectedDayDoesNotMaskTodayGenerationFailure() async throws {

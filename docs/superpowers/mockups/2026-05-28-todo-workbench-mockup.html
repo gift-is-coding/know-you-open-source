@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KnowYou Todo Minimal Mockup</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #fbfbfa;
+      --paper: #ffffff;
+      --soft: #f6f6f3;
+      --ink: #202420;
+      --muted: #777d76;
+      --faint: #a7aca5;
+      --line: #e2e2dc;
+      --line-strong: #cfcfc6;
+      --accent: #3f6f54;
+      --accent-soft: #edf5ef;
+      --warn: #906a20;
+      --warn-soft: #fff7df;
+      --done: #8a4b43;
+      --done-soft: #fbefed;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      letter-spacing: 0;
+    }
+
+    button, input { font: inherit; }
+
+    .shell {
+      height: 100vh;
+      display: grid;
+      grid-template-columns: minmax(520px, 1fr) 340px;
+    }
+
+    .main {
+      min-width: 0;
+      padding: 24px 30px 18px 34px;
+      border-right: 1px solid var(--line);
+      overflow: auto;
+    }
+
+    .side {
+      min-width: 0;
+      background: var(--soft);
+      padding: 22px 16px 18px;
+      overflow: auto;
+    }
+
+    .topline {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+      font-weight: 650;
+    }
+
+    .path {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .quick-add {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .quick-add input {
+      height: 34px;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+      color: var(--ink);
+      padding: 0 10px;
+      outline: none;
+    }
+
+    .quick-add input:focus {
+      border-color: var(--line-strong);
+      box-shadow: 0 0 0 3px rgba(63, 111, 84, 0.08);
+    }
+
+    .plain-btn {
+      height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+      color: var(--ink);
+      padding: 0 10px;
+      font-size: 13px;
+    }
+
+    .plain-btn.primary {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: white;
+    }
+
+    .section { margin-top: 20px; }
+    .section:first-of-type { margin-top: 0; }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 4px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.2;
+      font-weight: 700;
+      color: #3a403a;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .todo-list, .candidate-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .todo-row {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr) auto;
+      gap: 6px;
+      align-items: start;
+      min-height: 36px;
+      padding: 7px 4px;
+      border-bottom: 1px solid rgba(226, 226, 220, 0.72);
+    }
+
+    .todo-row.active {
+      background: var(--accent-soft);
+      box-shadow: inset 3px 0 0 var(--accent);
+      border-radius: 4px;
+      border-bottom-color: transparent;
+      margin: 2px 0;
+      padding-right: 7px;
+    }
+
+    .box {
+      width: 16px;
+      height: 16px;
+      margin-top: 2px;
+      border: 1.5px solid var(--faint);
+      border-radius: 4px;
+      background: var(--paper);
+    }
+
+    .box.done {
+      border-color: var(--done);
+      background: var(--done);
+      position: relative;
+    }
+
+    .box.done::after {
+      content: "";
+      position: absolute;
+      left: 4px;
+      top: 3px;
+      width: 6px;
+      height: 4px;
+      border-left: 2px solid white;
+      border-bottom: 2px solid white;
+      transform: rotate(-45deg);
+    }
+
+    .title {
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .title.done {
+      color: var(--muted);
+      text-decoration: line-through;
+    }
+
+    .meta {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      font-family: var(--mono);
+      line-height: 1.4;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      height: 20px;
+      border-radius: 999px;
+      padding: 0 7px;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 11px;
+      font-family: var(--mono);
+      white-space: nowrap;
+    }
+
+    .pill.close {
+      background: var(--done-soft);
+      color: var(--done);
+    }
+
+    .pill.warn {
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+
+    .side h1 {
+      font-size: 16px;
+      margin-bottom: 12px;
+    }
+
+    .side-section {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+
+    .side-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .candidate-row {
+      padding: 9px 10px;
+      border-bottom: 1px solid rgba(226, 226, 220, 0.72);
+    }
+
+    .candidate-row:last-child { border-bottom: 0; }
+    .candidate-row.active { background: var(--accent-soft); }
+
+    .candidate-title {
+      font-size: 13px;
+      line-height: 1.38;
+    }
+
+    .candidate-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .mini-actions {
+      display: flex;
+      gap: 5px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .key-btn {
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: #fbfbfa;
+      color: #4b514c;
+      height: 24px;
+      padding: 0 7px;
+      font-size: 11px;
+    }
+
+    .key-btn.accept {
+      color: var(--accent);
+      border-color: #bfd4c6;
+    }
+
+    .key-btn.close {
+      color: var(--done);
+      border-color: #dfc2be;
+    }
+
+    @media (max-width: 860px) {
+      .shell {
+        height: auto;
+        grid-template-columns: 1fr;
+      }
+
+      .main {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        padding: 20px 18px;
+      }
+
+      .side { padding: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <main class="main">
+      <div class="topline">
+        <h1>Todo</h1>
+        <div class="path">Vault/Todo.md</div>
+      </div>
+
+      <div class="quick-add">
+        <input aria-label="New todo" placeholder="+ 输入一个跨天仍要跟进的任务">
+        <button class="plain-btn primary">Add</button>
+      </div>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Open</h2>
+          <span class="hint">5 items</span>
+        </div>
+        <ul class="todo-list">
+          <li class="todo-row active">
+            <span class="box"></span>
+            <div>
+              <div class="title">完善统一待办的准确率和关闭逻辑</div>
+              <div class="meta">2026-05-28 · manual · 4 evidence</div>
+            </div>
+            <span class="pill warn">review close</span>
+          </li>
+          <li class="todo-row">
+            <span class="box"></span>
+            <div>
+              <div class="title">整理 Lenovo 战略材料的下一版投资框架</div>
+              <div class="meta">2026-05-27 · auto · 6 evidence</div>
+            </div>
+            <span class="pill">open</span>
+          </li>
+          <li class="todo-row">
+            <span class="box"></span>
+            <div>
+              <div class="title">把 My Wiki 的项目上下文入口稳定下来</div>
+              <div class="meta">2026-05-26 · manual · 3 evidence</div>
+            </div>
+            <span class="pill">open</span>
+          </li>
+          <li class="todo-row">
+            <span class="box"></span>
+            <div>
+              <div class="title">确认 Networking V1 的远端 Supabase 目标</div>
+              <div class="meta">2026-05-27 · auto · blocked</div>
+            </div>
+            <span class="pill">blocked</span>
+          </li>
+          <li class="todo-row">
+            <span class="box"></span>
+            <div>
+              <div class="title">复查通知捕获方案里 OS 持久化与 KnowYou ingest 的边界</div>
+              <div class="meta">2026-05-27 · manual · 2 evidence</div>
+            </div>
+            <span class="pill">open</span>
+          </li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Completed</h2>
+          <span class="hint">collapsed by default</span>
+        </div>
+        <ul class="todo-list">
+          <li class="todo-row">
+            <span class="box done"></span>
+            <div>
+              <div class="title done">启动新版 KnowYou 并确认 Todo.md 已生成</div>
+              <div class="meta">2026-05-28 · evidence-sweep · 1 evidence</div>
+            </div>
+            <span class="pill close">done</span>
+          </li>
+          <li class="todo-row">
+            <span class="box done"></span>
+            <div>
+              <div class="title done">完成 Markdown-backed Todo 的验证</div>
+              <div class="meta">2026-05-28 · evidence-sweep · 2 evidence</div>
+            </div>
+            <span class="pill close">done</span>
+          </li>
+        </ul>
+      </section>
+    </main>
+
+    <aside class="side">
+      <h1>Inbox</h1>
+
+      <section class="side-section">
+        <div class="side-title">
+          <span>待选</span>
+          <span class="hint">12</span>
+        </div>
+        <div class="candidate-list">
+          <div class="candidate-row active">
+            <div class="candidate-title">把 Todo 页改成更窄的候选列表</div>
+            <div class="candidate-meta">medium · 来自今天的产品讨论</div>
+            <div class="mini-actions">
+              <button class="key-btn accept">Add</button>
+              <button class="key-btn">Merge</button>
+              <button class="key-btn close">Dismiss</button>
+            </div>
+          </div>
+          <div class="candidate-row">
+            <div class="candidate-title">继续优化每日生成的待办提示词</div>
+            <div class="candidate-meta">merge suggested · 已有相似 Todo</div>
+            <div class="mini-actions">
+              <button class="key-btn">Merge</button>
+              <button class="key-btn close">Dismiss</button>
+            </div>
+          </div>
+          <div class="candidate-row">
+            <div class="candidate-title">检查 Codex build/test 输出</div>
+            <div class="candidate-meta">temporary · 建议忽略</div>
+            <div class="mini-actions">
+              <button class="key-btn accept">Add</button>
+              <button class="key-btn close">Dismiss</button>
+            </div>
+          </div>
+          <div class="candidate-row">
+            <div class="candidate-title">整理一版 Todo 自动关闭规则</div>
+            <div class="candidate-meta">medium · 可合并到准确率任务</div>
+            <div class="mini-actions">
+              <button class="key-btn">Merge</button>
+              <button class="key-btn close">Dismiss</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="side-section">
+        <div class="side-title">
+          <span>推荐关闭</span>
+          <span class="hint">4</span>
+        </div>
+        <div class="candidate-list">
+          <div class="candidate-row">
+            <div class="candidate-title">完成 Markdown-backed Todo 的验证</div>
+            <div class="candidate-meta">high · 测试和 build 已通过</div>
+            <div class="mini-actions">
+              <button class="key-btn close">Close</button>
+              <button class="key-btn">Keep</button>
+            </div>
+          </div>
+          <div class="candidate-row">
+            <div class="candidate-title">启动新版 app 并确认 Todo.md</div>
+            <div class="candidate-meta">high · 进程和文件统计已确认</div>
+            <div class="mini-actions">
+              <button class="key-btn close">Close</button>
+              <button class="key-btn">Keep</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </div>
+</body>
+</html>

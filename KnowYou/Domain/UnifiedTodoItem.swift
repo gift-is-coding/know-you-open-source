@@ -129,3 +129,26 @@ struct DailyTodoCandidatePresentation: Equatable, Identifiable, Sendable {
         }
     }
 }
+
+struct TodoReviewCandidatePresentation: Equatable, Identifiable, Sendable {
+    let id: String
+    let title: String
+    let reason: String
+    let confidence: TodoConfidence
+    let action: TodoReconciliationDecision.Action
+    let targetTodoID: String?
+
+    var recommendedActionTitle: String {
+        action == .merge ? "Merge" : "Add"
+    }
+}
+
+struct TodoCloseRecommendationPresentation: Equatable, Identifiable, Sendable {
+    var id: String { todoID }
+
+    let todoID: String
+    let title: String
+    let reason: String
+    let confidence: TodoConfidence
+    let evidenceEventIDs: [UUID]
+}

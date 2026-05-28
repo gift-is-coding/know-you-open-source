@@ -71,7 +71,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 
 ### 4.7 管理统一待办
 
-用户应能从左侧 `Todo` 入口查看统一待办。open todo 必须优先展示，completed todo 必须保留并排在底部。用户可以在 Todo 页直接输入新任务；每日生成的候选待办可以被高置信自动归集，也可以由用户在日记里手动点击 `Add to Todo` 转入。
+用户应能从左侧 `Todo` 入口查看统一待办。open todo 必须优先展示，completed todo 必须保留并排在底部。用户可以在 Todo 页直接输入新任务；每日生成的候选待办可以被高置信自动归集，也可以在 Todo 页右侧 `Inbox / 待选` 列表或日记里手动转入。
 
 ## 5. 功能范围
 
@@ -172,9 +172,11 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - `今日总结` 必须使用 bullet list，`详情` 必须按事务线程使用 `##` 子标题，`待办事项` 必须使用 Markdown task list
 - `待办事项` 必须只生成 0-3 个明确、可执行、尚未完成的候选项；没有足够证据时必须允许为空
 - `待办事项` 不得生成泛泛建议、重复项、无证据推测，或文本中已经显示完成/已发送/已提交/已约定的事项
-- 每日日记刷新成功后，系统必须用 summarizer 对候选待办与现有 todo 做语义 `create/merge/ignore` 归集；只有高置信 `create` 可以自动写入统一 todo
-- 低置信或无法判断的候选待办不得自动入库，但必须能在日记阅读区手动 `Add to Todo`
-- 每日日记刷新成功后，系统必须用后续证据保守判断 open todo 是否完成；只有明确出现已完成、已发送、已提交、已约定等证据时才能自动标记 completed，并保存 evidence event ID
+- 每日日记刷新成功后，系统必须用 summarizer 对候选待办与现有 todo 做语义 `create/merge/ignore` 归集；只有高置信 `create` 可以自动写入统一 todo，高置信 `merge` 只补充来源证据
+- 低/中置信或无法判断的候选待办不得自动入库，但必须能在 Todo 页右侧 `Inbox / 待选` 列表手动 Add、Merge 或 Dismiss，并能在日记阅读区手动 `Add to Todo`
+- 日记刷新即使没有新事件，也必须重新评估 Todo 候选和关闭建议，保证手动刷新后的 `Inbox` 状态可解释
+- 每日日记刷新成功后，系统必须用后续证据保守判断 open todo 是否完成；只有明确出现已完成、已发送、已提交、已约定等高置信证据时才能自动标记 completed，并保存 evidence event ID
+- 中/低置信完成判断不得自动关闭，必须进入 Todo 页右侧 `推荐关闭` 列表，用户可选择 Close 或 Keep
 - 当 summarizer 不可用、失败或返回不可解析结果时，自动归集和自动完成必须进入 degraded 状态，不得静默使用低质量规则替代；手动 `Add to Todo` 必须继续可用
 - `详情` 中的每个事务线程都应成为独立的 story paragraph，并各自保留自己的 `sourceEventIDs`
 - 当前产品不对 `详情` 段落数量设置硬性上限，分段质量主要由 prompt 约束“合理分段、避免碎片化”
@@ -255,6 +257,8 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 选择日期后加载该日 story
 - 左侧必须提供 `Todo` 一级入口，并展示 open todo 数量
 - `Todo` 页面必须展示 open todo 在上、completed todo 在下；用户必须能自由输入新 todo，并能手动标记 open todo 为 completed
+- `Todo` 页面必须采用简洁双栏工作台：左侧为统一 Todo 列表，右侧为较窄的 `Inbox` 列表；不得用统计卡片或快捷键提示占据主要空间
+- 右侧 `Inbox` 必须一屏展示尽可能多的候选和推荐关闭事项，并提供 Add/Merge/Dismiss/Close/Keep 这些直接操作
 - 点击段落后查看其来源事件
 - 当 `详情` 被拆成多个事务段时，点击不同 `详情` 子段必须切换到各自对应的 source detail
 - 查看该日全部来源事件

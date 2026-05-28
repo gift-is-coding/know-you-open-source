@@ -580,6 +580,8 @@ final class AppState {
     var todoItems: [UnifiedTodoItem] = []
     var selectedTodoCandidates: [DailyTodoCandidate] = []
     var trackedTodoCandidateIDs: Set<String> = []
+    var todoReviewCandidates: [TodoReviewCandidatePresentation] = []
+    var todoCloseRecommendations: [TodoCloseRecommendationPresentation] = []
     var todoAutomationStatusMessage: String?
     var refreshLogNoticesByDay: [String: String] = [:]
     var readerFocus: ReaderFocusZone = .dateList
@@ -605,6 +607,7 @@ final class AppState {
     @ObservationIgnored private var onboardingBootstrapNoticeDismissTask: Task<Void, Never>?
     @ObservationIgnored private var paragraphSelectionByDay: [String: String] = [:]
     @ObservationIgnored private var refreshTasksByDay: [String: Task<Bool, Never>] = [:]
+    @ObservationIgnored private var dismissedTodoReviewCandidateIDs: Set<String> = []
     @ObservationIgnored private var liveReaderSnapshot: ReaderPresentationSnapshot?
     @ObservationIgnored private var isPresentingOnboardingDemo = false
     @ObservationIgnored private let notificationSyncInterval: TimeInterval = 30
@@ -903,11 +906,43 @@ final class AppState {
                 createdAt: currentDate(),
                 promotionKind: .manual
             )
+            todoReviewCandidates.removeAll { $0.id == candidateID }
             refreshTodoItems(using: environment)
             updateTrackedTodoCandidateIDs()
             todoAutomationStatusMessage = nil
         } catch {
             todoAutomationStatusMessage = "Todo could not be added: \(error.localizedDescription)"
+        }
+    }
+
+    func dismissTodoReviewCandidate(id candidateID: String) {
+        dismissedTodoReviewCandidateIDs.insert(candidateID)
+        todoReviewCandidates.removeAll { $0.id == candidateID }
+    }
+
+    func keepTodoCloseRecommendation(id todoID: String) {
+        todoCloseRecommendations.removeAll { $0.todoID == todoID }
+    }
+
+    func closeTodoRecommendation(id todoID: String) {
+        guard let environment,
+              let recommendation = todoCloseRecommendations.first(where: { $0.todoID == todoID })
+        else {
+            return
+        }
+
+        do {
+            try environment.todoStore.completeTodo(
+                id: todoID,
+                completedAt: currentDate(),
+                completionKind: .evidenceSweep,
+                evidenceEventIDs: recommendation.evidenceEventIDs
+            )
+            todoCloseRecommendations.removeAll { $0.todoID == todoID }
+            refreshTodoItems(using: environment)
+            updateTrackedTodoCandidateIDs()
+        } catch {
+            todoAutomationStatusMessage = "Todo could not be completed: \(error.localizedDescription)"
         }
     }
 
@@ -1065,6 +1100,25 @@ final class AppState {
         }
 
         let candidatesByID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+        let appliedCandidateIDs = Set(
+            (reconciliation.highConfidenceCreates + reconciliation.highConfidenceMerges).map(\.candidateID)
+        )
+        todoReviewCandidates = reconciliation.decisions.compactMap { decision in
+            guard !appliedCandidateIDs.contains(decision.candidateID),
+                  !dismissedTodoReviewCandidateIDs.contains(decision.candidateID),
+                  let candidate = candidatesByID[decision.candidateID]
+            else {
+                return nil
+            }
+            return TodoReviewCandidatePresentation(
+                id: candidate.id,
+                title: candidate.title,
+                reason: decision.reason,
+                confidence: decision.confidence,
+                action: decision.action,
+                targetTodoID: decision.targetTodoID
+            )
+        }
         for decision in reconciliation.highConfidenceCreates {
             guard let candidate = candidatesByID[decision.candidateID] else { continue }
             _ = try? environment.todoStore.createTodo(
@@ -1100,11 +1154,25 @@ final class AppState {
                 todoAutomationStatusMessage = "Todo completion sweep degraded: no available LLM result."
             }
         } else {
-            for completion in sweep.completions {
+            for completion in sweep.highConfidenceCompletions {
                 try? environment.todoStore.completeTodo(
                     id: completion.todoID,
                     completedAt: currentDate(),
                     completionKind: .evidenceSweep,
+                    evidenceEventIDs: completion.evidenceEventIDs
+                )
+            }
+            let openTodosByID = Dictionary(uniqueKeysWithValues: openTodos.map { ($0.id, $0) })
+            todoCloseRecommendations = sweep.reviewRecommendations.compactMap { completion in
+                guard let todo = openTodosByID[completion.todoID]
+                else {
+                    return nil
+                }
+                return TodoCloseRecommendationPresentation(
+                    todoID: completion.todoID,
+                    title: todo.title,
+                    reason: completion.reason,
+                    confidence: completion.confidence,
                     evidenceEventIDs: completion.evidenceEventIDs
                 )
             }
@@ -3150,6 +3218,7 @@ extension AppState {
                 dayRefreshStatus.detail = "No new events to append for \(dayKey)"
                 statusMessage = "No new events to append for \(dayKey)"
                 updateSelectedPresentation(dayKey: dayKey, story: existingStory, events: events)
+                await processTodosAfterRefresh(dayKey: dayKey, story: existingStory, events: events)
                 return DayRefreshGenerationResult(stage: .completed, summary: "No new events")
             }
 

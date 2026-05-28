@@ -1,5 +1,11 @@
 import Foundation
 
+enum TodoConfidence: String, Equatable, Sendable {
+    case high
+    case medium
+    case low
+}
+
 struct TodoReconciliationDecision: Equatable, Sendable {
     enum Action: String, Sendable {
         case create
@@ -7,15 +13,9 @@ struct TodoReconciliationDecision: Equatable, Sendable {
         case ignore
     }
 
-    enum Confidence: String, Sendable {
-        case high
-        case medium
-        case low
-    }
-
     let candidateID: String
     let action: Action
-    let confidence: Confidence
+    let confidence: TodoConfidence
     let targetTodoID: String?
     let reason: String
 }
@@ -64,7 +64,7 @@ struct TodoReconciler: Sendable {
             let decisions = payload.decisions.compactMap { item -> TodoReconciliationDecision? in
                 guard candidateIDs.contains(item.candidateID),
                       let action = TodoReconciliationDecision.Action(rawValue: item.action),
-                      let confidence = TodoReconciliationDecision.Confidence(rawValue: item.confidence)
+                      let confidence = TodoConfidence(rawValue: item.confidence)
                 else {
                     return nil
                 }
@@ -125,9 +125,11 @@ struct TodoReconciler: Sendable {
         }
 
         Rules:
-        - Use create only for clear, actionable, unresolved tasks.
+        - Use create only for clear, actionable, unresolved tasks that remain useful across days.
         - Use merge when a candidate is semantically the same task as an existing open or completed todo.
         - Use ignore for vague suggestions, repeated completed tasks, generic reminders, or unsupported guesses.
+        - Treat Codex, Xcode, branch, worktree, build, test, commit, and similar development-tool process notes as temporary noise unless they clearly represent a durable cross-day deliverable.
+        - Prefer medium or low confidence for candidates that might be real but are too small, temporary, or already covered by a broader todo.
         - Only high confidence create or merge will be applied.
 
         Existing todos:
@@ -146,6 +148,7 @@ struct TodoReconciler: Sendable {
 
 struct TodoCompletion: Equatable, Sendable {
     let todoID: String
+    let confidence: TodoConfidence
     let evidenceEventIDs: [UUID]
     let reason: String
 }
@@ -153,6 +156,14 @@ struct TodoCompletion: Equatable, Sendable {
 struct TodoCompletionSweepResult: Equatable, Sendable {
     let completions: [TodoCompletion]
     let isDegraded: Bool
+
+    var highConfidenceCompletions: [TodoCompletion] {
+        completions.filter { $0.confidence == .high }
+    }
+
+    var reviewRecommendations: [TodoCompletion] {
+        completions.filter { $0.confidence != .high }
+    }
 }
 
 struct TodoCompletionSweep: Sendable {
@@ -185,11 +196,19 @@ struct TodoCompletionSweep: Sendable {
             let evidenceIDs = Set(story.sections.flatMap(\.paragraphs).flatMap(\.sourceEventIDs))
             let completions = payload.completed.compactMap { item -> TodoCompletion? in
                 guard todoIDs.contains(item.todoID) else { return nil }
+                guard let confidence = item.confidence.flatMap(TodoConfidence.init(rawValue:)) else {
+                    return nil
+                }
                 let ids = item.evidenceEventIDs.compactMap(UUID.init(uuidString:))
                 guard !ids.isEmpty, Set(ids).isSubset(of: evidenceIDs) else {
                     return nil
                 }
-                return TodoCompletion(todoID: item.todoID, evidenceEventIDs: ids, reason: item.reason)
+                return TodoCompletion(
+                    todoID: item.todoID,
+                    confidence: confidence,
+                    evidenceEventIDs: ids,
+                    reason: item.reason
+                )
             }
             return TodoCompletionSweepResult(completions: completions, isDegraded: false)
         } catch {
@@ -220,6 +239,7 @@ struct TodoCompletionSweep: Sendable {
           "completed": [
             {
               "todoID": "...",
+              "confidence": "high|medium|low",
               "evidenceEventIDs": ["uuid"],
               "reason": "..."
             }
@@ -227,7 +247,9 @@ struct TodoCompletionSweep: Sendable {
         }
 
         Rules:
-        - Mark a todo complete only when the evidence clearly says it was already done, sent, submitted, confirmed, scheduled, or agreed.
+        - Use high confidence only when the evidence clearly says the whole todo was already done, sent, submitted, confirmed, scheduled, or agreed.
+        - Use medium confidence when the evidence suggests progress or partial completion, but a person should confirm before closing.
+        - Use low confidence for weak possible matches; include them only when still useful for review.
         - Do not infer completion from related work, intention, planning, or vague progress.
         - Every completion must cite at least one evidenceEventID from the evidence below.
 
@@ -263,6 +285,7 @@ private struct CompletionPayload: Decodable {
 
 private struct CompletionDecisionPayload: Decodable {
     let todoID: String
+    let confidence: String?
     let evidenceEventIDs: [String]
     let reason: String
 }

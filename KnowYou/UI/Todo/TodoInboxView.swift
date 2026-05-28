@@ -2,20 +2,38 @@ import SwiftUI
 
 struct TodoInboxView: View {
     let items: [UnifiedTodoItem]
+    let reviewCandidates: [TodoReviewCandidatePresentation]
+    let closeRecommendations: [TodoCloseRecommendationPresentation]
     let automationStatusMessage: String?
     let onAdd: (String) -> Void
+    let onAddCandidate: (String) -> Void
+    let onDismissCandidate: (String) -> Void
     let onComplete: (String) -> Void
+    let onCloseRecommendation: (String) -> Void
+    let onKeepRecommendation: (String) -> Void
     @State private var draftTitle = ""
+    @State private var showCompleted = true
 
     var body: some View {
+        HStack(spacing: 0) {
+            mainList
+            Divider()
+            inboxList
+                .frame(width: 340)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+
+    private var mainList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Todo")
                         .font(.title2.weight(.semibold))
                     Spacer()
-                    Text("\(openItems.count) open")
-                        .font(.caption.weight(.medium))
+                    Text("Vault/Todo.md")
+                        .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
                 }
 
@@ -23,56 +41,91 @@ struct TodoInboxView: View {
                     Text(automationStatusMessage)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .padding(.vertical, 6)
                 }
 
                 HStack(spacing: 8) {
-                    TextField("New todo", text: $draftTitle)
+                    TextField("+ 输入一个跨天仍要跟进的任务", text: $draftTitle)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit(addDraft)
-                    Button(action: addDraft) {
-                        Image(systemName: "plus.circle.fill")
-                            .frame(width: 18, height: 18)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(draftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .help("Add Todo")
+                    Button("Add", action: addDraft)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(draftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
-                .frame(maxWidth: 520)
 
-                if openItems.isEmpty && completedItems.isEmpty {
-                    ContentUnavailableView(
-                        "No Todo Items",
-                        systemImage: "checklist",
-                        description: Text("Daily candidates can be added here when they are real tasks.")
-                    )
+                TodoSectionHeader(title: "Open", detail: "\(openItems.count) items")
+
+                if openItems.isEmpty {
+                    Text("No open todo items.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 12)
                 } else {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 0) {
                         ForEach(openItems) { item in
                             TodoInboxRow(item: item, onComplete: onComplete)
                         }
                     }
+                }
 
-                    if !completedItems.isEmpty {
-                        Divider()
-                            .padding(.vertical, 6)
-
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Completed")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                if !completedItems.isEmpty {
+                    DisclosureGroup(isExpanded: $showCompleted) {
+                        VStack(alignment: .leading, spacing: 0) {
                             ForEach(completedItems) { item in
                                 TodoInboxRow(item: item, onComplete: onComplete)
                             }
                         }
+                        .padding(.top, 4)
+                    } label: {
+                        TodoSectionHeader(title: "Completed", detail: "\(completedItems.count) items")
                     }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(28)
             .frame(maxWidth: 760, alignment: .topLeading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .textBackgroundColor))
+    }
+
+    private var inboxList: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Inbox")
+                    .font(.headline)
+                    .padding(.top, 2)
+
+                TodoInboxPanel(title: "待选", count: reviewCandidates.count) {
+                    if reviewCandidates.isEmpty {
+                        TodoInboxEmptyText("No candidates.")
+                    } else {
+                        ForEach(reviewCandidates) { candidate in
+                            TodoReviewCandidateRow(
+                                candidate: candidate,
+                                onAdd: onAddCandidate,
+                                onDismiss: onDismissCandidate
+                            )
+                        }
+                    }
+                }
+
+                TodoInboxPanel(title: "推荐关闭", count: closeRecommendations.count) {
+                    if closeRecommendations.isEmpty {
+                        TodoInboxEmptyText("No close recommendations.")
+                    } else {
+                        ForEach(closeRecommendations) { recommendation in
+                            TodoCloseRecommendationRow(
+                                recommendation: recommendation,
+                                onClose: onCloseRecommendation,
+                                onKeep: onKeepRecommendation
+                            )
+                        }
+                    }
+                }
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private var openItems: [UnifiedTodoItem] {
@@ -91,6 +144,26 @@ struct TodoInboxView: View {
     }
 }
 
+private struct TodoSectionHeader: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Spacer()
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.bottom, 6)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+    }
+}
+
 private struct TodoInboxRow: View {
     let item: UnifiedTodoItem
     let onComplete: (String) -> Void
@@ -102,34 +175,151 @@ private struct TodoInboxRow: View {
                     onComplete(item.id)
                 }
             } label: {
-                Image(systemName: item.status == .completed ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(
-                        item.status == .completed
-                            ? AnyShapeStyle(.secondary)
-                            : AnyShapeStyle(Color.accentColor)
-                    )
+                Image(systemName: item.status == .completed ? "checkmark.square.fill" : "square")
+                    .foregroundStyle(item.status == .completed ? .secondary : Color.accentColor)
                     .frame(width: 18, height: 18)
             }
             .buttonStyle(.plain)
             .disabled(item.status == .completed)
-            .help(item.status == .completed ? "Completed" : "Mark Complete")
+            .help(item.status == .completed ? "Completed" : "Complete")
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(item.title)
                     .font(.body)
                     .strikethrough(item.status == .completed, color: .secondary)
                     .foregroundStyle(item.status == .completed ? .secondary : .primary)
+                    .lineLimit(3)
                 HStack(spacing: 8) {
                     Text(item.sourceDayKey)
-                    Text(item.promotionKind == .auto ? "auto" : "manual")
+                    Text(item.promotionKind.rawValue)
                     if let completionKind = item.completionKind {
                         Text(completionKind.rawValue)
                     }
                 }
-                .font(.caption)
+                .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
+        .overlay(alignment: .bottom) {
+            Divider().opacity(0.7)
+        }
+    }
+}
+
+private struct TodoInboxPanel<Content: View>: View {
+    let title: String
+    let count: Int
+    let content: Content
+
+    init(title: String, count: Int, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.count = count
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Text("\(count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+
+            Divider()
+            content
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .overlay {
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1)
+        }
+    }
+}
+
+private struct TodoReviewCandidateRow: View {
+    let candidate: TodoReviewCandidatePresentation
+    let onAdd: (String) -> Void
+    let onDismiss: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(candidate.title)
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .lineLimit(3)
+            Text("\(candidate.confidence.rawValue) · \(candidate.reason)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            HStack(spacing: 6) {
+                Button(candidate.recommendedActionTitle) {
+                    onAdd(candidate.id)
+                }
+                .controlSize(.mini)
+                Button("Dismiss") {
+                    onDismiss(candidate.id)
+                }
+                .controlSize(.mini)
+            }
+        }
+        .padding(10)
+        .overlay(alignment: .bottom) {
+            Divider().opacity(0.7)
+        }
+    }
+}
+
+private struct TodoCloseRecommendationRow: View {
+    let recommendation: TodoCloseRecommendationPresentation
+    let onClose: (String) -> Void
+    let onKeep: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(recommendation.title)
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .lineLimit(3)
+            Text("\(recommendation.confidence.rawValue) · \(recommendation.reason)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            HStack(spacing: 6) {
+                Button("Close") {
+                    onClose(recommendation.todoID)
+                }
+                .controlSize(.mini)
+                Button("Keep") {
+                    onKeep(recommendation.todoID)
+                }
+                .controlSize(.mini)
+            }
+        }
+        .padding(10)
+        .overlay(alignment: .bottom) {
+            Divider().opacity(0.7)
+        }
+    }
+}
+
+private struct TodoInboxEmptyText: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(10)
     }
 }

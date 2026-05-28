@@ -171,10 +171,11 @@ Add Source 与 Daily Memory Export 是边界不同的能力。Daily Memory Expor
 1. 从当天 story 中提取 0-3 个未完成的明确候选待办
 2. 通过 `TodoReconciler` 把候选项和现有 todo 交给 summarizer 做语义 `create/merge/ignore` 判断
 3. 只对高置信 `create` 自动写入 `TodoStore`，高置信 `merge` 只补充来源证据
-4. 通过 `TodoCompletionSweep` 用新 story 证据保守判断 open todo 是否已经完成
-5. 在 summarizer 不可用或返回不可解析结果时进入 degraded 状态，不做自动归集或自动完成，保留手动 `Add to Todo` 和 Todo 页自由输入
+4. 把未自动入库的低/中置信候选保留在 Todo 页右侧 `Inbox / 待选` 列表，供用户手动 Add、Merge 或 Dismiss
+5. 通过 `TodoCompletionSweep` 用新 story 证据保守判断 open todo 是否已经完成；高置信自动完成，中/低置信进入 `推荐关闭` 列表
+6. 在 summarizer 不可用或返回不可解析结果时进入 degraded 状态，不做自动归集或自动完成，保留手动 `Add to Todo` 和 Todo 页自由输入
 
-`TodoStore` 是统一 todo 持久化边界，负责创建、合并来源证据、读取排序、完成标记，以及 Markdown/SQLite 之间的一次性 seed。它不执行外部动作：v1 的“自动解决”只表示根据后续证据标记完成。Todo 会在 app 初始化、打开 Todo 页、日记刷新成功后、手动新增、手动完成时刷新；外部编辑 `Todo.md` 会在下一次 Todo 刷新/open 时读取，当前没有持续文件监听。
+`TodoStore` 是统一 todo 持久化边界，负责创建、合并来源证据、读取排序、完成标记，以及 Markdown/SQLite 之间的一次性 seed。它不执行外部动作：v1 的“自动解决”只表示根据后续证据标记完成。Todo 会在 app 初始化、打开 Todo 页、日记刷新成功后、无新事件的日记刷新、手动新增、手动完成时刷新；外部编辑 `Todo.md` 会在下一次 Todo 刷新/open 时读取，当前没有持续文件监听。
 
 当前 `AppState` 也负责晚间回顾提醒配置与通知后的前台路由：
 
@@ -549,7 +550,9 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 - 日期按 `MM-dd EEE` 格式显示
 - 左侧一级导航包含 `Todo` 入口，展示 open 数量，并把 open todo 放在 completed 之前
-- `TodoInboxView` 顶部提供自由输入框，输入后立即写入 `Vault/Todo.md`
+- `TodoInboxView` 采用简洁双栏工作台：左侧是 `Todo` 列表和自由输入，右侧是较窄的 `Inbox`，包含 `待选` 和 `推荐关闭`
+- `TodoInboxView` 不展示统计卡片或快捷键提示，风格靠近 Markdown/Obsidian 的密度与克制感
+- 自由输入框提交后立即写入 `Vault/Todo.md`
 - story 段落可点击选中
 - `DailyMarkdownView` 会在待办候选行旁显示 `Add to Todo` 或 `In Todo`
 - 中栏段落按 Markdown 富文本渲染，而不是原样 plain text 输出

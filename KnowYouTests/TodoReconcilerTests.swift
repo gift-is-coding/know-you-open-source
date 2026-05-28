@@ -112,6 +112,7 @@ final class TodoReconcilerTests: XCTestCase {
               "completed": [
                 {
                   "todoID": "todo-1",
+                  "confidence": "high",
                   "evidenceEventIDs": ["\(evidenceID.uuidString)"],
                   "reason": "The new evidence says the recap was sent."
                 }
@@ -128,7 +129,68 @@ final class TodoReconcilerTests: XCTestCase {
 
         XCTAssertFalse(result.isDegraded)
         XCTAssertEqual(result.completions.map(\.todoID), ["todo-1"])
+        XCTAssertEqual(result.highConfidenceCompletions.map(\.todoID), ["todo-1"])
+        XCTAssertTrue(result.reviewRecommendations.isEmpty)
         XCTAssertEqual(result.completions.first?.evidenceEventIDs, [evidenceID])
+    }
+
+    func testCompletionSweepKeepsMediumConfidenceCompletionsForReview() async throws {
+        let evidenceID = UUID()
+        let todo = UnifiedTodoItem(
+            id: "todo-1",
+            title: "Polish the Todo workbench",
+            normalizedTitle: "polish the todo workbench",
+            status: .open,
+            sourceDayKey: "2026-05-27",
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_000),
+            completedAt: nil,
+            completionEvidenceEventIDs: [],
+            promotionKind: .manual,
+            completionKind: nil
+        )
+        let story = DailyStory(
+            dayKey: "2026-05-27",
+            generatedAt: Date(timeIntervalSince1970: 1_778_000_100),
+            sections: [
+                DailyStorySection(
+                    id: "daily-journal",
+                    title: "",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-details-0",
+                            text: "The Todo workbench mockup was accepted, but implementation remains pending.",
+                            sourceEventIDs: [evidenceID]
+                        )
+                    ]
+                )
+            ]
+        )
+        let summarizer = StaticTodoSummarizer(
+            response: """
+            {
+              "completed": [
+                {
+                  "todoID": "todo-1",
+                  "confidence": "medium",
+                  "evidenceEventIDs": ["\(evidenceID.uuidString)"],
+                  "reason": "The mockup appears accepted, but implementation remains pending."
+                }
+              ]
+            }
+            """
+        )
+
+        let result = try await TodoCompletionSweep(summarizer: summarizer).sweep(
+            openTodos: [todo],
+            story: story,
+            dayKey: "2026-05-27"
+        )
+
+        XCTAssertFalse(result.isDegraded)
+        XCTAssertTrue(result.highConfidenceCompletions.isEmpty)
+        XCTAssertEqual(result.reviewRecommendations.map(\.todoID), ["todo-1"])
+        XCTAssertEqual(result.reviewRecommendations.first?.confidence, .medium)
     }
 }
 

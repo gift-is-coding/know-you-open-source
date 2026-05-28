@@ -1022,6 +1022,11 @@ enum DailyMarkdownRenderer {
         let content: InlineContent
     }
 
+    struct Table: Equatable {
+        let headers: [InlineContent]
+        let rows: [[InlineContent]]
+    }
+
     struct InlineContent: Equatable {
         let attributed: AttributedString?
         let plainText: String
@@ -1043,6 +1048,7 @@ enum DailyMarkdownRenderer {
         case taskList([TaskItem])
         case quote([InlineContent])
         case codeBlock(String)
+        case table(Table)
     }
 
     static func blocks(from markdown: String) -> [Block] {
@@ -1080,6 +1086,12 @@ enum DailyMarkdownRenderer {
             if let heading = parseHeading(from: trimmed) {
                 blocks.append(heading)
                 index += 1
+                continue
+            }
+
+            if let table = parseTable(lines: lines, startIndex: index) {
+                blocks.append(.table(table.value))
+                index = table.nextIndex
                 continue
             }
 
@@ -1152,6 +1164,7 @@ enum DailyMarkdownRenderer {
             || parseOrderedItem(from: line) != nil
             || line.hasPrefix(">")
             || line.hasPrefix("```")
+            || isTableRow(line)
     }
 
     private static func parseHeading(from line: String) -> Block? {
@@ -1189,6 +1202,55 @@ enum DailyMarkdownRenderer {
         let content = String(remainder.dropFirst(2))
         guard let index = Int(digits), content.isEmpty == false else { return nil }
         return OrderedItem(index: index, content: InlineContent(markdown: content))
+    }
+
+    private static func parseTable(lines: [String], startIndex: Int) -> (value: Table, nextIndex: Int)? {
+        guard startIndex + 1 < lines.count else { return nil }
+        let headerLine = lines[startIndex].trimmingCharacters(in: .whitespaces)
+        let separatorLine = lines[startIndex + 1].trimmingCharacters(in: .whitespaces)
+        guard isTableRow(headerLine), isTableSeparator(separatorLine) else { return nil }
+
+        let headers = tableCells(from: headerLine).map(InlineContent.init(markdown:))
+        guard headers.isEmpty == false else { return nil }
+
+        var rows: [[InlineContent]] = []
+        var index = startIndex + 2
+        while index < lines.count {
+            let rowLine = lines[index].trimmingCharacters(in: .whitespaces)
+            guard isTableRow(rowLine), isTableSeparator(rowLine) == false else { break }
+            rows.append(tableCells(from: rowLine).map(InlineContent.init(markdown:)))
+            index += 1
+        }
+
+        return (Table(headers: headers, rows: rows), index)
+    }
+
+    private static func isTableRow(_ line: String) -> Bool {
+        line.hasPrefix("|") && line.dropFirst().contains("|")
+    }
+
+    private static func isTableSeparator(_ line: String) -> Bool {
+        guard isTableRow(line) else { return false }
+        let cells = tableCells(from: line)
+        guard cells.isEmpty == false else { return false }
+        return cells.allSatisfy { cell in
+            let trimmed = cell.trimmingCharacters(in: .whitespaces)
+            let withoutAlignment = trimmed.trimmingCharacters(in: CharacterSet(charactersIn: ":"))
+            return withoutAlignment.count >= 3 && withoutAlignment.allSatisfy { $0 == "-" }
+        }
+    }
+
+    private static func tableCells(from line: String) -> [String] {
+        var trimmed = line.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("|") {
+            trimmed.removeFirst()
+        }
+        if trimmed.hasSuffix("|") {
+            trimmed.removeLast()
+        }
+        return trimmed
+            .split(separator: "|", omittingEmptySubsequences: false)
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
     }
 }
 
@@ -1284,6 +1346,8 @@ private struct MarkdownBlockView: View {
             .padding(12)
             .background(Color.primary.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        case .table(let table):
+            DailyMarkdownTableView(table: table)
         }
     }
 
@@ -1307,6 +1371,43 @@ private struct MarkdownBlockView: View {
         default:
             return .body
         }
+    }
+}
+
+private struct DailyMarkdownTableView: View {
+    let table: DailyMarkdownRenderer.Table
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: true) {
+            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                GridRow {
+                    ForEach(Array(table.headers.enumerated()), id: \.offset) { _, header in
+                        cell(header, isHeader: true)
+                    }
+                }
+                ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
+                    GridRow {
+                        ForEach(0..<table.headers.count, id: \.self) { index in
+                            cell(row.indices.contains(index) ? row[index] : DailyMarkdownRenderer.InlineContent(markdown: ""), isHeader: false)
+                        }
+                    }
+                }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.secondary.opacity(0.22), lineWidth: 1)
+            }
+        }
+    }
+
+    private func cell(_ content: DailyMarkdownRenderer.InlineContent, isHeader: Bool) -> some View {
+        MarkdownBlockView(block: .paragraph(content))
+            .font(isHeader ? .body.weight(.semibold) : .body)
+            .frame(minWidth: 140, maxWidth: 260, alignment: .topLeading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(isHeader ? Color.secondary.opacity(0.08) : Color.clear)
+            .border(Color.secondary.opacity(0.18), width: 0.5)
     }
 }
 

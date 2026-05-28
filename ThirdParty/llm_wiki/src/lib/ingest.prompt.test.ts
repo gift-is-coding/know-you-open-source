@@ -87,12 +87,11 @@ describe("buildGenerationPrompt language directive", () => {
     expect(prompt).not.toContain("Do NOT create `wiki/people/codex.md`")
   })
 
-  it("does not replace the upstream prompt with dynamic My Wiki category targets", () => {
+  it("does not replace the upstream prompt with custom My Wiki category targets", () => {
     const prompt = buildGenerationPrompt(
       [
-        "<!-- KNOWYOU_MY_WIKI_OUTPUT_CONTRACT -->",
-        "## My Wiki Output Contract",
-        "| Category | Directory | Frontmatter types | Use |",
+        "# My Wiki Schema",
+        "| Category | Directory | Frontmatter types | Guidance |",
         "| --- | --- | --- | --- |",
         "| Relationships | `wiki/relationships` | `relationship` | Important relationships between entities. |",
       ].join("\n"),

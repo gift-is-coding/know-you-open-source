@@ -2,19 +2,11 @@ import XCTest
 @testable import KnowYou
 
 final class KnowledgeOntologyPanelTests: XCTestCase {
-    func testMyWikiCategoryLabelsAreUserFacing() {
+    func testMyWikiCategoryLabelsAreNativeLlmWikiCategoriesOnly() {
+        XCTAssertEqual(MyWikiCategory.nativeCategories.map(\.id), ["sources", "entities", "concepts"])
         XCTAssertEqual(MyWikiCategory.source.displayTitle, "Sources")
         XCTAssertEqual(MyWikiCategory.entity.displayTitle, "Entities")
         XCTAssertEqual(MyWikiCategory.concept.displayTitle, "Concepts")
-    }
-
-    func testLegacyMyWikiCategoryLabelsRemainAvailableForExistingPages() {
-        XCTAssertEqual(MyWikiCategory.person.displayTitle, "People")
-        XCTAssertEqual(MyWikiCategory.project.displayTitle, "Projects")
-        XCTAssertEqual(MyWikiCategory.theme.displayTitle, "Topics")
-        XCTAssertEqual(MyWikiCategory.preference.displayTitle, "Patterns")
-        XCTAssertEqual(MyWikiCategory.openLoop.displayTitle, "Follow-ups")
-        XCTAssertEqual(MyWikiCategory.summary.displayTitle, "Summaries")
     }
 
     func testDefaultMyWikiCopyDescribesNativeLlmWikiCategories() {
@@ -35,28 +27,28 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
     func testIndexSectionPresentationSupportsInlineShowMoreStates() {
         let entries = (1...6).map { index in
             MyWikiEntry(
-                id: "person-\(index)",
-                title: "Person \(index)",
-                category: .person,
+                id: "entity-\(index)",
+                title: "Entity \(index)",
+                category: .entity,
                 summary: "Summary \(index)",
                 sourceNames: []
             )
         }
 
         let expanded = MyWikiIndexSectionPresentation(
-            title: "People",
+            title: "Entities",
             entries: entries,
             isExpanded: true,
             previewLimit: 3,
             isShowingAll: false
         )
-        XCTAssertEqual(expanded.visibleEntries.map(\.title), ["Person 1", "Person 2", "Person 3"])
+        XCTAssertEqual(expanded.visibleEntries.map(\.title), ["Entity 1", "Entity 2", "Entity 3"])
         XCTAssertTrue(expanded.canShowMore)
         XCTAssertEqual(expanded.hiddenCount, 3)
         XCTAssertEqual(expanded.showMoreTitle, "Show more (3)")
 
         let showingAll = MyWikiIndexSectionPresentation(
-            title: "People",
+            title: "Entities",
             entries: entries,
             isExpanded: true,
             previewLimit: 3,
@@ -67,67 +59,14 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertEqual(showingAll.showMoreTitle, "Show less")
     }
 
-    func testIndexSectionsComeFromSchemaCategories() {
-        let relationshipCategory = MyWikiCategoryDefinition(
-            id: "relationships",
-            displayName: "Relationships",
-            singularName: "Relationship",
-            directory: "wiki/relationships",
-            frontmatterTypes: ["relationship"],
-            extractionGuidance: "Relationships between entities.",
-            detailSections: ["Summary"]
-        )
-        let memoriesCategory = MyWikiCategoryDefinition(
-            id: "memories",
-            displayName: "Memories",
-            singularName: "Memory",
-            directory: "wiki/memories",
-            frontmatterTypes: ["memory"],
-            extractionGuidance: "Personal memory records.",
-            detailSections: ["Summary"]
-        )
-        let schema = MyWikiSchemaConfig(
-            id: "custom",
-            displayName: "Custom",
-            categories: [relationshipCategory, memoriesCategory],
-            views: []
-        )
-        let entry = MyWikiEntry(
-            id: "huang-shan-lenovo",
-            title: "Huang Shan and Lenovo",
-            category: MyWikiCategory(definition: relationshipCategory),
-            summary: "Relationship summary",
-            sourceNames: []
-        )
-        let snapshot = MyWikiDashboardSnapshot(
-            schema: schema,
-            entriesByCategoryID: ["relationships": [entry]]
-        )
-
-        let sections = MyWikiIndexSectionsBuilder().categorySections(
-            snapshot: snapshot,
-            query: "",
-            expandedCategoryIDs: ["relationships"],
-            previewLimit: 4
-        )
-
-        XCTAssertEqual(sections.map(\.category.id), ["relationships", "memories"])
-        XCTAssertEqual(sections.first?.presentation.title, "Relationships")
-        XCTAssertEqual(sections.first?.presentation.visibleEntries.map(\.title), ["Huang Shan and Lenovo"])
-    }
-
-    func testDefaultIndexSectionsPrioritizeEntitiesAndConceptsBeforeSources() throws {
-        let schema = try MyWikiSchemaConfig.defaultPersonalContext()
+    func testDefaultIndexSectionsPrioritizeEntitiesAndConceptsBeforeSources() {
         let sourceEntries = makeEntries(prefix: "Source", category: .source, count: 12)
         let entityEntries = makeEntries(prefix: "Entity", category: .entity, count: 12)
         let conceptEntries = makeEntries(prefix: "Concept", category: .concept, count: 12)
         let snapshot = MyWikiDashboardSnapshot(
-            schema: schema,
-            entriesByCategoryID: [
-                MyWikiCategory.source.id: sourceEntries,
-                MyWikiCategory.entity.id: entityEntries,
-                MyWikiCategory.concept.id: conceptEntries,
-            ]
+            sources: sourceEntries,
+            entities: entityEntries,
+            concepts: conceptEntries
         )
 
         let sections = MyWikiIndexSectionsBuilder().categorySections(
@@ -162,7 +101,7 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         let entry = MyWikiEntry(
             id: "adam-wu",
             title: "Adam Wu",
-            category: .person,
+            category: .entity,
             summary: "Adam coordinates the knowledge-platform workstream.",
             sourceNames: ["knowyou-diary-2026-05-06.md"],
             markdownBody: "# Adam Wu\n\nFull markdown body."
@@ -185,47 +124,80 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertEqual(MyWikiIndexRowHitTargetPolicy.minHeight, 34)
     }
 
-    func testEntityFacetsUseUserFacingLabelsAndTagExamples() {
-        XCTAssertEqual(MyWikiEntityFacet.defaults.map(\.title), ["人物", "项目", "组织", "其他"])
-        XCTAssertTrue(MyWikiEntityFacet.people.matches(entity(tags: ["person"])))
-        XCTAssertTrue(MyWikiEntityFacet.people.matches(entity(tags: ["people", "leader"])))
-        XCTAssertTrue(MyWikiEntityFacet.projects.matches(entity(tags: ["project"])))
-        XCTAssertTrue(MyWikiEntityFacet.projects.matches(entity(tags: ["platform"])))
-        XCTAssertTrue(MyWikiEntityFacet.organizations.matches(entity(tags: ["organization"])))
-        XCTAssertTrue(MyWikiEntityFacet.organizations.matches(entity(tags: ["company"])))
-        XCTAssertTrue(MyWikiEntityFacet.other.matches(entity(tags: ["tool"])))
+    func testDynamicTagFacetsUseCurrentEntriesOnlyAndSortByFrequency() {
+        let facets = MyWikiTagFacet.facets(for: [
+            entity(id: "token-hub", title: "Token Hub", tags: ["platform", "agent"]),
+            entity(id: "ai-force", title: "AI Force", tags: ["platform"]),
+            entity(id: "adapter", title: "Adapter", tags: ["agent"]),
+            entity(id: "untagged", title: "Untagged", tags: []),
+            entity(id: "security", title: "Security", tags: ["risk"]),
+        ])
+
+        XCTAssertEqual(facets.map(\.title), ["agent", "platform", "risk"])
+        XCTAssertEqual(facets.map(\.count), [2, 2, 1])
     }
 
-    func testEntityFacetFilteringOnlyAppliesToEntities() throws {
-        let schema = try MyWikiSchemaConfig.defaultPersonalContext()
-        let people = entity(id: "adam", title: "Adam", tags: ["person"])
-        let project = entity(id: "token-hub", title: "Token Hub", tags: ["project"])
+    func testDynamicTagFacetsKeepOtherAfterSpecificTagsEvenWhenFrequent() {
+        let facets = MyWikiTagFacet.facets(for: [
+            entity(id: "one", title: "One", tags: ["other", "platform"]),
+            entity(id: "two", title: "Two", tags: ["Other"]),
+            entity(id: "three", title: "Three", tags: ["OTHER"]),
+            entity(id: "four", title: "Four", tags: ["agent"]),
+            entity(id: "five", title: "Five", tags: ["platform"]),
+        ])
+
+        XCTAssertEqual(facets.map(\.title), ["platform", "agent", "other"])
+        XCTAssertEqual(facets.map(\.count), [2, 1, 3])
+    }
+
+    func testTagFacetDisplayDefaultsToSixAndCanExpand() {
+        let facets = (1...8).map { index in
+            MyWikiTagFacet(tag: "tag-\(index)", title: "tag-\(index)", count: 10 - index)
+        }
+
+        XCTAssertEqual(MyWikiTagFacetDisplayPolicy.defaultVisibleLimit, 6)
+        XCTAssertEqual(
+            MyWikiTagFacetDisplayPolicy.visibleFacets(facets, isExpanded: false).map(\.title),
+            ["tag-1", "tag-2", "tag-3", "tag-4", "tag-5", "tag-6"]
+        )
+        XCTAssertEqual(MyWikiTagFacetDisplayPolicy.hiddenCount(for: facets, isExpanded: false), 2)
+        XCTAssertTrue(MyWikiTagFacetDisplayPolicy.canExpand(facets, isExpanded: false))
+        XCTAssertEqual(MyWikiTagFacetDisplayPolicy.toggleTitle(for: facets, isExpanded: false), "+2 more")
+
+        XCTAssertEqual(MyWikiTagFacetDisplayPolicy.visibleFacets(facets, isExpanded: true).count, 8)
+        XCTAssertTrue(MyWikiTagFacetDisplayPolicy.canCollapse(facets, isExpanded: true))
+        XCTAssertEqual(MyWikiTagFacetDisplayPolicy.toggleTitle(for: facets, isExpanded: true), "Show less")
+    }
+
+    func testTagFilteringAppliesPerCategory() {
+        let platformEntity = entity(id: "token-hub", title: "Token Hub", tags: ["platform"])
+        let agentEntity = entity(id: "codex", title: "Codex", tags: ["agent"])
         let concept = MyWikiEntry(
             id: "strategy",
             title: "Strategy",
             category: .concept,
             summary: "Concept summary",
             sourceNames: [],
-            tags: ["person"]
+            tags: ["platform"]
         )
         let snapshot = MyWikiDashboardSnapshot(
-            schema: schema,
-            entriesByCategoryID: [
-                MyWikiCategory.entity.id: [people, project],
-                MyWikiCategory.concept.id: [concept],
-            ]
+            sources: [],
+            entities: [platformEntity, agentEntity],
+            concepts: [concept]
         )
 
         let sections = MyWikiIndexSectionsBuilder().categorySections(
             snapshot: snapshot,
             query: "",
             expandedCategoryIDs: [MyWikiCategory.entity.id, MyWikiCategory.concept.id],
-            selectedEntityFacetID: MyWikiEntityFacet.people.id,
+            selectedTagByCategoryID: [MyWikiCategory.entity.id: "platform"],
             previewLimit: 10
         )
 
-        XCTAssertEqual(sections.first { $0.category == .entity }?.presentation.visibleEntries.map(\.title), ["Adam"])
+        XCTAssertEqual(sections.first { $0.category == .entity }?.presentation.visibleEntries.map(\.title), ["Token Hub"])
         XCTAssertEqual(sections.first { $0.category == .concept }?.presentation.visibleEntries.map(\.title), ["Strategy"])
+        XCTAssertEqual(sections.first { $0.category == .entity }?.tagFacets.map(\.title), ["agent", "platform"])
+        XCTAssertEqual(sections.first { $0.category == .concept }?.tagFacets.map(\.title), ["platform"])
     }
 
     func testIndexNavigationUsesInlineShowMoreInsteadOfFullListNavigation() {
@@ -248,8 +220,24 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
     }
 
     func testDetailMaintenanceCardOnlyAppearsForDuplicateSuggestions() {
-        XCTAssertFalse(MyWikiDetailMaintenancePolicy.showsDuplicateSuggestionCard(duplicateSuggestionCount: 0))
-        XCTAssertTrue(MyWikiDetailMaintenancePolicy.showsDuplicateSuggestionCard(duplicateSuggestionCount: 2))
+        XCTAssertFalse(
+            MyWikiDetailMaintenancePolicy.showsDuplicateSuggestionCard(
+                duplicateSuggestionCount: 0,
+                isCurrentEntryAffected: true
+            )
+        )
+        XCTAssertFalse(
+            MyWikiDetailMaintenancePolicy.showsDuplicateSuggestionCard(
+                duplicateSuggestionCount: 2,
+                isCurrentEntryAffected: false
+            )
+        )
+        XCTAssertTrue(
+            MyWikiDetailMaintenancePolicy.showsDuplicateSuggestionCard(
+                duplicateSuggestionCount: 2,
+                isCurrentEntryAffected: true
+            )
+        )
     }
 
     func testDuplicateDiscoveryRunsWhenDashboardLoads() {

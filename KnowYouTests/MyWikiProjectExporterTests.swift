@@ -2,58 +2,35 @@ import XCTest
 @testable import KnowYou
 
 final class MyWikiProjectExporterTests: XCTestCase {
-    func testEnsureProjectCreatesConfigDrivenMyWikiStructureAndReadableSchema() throws {
+    func testEnsureProjectCreatesNativeLlmWikiStructureWithoutPromptContext() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
         try MyWikiProjectExporter().ensureProject(at: root)
 
-        let schemaConfig = try MyWikiSchemaConfig.defaultPersonalContext()
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appending(path: "raw/sources").path))
-        for directory in schemaConfig.categories.map(\.directory) {
-            XCTAssertTrue(
-                FileManager.default.fileExists(atPath: root.appending(path: directory).path),
-                "Missing \(directory)"
-            )
-        }
-
-        let schemaJSON = try Data(contentsOf: root.appending(path: "mywiki.schema.json"))
-        let decodedSchema = try JSONDecoder().decode(MyWikiSchemaConfig.self, from: schemaJSON)
-        XCTAssertEqual(decodedSchema.categories.map(\.id), schemaConfig.categories.map(\.id))
-
-        let schemaMarkdown = try String(contentsOf: root.appending(path: "schema.md"), encoding: .utf8)
-        XCTAssertTrue(schemaMarkdown.contains("# My Wiki Schema"))
-        XCTAssertTrue(schemaMarkdown.contains("Generated from `mywiki.schema.json`"))
-        XCTAssertTrue(schemaMarkdown.contains("Sources"))
-        XCTAssertTrue(schemaMarkdown.contains("Entities"))
-        XCTAssertTrue(schemaMarkdown.contains("Concepts"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appending(path: "wiki/sources").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appending(path: "wiki/entities").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appending(path: "wiki/concepts").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "wiki/people").path))
-        XCTAssertFalse(schemaMarkdown.contains("KNOWYOU_MY_WIKI_OUTPUT_CONTRACT"))
-        XCTAssertFalse(schemaMarkdown.contains("Do not write `wiki/entities/`"))
-        XCTAssertFalse(schemaMarkdown.contains("知识本体"))
-
-        let purposeMarkdown = try String(contentsOf: root.appending(path: "purpose.md"), encoding: .utf8)
-        XCTAssertTrue(purposeMarkdown.contains("Sources"), purposeMarkdown)
-        XCTAssertTrue(purposeMarkdown.contains("Entities"), purposeMarkdown)
-        XCTAssertTrue(purposeMarkdown.contains("Concepts"), purposeMarkdown)
-        XCTAssertFalse(purposeMarkdown.contains("人物、项目、事件、主题、偏好、待办"), purposeMarkdown)
-
-        let overviewMarkdown = try String(contentsOf: root.appending(path: "wiki/overview.md"), encoding: .utf8)
-        XCTAssertTrue(overviewMarkdown.contains("Sources"), overviewMarkdown)
-        XCTAssertTrue(overviewMarkdown.contains("Entities"), overviewMarkdown)
-        XCTAssertTrue(overviewMarkdown.contains("Concepts"), overviewMarkdown)
-        XCTAssertFalse(overviewMarkdown.contains("人物、项目、事件、主题、偏好、待办"), overviewMarkdown)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "wiki/projects").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "wiki/topics").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "mywiki.schema.json").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "schema.md").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "purpose.md").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "wiki/overview.md").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "wiki/index.md").path))
     }
 
-    func testEnsureProjectReplacesKnownLegacyPromptDocuments() throws {
+    func testEnsureProjectRemovesLegacyPromptContextDocuments() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
         try FileManager.default.createDirectory(at: root.appending(path: "wiki"), withIntermediateDirectories: true)
+        try "{}".write(to: root.appending(path: "mywiki.schema.json"), atomically: true, encoding: .utf8)
+        try "# My Wiki Schema".write(to: root.appending(path: "schema.md"), atomically: true, encoding: .utf8)
         try """
         # Project Purpose
 
@@ -61,28 +38,17 @@ final class MyWikiProjectExporterTests: XCTestCase {
 
         哪些人、项目、工具和主题反复出现在我的日记里？
         """.write(to: root.appending(path: "purpose.md"), atomically: true, encoding: .utf8)
-        try """
-        ---
-        type: overview
-        title: My Wiki Overview
-        ---
-
-        # Overview
-
-        这里汇总 KnowYou 日记整理出的人物、项目、事件、主题、偏好、待办和总结。
-        """.write(to: root.appending(path: "wiki/overview.md"), atomically: true, encoding: .utf8)
+        try "# Native overview from llm_wiki\n".write(to: root.appending(path: "wiki/overview.md"), atomically: true, encoding: .utf8)
 
         try MyWikiProjectExporter().ensureProject(at: root)
 
-        let purposeMarkdown = try String(contentsOf: root.appending(path: "purpose.md"), encoding: .utf8)
-        let overviewMarkdown = try String(contentsOf: root.appending(path: "wiki/overview.md"), encoding: .utf8)
-        XCTAssertTrue(purposeMarkdown.contains("Sources"), purposeMarkdown)
-        XCTAssertTrue(overviewMarkdown.contains("Entities"), overviewMarkdown)
-        XCTAssertFalse(purposeMarkdown.contains("个人知识本体"), purposeMarkdown)
-        XCTAssertFalse(overviewMarkdown.contains("人物、项目、事件、主题、偏好、待办"), overviewMarkdown)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "mywiki.schema.json").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "schema.md").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "purpose.md").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appending(path: "wiki/overview.md").path))
     }
 
-    func testSyncDiariesExportsKnowYouSourceTags() throws {
+    func testSyncDiariesExportsRawDiaryMarkdownWithoutKnowYouPromptMetadata() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         let sourceVault = root.appending(path: "vault", directoryHint: .isDirectory)
@@ -103,6 +69,10 @@ final class MyWikiProjectExporterTests: XCTestCase {
             contentsOf: projectRoot.appending(path: "raw/sources/knowyou-diary-2026-05-18.md"),
             encoding: .utf8
         )
-        XCTAssertTrue(exported.contains("tags: [knowyou, diary]"), exported)
+        XCTAssertTrue(exported.contains("# 2026-05-18"), exported)
+        XCTAssertTrue(exported.contains("Native llm_wiki schema should keep KnowYou source tags."), exported)
+        XCTAssertFalse(exported.contains("type: knowyou-diary"), exported)
+        XCTAssertFalse(exported.contains("source: KnowYou"), exported)
+        XCTAssertFalse(exported.contains("tags: [knowyou, diary]"), exported)
     }
 }

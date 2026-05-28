@@ -7,7 +7,7 @@ struct MyWikiAgentContextProvider {
 
         for category in snapshot.categories {
             appendSection(
-                category.displayName,
+                category.displayTitle,
                 entries: snapshot.entries(for: category.id),
                 limit: limit,
                 to: &sections

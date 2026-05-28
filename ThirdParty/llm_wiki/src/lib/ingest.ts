@@ -49,7 +49,7 @@ import { buildLanguageDirective } from "@/lib/output-language"
 import { detectLanguage } from "@/lib/detect-language"
 import { sameScriptFamily } from "@/lib/language-metadata"
 
-export const INGEST_CACHE_PIPELINE_VERSION = "knowyou-native-llm-wiki-schema-v3-native-prompt-tags"
+export const INGEST_CACHE_PIPELINE_VERSION = "knowyou-native-llm-wiki-v5-native-contextless"
 
 // Legacy export kept for backward compatibility with existing diagnostic
 // tests. The live pipeline goes through parseFileBlocks() below, which

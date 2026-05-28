@@ -37,17 +37,14 @@ final class MyWikiNavigationResolverTests: XCTestCase {
         let entry = MyWikiEntry(
             id: "adam-wu",
             title: "Adam Wu",
-            category: .person,
+            category: .entity,
             summary: "Summary",
             sourceNames: []
         )
         let snapshot = MyWikiDashboardSnapshot(
-            summaries: [],
-            people: [entry],
-            projects: [],
-            themes: [],
-            preferences: [],
-            openLoops: []
+            sources: [],
+            entities: [entry],
+            concepts: []
         )
 
         let resolved = MyWikiNavigationResolver().resolveRelatedEntry("adam-wu", snapshot: snapshot)
@@ -59,17 +56,14 @@ final class MyWikiNavigationResolverTests: XCTestCase {
         let entry = MyWikiEntry(
             id: "adam",
             title: "Adam Wu",
-            category: .person,
+            category: .entity,
             summary: "Summary",
             sourceNames: []
         )
         let snapshot = MyWikiDashboardSnapshot(
-            summaries: [],
-            people: [entry],
-            projects: [],
-            themes: [],
-            preferences: [],
-            openLoops: []
+            sources: [],
+            entities: [entry],
+            concepts: []
         )
 
         let resolved = MyWikiNavigationResolver().resolveRelatedEntry("[[adam-wu|Adam]]", snapshot: snapshot)

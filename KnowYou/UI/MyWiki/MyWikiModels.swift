@@ -2,15 +2,10 @@ import CoreGraphics
 import Foundation
 
 struct MyWikiDashboardSnapshot: Equatable {
-    var schema: MyWikiSchemaConfig
     var entriesByCategoryID: [String: [MyWikiEntry]]
 
-    var categories: [MyWikiCategoryDefinition] {
-        schema.categories
-    }
-
-    var summaries: [MyWikiEntry] {
-        entries(for: .summary)
+    var categories: [MyWikiCategory] {
+        MyWikiCategory.nativeCategories
     }
 
     var sources: [MyWikiEntry] {
@@ -25,82 +20,35 @@ struct MyWikiDashboardSnapshot: Equatable {
         entries(for: .concept)
     }
 
-    var people: [MyWikiEntry] {
-        entries(for: .person)
-    }
-
-    var projects: [MyWikiEntry] {
-        entries(for: .project)
-    }
-
-    var events: [MyWikiEntry] {
-        entries(for: .event)
-    }
-
-    var themes: [MyWikiEntry] {
-        entries(for: .theme)
-    }
-
-    var preferences: [MyWikiEntry] {
-        entries(for: .preference)
-    }
-
-    var openLoops: [MyWikiEntry] {
-        entries(for: .openLoop)
-    }
-
     var allEntries: [MyWikiEntry] {
-        schema.categories.flatMap { entries(for: $0.id) }
+        categories.flatMap { entries(for: $0.id) }
     }
 
     var primaryEntries: [MyWikiEntry] {
-        schema.categories
-            .filter { ["summaries", "sources"].contains($0.id) == false }
-            .flatMap { entries(for: $0.id) }
+        entities + concepts
     }
 
-    init(schema: MyWikiSchemaConfig, entriesByCategoryID: [String: [MyWikiEntry]]) {
-        self.schema = schema
+    init(entriesByCategoryID: [String: [MyWikiEntry]]) {
         self.entriesByCategoryID = entriesByCategoryID
     }
 
     init(
-        summaries: [MyWikiEntry],
-        people: [MyWikiEntry],
-        projects: [MyWikiEntry],
-        events: [MyWikiEntry] = [],
-        themes: [MyWikiEntry],
-        preferences: [MyWikiEntry],
-        openLoops: [MyWikiEntry]
+        sources: [MyWikiEntry] = [],
+        entities: [MyWikiEntry] = [],
+        concepts: [MyWikiEntry] = []
     ) {
-        schema = Self.defaultSchema
-        let entityEntries = Self.recategorized(people + projects + events, as: .entity)
-        let conceptEntries = Self.recategorized(summaries + themes + preferences + openLoops, as: .concept)
         entriesByCategoryID = [
-            MyWikiCategory.source.id: [],
-            MyWikiCategory.entity.id: entityEntries,
-            MyWikiCategory.concept.id: conceptEntries,
-            MyWikiCategory.summary.id: summaries,
-            MyWikiCategory.person.id: people,
-            MyWikiCategory.project.id: projects,
-            MyWikiCategory.event.id: events,
-            MyWikiCategory.theme.id: themes,
-            MyWikiCategory.preference.id: preferences,
-            MyWikiCategory.openLoop.id: openLoops
+            MyWikiCategory.source.id: Self.recategorized(sources, as: .source),
+            MyWikiCategory.entity.id: Self.recategorized(entities, as: .entity),
+            MyWikiCategory.concept.id: Self.recategorized(concepts, as: .concept)
         ]
     }
 
     static let empty = MyWikiDashboardSnapshot(
-        summaries: [],
-        people: [],
-        projects: [],
-        events: [],
-        themes: [],
-        preferences: [],
-        openLoops: []
+        sources: [],
+        entities: [],
+        concepts: []
     )
-
-    private static let defaultSchema = try! MyWikiSchemaConfig.defaultPersonalContext()
 
     private static func recategorized(_ entries: [MyWikiEntry], as category: MyWikiCategory) -> [MyWikiEntry] {
         entries.map { entry in
@@ -170,6 +118,80 @@ struct MyWikiDetailPresentation: Equatable {
     }
 }
 
+enum MyWikiWikilinkText {
+    private static let scheme = "knowyou-mywiki"
+    private static let host = "open"
+
+    static func attributedString(from markdown: String) -> AttributedString {
+        var result = AttributedString()
+        var cursor = markdown.startIndex
+
+        while let opener = markdown[cursor...].range(of: "[[") {
+            appendMarkdown(String(markdown[cursor..<opener.lowerBound]), to: &result)
+
+            guard let closer = markdown[opener.upperBound...].range(of: "]]") else {
+                appendMarkdown(String(markdown[opener.lowerBound...]), to: &result)
+                return result
+            }
+
+            let rawTarget = String(markdown[opener.upperBound..<closer.lowerBound])
+            let parsed = parse(rawTarget)
+            if let reference = parsed.reference {
+                var linked = AttributedString(parsed.label)
+                linked.link = url(for: reference)
+                result += linked
+            } else {
+                appendMarkdown("[[\(rawTarget)]]", to: &result)
+            }
+
+            cursor = closer.upperBound
+        }
+
+        appendMarkdown(String(markdown[cursor...]), to: &result)
+        return result
+    }
+
+    static func reference(from url: URL) -> String? {
+        guard url.scheme == scheme, url.host == host else { return nil }
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        return components?.queryItems?.first { $0.name == "reference" }?.value
+    }
+
+    static func containsWikilink(_ text: String) -> Bool {
+        text.contains("[[") && text.contains("]]")
+    }
+
+    private static func url(for reference: String) -> URL {
+        var components = URLComponents()
+        components.scheme = scheme
+        components.host = host
+        components.queryItems = [URLQueryItem(name: "reference", value: reference)]
+        return components.url ?? URL(string: "\(scheme)://\(host)")!
+    }
+
+    private static func parse(_ rawTarget: String) -> (reference: String?, label: String) {
+        let parts = rawTarget.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
+        let reference = parts.first.map(String.init)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let label = (parts.count > 1 ? String(parts[1]) : reference)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard reference.isEmpty == false else {
+            return (nil, rawTarget)
+        }
+        return (reference, label.isEmpty ? reference : label)
+    }
+
+    private static func appendMarkdown(_ markdown: String, to attributed: inout AttributedString) {
+        guard markdown.isEmpty == false else { return }
+        let parsed = try? AttributedString(
+            markdown: markdown,
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )
+        attributed += parsed ?? AttributedString(markdown)
+    }
+}
+
 enum MyWikiDetailLayoutPolicy {
     static let showsStandaloneSummaryCard = false
 }
@@ -181,56 +203,82 @@ enum MyWikiIndexRowHitTargetPolicy {
     static let minHeight: CGFloat = 34
 }
 
-struct MyWikiEntityFacet: Identifiable, Equatable {
-    let id: String
+struct MyWikiTagFacet: Identifiable, Equatable {
+    let tag: String
     let title: String
-    let matchingTags: Set<String>
+    let count: Int
 
-    static let people = MyWikiEntityFacet(
-        id: "people",
-        title: "人物",
-        matchingTags: [
-            "person", "people", "human", "individual", "founder", "leader",
-            "manager", "owner", "interviewer", "participant", "stakeholder"
-        ]
-    )
-    static let projects = MyWikiEntityFacet(
-        id: "projects",
-        title: "项目",
-        matchingTags: [
-            "project", "program", "initiative", "platform", "product",
-            "app", "workflow", "poc", "workstream"
-        ]
-    )
-    static let organizations = MyWikiEntityFacet(
-        id: "organizations",
-        title: "组织",
-        matchingTags: [
-            "organization", "organisation", "org", "company", "team",
-            "department", "institution", "enterprise", "vendor", "customer"
-        ]
-    )
-    static let other = MyWikiEntityFacet(id: "other", title: "其他", matchingTags: [])
-    static let defaults = [people, projects, organizations, other]
-
-    static func facet(id: String?) -> MyWikiEntityFacet? {
-        guard let id else { return nil }
-        return defaults.first { $0.id == id }
+    var id: String {
+        Self.normalize(tag)
     }
 
-    static func facet(for entry: MyWikiEntry) -> MyWikiEntityFacet {
-        defaults.first { $0 != other && $0.matches(entry) } ?? other
+    static func facets(for entries: [MyWikiEntry]) -> [MyWikiTagFacet] {
+        var counts: [String: Int] = [:]
+        var displayTags: [String: String] = [:]
+
+        for entry in entries {
+            for rawTag in entry.tags {
+                let trimmed = rawTag.trimmingCharacters(in: .whitespacesAndNewlines)
+                let normalized = normalize(trimmed)
+                guard normalized.isEmpty == false else { continue }
+                counts[normalized, default: 0] += 1
+                displayTags[normalized] = displayTags[normalized] ?? trimmed
+            }
+        }
+
+        return counts.map { normalized, count in
+            MyWikiTagFacet(tag: displayTags[normalized] ?? normalized, title: displayTags[normalized] ?? normalized, count: count)
+        }
+        .sorted { lhs, rhs in
+            if lhs.isOther != rhs.isOther {
+                return rhs.isOther
+            }
+            if lhs.count != rhs.count {
+                return lhs.count > rhs.count
+            }
+            return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+        }
     }
 
     func matches(_ entry: MyWikiEntry) -> Bool {
-        guard entry.category == .entity else { return false }
-        let normalizedTags = Set(entry.tags.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
-        if self == Self.other {
-            return Self.defaults
-                .filter { $0 != Self.other }
-                .contains { $0.matches(entry) } == false
+        entry.tags.contains { Self.normalize($0) == id }
+    }
+
+    private static func normalize(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private var isOther: Bool {
+        id == "other"
+    }
+}
+
+enum MyWikiTagFacetDisplayPolicy {
+    static let defaultVisibleLimit = 6
+
+    static func visibleFacets(_ facets: [MyWikiTagFacet], isExpanded: Bool) -> [MyWikiTagFacet] {
+        guard isExpanded == false else { return facets }
+        return Array(facets.prefix(defaultVisibleLimit))
+    }
+
+    static func hiddenCount(for facets: [MyWikiTagFacet], isExpanded: Bool) -> Int {
+        guard isExpanded == false else { return 0 }
+        return max(0, facets.count - defaultVisibleLimit)
+    }
+
+    static func canExpand(_ facets: [MyWikiTagFacet], isExpanded: Bool) -> Bool {
+        isExpanded == false && facets.count > defaultVisibleLimit
+    }
+
+    static func canCollapse(_ facets: [MyWikiTagFacet], isExpanded: Bool) -> Bool {
+        isExpanded && facets.count > defaultVisibleLimit
+    }
+
+    static func toggleTitle(for facets: [MyWikiTagFacet], isExpanded: Bool) -> String {
+        if isExpanded {
+            return "Show less"
         }
-        return normalizedTags.isDisjoint(with: matchingTags) == false
+        return "+\(hiddenCount(for: facets, isExpanded: isExpanded)) more"
     }
 }
 
@@ -248,8 +296,11 @@ enum MyWikiProgressRefreshPolicy {
 }
 
 enum MyWikiDetailMaintenancePolicy {
-    static func showsDuplicateSuggestionCard(duplicateSuggestionCount: Int) -> Bool {
-        duplicateSuggestionCount > 0
+    static func showsDuplicateSuggestionCard(
+        duplicateSuggestionCount: Int,
+        isCurrentEntryAffected: Bool
+    ) -> Bool {
+        duplicateSuggestionCount > 0 && isCurrentEntryAffected
     }
 }
 
@@ -335,6 +386,7 @@ struct MyWikiIndexSectionPresentation {
 struct MyWikiIndexCategorySection: Identifiable {
     let category: MyWikiCategory
     let presentation: MyWikiIndexSectionPresentation
+    let tagFacets: [MyWikiTagFacet]
 
     var id: String {
         category.id
@@ -347,10 +399,10 @@ struct MyWikiIndexSectionsBuilder {
         query: String,
         expandedCategoryIDs: Set<String>,
         showingAllCategoryIDs: Set<String> = [],
-        selectedEntityFacetID: String? = nil,
+        selectedTagByCategoryID: [String: String] = [:],
         previewLimit: Int
     ) -> [MyWikiIndexCategorySection] {
-        let orderedDefinitions = snapshot.categories.enumerated().sorted { lhs, rhs in
+        let orderedCategories = snapshot.categories.enumerated().sorted { lhs, rhs in
             let lhsPriority = MyWikiIndexPreviewPolicy.sortPriority(for: lhs.element.id)
             let rhsPriority = MyWikiIndexPreviewPolicy.sortPriority(for: rhs.element.id)
             if lhsPriority != rhsPriority {
@@ -359,12 +411,12 @@ struct MyWikiIndexSectionsBuilder {
             return lhs.offset < rhs.offset
         }.map(\.element)
 
-        return orderedDefinitions.compactMap { definition in
-            let category = MyWikiCategory(definition: definition)
-            let entries = entityFacetFiltered(
-                filtered(snapshot.entries(for: definition.id), query: query),
-                categoryID: definition.id,
-                selectedEntityFacetID: selectedEntityFacetID
+        return orderedCategories.compactMap { category in
+            let queryFilteredEntries = filtered(snapshot.entries(for: category.id), query: query)
+            let tagFacets = MyWikiTagFacet.facets(for: queryFilteredEntries)
+            let entries = tagFiltered(
+                queryFilteredEntries,
+                selectedTag: selectedTagByCategoryID[category.id]
             )
             guard entries.isEmpty == false || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 return nil
@@ -372,29 +424,30 @@ struct MyWikiIndexSectionsBuilder {
             return MyWikiIndexCategorySection(
                 category: category,
                 presentation: MyWikiIndexSectionPresentation(
-                    title: definition.displayName,
+                    title: category.displayTitle,
                     entries: entries,
-                    isExpanded: expandedCategoryIDs.contains(definition.id),
+                    isExpanded: expandedCategoryIDs.contains(category.id),
                     previewLimit: MyWikiIndexPreviewPolicy.previewLimit(
-                        for: definition.id,
+                        for: category.id,
                         fallback: previewLimit
                     ),
-                    isShowingAll: showingAllCategoryIDs.contains(definition.id)
-                )
+                    isShowingAll: showingAllCategoryIDs.contains(category.id)
+                ),
+                tagFacets: tagFacets
             )
         }
     }
 
-    private func entityFacetFiltered(
+    private func tagFiltered(
         _ entries: [MyWikiEntry],
-        categoryID: String,
-        selectedEntityFacetID: String?
+        selectedTag: String?
     ) -> [MyWikiEntry] {
-        guard categoryID == MyWikiCategory.entity.id,
-              let facet = MyWikiEntityFacet.facet(id: selectedEntityFacetID)
+        guard let selectedTag,
+              selectedTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         else {
             return entries
         }
+        let facet = MyWikiTagFacet(tag: selectedTag, title: selectedTag, count: 0)
         return entries.filter(facet.matches)
     }
 
@@ -439,13 +492,6 @@ struct MyWikiCategory: Equatable, Hashable, Identifiable {
         self.frontmatterType = frontmatterType
     }
 
-    init(definition: MyWikiCategoryDefinition) {
-        self.id = definition.id
-        self.displayTitle = definition.displayName
-        self.singularTitle = definition.singularName
-        self.frontmatterType = definition.frontmatterTypes.first ?? definition.id
-    }
-
     static let source = MyWikiCategory(
         id: "sources",
         displayTitle: "Sources",
@@ -464,46 +510,5 @@ struct MyWikiCategory: Equatable, Hashable, Identifiable {
         singularTitle: "Concept",
         frontmatterType: "concept"
     )
-    static let summary = MyWikiCategory(
-        id: "summaries",
-        displayTitle: "Summaries",
-        singularTitle: "Summary",
-        frontmatterType: "summary"
-    )
-    static let person = MyWikiCategory(
-        id: "people",
-        displayTitle: "People",
-        singularTitle: "Person",
-        frontmatterType: "person"
-    )
-    static let project = MyWikiCategory(
-        id: "projects",
-        displayTitle: "Projects",
-        singularTitle: "Project",
-        frontmatterType: "project"
-    )
-    static let event = MyWikiCategory(
-        id: "events",
-        displayTitle: "Events",
-        singularTitle: "Event",
-        frontmatterType: "event"
-    )
-    static let theme = MyWikiCategory(
-        id: "topics",
-        displayTitle: "Topics",
-        singularTitle: "Topic",
-        frontmatterType: "topic"
-    )
-    static let preference = MyWikiCategory(
-        id: "preferences",
-        displayTitle: "Patterns",
-        singularTitle: "Pattern",
-        frontmatterType: "preference"
-    )
-    static let openLoop = MyWikiCategory(
-        id: "follow-ups",
-        displayTitle: "Follow-ups",
-        singularTitle: "Follow-up",
-        frontmatterType: "follow-up"
-    )
+    static let nativeCategories = [source, entity, concept]
 }

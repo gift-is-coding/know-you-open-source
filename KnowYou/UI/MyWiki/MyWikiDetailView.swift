@@ -3,6 +3,7 @@ import SwiftUI
 struct MyWikiDetailView: View {
     let entry: MyWikiEntry?
     var duplicateSuggestionCount: Int = 0
+    var duplicateSuggestionAffectedCount: Int = 0
     var isSyncing = false
     var onEdit: (MyWikiEntry) -> Void = { _ in }
     var onOrganizeJournals: () -> Void = {}
@@ -147,11 +148,12 @@ struct MyWikiDetailView: View {
             }
 
             if MyWikiDetailMaintenancePolicy.showsDuplicateSuggestionCard(
-                duplicateSuggestionCount: duplicateSuggestionCount
+                duplicateSuggestionCount: duplicateSuggestionCount,
+                isCurrentEntryAffected: duplicateSuggestionAffectedCount > 0
             ) {
                 detailCard("Duplicate Suggestions") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("\(duplicateSuggestionCount) possible duplicate group(s) found.")
+                        Text("\(duplicateSuggestionAffectedCount) possible duplicate group(s) affect this page.")
                             .detailBodyStyle()
                         Button("Review duplicates", action: onFindDuplicates)
                     }
@@ -160,7 +162,10 @@ struct MyWikiDetailView: View {
 
             if presentation.showsMarkdownPage {
                 detailCard("Page") {
-                    MyWikiMarkdownBodyView(markdown: presentation.markdownText)
+                    MyWikiMarkdownBodyView(
+                        markdown: presentation.markdownText,
+                        onOpenRelated: onOpenRelated
+                    )
                     if presentation.isMarkdownTruncated {
                         Text("Page preview truncated.")
                             .font(.system(size: 12))
@@ -228,6 +233,7 @@ struct MyWikiDetailView: View {
 
 private struct MyWikiMarkdownBodyView: View {
     let markdown: String
+    let onOpenRelated: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -237,6 +243,13 @@ private struct MyWikiMarkdownBodyView: View {
         }
         .multilineTextAlignment(.leading)
         .textSelection(.enabled)
+        .environment(\.openURL, OpenURLAction { url in
+            guard let reference = MyWikiWikilinkText.reference(from: url) else {
+                return .systemAction
+            }
+            onOpenRelated(reference)
+            return .handled
+        })
     }
 
     @ViewBuilder
@@ -314,12 +327,16 @@ private struct MyWikiMarkdownBodyView: View {
             .padding(12)
             .background(Color.primary.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        case .table(let table):
+            MyWikiMarkdownTableView(table: table)
         }
     }
 
     @ViewBuilder
     private func inlineText(_ content: DailyMarkdownRenderer.InlineContent) -> some View {
-        if let attributed = content.attributed {
+        if MyWikiWikilinkText.containsWikilink(content.plainText) {
+            Text(MyWikiWikilinkText.attributedString(from: content.plainText))
+        } else if let attributed = content.attributed {
             Text(attributed)
         } else {
             Text(verbatim: content.plainText)
@@ -337,6 +354,53 @@ private struct MyWikiMarkdownBodyView: View {
         default:
             return .system(size: 16, weight: .semibold)
         }
+    }
+}
+
+private struct MyWikiMarkdownTableView: View {
+    let table: DailyMarkdownRenderer.Table
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: true) {
+            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                GridRow {
+                    ForEach(Array(table.headers.enumerated()), id: \.offset) { _, header in
+                        cell(header, isHeader: true)
+                    }
+                }
+                ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
+                    GridRow {
+                        ForEach(0..<table.headers.count, id: \.self) { index in
+                            cell(row.indices.contains(index) ? row[index] : DailyMarkdownRenderer.InlineContent(markdown: ""), isHeader: false)
+                        }
+                    }
+                }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(MyWikiTheme.border, lineWidth: 1)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cell(_ content: DailyMarkdownRenderer.InlineContent, isHeader: Bool) -> some View {
+        Group {
+            if MyWikiWikilinkText.containsWikilink(content.plainText) {
+                Text(MyWikiWikilinkText.attributedString(from: content.plainText))
+            } else if let attributed = content.attributed {
+                Text(attributed)
+            } else {
+                Text(verbatim: content.plainText)
+            }
+        }
+        .font(.system(size: 14, weight: isHeader ? .semibold : .regular))
+        .lineSpacing(3)
+        .frame(minWidth: 140, maxWidth: 280, alignment: .topLeading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(isHeader ? MyWikiTheme.controlBackground : Color.clear)
+        .border(MyWikiTheme.border.opacity(0.75), width: 0.5)
     }
 }
 

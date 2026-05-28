@@ -250,6 +250,7 @@ struct MyWikiSourceLibraryPresentation: Equatable, Sendable {
     var snapshot: MyWikiSourceCatalogSnapshot
     var query: String
     var statusFilter: MyWikiSourceProcessingStatus?
+    var includedOnly: Bool
     var visibleRecords: [MyWikiSourceCatalogRecord]
     var tree: MyWikiSourceCatalogNode
     var totalCount: Int
@@ -261,11 +262,13 @@ struct MyWikiSourceLibraryPresentation: Equatable, Sendable {
     init(
         snapshot: MyWikiSourceCatalogSnapshot,
         query: String = "",
-        statusFilter: MyWikiSourceProcessingStatus? = nil
+        statusFilter: MyWikiSourceProcessingStatus? = nil,
+        includedOnly: Bool = false
     ) {
         self.snapshot = snapshot
         self.query = query
         self.statusFilter = statusFilter
+        self.includedOnly = includedOnly
         self.totalCount = snapshot.records.count
         self.includedCount = snapshot.records.filter(\.included).count
         self.pendingCount = snapshot.records.filter { $0.status == .pending }.count
@@ -284,6 +287,9 @@ struct MyWikiSourceLibraryPresentation: Equatable, Sendable {
             .filter { record in
                 guard let statusFilter else { return true }
                 return record.status == statusFilter
+            }
+            .filter { record in
+                includedOnly == false || record.included
             }
             .sorted(by: Self.sortRecords)
         self.tree = MyWikiSourceCatalogTreeBuilder(

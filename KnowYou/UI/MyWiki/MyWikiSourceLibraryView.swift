@@ -27,6 +27,8 @@ enum MyWikiSourceLibraryLayoutPolicy {
     static let minimumSourceTreeWidth: CGFloat = 480
     static let managementColumnWidth: CGFloat = 340
     static let usesScrollableManagementPane = true
+    static let showsSeparateSelectionPanel = false
+    static let statusBadgesFilterSources = true
 
     static func resolvedPresentationSize(forVisibleFrame visibleFrame: CGSize) -> CGSize {
         let widthLimit = visibleFrame.width * visibleFrameWidthRatio
@@ -50,6 +52,8 @@ struct MyWikiSourceLibraryView: View {
     @State private var snapshot = MyWikiSourceCatalogStore.emptySnapshot()
     @State private var query = ""
     @State private var statusFilter: MyWikiSourceProcessingStatus?
+    @State private var isFilteringIncludedOnly = false
+    @State private var expandedDirectoryIDs = MyWikiSourceLibraryTreeExpansion.defaultExpandedDirectoryIDs
     @State private var statusMessage = MyWikiSourceLibraryActionCopy.defaultStatusMessage
     @State private var isDropTargeted = false
 
@@ -57,12 +61,23 @@ struct MyWikiSourceLibraryView: View {
         MyWikiSourceLibraryPresentation(
             snapshot: snapshot,
             query: query,
-            statusFilter: statusFilter
+            statusFilter: statusFilter,
+            includedOnly: isFilteringIncludedOnly
         )
     }
 
     private var visibleNodeRows: [SourceLibraryNodeRow] {
-        flattenedRows(from: presentation.tree.children, depth: 0)
+        MyWikiSourceLibraryTreeExpansion.visibleNodes(
+            from: presentation.tree.children,
+            expandedDirectoryIDs: effectiveExpandedDirectoryIDs
+        ).map { SourceLibraryNodeRow(node: $0.node, depth: $0.depth) }
+    }
+
+    private var effectiveExpandedDirectoryIDs: Set<String> {
+        guard query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return MyWikiSourceLibraryTreeExpansion.directoryIDs(from: presentation.tree.children)
+        }
+        return expandedDirectoryIDs
     }
 
     var body: some View {
@@ -128,7 +143,6 @@ struct MyWikiSourceLibraryView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     updatePanel
                     summaryPanel
-                    filterAndBatchPanel
                     manualUploadsPanel
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -172,58 +186,26 @@ struct MyWikiSourceLibraryView: View {
                 GridItem(.flexible(), spacing: 8),
                 GridItem(.flexible(), spacing: 8),
             ], spacing: 8) {
-                summaryBadge("\(presentation.totalCount)", "total")
-                summaryBadge("\(presentation.includedCount)", "included")
-                summaryBadge("\(presentation.pendingCount)", "pending")
-                summaryBadge("\(presentation.changedCount)", "changed")
-                summaryBadge("\(presentation.failedCount)", "failed")
+                summaryBadge("\(presentation.totalCount)", "total", isActive: statusFilter == nil && isFilteringIncludedOnly == false) {
+                    clearStatusSelection()
+                }
+                summaryBadge("\(presentation.includedCount)", "included", isActive: isFilteringIncludedOnly) {
+                    statusFilter = nil
+                    isFilteringIncludedOnly.toggle()
+                }
+                summaryBadge("\(presentation.pendingCount)", "pending", isActive: statusFilter == .pending) {
+                    selectStatus(.pending)
+                }
+                summaryBadge("\(presentation.changedCount)", "changed", isActive: statusFilter == .changed) {
+                    selectStatus(.changed)
+                }
+                summaryBadge("\(presentation.failedCount)", "failed", isActive: statusFilter == .failed) {
+                    selectStatus(.failed)
+                }
             }
             Text("\(presentation.visibleRecords.count) visible")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
-        }
-    }
-
-    private var filterAndBatchPanel: some View {
-        sideSection(title: "Selection") {
-            Menu {
-                Button("All Statuses") {
-                    statusFilter = nil
-                }
-                Divider()
-                ForEach(MyWikiSourceProcessingStatus.allCasesForSourceLibrary, id: \.self) { status in
-                    Button(status.rawValue) {
-                        statusFilter = status
-                    }
-                }
-            } label: {
-                Label(statusFilter?.rawValue ?? "All Statuses", systemImage: "line.3.horizontal.decrease.circle")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            Button {
-                applyBulkAction(.includeVisible)
-            } label: {
-                Label("Include Visible", systemImage: "checkmark.circle")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .disabled(presentation.visibleRecords.isEmpty)
-
-            Button {
-                applyBulkAction(.excludeVisible)
-            } label: {
-                Label("Exclude Visible", systemImage: "minus.circle")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .disabled(presentation.visibleRecords.isEmpty)
-
-            Button {
-                applyBulkAction(.invertVisible)
-            } label: {
-                Label("Invert Visible", systemImage: "arrow.triangle.2.circlepath")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .disabled(presentation.visibleRecords.isEmpty)
         }
     }
 
@@ -348,6 +330,17 @@ struct MyWikiSourceLibraryView: View {
 
     private func directoryRow(_ node: MyWikiSourceCatalogNode, depth: Int) -> some View {
         HStack(spacing: 10) {
+            Button {
+                toggleDirectory(node.id)
+            } label: {
+                Image(systemName: effectiveExpandedDirectoryIDs.contains(node.id) ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16, height: 20)
+            }
+            .buttonStyle(.plain)
+            .help(effectiveExpandedDirectoryIDs.contains(node.id) ? "Collapse folder" : "Expand folder")
+
             selectionButton(state: node.selectionState) {
                 let shouldInclude = node.selectionState != .included
                 setIncluded(shouldInclude, sourceIDs: descendantSourceIDs(from: node))
@@ -374,6 +367,9 @@ struct MyWikiSourceLibraryView: View {
 
     private func sourceRow(_ record: MyWikiSourceCatalogRecord, depth: Int) -> some View {
         HStack(spacing: 10) {
+            Color.clear
+                .frame(width: 16, height: 20)
+
             selectionButton(state: record.included ? .included : .excluded) {
                 setIncluded(record.included == false, sourceIDs: [record.sourceID])
             }
@@ -454,22 +450,33 @@ struct MyWikiSourceLibraryView: View {
         .help(selectionHelp(for: state))
     }
 
-    private func summaryBadge(_ value: String, _ label: String) -> some View {
-        HStack(spacing: 4) {
-            Text(value)
-                .font(.system(size: 12, weight: .semibold))
-            Text(label)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+    private func summaryBadge(
+        _ value: String,
+        _ label: String,
+        isActive: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text(value)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(label)
+                    .font(.system(size: 11))
+                    .foregroundStyle(isActive ? .primary : .secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isActive ? Color.accentColor.opacity(0.18) : MyWikiTheme.controlBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isActive ? Color.accentColor.opacity(0.55) : MyWikiTheme.border, lineWidth: 1)
+                    )
+            )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(MyWikiTheme.controlBackground)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(MyWikiTheme.border, lineWidth: 1))
-        )
+        .buttonStyle(.plain)
     }
 
     private func chooseFolder() {
@@ -536,12 +543,6 @@ struct MyWikiSourceLibraryView: View {
         }
     }
 
-    private func applyBulkAction(_ action: MyWikiSourceCatalogBulkAction) {
-        var updated = snapshot
-        updated.apply(action: action, visibleSourceIDs: presentation.visibleRecords.map(\.sourceID))
-        save(updated)
-    }
-
     private func setIncluded(_ included: Bool, sourceIDs: [String]) {
         let sourceIDs = Set(sourceIDs)
         var updated = snapshot
@@ -571,10 +572,22 @@ struct MyWikiSourceLibraryView: View {
         }
     }
 
-    private func flattenedRows(from nodes: [MyWikiSourceCatalogNode], depth: Int) -> [SourceLibraryNodeRow] {
-        nodes.flatMap { node in
-            [SourceLibraryNodeRow(node: node, depth: depth)] + flattenedRows(from: node.children, depth: depth + 1)
+    private func toggleDirectory(_ id: String) {
+        if expandedDirectoryIDs.contains(id) {
+            expandedDirectoryIDs.remove(id)
+        } else {
+            expandedDirectoryIDs.insert(id)
         }
+    }
+
+    private func selectStatus(_ status: MyWikiSourceProcessingStatus) {
+        isFilteringIncludedOnly = false
+        statusFilter = statusFilter == status ? nil : status
+    }
+
+    private func clearStatusSelection() {
+        statusFilter = nil
+        isFilteringIncludedOnly = false
     }
 
     private func selectionIcon(for state: MyWikiSourceSelectionState) -> String {
@@ -652,9 +665,55 @@ struct MyWikiSourceLibraryView: View {
     }
 }
 
-private extension MyWikiSourceProcessingStatus {
-    static var allCasesForSourceLibrary: [MyWikiSourceProcessingStatus] {
-        [.pending, .indexed, .changed, .failed, .notIncluded, .excludedIndexed]
+struct MyWikiSourceLibraryVisibleNode: Equatable, Sendable {
+    var node: MyWikiSourceCatalogNode
+    var depth: Int
+}
+
+enum MyWikiSourceLibraryTreeExpansion {
+    static let defaultExpandedDirectoryIDs: Set<String> = []
+
+    static func visibleNodes(
+        from nodes: [MyWikiSourceCatalogNode],
+        expandedDirectoryIDs: Set<String>
+    ) -> [MyWikiSourceLibraryVisibleNode] {
+        visibleNodes(from: nodes, depth: 0, expandedDirectoryIDs: expandedDirectoryIDs)
+    }
+
+    static func visibleNodeIDs(
+        from nodes: [MyWikiSourceCatalogNode],
+        expandedDirectoryIDs: Set<String>
+    ) -> [String] {
+        visibleNodes(from: nodes, expandedDirectoryIDs: expandedDirectoryIDs).map(\.node.id)
+    }
+
+    static func directoryIDs(from nodes: [MyWikiSourceCatalogNode]) -> Set<String> {
+        Set(nodes.flatMap { node -> [String] in
+            switch node.kind {
+            case .directory:
+                return [node.id] + Array(directoryIDs(from: node.children))
+            case .root, .source:
+                return Array(directoryIDs(from: node.children))
+            }
+        })
+    }
+
+    private static func visibleNodes(
+        from nodes: [MyWikiSourceCatalogNode],
+        depth: Int,
+        expandedDirectoryIDs: Set<String>
+    ) -> [MyWikiSourceLibraryVisibleNode] {
+        nodes.flatMap { node -> [MyWikiSourceLibraryVisibleNode] in
+            let current = [MyWikiSourceLibraryVisibleNode(node: node, depth: depth)]
+            guard case .directory = node.kind, expandedDirectoryIDs.contains(node.id) else {
+                return current
+            }
+            return current + visibleNodes(
+                from: node.children,
+                depth: depth + 1,
+                expandedDirectoryIDs: expandedDirectoryIDs
+            )
+        }
     }
 }
 

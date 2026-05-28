@@ -65,6 +65,17 @@ final class MyWikiSourceLibraryPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.tree.children.first?.children.map(\.title), ["indexed"])
     }
 
+    func testIncludedFilterLimitsVisibleRecords() {
+        let snapshot = MyWikiSourceCatalogSnapshot(records: [
+            record(sourceID: "included", included: true, relativePath: "Manual Imports/included.md"),
+            record(sourceID: "excluded", included: false, relativePath: "Manual Imports/excluded.md")
+        ])
+
+        let presentation = MyWikiSourceLibraryPresentation(snapshot: snapshot, includedOnly: true)
+
+        XCTAssertEqual(presentation.visibleRecords.map(\.sourceID), ["included"])
+    }
+
     func testManualImportsAreDisplayedAsManualUploadsWithoutChangingRawPath() throws {
         let manual = record(
             sourceID: "manual",
@@ -99,6 +110,8 @@ final class MyWikiSourceLibraryPresentationTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.sourceTreeWidthRatio, 0.65)
         XCTAssertLessThanOrEqual(MyWikiSourceLibraryLayoutPolicy.sourceTreeWidthRatio, 0.70)
         XCTAssertTrue(MyWikiSourceLibraryLayoutPolicy.usesScrollableManagementPane)
+        XCTAssertFalse(MyWikiSourceLibraryLayoutPolicy.showsSeparateSelectionPanel)
+        XCTAssertTrue(MyWikiSourceLibraryLayoutPolicy.statusBadgesFilterSources)
     }
 
     func testSourceLibraryLayoutResolvesInsideVisibleFrame() {
@@ -113,6 +126,42 @@ final class MyWikiSourceLibraryPresentationTests: XCTestCase {
         XCTAssertLessThanOrEqual(compact.height, 720)
         XCTAssertLessThanOrEqual(regular.width, 1200)
         XCTAssertLessThanOrEqual(regular.height, 820)
+    }
+
+    func testSourceTreeDefaultsToCollapsedAndKeepsExpandedDirectories() throws {
+        let snapshot = MyWikiSourceCatalogSnapshot(records: [
+            record(sourceID: "a", relativePath: "Feishu Docs/import/minutes/a.md"),
+            record(sourceID: "b", relativePath: "Feishu Docs/import/minutes/b.md"),
+            record(sourceID: "c", relativePath: "My Diary/2026-05-27.md")
+        ])
+        let tree = MyWikiSourceLibraryPresentation(snapshot: snapshot).tree
+
+        XCTAssertEqual(MyWikiSourceLibraryTreeExpansion.defaultExpandedDirectoryIDs, [])
+        XCTAssertEqual(
+            MyWikiSourceLibraryTreeExpansion.visibleNodeIDs(
+                from: tree.children,
+                expandedDirectoryIDs: MyWikiSourceLibraryTreeExpansion.defaultExpandedDirectoryIDs
+            ),
+            ["Feishu Docs", "My Diary"]
+        )
+
+        let expandedIDs: Set<String> = ["Feishu Docs", "Feishu Docs/import"]
+        XCTAssertEqual(
+            MyWikiSourceLibraryTreeExpansion.visibleNodeIDs(
+                from: tree.children,
+                expandedDirectoryIDs: expandedIDs
+            ),
+            ["Feishu Docs", "Feishu Docs/import", "Feishu Docs/import/minutes", "My Diary"]
+        )
+
+        let rebuiltTree = MyWikiSourceLibraryPresentation(snapshot: snapshot).tree
+        XCTAssertEqual(
+            MyWikiSourceLibraryTreeExpansion.visibleNodeIDs(
+                from: rebuiltTree.children,
+                expandedDirectoryIDs: expandedIDs
+            ),
+            ["Feishu Docs", "Feishu Docs/import", "Feishu Docs/import/minutes", "My Diary"]
+        )
     }
 
     func testInvertVisibleOnlyMutatesMatchingSourceIDs() {

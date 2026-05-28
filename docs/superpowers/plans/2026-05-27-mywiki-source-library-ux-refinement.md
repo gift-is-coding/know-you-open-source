@@ -7,7 +7,7 @@
 ## 实施步骤
 
 1. 更新测试：
-   - `MyWikiSourceLibraryPresentationTests` 覆盖 `Manual Uploads` 展示名、action copy、布局策略和 visible-only 行为。
+   - `MyWikiSourceLibraryPresentationTests` 覆盖 `Manual Uploads` 展示名、action copy、布局策略、目录默认折叠/展开保留、Status chips 筛选。
    - `MyWikiSourceLibraryTests` 覆盖导入文件仍进入 `raw/sources/Manual Imports`，reload 后为 included + pending，并在 presentation 中显示 `Manual Uploads`。
    - `KnowledgeOntologyPanelTests` 覆盖 Source Library 入口策略：显示 `Set Digest Files`，进度卡不打开管理面板，入口 icon 保持轻量。
 
@@ -24,7 +24,9 @@
 
 4. 更新 Source Library UI：
    - 面板调整为首选约 1180x780、并受当前可见屏幕约束的左右布局。
-   - 左侧专注 source tree；右侧放状态统计、筛选、批量操作、`Manual Uploads` 导入区、`Update My Wiki`、`Close`。
+   - 左侧专注 source tree，目录默认折叠，展开状态在 reload 后保留。
+   - 右侧放状态统计、`Manual Uploads` 导入区、`Update My Wiki`、`Close`，移除独立 `Selection` 面板。
+   - `Status` chips 直接作为筛选入口，点击 total/included/pending/changed/failed 切换当前可见 source。
    - 右侧管理栏加入滚动兜底，确保导入区和底部按钮在较小窗口下仍可访问。
    - `Drop`/`Import` 只复制文件并 reload catalog，不触发 ingest。
    - `Close` 只关闭窗口；保存由选择变更即时完成。

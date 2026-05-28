@@ -29,7 +29,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 
 - `.story.json` 用于驱动应用内阅读体验
 - `.md` 用于导出、归档和在外部工具中阅读
-- 统一 Todo inbox 用于保存任务 open/completed 状态；每日 Markdown 只显示候选待办，不作为状态源
+- `Vault/Todo.md` 用于保存统一 Todo inbox 的 open/completed 状态；每日 Markdown 只显示候选待办，不作为状态源
 
 ## 3. 目标用户
 
@@ -71,7 +71,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 
 ### 4.7 管理统一待办
 
-用户应能从左侧 `Todo` 入口查看统一待办。open todo 必须优先展示，completed todo 必须保留并排在底部。每日生成的候选待办可以被高置信自动归集，也可以由用户在日记里手动点击 `Add to Todo` 转入。
+用户应能从左侧 `Todo` 入口查看统一待办。open todo 必须优先展示，completed todo 必须保留并排在底部。用户可以在 Todo 页直接输入新任务；每日生成的候选待办可以被高置信自动归集，也可以由用户在日记里手动点击 `Add to Todo` 转入。
 
 ## 5. 功能范围
 
@@ -87,7 +87,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 每日 Markdown 导出
 - story-first 三栏阅读器
 - 段落级 source link
-- 统一 Todo inbox、每日候选待办手动转入、证据驱动自动完成标记
+- Markdown-backed 统一 Todo inbox、自由输入、每日候选待办手动转入、证据驱动自动完成标记
 - 真实阅读器上的 onboarding coachmarks 与 settings 配置
 - 左下角 `...` 二级菜单中的 `Connectors`
 - Daily Memory Export 到 Obsidian / OpenClaw
@@ -150,8 +150,8 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 系统必须通过内容哈希避免重复事件无限累积
 - 系统必须在 onboarding 的首屏明确说明日记会以本地 Markdown 文件形式保存在当前 Mac 上
 - 系统必须把每次刷新写成独立日志文件，存放在应用支持目录下
-- 系统必须在 SQLite 中保存统一 todo 状态，字段至少包括标题、open/completed、来源日期、来源事件 ID、创建/完成时间、完成证据、归集方式和完成方式
-- 统一 todo 必须按语义去重/合并来源证据；completed todo 不得删除，读取时必须排在 open todo 之后
+- 系统必须在 `Vault/Todo.md` 中保存统一 todo 状态；每条 task row 必须保留标题、open/completed、来源日期、来源事件 ID、创建/完成时间、完成证据、归集方式和完成方式等元数据
+- 统一 todo 必须按语义去重/合并来源证据；completed todo 不得删除，读取时必须排在 open todo 之后；如果旧 SQLite `todo_items` 存在而 `Todo.md` 缺失，系统必须先 seed Markdown 文件
 
 ## 6.4 生成需求
 
@@ -254,7 +254,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 
 - 选择日期后加载该日 story
 - 左侧必须提供 `Todo` 一级入口，并展示 open todo 数量
-- `Todo` 页面必须展示 open todo 在上、completed todo 在下；用户必须能手动标记 open todo 为 completed
+- `Todo` 页面必须展示 open todo 在上、completed todo 在下；用户必须能自由输入新 todo，并能手动标记 open todo 为 completed
 - 点击段落后查看其来源事件
 - 当 `详情` 被拆成多个事务段时，点击不同 `详情` 子段必须切换到各自对应的 source detail
 - 查看该日全部来源事件

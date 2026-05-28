@@ -3,7 +3,9 @@ import SwiftUI
 struct TodoInboxView: View {
     let items: [UnifiedTodoItem]
     let automationStatusMessage: String?
+    let onAdd: (String) -> Void
     let onComplete: (String) -> Void
+    @State private var draftTitle = ""
 
     var body: some View {
         ScrollView {
@@ -23,6 +25,20 @@ struct TodoInboxView: View {
                         .foregroundStyle(.secondary)
                         .padding(.vertical, 6)
                 }
+
+                HStack(spacing: 8) {
+                    TextField("New todo", text: $draftTitle)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(addDraft)
+                    Button(action: addDraft) {
+                        Image(systemName: "plus.circle.fill")
+                            .frame(width: 18, height: 18)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(draftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .help("Add Todo")
+                }
+                .frame(maxWidth: 520)
 
                 if openItems.isEmpty && completedItems.isEmpty {
                     ContentUnavailableView(
@@ -65,6 +81,13 @@ struct TodoInboxView: View {
 
     private var completedItems: [UnifiedTodoItem] {
         items.filter { $0.status == .completed }
+    }
+
+    private func addDraft() {
+        let title = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+        onAdd(title)
+        draftTitle = ""
     }
 }
 

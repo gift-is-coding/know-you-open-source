@@ -15,7 +15,7 @@ KnowYou 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 - 为每天生成两种输出工件：
   - `YYYY-MM-DD.story.json`：UI 主读取工件
   - `YYYY-MM-DD.md`：Markdown 导出工件
-- 维护统一 Todo inbox，把每日候选待办归集到 SQLite 中的任务状态源
+- 维护统一 Todo inbox，把每日候选待办归集到 `Vault/Todo.md`
 - 在主界面中以 story-first 的方式阅读每天内容，并查看段落对应的原始来源
 
 ## 2. 系统总览
@@ -23,7 +23,7 @@ KnowYou 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 当前运行时系统由 6 层组成，另有一条独立的分发链路：
 
 1. 采集层：剪贴板监听、通知数据库读取与导入
-2. 存储与调度层：SQLite、run 记录、todo_items、刷新日志、today-only 定时自动化
+2. 存储与调度层：SQLite、run 记录、`Vault/Todo.md`、刷新日志、today-only 定时自动化
 3. 生成层：本地 fallback story 生成、可选云端/CLI 总结器、Markdown 组合
 4. 连接器层：Daily Memory Export 单向导出、Add Source 本地引用扫描、prompt-backed 外部目录、LaunchAgent 定时运行
 5. 提醒层：晚间回顾 planner、本地通知权限与调度
@@ -50,7 +50,7 @@ flowchart LR
     L --> N[compose Markdown]
     N --> O[write .md]
     L --> TB[TodoReconciler / TodoCompletionSweep]
-    TB --> TC[TodoStore / todo_items]
+    TB --> TC[TodoStore / Vault/Todo.md]
     TC --> P[MainWindowView]
     L --> P[MainWindowView]
     F --> Q[OnboardingView]
@@ -164,7 +164,7 @@ Add Source 与 Daily Memory Export 是边界不同的能力。Daily Memory Expor
 
 ### 3.5 Unified Todo
 
-统一 Todo inbox 是 app 内 SQLite 数据，而不是每日 Markdown 的派生状态。每日 `# 待办事项` 只保留“候选待办”的叙事职责，`todo_items` 才记录 open/completed、来源日期、来源事件、创建/完成时间、完成证据、归集方式与完成方式。
+统一 Todo inbox 的权威状态在 `Vault/Todo.md`，不是每日 Markdown 的派生状态。每日 `# 待办事项` 只保留“候选待办”的叙事职责，`Todo.md` 记录 open/completed、来源日期、来源事件、创建/完成时间、完成证据、归集方式与完成方式。旧 SQLite `todo_items` 表保留为兼容和首次 seed 来源：当 `Todo.md` 不存在但 SQLite 里已有 todo 时，`TodoStore` 会先写出 Markdown 文件。
 
 刷新某一天日记成功后，`AppState` 会：
 
@@ -172,9 +172,9 @@ Add Source 与 Daily Memory Export 是边界不同的能力。Daily Memory Expor
 2. 通过 `TodoReconciler` 把候选项和现有 todo 交给 summarizer 做语义 `create/merge/ignore` 判断
 3. 只对高置信 `create` 自动写入 `TodoStore`，高置信 `merge` 只补充来源证据
 4. 通过 `TodoCompletionSweep` 用新 story 证据保守判断 open todo 是否已经完成
-5. 在 summarizer 不可用或返回不可解析结果时进入 degraded 状态，不做自动归集或自动完成，保留手动 `Add to Todo`
+5. 在 summarizer 不可用或返回不可解析结果时进入 degraded 状态，不做自动归集或自动完成，保留手动 `Add to Todo` 和 Todo 页自由输入
 
-`TodoStore` 是 `DatabaseWriter` 之上的 todo 持久化边界，负责创建、合并来源证据、读取排序和完成标记。它不执行外部动作：v1 的“自动解决”只表示根据后续证据标记完成。
+`TodoStore` 是统一 todo 持久化边界，负责创建、合并来源证据、读取排序、完成标记，以及 Markdown/SQLite 之间的一次性 seed。它不执行外部动作：v1 的“自动解决”只表示根据后续证据标记完成。Todo 会在 app 初始化、打开 Todo 页、日记刷新成功后、手动新增、手动完成时刷新；外部编辑 `Todo.md` 会在下一次 Todo 刷新/open 时读取，当前没有持续文件监听。
 
 当前 `AppState` 也负责晚间回顾提醒配置与通知后的前台路由：
 
@@ -298,7 +298,8 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 - `events`
 - `runs`
-- `todo_items`
+- `todo_items`，仅作为统一 Todo 的兼容/seed 表
+- `Vault/Todo.md`，作为统一 Todo 的权威 Markdown 文件
 
 事件的核心结构定义在 [EventRecord.swift](/Users/wutianfu/Code/know-you/KnowYou/Domain/EventRecord.swift)：
 
@@ -331,7 +332,7 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 其中 `.story.json` 仍是 UI 的主交互工件，`.md` 主要承担可移植导出。主阅读器会继续用 `.story.json` 里的段落和 `sourceEventIDs` 维护段落级 source link，并在正文区按 Markdown 富文本渲染 story 段落；`Source Notes` 不在中间栏显示，而是继续通过右侧来源面板承接追溯交互。onboarding 首屏与权限页都会把这个“本地 Markdown”事实直接展示给用户。
 
-每日 Markdown 里的 `# 待办事项` 不再承担任务状态源职责。它可以显示当天候选待办，但 open/completed、完成证据和排序都来自 SQLite `todo_items`。
+每日 Markdown 里的 `# 待办事项` 不再承担任务状态源职责。它可以显示当天候选待办，但 open/completed、完成证据和排序都来自 `Vault/Todo.md`。
 
 ## 7. 生成层
 
@@ -548,6 +549,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 - 日期按 `MM-dd EEE` 格式显示
 - 左侧一级导航包含 `Todo` 入口，展示 open 数量，并把 open todo 放在 completed 之前
+- `TodoInboxView` 顶部提供自由输入框，输入后立即写入 `Vault/Todo.md`
 - story 段落可点击选中
 - `DailyMarkdownView` 会在待办候选行旁显示 `Add to Todo` 或 `In Todo`
 - 中栏段落按 Markdown 富文本渲染，而不是原样 plain text 输出

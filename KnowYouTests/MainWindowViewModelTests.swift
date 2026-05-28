@@ -2688,6 +2688,38 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.todoItems.first?.promotionKind, .manual)
     }
 
+    func testManualTodoEntryCreatesMarkdownBackedInboxItem() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let environment = try makeTodoEnvironment(
+            writer: writer,
+            summarizer: HandlerSummarizer { _, _, _ in #"{"completed":[]}"# }
+        )
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            currentDate: {
+                DateComponents(
+                    calendar: Calendar(identifier: .gregorian),
+                    year: 2026,
+                    month: 5,
+                    day: 28,
+                    hour: 9
+                ).date!
+            }
+        )
+
+        appState.addTodo(title: "  Prepare the provider config UI copy  ")
+
+        XCTAssertEqual(appState.todoItems.map(\.title), ["Prepare the provider config UI copy"])
+        XCTAssertEqual(appState.todoItems.first?.sourceDayKey, "2026-05-28")
+
+        let markdown = try String(
+            contentsOf: environment.vaultURL.appending(path: "Todo.md"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(markdown.contains("- [ ] Prepare the provider config UI copy"), markdown)
+    }
+
     func testRefreshSelectedDayCompletesOpenTodoFromEvidenceSweep() async throws {
         let dayKey = "2026-05-27"
         let evidenceID = UUID()

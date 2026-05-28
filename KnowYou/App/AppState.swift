@@ -911,6 +911,30 @@ final class AppState {
         }
     }
 
+    func addTodo(title: String) {
+        guard let environment else { return }
+
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty else {
+            return
+        }
+
+        do {
+            _ = try environment.todoStore.createTodo(
+                title: cleanTitle,
+                sourceDayKey: ISO8601DayKey.format(currentDate()),
+                sourceEventIDs: [],
+                createdAt: currentDate(),
+                promotionKind: .manual
+            )
+            refreshTodoItems(using: environment)
+            updateTrackedTodoCandidateIDs()
+            todoAutomationStatusMessage = nil
+        } catch {
+            todoAutomationStatusMessage = "Todo could not be added: \(error.localizedDescription)"
+        }
+    }
+
     func completeTodoItem(id: String) {
         guard let environment else { return }
 

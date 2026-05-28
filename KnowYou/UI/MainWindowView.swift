@@ -46,6 +46,9 @@ struct MainWindowView: View {
                             TodoInboxView(
                                 items: appState.todoItems,
                                 automationStatusMessage: appState.todoAutomationStatusMessage,
+                                onAdd: { title in
+                                    appState.addTodo(title: title)
+                                },
                                 onComplete: { id in
                                     appState.completeTodoItem(id: id)
                                 }

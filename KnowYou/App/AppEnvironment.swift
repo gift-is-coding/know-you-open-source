@@ -70,7 +70,10 @@ final class AppEnvironment {
         self.databaseURL = databaseURL
         self.vaultURL = vaultURL
         self.databaseWriter = databaseWriter
-        self.todoStore = TodoStore(databaseWriter: databaseWriter)
+        self.todoStore = TodoStore(
+            databaseWriter: databaseWriter,
+            documentURL: vaultURL.appending(path: "Todo.md")
+        )
         self.privacyFilter = privacyFilter
         self.notificationReader = notificationReader
         self.composer = DailyMarkdownComposer()

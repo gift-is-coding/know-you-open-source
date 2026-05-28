@@ -68,7 +68,7 @@ struct MyWikiPipelineBridge {
         }
     }
 
-    func runIngest(target: MyWikiPipelineTarget, projectRoot: URL) throws {
+    func runIngest(target: MyWikiPipelineTarget, projectRoot: URL, manifestURL: URL? = nil) throws {
         try FileManager.default.createDirectory(
             at: projectRoot.appending(path: ".llm-wiki", directoryHint: .isDirectory),
             withIntermediateDirectories: true
@@ -80,7 +80,7 @@ struct MyWikiPipelineBridge {
             try writeFailureStatus(message: message, projectRoot: projectRoot)
             throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
         case .developmentSource(let sourceURL):
-            try runDevelopmentPipeline(sourceURL: sourceURL, projectRoot: projectRoot)
+            try runDevelopmentPipeline(sourceURL: sourceURL, projectRoot: projectRoot, manifestURL: manifestURL)
         case .missing:
             let message = "llm_wiki pipeline is not available."
             try writeFailureStatus(message: message, projectRoot: projectRoot)
@@ -131,7 +131,7 @@ struct MyWikiPipelineBridge {
         try data.write(to: projectRoot.appending(path: ".llm-wiki/last-ingest-status.json"))
     }
 
-    private func runDevelopmentPipeline(sourceURL: URL, projectRoot: URL) throws {
+    private func runDevelopmentPipeline(sourceURL: URL, projectRoot: URL, manifestURL: URL?) throws {
         let packageURL = sourceURL.appending(path: "package.json")
         guard FileManager.default.fileExists(atPath: packageURL.path) else {
             let message = "headless llm_wiki runner is not available for development source yet."
@@ -139,22 +139,27 @@ struct MyWikiPipelineBridge {
             throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
         }
 
+        var arguments = [
+            "npm",
+            "run",
+            "knowyou:ingest",
+            "--",
+            "--project",
+            projectRoot.path,
+            "--provider",
+            "codex-cli",
+            "--model",
+            "gpt-5.5",
+            "--max-sources",
+            "\(MyWikiIngestBatchPolicy.maxSourcesPerRun)"
+        ]
+        if let manifestURL {
+            arguments.append(contentsOf: ["--manifest", manifestURL.path])
+        }
+
         let result = try processRunner.run(
             executable: npmExecutable,
-            arguments: [
-                "npm",
-                "run",
-                "knowyou:ingest",
-                "--",
-                "--project",
-                projectRoot.path,
-                "--provider",
-                "codex-cli",
-                "--model",
-                "gpt-5.5",
-                "--max-sources",
-                "\(MyWikiIngestBatchPolicy.maxSourcesPerRun)"
-            ],
+            arguments: arguments,
             workingDirectory: sourceURL,
             timeoutSeconds: 30 * 60
         )

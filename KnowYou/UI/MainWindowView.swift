@@ -6,12 +6,18 @@ private enum MainWindowMode {
     case knowledgeOntology
 }
 
+enum MainWindowWorkspacePolicy {
+    static let usesUnifiedNavigationSplitViewAcrossModes = true
+    static let keepsEngineSelectorInGlobalToolbar = true
+}
+
 struct MainWindowView: View {
     @Environment(AppState.self) private var appState
     @State private var keyMonitor: Any?
     @State private var isShowingEnginePanel = false
     @State private var isShowingAPIDetail = false
     @State private var apiConfigDraft = SummarizerConfig.load()
+    @State private var apiProviderStatuses: [LLMAPIProviderID: EngineRuntimeStatus] = [:]
     @State private var isTestingAPIConnection = false
     @State private var mode: MainWindowMode = .journal
     @State private var selectedMyWikiEntry: MyWikiEntry?
@@ -30,55 +36,13 @@ struct MainWindowView: View {
     }
 
     var body: some View {
-        Group {
-            if mode == .knowledgeOntology {
-                knowledgeOntologyWorkspace
-            } else {
-                NavigationSplitView {
-                    sidebar
-                        .navigationSplitViewColumnWidth(min: 180, ideal: 220)
-                } content: {
-                    Group {
-                        switch appState.mainContentSelection {
-                        case .diary:
-                            diaryReaderView
-                        case .todo:
-                            TodoInboxView(
-                                items: appState.todoItems,
-                                reviewCandidates: appState.todoReviewCandidates,
-                                closeRecommendations: appState.todoCloseRecommendations,
-                                automationStatusMessage: appState.todoAutomationStatusMessage,
-                                onAdd: { title in
-                                    appState.addTodo(title: title)
-                                },
-                                onAddCandidate: { id in
-                                    appState.addTodoCandidate(id: id)
-                                },
-                                onDismissCandidate: { id in
-                                    appState.dismissTodoReviewCandidate(id: id)
-                                },
-                                onComplete: { id in
-                                    appState.completeTodoItem(id: id)
-                                },
-                                onCloseRecommendation: { id in
-                                    appState.closeTodoRecommendation(id: id)
-                                },
-                                onKeepRecommendation: { id in
-                                    appState.keepTodoCloseRecommendation(id: id)
-                                }
-                            )
-                        case .otherSourceManager(let focusAddConnector):
-                            otherSourceManagementView(focusAddConnector: focusAddConnector)
-                        case .knowledgeConnector(let instanceID):
-                            knowledgeSourceView(connectorInstanceID: instanceID)
-                        case .knowledgeDocument(let instanceID, _):
-                            knowledgeSourceView(connectorInstanceID: instanceID)
-                        }
-                    }
-                } detail: {
-                    detailPane
-                }
-            }
+        NavigationSplitView {
+            sidebar
+                .navigationSplitViewColumnWidth(min: 180, ideal: 220)
+        } content: {
+            mainContentPane
+        } detail: {
+            detailPane
         }
         .frame(minWidth: 1240, minHeight: 720)
         .overlay(alignment: .top) {
@@ -168,9 +132,10 @@ struct MainWindowView: View {
             }
         }
         .sheet(isPresented: $isShowingAPIDetail) {
-            APIDetailSheet(
+            LLMAPIDetailSheet(
                 config: $apiConfigDraft,
-                status: appState.engineStatuses[.openAI] ?? EngineRuntimeStatus(),
+                activeStatus: appState.engineStatuses[.llmAPI] ?? EngineRuntimeStatus(),
+                providerStatuses: apiProviderStatuses,
                 isTesting: isTestingAPIConnection,
                 onClose: {
                     isShowingAPIDetail = false
@@ -179,7 +144,8 @@ struct MainWindowView: View {
                     saveAPIConfig()
                     isShowingAPIDetail = false
                 },
-                onTest: testAPIConnection
+                onTestProvider: testAPIProvider,
+                onSetActive: setActiveAPIProvider
             )
         }
         .sheet(
@@ -211,7 +177,7 @@ struct MainWindowView: View {
             selectedItemID: selectedSidebarItemID,
             knowledgeImportConfig: appState.knowledgeImportConfig,
             knowledgeDocumentsByConnector: appState.knowledgeDocumentsByConnector,
-            isActive: mode == .journal && appState.readerFocus == .dateList,
+            isActive: mode == .knowledgeOntology || (mode == .journal && appState.readerFocus == .dateList),
             isKnowledgeOntologySelected: mode == .knowledgeOntology,
             todoOpenCount: appState.openTodoCount,
             onSelectDiaryDate: { dayKey in
@@ -241,23 +207,62 @@ struct MainWindowView: View {
         )
     }
 
-    private var knowledgeOntologyWorkspace: some View {
-        HStack(spacing: 0) {
-            sidebar
-                .frame(width: 228)
+    @ViewBuilder
+    private var mainContentPane: some View {
+        if mode == .knowledgeOntology {
+            knowledgeOntologyContent
+        } else {
+            switch appState.mainContentSelection {
+            case .diary:
+                diaryReaderView
+            case .todo:
+                TodoInboxView(
+                    items: appState.todoItems,
+                    reviewCandidates: appState.todoReviewCandidates,
+                    closeRecommendations: appState.todoCloseRecommendations,
+                    automationStatusMessage: appState.todoAutomationStatusMessage,
+                    onAdd: { title in
+                        appState.addTodo(title: title)
+                    },
+                    onAddCandidate: { id in
+                        appState.addTodoCandidate(id: id)
+                    },
+                    onDismissCandidate: { id in
+                        appState.dismissTodoReviewCandidate(id: id)
+                    },
+                    onComplete: { id in
+                        appState.completeTodoItem(id: id)
+                    },
+                    onCloseRecommendation: { id in
+                        appState.closeTodoRecommendation(id: id)
+                    },
+                    onKeepRecommendation: { id in
+                        appState.keepTodoCloseRecommendation(id: id)
+                    }
+                )
+            case .otherSourceManager(let focusAddConnector):
+                otherSourceManagementView(focusAddConnector: focusAddConnector)
+            case .knowledgeConnector(let instanceID):
+                knowledgeSourceView(connectorInstanceID: instanceID)
+            case .knowledgeDocument(let instanceID, _):
+                knowledgeSourceView(connectorInstanceID: instanceID)
+            }
+        }
+    }
 
-            Divider()
-
+    private var knowledgeOntologyContent: some View {
+        ZStack {
+            Color.black
             KnowledgeOntologyPanel(
                 sourceVault: appState.environment?.vaultURL,
                 projectRoot: knowledgeOntologyProjectRoot,
                 developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL(),
                 bundledHelperAppURL: KnowledgeOntologyLauncher.defaultBundledHelperAppURL(),
+                importedDocuments: appState.knowledgeDocumentsByConnector.values.flatMap { $0 },
                 selectedEntry: $selectedMyWikiEntry
             )
             .frame(minWidth: 860, maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color.black)
     }
 
     private var currentEngineTitle: String {
@@ -316,23 +321,31 @@ struct MainWindowView: View {
 
     private var detailPane: some View {
         Group {
-            switch appState.mainContentSelection {
-            case .diary:
-                StorySourceDetailView(
-                    selectedParagraph: appState.selectedStoryParagraph,
-                    selectedEvents: appState.selectedStorySourceEvents,
-                    allEvents: appState.selectedDayEvents
-                )
-                .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
-                .onboardingCoachmarkTarget(.sourcesPanel)
-            case .todo, .otherSourceManager, .knowledgeConnector, .knowledgeDocument:
+            if mode == .knowledgeOntology {
                 Color.clear
                     .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 0)
+            } else {
+                switch appState.mainContentSelection {
+                case .diary:
+                    StorySourceDetailView(
+                        selectedParagraph: appState.selectedStoryParagraph,
+                        selectedEvents: appState.selectedStorySourceEvents,
+                        allEvents: appState.selectedDayEvents
+                    )
+                    .navigationSplitViewColumnWidth(min: 320, ideal: 360, max: 420)
+                    .onboardingCoachmarkTarget(.sourcesPanel)
+                case .todo, .otherSourceManager, .knowledgeConnector, .knowledgeDocument:
+                    Color.clear
+                        .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 0)
+                }
             }
         }
     }
 
     private var selectedSidebarItemID: String? {
+        if mode == .knowledgeOntology {
+            return "my-wiki"
+        }
         switch appState.mainContentSelection {
         case .diary(let dayKey):
             return dayKey.map { "diary:\($0)" } ?? "diary-root"
@@ -550,23 +563,34 @@ struct MainWindowView: View {
 
     private func openAPIDetail() {
         apiConfigDraft = SummarizerConfig.load()
-        apiConfigDraft.defaultEngine = .openAI
+        apiConfigDraft.defaultEngine = .llmAPI
+        apiProviderStatuses = [
+            apiConfigDraft.activeLLMAPIProviderID: appState.engineStatuses[.llmAPI] ?? EngineRuntimeStatus()
+        ]
         isShowingEnginePanel = false
         isShowingAPIDetail = true
     }
 
     private func saveAPIConfig() {
         var config = apiConfigDraft
-        config.defaultEngine = .openAI
+        config.defaultEngine = .llmAPI
         appState.applyEngineConfig(config)
         apiConfigDraft = config
+        apiProviderStatuses[config.activeLLMAPIProviderID] = appState.engineStatuses[.llmAPI] ?? EngineRuntimeStatus()
     }
 
-    private func testAPIConnection() {
+    private func setActiveAPIProvider(_ providerID: LLMAPIProviderID) {
+        apiConfigDraft.activeLLMAPIProviderID = providerID
         saveAPIConfig()
+    }
+
+    private func testAPIProvider(_ providerID: LLMAPIProviderID) {
+        saveAPIConfig()
+        let draft = apiConfigDraft
         isTestingAPIConnection = true
         Task { @MainActor in
-            await appState.retestEngine(.openAI)
+            let status = await appState.testLLMAPIProvider(providerID, draftConfig: draft)
+            apiProviderStatuses[providerID] = status
             isTestingAPIConnection = false
         }
     }

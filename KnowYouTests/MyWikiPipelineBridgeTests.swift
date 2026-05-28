@@ -107,9 +107,60 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
                 "3"
             ]
         )
+        XCTAssertFalse(runner.calls[0].arguments.contains("--manifest"))
 
         let statusText = try String(contentsOf: root.appending(path: ".llm-wiki/last-ingest-status.json"), encoding: .utf8)
         XCTAssertTrue(statusText.contains(#""status":"succeeded""#), statusText)
+    }
+
+    func testRunIngestPassesManifestToDevelopmentHeadlessRunner() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let dev = root.appending(path: "ThirdParty/llm_wiki", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: dev, withIntermediateDirectories: true)
+        try #"{"scripts":{"knowyou:ingest":"node scripts/knowyou-ingest-runner.mjs"}}"#.write(
+            to: dev.appending(path: "package.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let manifestURL = root.appending(path: "raw/source-selection-manifest.json")
+        let runner = RecordingMyWikiPipelineRunner(
+            result: MyWikiPipelineProcessResult(
+                stdout: #"{"status":"succeeded","sourcesProcessed":1}"#,
+                stderr: "",
+                terminationStatus: 0
+            )
+        )
+
+        try MyWikiPipelineBridge(processRunner: runner).runIngest(
+            target: .developmentSource(dev),
+            projectRoot: root,
+            manifestURL: manifestURL
+        )
+
+        XCTAssertEqual(runner.calls.count, 1)
+        XCTAssertEqual(
+            runner.calls[0].arguments,
+            [
+                "npm",
+                "run",
+                "knowyou:ingest",
+                "--",
+                "--project",
+                root.path,
+                "--provider",
+                "codex-cli",
+                "--model",
+                "gpt-5.5",
+                "--max-sources",
+                "3",
+                "--manifest",
+                manifestURL.path
+            ]
+        )
     }
 
     func testRunIngestWritesFailureStatusWhenDevelopmentRunnerFails() throws {

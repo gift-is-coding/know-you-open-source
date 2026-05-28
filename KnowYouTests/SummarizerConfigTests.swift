@@ -44,12 +44,13 @@ final class SummarizerConfigTests: XCTestCase {
 
     func testSaveAndLoadRoundTripsOpenAIConfig() {
         var config = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
-        config.type = .openAI
+        config.type = .llmAPI
         config.openAIKey = "sk-test-abc"
         config.save(to: defaults, keychain: keychain, keychainService: "tests")
 
         let loaded = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
-        XCTAssertEqual(loaded.type, .openAI)
+        XCTAssertEqual(loaded.type, .llmAPI)
+        XCTAssertEqual(loaded.activeLLMAPIProviderID, .openAI)
         XCTAssertEqual(loaded.openAIKey, "sk-test-abc")
     }
 
@@ -77,17 +78,93 @@ final class SummarizerConfigTests: XCTestCase {
 
     func testSaveAndLoadRoundTripsOpenAICompatibleAPISettings() {
         var config = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
-        config.defaultEngine = .openAI
-        config.apiBaseURL = "https://example.com/v1/responses"
-        config.apiModel = "gpt-4.1-mini"
-        config.apiToken = "token-test-123"
+        config.defaultEngine = .llmAPI
+        config.activeLLMAPIProviderID = .openRouter
+        config.apiBaseURL = "https://openrouter.ai/api/v1"
+        config.apiModel = "openai/gpt-5"
+        config.apiToken = "token-router-123"
         config.save(to: defaults, keychain: keychain, keychainService: "tests")
 
         let loaded = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
-        XCTAssertEqual(loaded.defaultEngine, .openAI)
-        XCTAssertEqual(loaded.apiBaseURL, "https://example.com/v1/responses")
-        XCTAssertEqual(loaded.apiModel, "gpt-4.1-mini")
-        XCTAssertEqual(loaded.apiToken, "token-test-123")
+        XCTAssertEqual(loaded.defaultEngine, .llmAPI)
+        XCTAssertEqual(loaded.activeLLMAPIProviderID, .openRouter)
+        XCTAssertEqual(loaded.apiBaseURL, "https://openrouter.ai/api/v1")
+        XCTAssertEqual(loaded.apiModel, "openai/gpt-5")
+        XCTAssertEqual(loaded.apiToken, "token-router-123")
+    }
+
+    func testSaveAndLoadRoundTripsMultipleLLMAPIProvidersAndActiveProvider() throws {
+        var config = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+        config.defaultEngine = .llmAPI
+        config.setLLMAPIProviderConfig(
+            LLMAPIProviderConfig(
+                id: .anthropic,
+                baseURL: "https://api.anthropic.com/v1/messages",
+                model: "claude-sonnet-4-5",
+                wireFormat: .anthropicMessages,
+                apiToken: "sk-ant-test"
+            )
+        )
+        config.setLLMAPIProviderConfig(
+            LLMAPIProviderConfig(
+                id: .deepSeek,
+                baseURL: "https://api.deepseek.com",
+                model: "deepseek-v4-pro",
+                wireFormat: .openAIChat,
+                apiToken: "sk-deepseek-test"
+            )
+        )
+        config.activeLLMAPIProviderID = .deepSeek
+
+        config.save(to: defaults, keychain: keychain, keychainService: "tests")
+
+        let loaded = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+        XCTAssertEqual(loaded.defaultEngine, .llmAPI)
+        XCTAssertEqual(loaded.activeLLMAPIProviderID, .deepSeek)
+        XCTAssertEqual(loaded.llmAPIProviderConfig(for: .anthropic)?.apiToken, "sk-ant-test")
+        XCTAssertEqual(loaded.llmAPIProviderConfig(for: .deepSeek)?.apiToken, "sk-deepseek-test")
+        XCTAssertEqual(loaded.llmAPIProviderConfig(for: .anthropic)?.wireFormat, .anthropicMessages)
+        XCTAssertEqual(loaded.llmAPIProviderConfig(for: .deepSeek)?.wireFormat, .openAIChat)
+
+        let persistedBlob = try XCTUnwrap(defaults.data(forKey: "summarizerLLMAPIProviderConfigs"))
+        let persistedString = String(decoding: persistedBlob, as: UTF8.self)
+        XCTAssertFalse(persistedString.contains("sk-ant-test"))
+        XCTAssertFalse(persistedString.contains("sk-deepseek-test"))
+    }
+
+    func testProviderWireFormatIsNormalizedToDescriptorDefault() throws {
+        var config = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+        config.defaultEngine = .llmAPI
+        config.setLLMAPIProviderConfig(
+            LLMAPIProviderConfig(
+                id: .anthropic,
+                baseURL: "https://api.anthropic.com/v1/messages",
+                model: "claude-sonnet-4-5",
+                wireFormat: .openAIChat,
+                apiToken: "sk-ant-test"
+            )
+        )
+        config.activeLLMAPIProviderID = .anthropic
+
+        config.save(to: defaults, keychain: keychain, keychainService: "tests")
+
+        let loaded = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+        XCTAssertEqual(loaded.llmAPIProviderConfig(for: .anthropic)?.wireFormat, .anthropicMessages)
+    }
+
+    func testLoadDefaultsMissingProviderWireFormat() throws {
+        defaults.set("llmAPI", forKey: "summarizerDefaultEngine")
+        defaults.set("anthropic", forKey: "summarizerActiveLLMAPIProviderID")
+        defaults.set(
+            Data(#"[{"id":"anthropic","baseURL":"https://api.anthropic.com/v1/messages","model":"claude-sonnet-4-5"}]"#.utf8),
+            forKey: "summarizerLLMAPIProviderConfigs"
+        )
+
+        let loaded = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+
+        XCTAssertEqual(loaded.activeLLMAPIProviderID, .anthropic)
+        XCTAssertEqual(loaded.llmAPIProviderConfig(for: .anthropic)?.wireFormat, .anthropicMessages)
+        XCTAssertEqual(loaded.llmAPIProviderConfig(for: .anthropic)?.baseURL, "https://api.anthropic.com/v1/messages")
     }
 
     func testLoadIgnoresAndClearsLegacyGlobalDiaryPromptOverride() {
@@ -109,7 +186,7 @@ final class SummarizerConfigTests: XCTestCase {
 
     func testMakeSummarizerRejectsMalformedAPIBaseURL() {
         var config = SummarizerConfig.load(from: defaults)
-        config.defaultEngine = .openAI
+        config.defaultEngine = .llmAPI
         config.apiBaseURL = "not-a-url"
         config.apiModel = "gpt-4.1-mini"
         config.apiToken = "token-test-123"
@@ -120,14 +197,16 @@ final class SummarizerConfigTests: XCTestCase {
 
     func testMakeSummarizerPlumbsCustomAPIBaseURLAndModelIntoCloudSummarizer() throws {
         var config = SummarizerConfig.load(from: defaults)
-        config.defaultEngine = .openAI
-        config.apiBaseURL = "https://example.com/v1/responses"
-        config.apiModel = "gpt-4.1-mini"
+        config.defaultEngine = .llmAPI
+        config.activeLLMAPIProviderID = .customOpenAICompatible
+        config.apiBaseURL = "https://example.com/v1"
+        config.apiModel = "openai/gpt-5"
         config.apiToken = "token-test-123"
 
         let summarizer = try XCTUnwrap(config.makeSummarizer() as? CloudSummarizer)
-        XCTAssertEqual(summarizer.apiURL, URL(string: "https://example.com/v1/responses"))
-        XCTAssertEqual(summarizer.model, "gpt-4.1-mini")
+        XCTAssertEqual(summarizer.apiURL, URL(string: "https://example.com/v1"))
+        XCTAssertEqual(summarizer.model, "openai/gpt-5")
+        XCTAssertEqual(summarizer.providerConfig.id, .customOpenAICompatible)
     }
 
     func testLoadReadsLegacyEngineAndOpenAIKeychainValues() {
@@ -136,13 +215,44 @@ final class SummarizerConfigTests: XCTestCase {
 
         let loaded = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
 
-        XCTAssertEqual(loaded.defaultEngine, .openAI)
+        XCTAssertEqual(loaded.defaultEngine, .llmAPI)
+        XCTAssertEqual(loaded.activeLLMAPIProviderID, .openAI)
         XCTAssertEqual(loaded.apiToken, "sk-legacy-123")
+    }
+
+    func testLoadMigratesLegacyOpenAICompatibleURLToMatchingProvider() {
+        defaults.set("openAI", forKey: "summarizerDefaultEngine")
+        defaults.set("https://dashscope.aliyuncs.com/compatible-mode/v1", forKey: "summarizerAPIBaseURL")
+        defaults.set("qwen-max", forKey: "summarizerAPIModel")
+        keychain.save("sk-legacy-qwen", forKey: "summarizerAPIToken", service: "tests")
+
+        let loaded = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+
+        XCTAssertEqual(loaded.defaultEngine, .llmAPI)
+        XCTAssertEqual(loaded.activeLLMAPIProviderID, .qwen)
+        XCTAssertEqual(loaded.llmAPIProviderConfig(for: .qwen)?.baseURL, "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        XCTAssertEqual(loaded.llmAPIProviderConfig(for: .qwen)?.model, "qwen-max")
+        XCTAssertEqual(loaded.llmAPIProviderConfig(for: .qwen)?.apiToken, "sk-legacy-qwen")
+    }
+
+    func testLoadMigratesUnknownLegacyURLToCustomProvider() {
+        defaults.set("openAI", forKey: "summarizerDefaultEngine")
+        defaults.set("https://llm.example.com/v1", forKey: "summarizerAPIBaseURL")
+        defaults.set("custom-model", forKey: "summarizerAPIModel")
+        keychain.save("sk-legacy-custom", forKey: "summarizerAPIToken", service: "tests")
+
+        let loaded = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests")
+
+        XCTAssertEqual(loaded.activeLLMAPIProviderID, .customOpenAICompatible)
+        XCTAssertEqual(loaded.llmAPIProviderConfig(for: .customOpenAICompatible)?.baseURL, "https://llm.example.com/v1")
+        XCTAssertEqual(loaded.llmAPIProviderConfig(for: .customOpenAICompatible)?.model, "custom-model")
+        XCTAssertEqual(loaded.llmAPIProviderConfig(for: .customOpenAICompatible)?.wireFormat, .openAIChat)
+        XCTAssertEqual(loaded.llmAPIProviderConfig(for: .customOpenAICompatible)?.apiToken, "sk-legacy-custom")
     }
 
     func testMakeSummarizerReturnsNilForIncompleteOpenAICompatibleAPISettings() {
         var config = SummarizerConfig.load(from: defaults)
-        config.defaultEngine = .openAI
+        config.defaultEngine = .llmAPI
         config.apiBaseURL = ""
         config.apiModel = ""
         config.apiToken = ""
@@ -153,7 +263,7 @@ final class SummarizerConfigTests: XCTestCase {
 
     func testKeychainStorageIsScopedByService() {
         var config = SummarizerConfig.load(from: defaults, keychain: keychain, keychainService: "tests-a")
-        config.type = .openAI
+        config.type = .llmAPI
         config.openAIKey = "sk-test-a"
         config.save(to: defaults, keychain: keychain, keychainService: "tests-a")
 
@@ -175,14 +285,14 @@ final class SummarizerConfigTests: XCTestCase {
 
     func testMakeSummarizerReturnsNonNilForOpenAIWithKey() {
         var config = SummarizerConfig.load(from: defaults)
-        config.type = .openAI
+        config.type = .llmAPI
         config.openAIKey = "sk-test-xyz"
         XCTAssertNotNil(config.makeSummarizer())
     }
 
     func testMakeSummarizerReturnsNilForOpenAIWithEmptyKey() {
         var config = SummarizerConfig.load(from: defaults)
-        config.type = .openAI
+        config.type = .llmAPI
         config.openAIKey = ""
         XCTAssertNil(config.makeSummarizer())
     }

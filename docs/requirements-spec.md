@@ -96,7 +96,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 左上标题栏更新提醒胶囊与更新 sheet
 - 晚间回顾本地通知提醒
 - 可选 diary engine：
-  - OpenAI API
+  - LLM API
   - Codex Auth
   - Claude Code CLI
   - Codex CLI
@@ -210,17 +210,19 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 单个 source 扫描失败不得阻塞其他 source。
 - 用户必须能手动触发 `Refresh`，它只重新扫描本地目录。
 - 当启用每日 source scan 时，系统必须安装独立于 Daily Memory Export 的用户级 `LaunchAgent`。
-- 侧边栏必须始终显示 `Add Source` 一级目录。
-- `Add Source` 必须是独立入口，不得折叠或收起其他来源。
+- 侧边栏必须始终显示 `My Wiki`、`Other Source`、`My Diary` 三个同级一级入口。
+- `My Wiki`、`Other Source`、`My Diary` 必须使用同一套 sidebar row 组件、字号、图标尺寸、行高和选中态。
+- 右上角 engine selector 必须固定在主窗口全局 toolbar 中，不得随 `My Wiki`、`Other Source`、`My Diary` 的内容切换改变位置或变成页面内部组件。
+- `Other Source` 必须是独立入口，不得折叠或收起其他来源。
 - `My Diary` 必须作为内置来源与 Obsidian、Local Folder、Feishu/Lark、Notion、Google Drive 等外部来源平行呈现。
-- `Add Source` 必须打开来源管理页，而不是混合资料总览页。
-- `Add Source` 主页面不得展示 Daily Memory Export；Daily Memory Export 必须保留底层能力，但不得与 Add Source 的导入流程混在一起。
-- `Add Source` 主页面必须说明本地资料以 reference-only 方式读取，源文件不会被复制或修改，并说明去重与 Obsidian 日记导出回环规避规则。
-- `Add Source` 主页面不得出现顶部重复的 `Add Connector` 入口，所有未连接、已连接或异常来源必须在一个 `Sources` 列表中呈现。
-- `Add Source` 主页面不得提供泛化的 `Add API` 选项；外部平台必须以平台名称或本地文件来源名称呈现。
+- `Other Source` 必须打开来源管理页，而不是混合资料总览页。
+- `Other Source` 主页面不得展示 Daily Memory Export；Daily Memory Export 必须保留底层能力，但不得与 Other Source 的导入流程混在一起。
+- `Other Source` 主页面必须说明本地资料以 reference-only 方式读取，源文件不会被复制或修改，并说明去重与 Obsidian 日记导出回环规避规则。
+- `Other Source` 主页面不得出现顶部重复的 `Add Connector` 入口，所有未连接、已连接或异常来源必须在一个 `Sources` 列表中呈现。
+- `Other Source` 主页面不得提供泛化的 `Add API` 选项；外部平台必须以平台名称或本地文件来源名称呈现。
 - Feishu/Lark、Notion 和 Google Drive 的 `Generate Prompt` 必须打开弹窗，不得在 `Sources` 列表下方插入 inline prompt 表单。
 - Prompt 生成器默认更新频率为 daily，默认更新时间为本地时间 `11:00`。
-- 添加 source 后，该 source 必须作为 `Add Source` 下的并列来源条目出现。
+- 添加 source 后，该 source 必须作为 `Other Source` 管理的并列来源条目出现。
 - 点击连接器来源条目必须在侧边栏展开或折叠该来源的路径层级；点击 Markdown/TXT 文档叶子必须打开 Markdown 预览。
 - Add Source 卡片和侧边栏来源条目必须优先使用已有真实品牌 logo；Obsidian、Feishu/Lark、Notion、Google Drive 不得使用泛化系统图标。
 - 侧边栏文件树必须从 connector root 下的相对路径展示；如果导入路径重复包含 connector root 文件夹名，不得多显示一层同名包装目录。
@@ -422,7 +424,7 @@ onboarding 的配置约束为：
 - 主窗口左侧栏必须提供 `My Wiki` 入口
 - 点击 `My Wiki` 后，主内容区必须切换到黑色背景的 My Wiki 首页，而不是打开旧式 toolbar sheet
 - My Wiki 首页必须优先展示用户可理解的内容：搜索、来源、实体、概念、关系线索和需要复核的线索
-- 面向用户的 My Wiki 控件、按钮和栏目文案必须使用英文，例如 `Organize Journals`、`Sources`、`Entities`、`Concepts`
+- 面向用户的 My Wiki 控件、按钮和栏目文案必须使用英文，例如 `Update My Wiki`、`Manage Sources`、`Sources`、`Entities`、`Concepts`
 - 点击 My Wiki 条目后，右侧详情栏必须显示该条目的标题、分类、摘要、近期提及、相关项和完整 Markdown 正文；不得停留在静态 placeholder。摘要只在顶部 header 中显示，不得再重复渲染一个独立 `Summary` 卡片。`Sources` 必须放在详情内容最后，仍可点击打开 source
 - My Wiki 主界面不得重复显示分类 tabs 和分组标题；左侧只保留搜索与可展开分组
 - My Wiki 分类必须从项目级 `mywiki.schema.json` 读取，不得写死在 Swift UI enum 或固定 tabs 中
@@ -434,7 +436,16 @@ onboarding 的配置约束为：
 - 用户可见分类名称必须来自 schema；默认不强行拆分 People/Projects/Topics 等细分类。旧 `wiki/people`、`wiki/organizations`、`wiki/projects`、`wiki/events` 必须读入 `Entities`，旧 `wiki/topics`、`wiki/decisions`、`wiki/preferences`、`wiki/follow-ups`、`wiki/summaries` 必须读入 `Concepts`
 - 主界面不得展示 `tag:` 一类内部字段；别名应展示为 `Also known as`，关系应展示为 `Related`
 - `Open Project`、journal count、last date 等维护信息必须进入 `More > Wiki Status / Reveal Wiki Folder`，不得占据主阅读界面
-- `More` 菜单必须提供轻量 `Source Library` 入口，允许用户选择文件夹、导入文件或拖拽素材，并能区分全局 source 处理进度与单个 entity 的 evidence source 数
+- My Wiki 左侧进度区域必须把 progress card 作为纯状态展示，并在旁边提供明确的 `Manage Sources` 按钮；不得要求用户点击进度卡片才能打开 source 管理
+- `More` 菜单必须提供 `Manage Sources` 入口，展示持久分层 source catalog，而不是只展示已复制的 raw files。该 catalog 必须包含 My Diary、外部 connector 文档和手动导入文档，并保留 source folder 层级
+- `Source Library` 必须支持按 title/path 搜索、按 processing status 过滤、目录三态选择、单个 source include/exclude，以及 `Include Visible`、`Exclude Visible`、`Invert Visible` 批量操作
+- `Source Library` 必须使用宽面板和左右布局：左侧主要展示 source tree，右侧展示状态统计、筛选、批量操作、`Manual Uploads` 导入区、`Update My Wiki` 和 `Close`
+- 手动 drop/import 的文件必须复制到底层 `raw/sources/Manual Imports`，但 UI root 必须显示为 `Manual Uploads`；导入后默认 included 且 `Pending`，但不得自动进入 ingest
+- Source 选择变更必须立即保存到 `.knowyou/source-catalog.json`；`Close` 只关闭窗口，只有点击 `Update My Wiki` 才能触发 My Wiki ingest
+- My Diary source 首次出现时必须默认 included，但用户可以取消选择；external connector source 首次出现时必须默认 not included，只有用户主动 include 后才允许进入 My Wiki ingest
+- 已经 indexed 的 source 被取消选择时，系统不得删除旧 `wiki/sources`、entity 或 concept 输出；该 source 应显示为 `Excluded, indexed` 并从后续 ingest plan 排除
+- 已经 indexed 且内容未变的 source 再次 included 时不得重复处理；内容 hash 变化后应显示为 `Changed` 并进入下一次 Update My Wiki
+- Source Catalog 状态必须保存在 My Wiki project 本地 `.knowyou/source-catalog.json` 中，至少记录 stable source identity、inclusion state、content hash、last indexed checkpoint、raw source path、summary path 和 folder context
 - `Edit` 必须统一编辑 display name、aliases 与 summary
 - 改名保存前必须检测同分类 title 或 slug 冲突；有冲突时不得直接覆盖，必须引导用户保留当前名称、另选名称或进入合并审核
 - 主动发现疑似重复实体必须由用户显式触发或仅在有真实候选时提示；系统不得固定展示假的 duplicate 状态
@@ -443,11 +454,13 @@ onboarding 的配置约束为：
 - 没有生成内容时，首页也必须保留这些核心栏目位置，并用空状态说明下一步是整理日记
 - 系统必须能创建 My Wiki 项目结构，包括 `purpose.md`、`mywiki.schema.json`、`schema.md`、`raw/sources/` 和 schema 中声明的各个 `wiki/` 目录
 - 默认 schema 目录必须使用 `wiki/sources`、`wiki/entities`、`wiki/concepts`；读取层仍需兼容 legacy People/Projects/Topics/Preferences/Follow-ups/Summaries 等旧目录，但不得默认创建这些旧目录
-- 系统必须能把已有 `YYYY-MM-DD.md` 日记同步为 `raw/sources/knowyou-diary-YYYY-MM-DD.md`
-- 重复同步同一天日记必须覆盖稳定文件名，不得生成重复文件
+- 系统必须能把已有 `YYYY-MM-DD.md` 日记通过 Source Catalog materialization 写入 `raw/sources/My Diary/knowyou-diary-YYYY-MM-DD.md`，并保留 `knowyou`、`diary` source tags
+- 重复 materialize 同一天日记必须覆盖稳定文件名，不得生成重复文件
 - My Wiki 必须尽量复用 `ThirdParty/llm_wiki` 的后端 pipeline，包括 LLM ingest、cache、search、page merge、source traceability、dedup/review 和 vector store；普通用户首页不得直接暴露复杂工作台
-- 默认 My Wiki pipeline 每次运行最多处理 3 个 source，并且在限定批量时优先选择还没有 `wiki/sources/<source>.md` 的最新 raw source；旧生成内容清理后重跑也必须按小批次逐步推进
+- `Update My Wiki` 必须先刷新 Source Catalog，再只把 included 且 pending、changed、failed，或 summary 缺失的 source materialize 到 `raw/sources` 并写入显式 ingest manifest；external source 仅出现在 catalog 中不得被静默 ingest
+- 默认 My Wiki pipeline 每次运行最多处理 3 个 manifest source；旧生成内容清理后重跑也必须按小批次逐步推进
 - LLM Wiki headless runner 对原生 `Sources / Entities / Concepts` schema 不得生成 KnowYou 自定义 output contract，必须尽量复用 llm_wiki 默认生成路径；非原生自定义目录可把 schema 信息写入 guide，但默认 pipeline 不得因此替换 llm_wiki 原生 prompt
+- LLM Wiki headless runner 收到 manifest 时必须只处理 manifest 内列出的 project-relative `raw/sources` 路径，并把 source 的 `folderContext` 传给原生 `autoIngest`；它不得通过扫描整个 `raw/sources` 目录决定本次 eligible source set
 - 默认 My Wiki 生成必须保留 LLM Wiki 原生 generation targets 和两阶段 `autoIngest` prompt；KnowYou 不得用动态 My Wiki generation target 或单独页面正文 prompt 替换原生 prompt。KnowYou 只允许在 schema/purpose 层追加轻量标签提示
 - LLM Wiki `auto` 输出语言模式必须跟随 source 主语言，但保留人名、产品名、工具名、缩写和英文术语原文；翻译或中文解释只能进入 aliases、tags 或正文说明。显式用户语言设置仍可强制输出语言
 - My Wiki 的正式本体抽取、关系发现、去重、总结和 agent context 必须使用 LLM 语义能力，不得用 keyword/regex/starter extractor 伪造可信本体页

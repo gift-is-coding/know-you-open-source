@@ -259,12 +259,12 @@ final class EngineProbeTests: XCTestCase {
         let runner = StubProcessRunner(behavior: .success(ProcessExecutionResult(stdout: "unused", stderr: "", terminationStatus: 0, duration: 0)))
         let probe = EngineProbe(session: StubURLProtocol.makeSession(), processRunner: runner)
         var config = SummarizerConfig.default
-        config.defaultEngine = .openAI
+        config.defaultEngine = .llmAPI
         config.apiBaseURL = ""
         config.apiModel = ""
         config.apiToken = ""
 
-        let result = await probe.probe(engine: .openAI, config: config, environment: [:])
+        let result = await probe.probe(engine: .llmAPI, config: config, environment: [:])
 
         XCTAssertEqual(result.state, .gray)
         XCTAssertEqual(StubURLProtocol.requestCount, 0)
@@ -279,12 +279,12 @@ final class EngineProbeTests: XCTestCase {
             )
         )
         var config = SummarizerConfig.default
-        config.defaultEngine = .openAI
+        config.defaultEngine = .llmAPI
         config.apiBaseURL = "https://example.com/v1/responses"
         config.apiModel = "gpt-4.1-mini"
         config.apiToken = "token-test-123"
 
-        let result = await probe.probe(engine: .openAI, config: config, environment: [:])
+        let result = await probe.probe(engine: .llmAPI, config: config, environment: [:])
 
         XCTAssertEqual(result.state, .yellow)
         XCTAssertEqual(StubURLProtocol.requestCount, 1)
@@ -299,12 +299,12 @@ final class EngineProbeTests: XCTestCase {
             )
         )
         var config = SummarizerConfig.default
-        config.defaultEngine = .openAI
+        config.defaultEngine = .llmAPI
         config.apiBaseURL = "https://example.com/v1/responses"
         config.apiModel = "gpt-4.1-mini"
         config.apiToken = "token-test-123"
 
-        let result = await probe.probe(engine: .openAI, config: config, environment: [:])
+        let result = await probe.probe(engine: .llmAPI, config: config, environment: [:])
 
         XCTAssertEqual(result.state, .green)
         XCTAssertEqual(StubURLProtocol.requestCount, 1)
@@ -319,16 +319,44 @@ final class EngineProbeTests: XCTestCase {
             )
         )
         var config = SummarizerConfig.default
-        config.defaultEngine = .openAI
+        config.defaultEngine = .llmAPI
         config.apiBaseURL = "https://example.com/v1/responses"
         config.apiModel = "gpt-4.1-mini"
         config.apiToken = "token-test-123"
 
-        let result = await probe.probe(engine: .openAI, config: config, environment: [:])
+        let result = await probe.probe(engine: .llmAPI, config: config, environment: [:])
 
         XCTAssertEqual(result.state, .green)
-        XCTAssertEqual(result.detail, "API returned non-empty text.")
+        XCTAssertEqual(result.detail, "OpenAI returned non-empty text.")
         XCTAssertEqual(StubURLProtocol.requestCount, 1)
+    }
+
+    func testAPIProbeUsesActiveOpenAICompatibleProvider() async throws {
+        StubURLProtocol.behavior = .success(
+            statusCode: 200,
+            body: Data(#"{"choices":[{"message":{"content":"OK"}}]}"#.utf8)
+        )
+        let probe = EngineProbe(
+            session: StubURLProtocol.makeSession(),
+            processRunner: StubProcessRunner(
+                behavior: .success(ProcessExecutionResult(stdout: "unused", stderr: "", terminationStatus: 0, duration: 0))
+            )
+        )
+        var config = SummarizerConfig.default
+        config.defaultEngine = .llmAPI
+        config.activeLLMAPIProviderID = .deepSeek
+        config.apiBaseURL = "https://api.deepseek.com"
+        config.apiModel = "deepseek-v4-pro"
+        config.apiToken = "token-deepseek-123"
+
+        let result = await probe.probe(engine: .llmAPI, config: config, environment: [:])
+
+        XCTAssertEqual(result.state, .green)
+        XCTAssertEqual(result.detail, "DeepSeek returned non-empty text.")
+        XCTAssertEqual(StubURLProtocol.requestCount, 1)
+        let request = try XCTUnwrap(StubURLProtocol.lastRequest)
+        XCTAssertEqual(request.url, URL(string: "https://api.deepseek.com/chat/completions"))
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer token-deepseek-123")
     }
 
     func testAPIProbeReturnsYellowWhenResponseContainsNoText() async {
@@ -340,12 +368,12 @@ final class EngineProbeTests: XCTestCase {
             )
         )
         var config = SummarizerConfig.default
-        config.defaultEngine = .openAI
+        config.defaultEngine = .llmAPI
         config.apiBaseURL = "https://example.com/v1/responses"
         config.apiModel = "gpt-4.1-mini"
         config.apiToken = "token-test-123"
 
-        let result = await probe.probe(engine: .openAI, config: config, environment: [:])
+        let result = await probe.probe(engine: .llmAPI, config: config, environment: [:])
 
         XCTAssertEqual(result.state, .yellow)
         XCTAssertEqual(result.detail, "API response did not include any text.")

@@ -37,10 +37,12 @@ extension SummaryGenerating {
 }
 
 struct CloudSummarizer: IncrementalSummaryGenerating {
-    let apiKey: String
-    let apiURL: URL
+    let providerConfig: LLMAPIProviderConfig
     let session: URLSession
-    let model: String
+
+    var apiKey: String { providerConfig.apiToken }
+    var apiURL: URL { providerConfig.validatedBaseURL() ?? URL(string: "https://api.openai.com/v1/responses")! }
+    var model: String { providerConfig.model }
 
     init(
         apiKey: String,
@@ -48,10 +50,22 @@ struct CloudSummarizer: IncrementalSummaryGenerating {
         session: URLSession = .shared,
         model: String = "gpt-5"
     ) {
-        self.apiKey = apiKey
-        self.apiURL = apiURL
+        self.providerConfig = LLMAPIProviderConfig(
+            id: .openAI,
+            baseURL: apiURL.absoluteString,
+            model: model,
+            wireFormat: .openAIResponses,
+            apiToken: apiKey
+        )
         self.session = session
-        self.model = model
+    }
+
+    init(
+        providerConfig: LLMAPIProviderConfig,
+        session: URLSession = .shared
+    ) {
+        self.providerConfig = providerConfig
+        self.session = session
     }
 
     func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
@@ -69,17 +83,24 @@ struct CloudSummarizer: IncrementalSummaryGenerating {
     }
 
     private func sendRequest(input: String) async throws -> String {
-        var request = URLRequest(url: apiURL)
-        request.httpMethod = "POST"
-        request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(
-            ResponsesRequest(
-                model: model,
-                input: input
-            )
-        )
+        let client = LLMAPIClient(providerConfig: providerConfig, session: session)
+        let outputText = try await client.complete(input: input)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return outputText.isEmpty ? "Summary unavailable." : outputText
+    }
+}
 
+struct LLMAPIClient: Sendable {
+    let providerConfig: LLMAPIProviderConfig
+    let session: URLSession
+
+    init(providerConfig: LLMAPIProviderConfig, session: URLSession = .shared) {
+        self.providerConfig = providerConfig
+        self.session = session
+    }
+
+    func complete(input: String, systemPrompt: String? = nil) async throws -> String {
+        let request = try makeRequest(input: input, systemPrompt: systemPrompt)
         let (data, response) = try await session.data(for: request)
         guard
             let httpResponse = response as? HTTPURLResponse,
@@ -88,8 +109,124 @@ struct CloudSummarizer: IncrementalSummaryGenerating {
             throw URLError(.badServerResponse)
         }
 
-        let payload = try JSONDecoder().decode(ResponsesResponse.self, from: data)
-        return payload.outputText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Summary unavailable."
+        return try decodeText(from: data)
+    }
+
+    private func makeRequest(input: String, systemPrompt: String?) throws -> URLRequest {
+        let endpointURL = try endpointURL()
+        var request = URLRequest(url: endpointURL)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        switch providerConfig.wireFormat {
+        case .openAIResponses:
+            request.addValue("Bearer \(providerConfig.apiToken)", forHTTPHeaderField: "Authorization")
+            request.httpBody = try JSONEncoder().encode(
+                ResponsesRequest(
+                    model: providerConfig.model,
+                    input: input
+                )
+            )
+        case .openAIChat:
+            request.addValue("Bearer \(providerConfig.apiToken)", forHTTPHeaderField: "Authorization")
+            var messages: [OpenAIChatMessage] = []
+            if let systemPrompt, !systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                messages.append(OpenAIChatMessage(role: "system", content: systemPrompt))
+            }
+            messages.append(OpenAIChatMessage(role: "user", content: input))
+            request.httpBody = try JSONEncoder().encode(
+                OpenAIChatRequest(
+                    model: providerConfig.model,
+                    messages: messages,
+                    stream: false
+                )
+            )
+        case .anthropicMessages:
+            request.addValue(providerConfig.apiToken, forHTTPHeaderField: "x-api-key")
+            request.addValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+            let trimmedSystemPrompt = systemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
+            request.httpBody = try JSONEncoder().encode(
+                AnthropicMessagesRequest(
+                    model: providerConfig.model,
+                    maxTokens: 4096,
+                    system: trimmedSystemPrompt?.isEmpty == false ? trimmedSystemPrompt : nil,
+                    messages: [
+                        AnthropicMessage(role: "user", content: input)
+                    ]
+                )
+            )
+        case .geminiGenerateContent:
+            request.addValue(providerConfig.apiToken, forHTTPHeaderField: "x-goog-api-key")
+            let trimmedSystemPrompt = systemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
+            request.httpBody = try JSONEncoder().encode(
+                GeminiGenerateContentRequest(
+                    contents: [
+                        GeminiContent(
+                            role: "user",
+                            parts: [GeminiPart(text: input)]
+                        )
+                    ],
+                    systemInstruction: trimmedSystemPrompt?.isEmpty == false
+                        ? GeminiSystemInstruction(parts: [GeminiPart(text: trimmedSystemPrompt ?? "")])
+                        : nil
+                )
+            )
+        }
+
+        return request
+    }
+
+    private func endpointURL() throws -> URL {
+        guard let baseURL = providerConfig.validatedBaseURL() else {
+            throw URLError(.badURL)
+        }
+
+        switch providerConfig.wireFormat {
+        case .openAIResponses:
+            if baseURL.path.hasSuffix("/responses") {
+                return baseURL
+            }
+            return baseURL.appendingPathComponent("responses")
+        case .openAIChat:
+            if baseURL.path.hasSuffix("/chat/completions") {
+                return baseURL
+            }
+            return baseURL.appendingPathComponent("chat/completions")
+        case .anthropicMessages:
+            if baseURL.path.hasSuffix("/messages") {
+                return baseURL
+            }
+            return baseURL.appendingPathComponent("messages")
+        case .geminiGenerateContent:
+            let encodedModel = providerConfig.model.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+                ?? providerConfig.model
+            return baseURL
+                .appendingPathComponent("models")
+                .appendingPathComponent("\(encodedModel):generateContent")
+        }
+    }
+
+    private func decodeText(from data: Data) throws -> String {
+        switch providerConfig.wireFormat {
+        case .openAIResponses:
+            let payload = try JSONDecoder().decode(ResponsesResponse.self, from: data)
+            return payload.outputText ?? ""
+        case .openAIChat:
+            let payload = try JSONDecoder().decode(OpenAIChatResponse.self, from: data)
+            return payload.choices.first?.message.content ?? ""
+        case .anthropicMessages:
+            let payload = try JSONDecoder().decode(AnthropicMessagesResponse.self, from: data)
+            return payload.content.compactMap { content in
+                content.type == "text" ? content.text : nil
+            }
+            .joined(separator: "\n")
+        case .geminiGenerateContent:
+            let payload = try JSONDecoder().decode(GeminiGenerateContentResponse.self, from: data)
+            return payload.candidates
+                .flatMap { $0.content.parts }
+                .compactMap(\.text)
+                .joined(separator: "\n")
+        }
     }
 }
 
@@ -98,6 +235,88 @@ extension CLISummarizer: IncrementalSummaryGenerating {}
 private struct ResponsesRequest: Encodable {
     let model: String
     let input: String
+}
+
+private struct OpenAIChatRequest: Encodable {
+    let model: String
+    let messages: [OpenAIChatMessage]
+    let stream: Bool
+}
+
+private struct OpenAIChatMessage: Encodable {
+    let role: String
+    let content: String
+}
+
+private struct OpenAIChatResponse: Decodable {
+    let choices: [OpenAIChatChoice]
+}
+
+private struct OpenAIChatChoice: Decodable {
+    let message: OpenAIChatResponseMessage
+}
+
+private struct OpenAIChatResponseMessage: Decodable {
+    let content: String
+}
+
+private struct AnthropicMessagesRequest: Encodable {
+    let model: String
+    let maxTokens: Int
+    let system: String?
+    let messages: [AnthropicMessage]
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case maxTokens = "max_tokens"
+        case system
+        case messages
+    }
+}
+
+private struct AnthropicMessage: Encodable {
+    let role: String
+    let content: String
+}
+
+private struct AnthropicMessagesResponse: Decodable {
+    let content: [AnthropicContent]
+}
+
+private struct AnthropicContent: Decodable {
+    let type: String
+    let text: String?
+}
+
+private struct GeminiGenerateContentRequest: Encodable {
+    let contents: [GeminiContent]
+    let systemInstruction: GeminiSystemInstruction?
+
+    enum CodingKeys: String, CodingKey {
+        case contents
+        case systemInstruction = "system_instruction"
+    }
+}
+
+private struct GeminiContent: Codable {
+    let role: String?
+    let parts: [GeminiPart]
+}
+
+private struct GeminiSystemInstruction: Codable {
+    let parts: [GeminiPart]
+}
+
+private struct GeminiPart: Codable {
+    let text: String?
+}
+
+private struct GeminiGenerateContentResponse: Decodable {
+    let candidates: [GeminiCandidate]
+}
+
+private struct GeminiCandidate: Decodable {
+    let content: GeminiContent
 }
 
 struct ResponsesResponse: Decodable {

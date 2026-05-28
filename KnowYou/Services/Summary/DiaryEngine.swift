@@ -2,17 +2,35 @@ import Foundation
 
 enum DiaryEngine: String, CaseIterable, Codable, Sendable {
     case none
-    case openAI
+    case llmAPI
     case codexAuth
     case claudeCLI
     case codexCLI
     case geminiCLI
     case openclawCLI
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        self = Self.persistedEngine(rawValue: rawValue) ?? .none
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    static func persistedEngine(rawValue: String) -> DiaryEngine? {
+        if rawValue == "openAI" {
+            return .llmAPI
+        }
+        return DiaryEngine(rawValue: rawValue)
+    }
+
     var displayName: String {
         switch self {
         case .none: return "None"
-        case .openAI: return "OpenAI API"
+        case .llmAPI: return "LLM API"
         case .codexAuth: return "Codex Auth"
         case .claudeCLI: return "Claude Code (CLI)"
         case .codexCLI: return "Codex (CLI)"
@@ -25,8 +43,8 @@ enum DiaryEngine: String, CaseIterable, Codable, Sendable {
         switch self {
         case .none:
             return "No summarizer selected."
-        case .openAI:
-            return "Use an OpenAI-compatible API endpoint."
+        case .llmAPI:
+            return "Use the active cloud LLM API provider."
         case .codexAuth:
             return "Use the Codex CLI login directly through Codex Auth."
         case .claudeCLI:

@@ -380,7 +380,7 @@ private final class KnowledgeImportStoreWriteLocks: @unchecked Sendable {
     }
 }
 
-private extension JSONEncoder {
+extension JSONEncoder {
     static func knowledgeImport() -> JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -389,7 +389,7 @@ private extension JSONEncoder {
     }
 }
 
-private extension JSONDecoder {
+extension JSONDecoder {
     static func knowledgeImport() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = KnowledgeImportDateCoding.decodingStrategy

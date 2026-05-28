@@ -44,7 +44,7 @@ struct MyWikiDetailView: View {
             Menu("More") {
                 Button(isSyncing ? "Updating My Wiki..." : "Update My Wiki", action: onOrganizeJournals)
                     .disabled(isSyncing)
-                Button("Manage Sources", action: onManageSources)
+                Button(MyWikiSourceLibraryEntryPolicy.manageButtonTitle, action: onManageSources)
                 Button("Use My Wiki in Agents", action: onUseInAgents)
                 Divider()
                 Button("Find duplicates", action: onFindDuplicates)

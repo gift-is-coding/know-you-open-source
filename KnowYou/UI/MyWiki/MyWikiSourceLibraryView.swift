@@ -17,13 +17,25 @@ enum MyWikiSourceLibraryActionCopy {
 }
 
 enum MyWikiSourceLibraryLayoutPolicy {
-    static let minimumWidth: CGFloat = 1280
-    static let minimumHeight: CGFloat = 760
-    static let preferredWidth: CGFloat = 1480
-    static let preferredHeight: CGFloat = 900
+    static let minimumWidth: CGFloat = 980
+    static let minimumHeight: CGFloat = 680
+    static let preferredWidth: CGFloat = 1180
+    static let preferredHeight: CGFloat = 780
+    static let visibleFrameWidthRatio: CGFloat = 0.88
+    static let visibleFrameHeightRatio: CGFloat = 0.88
     static let sourceTreeWidthRatio: CGFloat = 0.68
-    static let managementColumnWidth: CGFloat = 380
+    static let minimumSourceTreeWidth: CGFloat = 480
+    static let managementColumnWidth: CGFloat = 340
     static let usesScrollableManagementPane = true
+
+    static func resolvedPresentationSize(forVisibleFrame visibleFrame: CGSize) -> CGSize {
+        let widthLimit = visibleFrame.width * visibleFrameWidthRatio
+        let heightLimit = visibleFrame.height * visibleFrameHeightRatio
+        return CGSize(
+            width: min(preferredWidth, widthLimit),
+            height: min(preferredHeight, heightLimit)
+        )
+    }
 }
 
 struct MyWikiSourceLibraryView: View {
@@ -54,16 +66,22 @@ struct MyWikiSourceLibraryView: View {
     }
 
     var body: some View {
+        let presentationSize = MyWikiSourceLibraryLayoutPolicy.resolvedPresentationSize(
+            forVisibleFrame: NSScreen.main?.visibleFrame.size ?? CGSize(
+                width: MyWikiSourceLibraryLayoutPolicy.preferredWidth,
+                height: MyWikiSourceLibraryLayoutPolicy.preferredHeight
+            )
+        )
+
         HStack(alignment: .top, spacing: 24) {
             sourceTreePane
             managementPane
         }
-        .padding(32)
+        .padding(24)
         .frame(
-            width: MyWikiSourceLibraryLayoutPolicy.preferredWidth,
-            height: MyWikiSourceLibraryLayoutPolicy.preferredHeight
+            width: presentationSize.width,
+            height: presentationSize.height
         )
-        .frame(minWidth: MyWikiSourceLibraryLayoutPolicy.minimumWidth, minHeight: MyWikiSourceLibraryLayoutPolicy.minimumHeight)
         .background(MyWikiTheme.contentBackground)
         .foregroundStyle(.primary)
         .onAppear(perform: reload)
@@ -89,8 +107,7 @@ struct MyWikiSourceLibraryView: View {
             sourceList
         }
         .frame(
-            minWidth: MyWikiSourceLibraryLayoutPolicy.minimumWidth
-                * MyWikiSourceLibraryLayoutPolicy.sourceTreeWidthRatio,
+            minWidth: MyWikiSourceLibraryLayoutPolicy.minimumSourceTreeWidth,
             maxWidth: .infinity,
             maxHeight: .infinity,
             alignment: .topLeading

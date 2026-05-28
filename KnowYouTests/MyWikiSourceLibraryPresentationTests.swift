@@ -91,14 +91,28 @@ final class MyWikiSourceLibraryPresentationTests: XCTestCase {
     }
 
     func testSourceLibraryLayoutGivesMajorityWidthToSourceTree() {
-        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.minimumWidth, 1040)
+        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.minimumWidth, 980)
         XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.minimumHeight, 680)
-        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.preferredWidth, 1360)
-        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.preferredHeight, 820)
-        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.managementColumnWidth, 360)
+        XCTAssertLessThanOrEqual(MyWikiSourceLibraryLayoutPolicy.preferredWidth, 1200)
+        XCTAssertLessThanOrEqual(MyWikiSourceLibraryLayoutPolicy.preferredHeight, 820)
+        XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.managementColumnWidth, 330)
         XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryLayoutPolicy.sourceTreeWidthRatio, 0.65)
         XCTAssertLessThanOrEqual(MyWikiSourceLibraryLayoutPolicy.sourceTreeWidthRatio, 0.70)
         XCTAssertTrue(MyWikiSourceLibraryLayoutPolicy.usesScrollableManagementPane)
+    }
+
+    func testSourceLibraryLayoutResolvesInsideVisibleFrame() {
+        let compact = MyWikiSourceLibraryLayoutPolicy.resolvedPresentationSize(
+            forVisibleFrame: CGSize(width: 1280, height: 800)
+        )
+        let regular = MyWikiSourceLibraryLayoutPolicy.resolvedPresentationSize(
+            forVisibleFrame: CGSize(width: 1440, height: 900)
+        )
+
+        XCTAssertLessThanOrEqual(compact.width, 1180)
+        XCTAssertLessThanOrEqual(compact.height, 720)
+        XCTAssertLessThanOrEqual(regular.width, 1200)
+        XCTAssertLessThanOrEqual(regular.height, 820)
     }
 
     func testInvertVisibleOnlyMutatesMatchingSourceIDs() {

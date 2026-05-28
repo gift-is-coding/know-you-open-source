@@ -250,8 +250,11 @@ enum MyWikiProgressRefreshPolicy {
 enum MyWikiSourceLibraryEntryPolicy {
     static let showsManageSourcesButton = true
     static let progressCardOpensSourceLibrary = false
-    static let manageButtonMinWidth: CGFloat = 168
-    static let manageButtonMinHeight: CGFloat = 42
+    static let manageButtonTitle = "Set Digest Files"
+    static let manageButtonSystemImage = "doc.text.magnifyingglass"
+    static let manageButtonIconSize: CGFloat = 13
+    static let manageButtonMinWidth: CGFloat = 152
+    static let manageButtonMinHeight: CGFloat = 36
 }
 
 enum MyWikiDetailMaintenancePolicy {

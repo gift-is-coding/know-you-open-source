@@ -112,6 +112,7 @@ final class MyWikiSourceLibraryPresentationTests: XCTestCase {
         XCTAssertTrue(MyWikiSourceLibraryLayoutPolicy.usesScrollableManagementPane)
         XCTAssertFalse(MyWikiSourceLibraryLayoutPolicy.showsSeparateSelectionPanel)
         XCTAssertTrue(MyWikiSourceLibraryLayoutPolicy.statusBadgesFilterSources)
+        XCTAssertTrue(MyWikiSourceLibraryLayoutPolicy.directoryRowsToggleOnDoubleClick)
     }
 
     func testSourceLibraryLayoutResolvesInsideVisibleFrame() {

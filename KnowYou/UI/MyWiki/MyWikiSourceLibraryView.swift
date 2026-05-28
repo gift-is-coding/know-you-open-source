@@ -29,6 +29,7 @@ enum MyWikiSourceLibraryLayoutPolicy {
     static let usesScrollableManagementPane = true
     static let showsSeparateSelectionPanel = false
     static let statusBadgesFilterSources = true
+    static let directoryRowsToggleOnDoubleClick = true
 
     static func resolvedPresentationSize(forVisibleFrame visibleFrame: CGSize) -> CGSize {
         let widthLimit = visibleFrame.width * visibleFrameWidthRatio
@@ -363,6 +364,10 @@ struct MyWikiSourceLibraryView: View {
         .padding(.vertical, 8)
         .padding(.trailing, 10)
         .background(rowBackground)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            toggleDirectory(node.id)
+        }
     }
 
     private func sourceRow(_ record: MyWikiSourceCatalogRecord, depth: Int) -> some View {

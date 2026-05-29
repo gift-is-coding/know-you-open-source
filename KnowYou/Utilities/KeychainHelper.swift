@@ -8,7 +8,10 @@ protocol KeychainStoring: Sendable {
 }
 
 enum KeychainHelper {
-    static let service = "com.knowyou.app"
+    static var service: String {
+        AppRuntimeProfile.current.keychainService
+    }
+
     static let shared: KeychainStoring = SystemKeychainStore()
 
     private struct SystemKeychainStore: KeychainStoring {

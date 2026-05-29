@@ -79,14 +79,7 @@ struct EndOfDayReminderRunner {
     }
 
     private static func loadPersistedStory(dayKey: String) throws -> DailyStory? {
-        let applicationSupportURL = try FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let vaultURL = applicationSupportURL
-            .appending(path: "KnowYou", directoryHint: .isDirectory)
+        let vaultURL = try AppRuntimeProfile.applicationSupportDirectoryURL()
             .appending(path: "Vault", directoryHint: .isDirectory)
         let fileURL = vaultURL.appending(path: "\(dayKey).story.json")
         guard FileManager.default.fileExists(atPath: fileURL.path) else {

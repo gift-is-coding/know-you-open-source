@@ -109,12 +109,11 @@ struct ExternalSourcePromptPresentation: Equatable {
     }
 
     static func defaultExternalSourcesRootURL() -> URL {
-        let applicationSupportURL = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support")
-        return applicationSupportURL
-            .appending(path: "KnowYou", directoryHint: .isDirectory)
+        let appDirectoryURL = (try? AppRuntimeProfile.applicationSupportDirectoryURL())
+            ?? FileManager.default.homeDirectoryForCurrentUser
+                .appending(path: "Library/Application Support", directoryHint: .isDirectory)
+                .appending(path: AppRuntimeProfile.current.supportDirectoryName, directoryHint: .isDirectory)
+        return appDirectoryURL
             .appending(path: "ExternalSources", directoryHint: .isDirectory)
     }
 

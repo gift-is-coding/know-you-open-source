@@ -2062,14 +2062,7 @@ final class AppState {
     }
 
     static func defaultVaultURL() throws -> URL {
-        let applicationSupportURL = try FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        return applicationSupportURL
-            .appending(path: "KnowYou", directoryHint: .isDirectory)
+        try AppRuntimeProfile.applicationSupportDirectoryURL()
             .appending(path: "Vault", directoryHint: .isDirectory)
     }
 
@@ -4779,14 +4772,7 @@ extension AppState {
     }
 
     static func makeDatabaseURL() throws -> URL {
-        let applicationSupportURL = try FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let appDirectoryURL = applicationSupportURL.appending(path: "KnowYou", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: appDirectoryURL, withIntermediateDirectories: true)
+        let appDirectoryURL = try AppRuntimeProfile.applicationSupportDirectoryURL()
         return appDirectoryURL.appending(path: "events.sqlite")
     }
 

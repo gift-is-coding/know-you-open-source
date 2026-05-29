@@ -82,6 +82,19 @@ private struct OnboardingCoachmarkCardStyle {
         shadowRadius: 28,
         shadowY: 18
     )
+
+    static let setup = OnboardingCoachmarkCardStyle(
+        titlePointSize: 23,
+        iconPointSize: 16,
+        iconContainerSize: 30,
+        iconCornerRadius: 9,
+        bodyFont: .subheadline,
+        padding: 20,
+        cornerRadius: 22,
+        shadowOpacity: 0.15,
+        shadowRadius: 22,
+        shadowY: 14
+    )
 }
 
 struct OnboardingView: View {
@@ -266,8 +279,8 @@ struct OnboardingView: View {
                 }
             }
         case .sharedCenterCard:
-            centeredCard {
-                coachmarkCard(style: .prominent)
+            centeredCard(width: step == .permissions ? 430 : 460) {
+                coachmarkCard(style: step == .permissions ? .setup : .prominent)
             }
         case .engineSheet:
             EmptyView()
@@ -311,56 +324,10 @@ struct OnboardingView: View {
             }
 
             if step == .permissions {
-                VStack(alignment: .leading, spacing: 10) {
-                    statusRow(
-                        title: "Full Disk Access",
-                        detail: notificationsAvailable
-                            ? "Ready. KnowYou can read the local Notification Center store and rebuild who reached you and when."
-                            : "Turn this on in macOS so KnowYou can read the local Notification Center store and rebuild who reached you and when.",
-                        ok: notificationsAvailable
-                    )
-
-                    statusRow(
-                        title: "Notifications",
-                        detail: reminderNotificationDetail,
-                        ok: reminderNotificationsReady
-                    )
-
-                    HStack(spacing: 12) {
-                        if reminderAuthorizationStatus == .authorized {
-                            Label("Notifications On", systemImage: "checkmark.circle.fill")
-                                .font(.callout.weight(.semibold))
-                                .foregroundStyle(.green)
-                        } else {
-                            Button(reminderAuthorizationStatus == .denied ? "Open Notification Settings" : "Enable Notifications") {
-                                if reminderAuthorizationStatus == .denied {
-                                    openNotificationSettings()
-                                } else {
-                                    Task { @MainActor in
-                                        await appState.requestDailyReviewReminderAuthorization()
-                                    }
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-
-                    if let optionalEnhancement = currentContent.optionalEnhancement {
-                        Text(optionalEnhancement.title)
-                            .font(.headline)
-
-                        Text(optionalEnhancement.detail)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-
-                        VStack(spacing: 10) {
-                            ForEach(optionalEnhancement.helperLinks) { helperLink in
-                                helperLinkCard(helperLink)
-                            }
-                        }
-                    }
+                ScrollView(.vertical, showsIndicators: true) {
+                    permissionRequirementsSection
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxHeight: 278)
             }
 
             if step == .generating {
@@ -482,6 +449,61 @@ struct OnboardingView: View {
         .interactiveDismissDisabled(true)
     }
 
+    @ViewBuilder
+    private var permissionRequirementsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            statusRow(
+                title: "Full Disk Access",
+                detail: notificationsAvailable
+                    ? "Ready. KnowYou can read the local Notification Center store and rebuild who reached you and when."
+                    : "Turn this on in macOS so KnowYou can read the local Notification Center store and rebuild who reached you and when.",
+                ok: notificationsAvailable
+            )
+
+            statusRow(
+                title: "Notifications",
+                detail: reminderNotificationDetail,
+                ok: reminderNotificationsReady
+            )
+
+            if reminderAuthorizationStatus == .authorized {
+                Label("Notifications On", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.green)
+            } else {
+                Button(reminderAuthorizationStatus == .denied ? "Open Notification Settings" : "Enable Notifications") {
+                    if reminderAuthorizationStatus == .denied {
+                        openNotificationSettings()
+                    } else {
+                        Task { @MainActor in
+                            await appState.requestDailyReviewReminderAuthorization()
+                        }
+                    }
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if let optionalEnhancement = currentContent.optionalEnhancement {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(optionalEnhancement.title)
+                        .font(.subheadline.weight(.semibold))
+
+                    Text(optionalEnhancement.detail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 2)
+
+                VStack(spacing: 8) {
+                    ForEach(optionalEnhancement.helperLinks) { helperLink in
+                        helperLinkCard(helperLink)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func anchoredCard<Content: View>(
         rect: CGRect,
         width: CGFloat,
@@ -514,10 +536,11 @@ struct OnboardingView: View {
     }
 
     private func centeredCard<Content: View>(
+        width: CGFloat,
         @ViewBuilder content: () -> Content
     ) -> some View {
         content()
-            .frame(width: 460)
+            .frame(width: width)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
@@ -544,16 +567,16 @@ struct OnboardingView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
 
                 Text(detail)
-                    .font(.callout)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(16)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func helperLinkCard(_ helperLink: OnboardingHelperLink) -> some View {
@@ -576,7 +599,7 @@ struct OnboardingView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
                         Text(helperLink.title)
-                            .font(.headline)
+                            .font(.subheadline.weight(.semibold))
 
                         Text("Optional")
                             .font(.caption.weight(.semibold))
@@ -586,8 +609,9 @@ struct OnboardingView: View {
                     }
 
                     Text(helperLink.detail)
-                        .font(.callout)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
 
                 Spacer()
@@ -596,8 +620,8 @@ struct OnboardingView: View {
                     .font(.headline)
                     .foregroundStyle(.secondary)
             }
-            .padding(14)
-            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(12)
+            .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
     }

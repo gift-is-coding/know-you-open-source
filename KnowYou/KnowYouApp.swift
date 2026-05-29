@@ -122,7 +122,7 @@ struct KnowYouApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra("KnowYou", systemImage: "book.closed") {
+        MenuBarExtra(AppRuntimeProfile.current.displayName, systemImage: "book.closed") {
             MenuBarContentView {
                 KnowYouMainWindowPresenter.shared.showConfiguredWindowIfNeeded()
             }
@@ -130,7 +130,7 @@ struct KnowYouApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Open KnowYou") {
+                Button("Open \(AppRuntimeProfile.current.displayName)") {
                     KnowYouMainWindowPresenter.shared.showConfiguredWindowIfNeeded()
                 }
                 .keyboardShortcut("n", modifiers: .command)
@@ -179,7 +179,7 @@ struct KnowYouApp: App {
 }
 
 enum KnowYouMainWindowLaunchPolicy {
-    static let title = "KnowYou"
+    static var title: String { AppRuntimeProfile.current.displayName }
     static let usesSwiftUIWindowScene = false
     static let usesAppKitPresenter = true
 }
@@ -364,7 +364,7 @@ private struct MenuBarContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("KnowYou")
+            Text(AppRuntimeProfile.current.displayName)
                 .font(.headline)
             Text(appState.statusMessage ?? "Capturing context")
                 .font(.footnote)
@@ -377,7 +377,7 @@ private struct MenuBarContentView: View {
 
             Divider()
 
-            Button("Open KnowYou") {
+            Button("Open \(AppRuntimeProfile.current.displayName)") {
                 onOpenKnowYou()
             }
 

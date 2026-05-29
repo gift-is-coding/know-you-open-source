@@ -105,11 +105,15 @@ struct MainWindowView: View {
                     )
                 }
 
-                Text("Your data stays local. No backend server.")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+                if !showsOnboardingEngineButton {
+                    Text("Your data stays local. No backend server.")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: 260, alignment: .leading)
+                        .help("Your data stays local. No backend server.")
+                }
             }
         }
         .sheet(

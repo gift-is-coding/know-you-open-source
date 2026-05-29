@@ -18,14 +18,17 @@ struct AppSupportMetadata {
 struct AppRuntimeProfile {
     static let newUserBundleIdentifier = "dev.knowyou.newuser"
 
+    let displayName: String
     let supportDirectoryName: String
     let keychainService: String
 
     init(bundleIdentifier: String?) {
         if bundleIdentifier == Self.newUserBundleIdentifier {
+            displayName = "KnowYou New User"
             supportDirectoryName = "KnowYou New User"
             keychainService = Self.newUserBundleIdentifier
         } else {
+            displayName = "KnowYou"
             supportDirectoryName = "KnowYou"
             keychainService = "com.knowyou.app"
         }

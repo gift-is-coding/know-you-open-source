@@ -104,6 +104,12 @@ struct MainWindowView: View {
                         }
                     )
                 }
+
+                Text("Your data stays local. No backend server.")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
         }
         .sheet(

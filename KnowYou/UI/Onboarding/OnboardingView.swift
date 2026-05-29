@@ -53,8 +53,9 @@ struct OnboardingView: View {
     @State private var step: OnboardingStep
     @State private var summarizerConfig = SummarizerConfig.load()
     @State private var isEngineSheetPresented = false
+    @State private var isHistoryBootstrapConfirmationPresented = false
     @State private var generationStarted = false
-    @State private var generationMessage = "Starting today and yesterday..."
+    @State private var generationMessage = "Preparing your first 7 days..."
     @State private var generationError: String?
     @State private var referenceAdvancePolicy = OnboardingReferenceAdvancePolicy()
     @State private var referenceAdvanceTask: Task<Void, Never>?
@@ -104,6 +105,16 @@ struct OnboardingView: View {
         }
         .sheet(isPresented: $isEngineSheetPresented) {
             engineSetupSheet
+        }
+        .alert(
+            OnboardingHistoryBootstrapConfirmation.title,
+            isPresented: $isHistoryBootstrapConfirmationPresented
+        ) {
+            Button(OnboardingHistoryBootstrapConfirmation.confirmButtonTitle) {
+                finishOnboardingAfterHistoryConfirmation()
+            }
+        } message: {
+            Text(.init(OnboardingHistoryBootstrapConfirmation.message))
         }
         .onAppear {
             summarizerConfig = SummarizerConfig.load()
@@ -649,7 +660,7 @@ struct OnboardingView: View {
 
         generationStarted = true
         generationError = nil
-        generationMessage = "Starting today and yesterday..."
+        generationMessage = "Preparing your first 7 days..."
 
         persistEngineConfiguration()
 
@@ -670,10 +681,16 @@ struct OnboardingView: View {
             return
         }
 
-        generationMessage = "Preparing today and yesterday…"
+        generationMessage = "Review the local-only first generation…"
         try? await Task.sleep(nanoseconds: 500_000_000)
 
         guard step == .generating else { return }
+        isHistoryBootstrapConfirmationPresented = true
+    }
+
+    private func finishOnboardingAfterHistoryConfirmation() {
+        guard step == .generating else { return }
+        generationMessage = "Generating your first 7 days…"
         appState.completeOnboarding()
         onComplete()
     }

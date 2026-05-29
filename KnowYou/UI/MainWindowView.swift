@@ -738,10 +738,12 @@ struct MainWindowView: View {
 struct OnboardingBootstrapNoticePresentation: Equatable {
     let title: String
     let message: String
+    let progressText: String?
 
     init(notice: OnboardingBootstrapNotice) {
-        title = "First entries are generating"
+        title = "First 7 days are generating"
         message = notice.message
+        progressText = notice.progress?.presentationText
     }
 }
 
@@ -763,6 +765,12 @@ private struct OnboardingBootstrapNoticeView: View {
                 Text(presentation.message)
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                if let progressText = presentation.progressText {
+                    Text(progressText)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
             }
 
             Button(action: onDismiss) {

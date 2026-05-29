@@ -110,7 +110,7 @@ flowchart LR
 - 管理选中日期、选中 story、选中段落及其来源事件
 - 触发“按天刷新”、今日通知补同步与 today-only 自动刷新
 - 维护统一 Todo inbox 状态、每日候选待办的归集状态，以及日记刷新后的自动归集/完成 sweep
-- 持久化 onboarding 进度，并在完成后触发一次性今天+昨天 bootstrap
+- 持久化 onboarding 进度，并在首次确认后触发一次性过去 7 天 bootstrap
 
 `AppEnvironment` 本身则负责组装主要依赖，包括数据库、隐私过滤器、采集器、composer 与 summarizer，见 [AppEnvironment.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppEnvironment.swift)。
 
@@ -515,8 +515,9 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - `privacy` 用居中 coachmark 强调 `.md` 纯本地与“没有服务端”
 - `permissions` 只 gate `Full Disk Access`，并在同位置 coachmark 里解释通知与剪贴板上下文价值
 - `enginePrompt` 只负责高亮真实产品里的引擎按钮，`engineSetup` 则在现有引擎配置组件里完成默认引擎设置
-- `generating` 在完成 onboarding 后自动触发一次性今天+昨天 bootstrap，而不是要求用户手动点刷新
-- bootstrap 启动时主窗口会显示一个非阻塞轻提醒，告知用户两天内容正在生成、约 2 分钟后可回来查看
+- `generating` 在权限与引擎都 ready 后先展示首次历史生成确认弹窗，明确 **KnowYou** 只在当前 Mac 本地生成，包含 `All local. No backend server.` 隐私承诺
+- 用户确认后才完成 onboarding，并自动触发一次性过去 7 天 bootstrap，而不是要求用户手动点刷新
+- bootstrap 启动时主窗口会显示一个非阻塞轻提醒，告知用户首批 7 天内容正在本地生成，并按天展示进度
 - onboarding bootstrap 仍复用同一套 refresh pipeline，但当冷启动 full recovery 单日事件数超过 `50` 条时，会改为分批：首批 `50` 条先写出初始 story，后续块再逐块 incremental append
 - 正式 reader 的刷新按钮右侧会显示一个小三角下拉菜单；通过隐藏系统 menu indicator，界面上只保留一个三角，不会出现双三角
 - 下拉菜单对当前选中的真实日期都可用，因此历史日期也能主动触发 full refresh；`Demo Day` 仍保持只读
@@ -529,7 +530,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 - 设置 `hasCompletedOnboarding`
 - 持久化 onboarding 当前步骤，支持退出后恢复
-- onboarding 完成后恢复真实列表，并自动补写今天与昨天缺失日记
+- onboarding 完成后恢复真实列表，并自动补写过去 7 天缺失日记
 - `Demo Day` 不会消失，而是作为只读 demo 项保留在左侧列表底部
 
 当前 onboarding 的阻塞顺序是：`Demo Day -> reference -> privacy -> Full Disk Access -> engine -> generating`。
@@ -698,11 +699,12 @@ sequenceDiagram
 3. `privacy` 先建立 “`.md` 纯本地、无服务端” 的信任边界
 4. `permissions` 只要求用户完成 `Full Disk Access`
 5. `enginePrompt` 高亮右上角真实引擎按钮，用户在 `engineSetup` 中完成默认引擎设置
-6. `completeOnboarding()` 写入 `hasCompletedOnboarding` 与 onboarding 进度状态
-7. 应用立即触发一次性今天+昨天 bootstrap，并把缺失日期先以占位形式插入左侧列表，同时显示一个非阻塞提醒
-   生成顺序固定为今天后昨天；若今天失败，仍继续尝试昨天
+6. `generating` 步骤展示首次历史生成确认弹窗；弹窗说明 **KnowYou** 只在当前 Mac 本地生成近期日记，并包含 `All local. No backend server.` 隐私承诺
+7. 用户确认后，`completeOnboarding()` 写入 `hasCompletedOnboarding` 与 onboarding 进度状态
+8. 应用立即触发一次性过去 7 天 bootstrap，并把缺失日期先以占位形式插入左侧列表，同时显示一个非阻塞提醒
+   生成顺序固定为今天、昨天、前天依次向前 7 个自然日；若某一天失败，仍继续尝试后续日期
    若某一天在 bootstrap 开始时事件数超过 `50` 条，则该日内部改为按 `50` 条一批串行生成，并在 refresh log 中记录 chunk 进度
-8. bootstrap 完成后恢复 steady-state 自动化；`Demo Day` 继续留在列表底部供用户回看
+9. bootstrap 完成后恢复 steady-state 自动化；`Demo Day` 继续留在列表底部供用户回看
 
 ## 11. My Wiki 子系统
 

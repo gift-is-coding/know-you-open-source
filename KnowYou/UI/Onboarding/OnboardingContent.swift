@@ -158,6 +158,12 @@ struct OnboardingStepContent {
     }
 }
 
+enum OnboardingHistoryBootstrapConfirmation {
+    static let title = "Your first 7 days are being prepared"
+    static let message = "**KnowYou** will generate your recent diary from this Mac only. All local. No backend server. This may take a few minutes."
+    static let confirmButtonTitle = "Start generating"
+}
+
 enum OnboardingContent {
     static let blockingGateStep: OnboardingStep = .permissions
 
@@ -307,7 +313,7 @@ enum OnboardingContent {
             return OnboardingStepContent(
                 iconName: "cpu.fill",
                 title: "Choose the engine you already use",
-                body: "Finish setup here. Today and yesterday start generating right after.",
+                body: "Finish setup here. Your first 7 days start generating right after.",
                 primaryCTA: "Start my diary",
                 target: .engineSheet,
                 activationStepLabel: "2/2",
@@ -326,8 +332,8 @@ enum OnboardingContent {
         case .generating:
             return OnboardingStepContent(
                 iconName: "wand.and.stars.inverse",
-                title: "We’re generating today and yesterday",
-                body: "KnowYou is importing your local context and writing your first two entries.",
+                title: "We’re preparing your first 7 days",
+                body: "KnowYou will write recent diary entries from this Mac only. All local. No backend server.",
                 primaryCTA: "Generating",
                 target: .sharedCenterCard,
                 activationStepLabel: nil,

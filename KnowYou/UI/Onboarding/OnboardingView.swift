@@ -134,7 +134,8 @@ struct OnboardingView: View {
         .overlayPreferenceValue(OnboardingCoachmarkTargetPreferenceKey.self) { preferences in
             GeometryReader { proxy in
                 ZStack(alignment: .topLeading) {
-                    Color.black.opacity(overlayOpacity)
+                    Color(nsColor: .windowBackgroundColor)
+                        .opacity(overlayOpacity)
                         .ignoresSafeArea()
                         .allowsHitTesting(false)
 
@@ -246,11 +247,11 @@ struct OnboardingView: View {
     private var overlayOpacity: Double {
         switch step {
         case .demoRead, .demoClick, .demoReference, .enginePrompt:
-            return 0.16
-        case .privacy, .permissions, .generating:
-            return 0.28
-        case .engineSetup:
             return 0.08
+        case .privacy, .permissions, .generating:
+            return 0.14
+        case .engineSetup:
+            return 0.04
         }
     }
 

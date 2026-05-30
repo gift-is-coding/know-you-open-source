@@ -4,6 +4,7 @@ import AppKit
 private enum MainWindowMode {
     case journal
     case knowledgeOntology
+    case networkingComingSoon
 }
 
 enum MainWindowWorkspacePolicy {
@@ -177,7 +178,7 @@ struct MainWindowView: View {
             selectedItemID: selectedSidebarItemID,
             knowledgeImportConfig: appState.knowledgeImportConfig,
             knowledgeDocumentsByConnector: appState.knowledgeDocumentsByConnector,
-            isActive: mode == .knowledgeOntology || (mode == .journal && appState.readerFocus == .dateList),
+            isActive: mode == .knowledgeOntology || mode == .networkingComingSoon || (mode == .journal && appState.readerFocus == .dateList),
             isKnowledgeOntologySelected: mode == .knowledgeOntology,
             todoOpenCount: appState.openTodoCount,
             onSelectDiaryDate: { dayKey in
@@ -203,6 +204,9 @@ struct MainWindowView: View {
             onOpenKnowledgeOntology: {
                 mode = .knowledgeOntology
             },
+            onOpenNetworkingComingSoon: {
+                mode = .networkingComingSoon
+            },
             onOpenSyncMemory: openSyncMemoryPanel
         )
     }
@@ -211,6 +215,8 @@ struct MainWindowView: View {
     private var mainContentPane: some View {
         if mode == .knowledgeOntology {
             knowledgeOntologyContent
+        } else if mode == .networkingComingSoon {
+            networkingComingSoonContent
         } else {
             switch appState.mainContentSelection {
             case .diary:
@@ -248,6 +254,19 @@ struct MainWindowView: View {
                 knowledgeSourceView(connectorInstanceID: instanceID)
             }
         }
+    }
+
+    private var networkingComingSoonContent: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "network")
+                .font(.system(size: 34, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text("Will coming soon")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .textBackgroundColor))
     }
 
     private var knowledgeOntologyContent: some View {
@@ -321,7 +340,7 @@ struct MainWindowView: View {
 
     private var detailPane: some View {
         Group {
-            if mode == .knowledgeOntology {
+            if mode == .knowledgeOntology || mode == .networkingComingSoon {
                 Color.clear
                     .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 0)
             } else {
@@ -345,6 +364,8 @@ struct MainWindowView: View {
     private var selectedSidebarItemID: String? {
         if mode == .knowledgeOntology {
             return "my-wiki"
+        } else if mode == .networkingComingSoon {
+            return "networking"
         }
         switch appState.mainContentSelection {
         case .diary(let dayKey):

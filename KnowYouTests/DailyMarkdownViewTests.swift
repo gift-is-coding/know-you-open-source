@@ -60,9 +60,13 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.sourceRootItem.title, "Other Source")
         XCTAssertTrue(presentation.sourceRootItem.showsAddButton)
         XCTAssertFalse(presentation.sourceRootItem.isExpandable)
+        XCTAssertEqual(presentation.networkingRootItem.id, "networking")
+        XCTAssertEqual(presentation.networkingRootItem.title, "Networking")
+        XCTAssertFalse(presentation.networkingRootItem.showsAddButton)
+        XCTAssertFalse(presentation.networkingRootItem.isExpandable)
         XCTAssertEqual(presentation.diaryRootItem.id, "diary-root")
         XCTAssertEqual(presentation.diaryRootItem.title, "My Diary")
-        XCTAssertEqual(Array(presentation.rootItems.prefix(4)).map(\.id), ["todo-root", "my-wiki", "add-source", "diary-root"])
+        XCTAssertEqual(Array(presentation.rootItems.prefix(5)).map(\.id), ["todo-root", "my-wiki", "add-source", "networking", "diary-root"])
         XCTAssertEqual(presentation.diarySections.first?.items.map(\.title), ["Today", "Yesterday"])
     }
 
@@ -81,7 +85,26 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.todoRootItem.badgeCount, 2)
         XCTAssertEqual(presentation.todoRootItem.selectionAction, .todo)
         XCTAssertTrue(presentation.todoRootItem.isSelected)
-        XCTAssertEqual(Array(presentation.rootItems.prefix(4)).map(\.id), ["todo-root", "my-wiki", "add-source", "diary-root"])
+        XCTAssertEqual(Array(presentation.rootItems.prefix(5)).map(\.id), ["todo-root", "my-wiki", "add-source", "networking", "diary-root"])
+    }
+
+    func testSidebarPresentationShowsNetworkingComingSoonRootItem() {
+        let presentation = DateSidebarPresentation(
+            dates: [],
+            selectedItemID: "networking",
+            knowledgeImportConfig: .default,
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        XCTAssertEqual(presentation.networkingRootItem.id, "networking")
+        XCTAssertEqual(presentation.networkingRootItem.title, "Networking")
+        XCTAssertEqual(presentation.networkingRootItem.selectionAction, .networkingComingSoon)
+        XCTAssertTrue(presentation.networkingRootItem.isSelected)
+        XCTAssertFalse(presentation.todoRootItem.isSelected)
+        XCTAssertFalse(presentation.myWikiRootItem.isSelected)
+        XCTAssertFalse(presentation.sourceRootItem.isSelected)
+        XCTAssertFalse(presentation.diaryRootItem.isSelected)
     }
 
     func testSidebarPresentationSelectsMyWikiAsPeerRootItem() {
@@ -369,6 +392,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(DateSidebarView.selectionAction(for: "diary:2026-05-23"), .diaryDate("2026-05-23"))
         XCTAssertEqual(DateSidebarView.selectionAction(for: "my-wiki"), .knowledgeOntology)
         XCTAssertEqual(DateSidebarView.selectionAction(for: "add-source"), .otherSource(focusAddConnector: false))
+        XCTAssertEqual(DateSidebarView.selectionAction(for: "networking"), .networkingComingSoon)
         XCTAssertNil(DateSidebarView.selectionAction(for: "connector:feishu-main"))
         XCTAssertEqual(
             DateSidebarView.selectionAction(for: "document:feishu-main:doc-alpha"),
@@ -406,6 +430,7 @@ final class DailyMarkdownViewTests: XCTestCase {
             onSelectKnowledgeConnector: { _ in },
             onSelectKnowledgeDocument: { _, _ in },
             onOpenKnowledgeOntology: {},
+            onOpenNetworkingComingSoon: {},
             onOpenSyncMemory: {}
         )
 

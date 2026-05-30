@@ -15,6 +15,7 @@ struct DateSidebarView: View {
     let onSelectKnowledgeConnector: (String) -> Void
     let onSelectKnowledgeDocument: (String, String) -> Void
     let onOpenKnowledgeOntology: () -> Void
+    let onOpenNetworkingComingSoon: () -> Void
     let onOpenSyncMemory: () -> Void
     @State private var expandedSectionIDs: Set<String> = []
     @State private var isDiaryGroupExpanded = true
@@ -29,6 +30,7 @@ struct DateSidebarView: View {
                 rootRow(presentation.todoRootItem)
                 rootRow(presentation.myWikiRootItem)
                 rootRow(presentation.sourceRootItem)
+                rootRow(presentation.networkingRootItem)
 
                 DisclosureGroup(isExpanded: $isDiaryGroupExpanded) {
                     ForEach(presentation.diarySections) { section in
@@ -309,6 +311,8 @@ struct DateSidebarView: View {
             onSelectKnowledgeDocument(instanceID, documentID)
         case .knowledgeOntology:
             onOpenKnowledgeOntology()
+        case .networkingComingSoon:
+            onOpenNetworkingComingSoon()
         case nil:
             break
         }
@@ -321,6 +325,8 @@ struct DateSidebarView: View {
             return .todo
         } else if itemID == "my-wiki" {
             return .knowledgeOntology
+        } else if itemID == "networking" {
+            return .networkingComingSoon
         } else if itemID == "add-source" || itemID == "other-source" {
             return .otherSource(focusAddConnector: false)
         } else if itemID.hasPrefix("document:") {
@@ -424,6 +430,7 @@ enum SidebarSelectionAction: Equatable {
     case diaryDate(String)
     case otherSource(focusAddConnector: Bool)
     case knowledgeOntology
+    case networkingComingSoon
     case knowledgeConnector(String)
     case knowledgeDocument(String, String)
 }
@@ -473,6 +480,7 @@ struct DateSidebarPresentation {
     let todoRootItem: SidebarRootItem
     let myWikiRootItem: SidebarRootItem
     let sourceRootItem: SidebarRootItem
+    let networkingRootItem: SidebarRootItem
     let diaryRootItem: SidebarRootItem
     let sourceItems: [SidebarRootItem]
     let diarySections: [DateSidebarSection]
@@ -523,6 +531,15 @@ struct DateSidebarPresentation {
             isSelected: selectedItemID == "add-source" || selectedItemID == "other-source",
             isEnabled: true,
             showsAddButton: true
+        )
+        networkingRootItem = SidebarRootItem(
+            id: "networking",
+            title: "Networking",
+            systemImage: "network",
+            isSelected: selectedItemID == "networking",
+            isEnabled: true,
+            showsAddButton: false,
+            selectionAction: .networkingComingSoon
         )
         diaryRootItem = SidebarRootItem(
             id: "diary-root",
@@ -591,7 +608,7 @@ struct DateSidebarPresentation {
                 )
             ]
         }
-        rootItems = [todoRootItem, myWikiRootItem, sourceRootItem, diaryRootItem] + sourceItems
+        rootItems = [todoRootItem, myWikiRootItem, sourceRootItem, networkingRootItem, diaryRootItem] + sourceItems
         sections = diarySections
     }
 

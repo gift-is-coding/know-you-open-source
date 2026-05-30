@@ -6071,6 +6071,64 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
     }
 
+    func testEngineRecoveryNudgeRequestsSetupWhenDefaultEngineIsNone() {
+        let nudge = DiaryEngineRecoveryNudgePresentation.make(
+            defaultEngine: .none,
+            engineStatuses: [
+                .none: EngineRuntimeStatus(state: .gray, detail: "No engine selected.")
+            ]
+        )
+
+        XCTAssertEqual(nudge?.kind, .setupRequired)
+        XCTAssertEqual(nudge?.toolbarTitle, "Add Diary Engine")
+        XCTAssertEqual(nudge?.toolbarState, .yellow)
+        XCTAssertEqual(nudge?.title, "Choose a Diary Engine")
+    }
+
+    func testEngineRecoveryNudgeRequestsRepairWhenDefaultEngineIsNotGreen() {
+        let nudge = DiaryEngineRecoveryNudgePresentation.make(
+            defaultEngine: .codexCLI,
+            engineStatuses: [
+                .codexCLI: EngineRuntimeStatus(state: .yellow, detail: "Smoke test failed.")
+            ]
+        )
+
+        XCTAssertEqual(nudge?.kind, .repairRequired)
+        XCTAssertEqual(nudge?.toolbarTitle, "Fix Diary Engine")
+        XCTAssertEqual(nudge?.toolbarState, .yellow)
+        XCTAssertEqual(nudge?.title, "Diary Engine needs attention")
+        XCTAssertEqual(
+            nudge?.detail,
+            "Codex (CLI) is not ready. Retest it or configure another engine."
+        )
+    }
+
+    func testEngineRecoveryNudgeClearsWhenDefaultEngineIsGreen() {
+        let nudge = DiaryEngineRecoveryNudgePresentation.make(
+            defaultEngine: .codexCLI,
+            engineStatuses: [
+                .codexCLI: EngineRuntimeStatus(state: .green, detail: "Smoke test succeeded.")
+            ]
+        )
+
+        XCTAssertNil(nudge)
+    }
+
+    func testEngineRecoveryNudgePersistsWhileUnderlyingStateIsUnresolved() {
+        let statuses: [DiaryEngine: EngineRuntimeStatus] = [
+            .none: EngineRuntimeStatus(state: .gray, detail: "No engine selected.")
+        ]
+
+        let first = DiaryEngineRecoveryNudgePresentation.make(defaultEngine: .none, engineStatuses: statuses)
+        let afterPopoverDismissal = DiaryEngineRecoveryNudgePresentation.make(
+            defaultEngine: .none,
+            engineStatuses: statuses
+        )
+
+        XCTAssertEqual(first, afterPopoverDismissal)
+        XCTAssertEqual(afterPopoverDismissal?.toolbarTitle, "Add Diary Engine")
+    }
+
     func testLoadedDefaultNoneAutoPicksVerifiedEngineWhenSuppressionWasNeverSaved() async throws {
         let codexURL = try makeStubExecutable(named: "codex")
         var config = SummarizerConfig.default

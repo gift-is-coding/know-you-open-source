@@ -80,6 +80,18 @@ final class OnboardingContentTests: XCTestCase {
         XCTAssertEqual(content.optionalEnhancement?.helperLinks.map(\.title), ["Typeless", "Shandianshuo"])
     }
 
+    func testFullDiskAccessGuidanceExplainsHowToAddKnowYouWhenItIsNotListed() {
+        let guidance = OnboardingContent.fullDiskAccessGuidance
+
+        XCTAssertTrue(guidance.missingPermissionDetail.contains("click +"))
+        XCTAssertTrue(guidance.missingPermissionDetail.contains("select KnowYou.app"))
+        XCTAssertTrue(guidance.manualAddInstruction.contains("does not appear"))
+        XCTAssertTrue(guidance.manualAddInstruction.contains("Show KnowYou in Finder"))
+        XCTAssertEqual(guidance.openSettingsButtonTitle, "Open Full Disk Access")
+        XCTAssertEqual(guidance.revealAppButtonTitle, "Show KnowYou in Finder")
+        XCTAssertEqual(guidance.recheckButtonTitle, "Check Again")
+    }
+
     func testFullDiskAccessBypassIsLimitedToDerivedDataDebugBuilds() {
         let developmentBuildURL = URL(
             fileURLWithPath: "/Users/me/Library/Developer/Xcode/DerivedData/KnowYou/Build/Products/Debug/KnowYou.app"

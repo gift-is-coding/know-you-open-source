@@ -153,6 +153,10 @@ struct OnboardingView: View {
         appState.notificationStatus.isDatabaseAvailable || appState.environment?.notificationReader.isAvailable == true
     }
 
+    private var fullDiskAccessGuidance: OnboardingFullDiskAccessGuidance {
+        OnboardingContent.fullDiskAccessGuidance
+    }
+
     private var allowsFullDiskAccessBypass: Bool {
         OnboardingPermissionBypassPolicy.allowsFullDiskAccessBypass(bundleURL: Bundle.main.bundleURL)
     }
@@ -269,7 +273,7 @@ struct OnboardingView: View {
                         title: "Full Disk Access",
                         detail: notificationsAvailable
                             ? "Ready. KnowYou can read the local Notification Center store and rebuild who reached you and when."
-                            : "Turn this on in macOS so KnowYou can read the local Notification Center store and rebuild who reached you and when.",
+                            : fullDiskAccessGuidance.missingPermissionDetail,
                         ok: notificationsAvailable
                     )
 
@@ -296,6 +300,12 @@ struct OnboardingView: View {
                             }
                             .buttonStyle(.bordered)
                         }
+                    }
+
+                    if !notificationsAvailable {
+                        Text(fullDiskAccessGuidance.manualAddInstruction)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
                     if let optionalEnhancement = currentContent.optionalEnhancement {
@@ -361,16 +371,21 @@ struct OnboardingView: View {
         case .permissions:
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 12) {
-                    Button("Open Full Disk Access") {
+                    Button(fullDiskAccessGuidance.openSettingsButtonTitle) {
                         openFullDiskAccess()
                     }
                     .buttonStyle(.borderedProminent)
 
-                    Button(currentContent.primaryCTA) {
-                        recheckPermissionAndAdvanceIfReady()
+                    Button(fullDiskAccessGuidance.revealAppButtonTitle) {
+                        revealKnowYouInFinder()
                     }
                     .buttonStyle(.bordered)
                 }
+
+                Button(fullDiskAccessGuidance.recheckButtonTitle) {
+                    recheckPermissionAndAdvanceIfReady()
+                }
+                .buttonStyle(.bordered)
 
                 if !notificationsAvailable && allowsFullDiskAccessBypass {
                     Button("Continue in this dev build without Full Disk Access") {
@@ -684,6 +699,10 @@ struct OnboardingView: View {
         }
 
         NSWorkspace.shared.open(url)
+    }
+
+    private func revealKnowYouInFinder() {
+        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
     }
 
     private func openNotificationSettings() {

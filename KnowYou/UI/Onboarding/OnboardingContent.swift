@@ -115,6 +115,14 @@ struct OnboardingOptionalEnhancement: Equatable {
     let helperLinks: [OnboardingHelperLink]
 }
 
+struct OnboardingFullDiskAccessGuidance: Equatable {
+    let missingPermissionDetail: String
+    let manualAddInstruction: String
+    let openSettingsButtonTitle: String
+    let revealAppButtonTitle: String
+    let recheckButtonTitle: String
+}
+
 struct OnboardingStepContent {
     let iconName: String
     let title: String
@@ -160,6 +168,13 @@ struct OnboardingStepContent {
 
 enum OnboardingContent {
     static let blockingGateStep: OnboardingStep = .permissions
+    static let fullDiskAccessGuidance = OnboardingFullDiskAccessGuidance(
+        missingPermissionDetail: "Open Full Disk Access, click +, and select KnowYou.app. This lets KnowYou read the local Notification Center history.",
+        manualAddInstruction: "If KnowYou does not appear in the list, use Show KnowYou in Finder, then add that app in System Settings.",
+        openSettingsButtonTitle: "Open Full Disk Access",
+        revealAppButtonTitle: "Show KnowYou in Finder",
+        recheckButtonTitle: "Check Again"
+    )
 
     private static let voiceLinks = [
         OnboardingHelperLink(

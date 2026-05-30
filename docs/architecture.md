@@ -194,6 +194,7 @@ Add Source 与 Daily Memory Export 是边界不同的能力。Daily Memory Expor
 通知权限入口目前分布在两个 UI 表面：
 
 - `OnboardingView` 的 `permissions` 步骤会并列展示 Full Disk Access 与 Notifications，并把通知用途明确说明为 `8:30 PM daily review reminder`
+- Full Disk Access 没有应用内授权 API，onboarding 只负责打开系统设置、解释 `+` 手动添加 `KnowYou.app` 的路径，并通过 Finder reveal 帮用户定位当前 app bundle
 - `SettingsView` 继续显示 reminder 开关、通知权限状态和测试入口；用户拒绝通知权限后，也通过这里跳转到 Notification Settings
 
 当前 `AppState` 还负责应用更新提醒编排：
@@ -513,7 +514,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - `demoClick` 要求用户点击正文段落，右侧 sources 随阅读位置联动
 - `demoReference` 解释段落与 reference 的追溯关系
 - `privacy` 用居中 coachmark 强调 `.md` 纯本地与“没有服务端”
-- `permissions` 只 gate `Full Disk Access`，并在同位置 coachmark 里解释通知与剪贴板上下文价值
+- `permissions` 只 gate `Full Disk Access`，并在同位置 coachmark 里解释通知与剪贴板上下文价值；如果系统列表里没有 KnowYou，用户可以用 `Show KnowYou in Finder` 定位 app bundle 后手动添加
 - `enginePrompt` 只负责高亮真实产品里的引擎按钮，`engineSetup` 则在现有引擎配置组件里完成默认引擎设置
 - `generating` 在完成 onboarding 后自动触发一次性今天+昨天 bootstrap，而不是要求用户手动点刷新
 - bootstrap 启动时主窗口会显示一个非阻塞轻提醒，告知用户两天内容正在生成、约 2 分钟后可回来查看

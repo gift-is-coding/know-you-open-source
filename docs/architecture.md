@@ -210,7 +210,7 @@ Add Source 与 Daily Memory Export 是边界不同的能力。Daily Memory Expor
 - `UpdateService`：拉取远端 metadata、比较版本、生成统一的 `UpdateOffer`
 - `MainWindowView.toolbar`：通过 toolbar leading 区域把 SwiftUI 胶囊稳定挂到主窗口标题栏左上角
 
-当前默认行为是“如果构建元数据里配置了 update feed，就执行真实检查；否则安全退回 `NoopUpdateService`”。这让产品层已经具备双渠道 UI 和状态机；其中 direct 渠道当前会通过 `DirectAppUpdating` 默认实现打开远端 metadata 提供的官方下载链接，后续仍可继续桥接到 Sparkle 一类真正的自更新器。
+当前 Release 构建配置了线上 update feed：`https://raw.githubusercontent.com/gift-is-coding/know-you-downloads/main/update-feed/latest.json`。如果构建元数据缺失或 URL 无效，系统会安全退回 `NoopUpdateService`。这让产品层已经具备双渠道 UI 和状态机；其中 direct 渠道当前会通过 `DirectAppUpdating` 默认实现打开远端 metadata 提供的官方下载链接，后续仍可继续桥接到 Sparkle 一类真正的自更新器。
 
 Settings 除了状态与配置外，还承接了一组对外信息入口：
 

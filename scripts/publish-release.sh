@@ -43,6 +43,10 @@ PY
 
 update_download_index_html "$index_path" "$artifact_size_label" "$checksum_value"
 
+update_feed_path="$downloads_clone_path/update-feed/latest.json"
+mkdir -p "$(dirname "$update_feed_path")"
+release_update_feed_json >"$update_feed_path"
+
 release_notes_path="$tmp_dir/release-notes.md"
 release_notes_body >"$release_notes_path"
 
@@ -67,12 +71,13 @@ else
     --notes-file "$release_notes_path"
 fi
 
-if ! git -C "$downloads_clone_path" diff --quiet -- index.html; then
-  git -C "$downloads_clone_path" add index.html
+if [[ -n "$(git -C "$downloads_clone_path" status --porcelain -- index.html update-feed/latest.json)" ]]; then
+  git -C "$downloads_clone_path" add index.html update-feed/latest.json
   git -C "$downloads_clone_path" commit -m "chore: update know you download page for v$(marketing_version)"
   git -C "$downloads_clone_path" push origin main
 fi
 
 echo "Release repo: https://github.com/$download_repo/releases/tag/$(download_release_tag)"
 echo "Download URL: $(download_asset_url)"
+echo "Update metadata URL: $(download_update_metadata_url)"
 echo "Checksum: $checksum_value"

@@ -44,6 +44,7 @@ assert_eq "KnowYou-1.0.2-2.dmg.sha256" "$(checksum_asset_name)" "checksum_asset_
 
 expected_url="https://github.com/gift-is-coding/know-you-downloads/releases/download/v1.0.2-build116/KnowYou-1.0.2-2.dmg"
 assert_eq "$expected_url" "$(download_asset_url)" "download_asset_url"
+assert_eq "https://raw.githubusercontent.com/gift-is-coding/know-you-downloads/main/update-feed/latest.json" "$(download_update_metadata_url)" "download_update_metadata_url"
 
 notes="$(release_notes_body)"
 assert_contains "$notes" "- Version: 1.0.2" "release_notes version"
@@ -91,5 +92,10 @@ assert_contains "$updated_html" "<code>c2f294c</code>" "index commit"
 assert_contains "$updated_html" ">6.4 MB DMG<" "index size"
 assert_contains "$updated_html" "<code>4773fe766ab2ae074b8bab946e57f1ca4bef41590f34d9a7b0c4e0fba7df41f0</code>" "index checksum"
 assert_contains "$updated_html" "Open the DMG and drag KnowYou to Applications" "index notice"
+
+update_feed_json="$(release_update_feed_json)"
+assert_contains "$update_feed_json" '"version": "1.0.2"' "update feed version"
+assert_contains "$update_feed_json" '"publishedAt": "2026-04-21T00:00:00Z"' "update feed publishedAt"
+assert_contains "$update_feed_json" '"downloadURL": "https://github.com/gift-is-coding/know-you-downloads/releases/download/v1.0.2-build116/KnowYou-1.0.2-2.dmg"' "update feed downloadURL"
 
 echo "publish-release helper tests passed"

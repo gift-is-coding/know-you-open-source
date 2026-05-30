@@ -29,7 +29,7 @@ For the normal public release path, run the single publish script:
 ./scripts/publish-release.sh
 ```
 
-It will build the Release archive, notarize it, verify the stapled app, package a drag-to-Applications DMG, upload the DMG plus `.sha256` to `gift-is-coding/know-you-downloads`, and update that repo's download landing page metadata.
+It will build the Release archive, notarize it, verify the stapled app, package a drag-to-Applications DMG, upload the DMG plus `.sha256` to `gift-is-coding/know-you-downloads`, update that repo's download landing page metadata, and publish `update-feed/latest.json` for in-app update checks.
 
 If you need to run the steps manually, use the lower-level scripts below:
 

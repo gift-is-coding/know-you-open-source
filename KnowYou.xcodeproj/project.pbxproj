@@ -913,7 +913,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -eu\nOUTPUT_PATH=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/BuildMetadata.json\"\nINFO_PLIST_PATH=\"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\nAUTO_BUILD_NUMBER=\"1\"\nBUILD_TIMESTAMP=\"$(date '+%m-%d %H:%M')\"\nGIT_SHORT_SHA=\"\"\nif command -v git >/dev/null 2>&1; then\n  AUTO_BUILD_NUMBER=\"$(git -C \"$SRCROOT\" rev-list --count HEAD 2>/dev/null || printf '1')\"\n  GIT_SHORT_SHA=\"$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || true)\"\nfi\nif [ -f \"$INFO_PLIST_PATH\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $AUTO_BUILD_NUMBER\" \"$INFO_PLIST_PATH\" \\\n    || /usr/libexec/PlistBuddy -c \"Add :CFBundleVersion string $AUTO_BUILD_NUMBER\" \"$INFO_PLIST_PATH\"\nfi\ncat > \"$OUTPUT_PATH\" <<EOF\n{\"buildNumber\":\"$AUTO_BUILD_NUMBER\",\"buildTimestamp\":\"$BUILD_TIMESTAMP\",\"gitShortSHA\":\"$GIT_SHORT_SHA\"}\nEOF\n";
+			shellScript = "/bin/sh \"$SRCROOT/scripts/write-build-metadata.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -1186,6 +1186,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = KnowYou;
 				INFOPLIST_KEY_KYUpdateChannel = direct;
+				INFOPLIST_KEY_KYUpdateMetadataURL = "https://raw.githubusercontent.com/gift-is-coding/know-you-downloads/main/update-feed/latest.json";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

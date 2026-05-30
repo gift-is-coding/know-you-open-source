@@ -106,6 +106,43 @@ download_asset_url() {
     "$(basename "$(release_dmg_path)")"
 }
 
+download_update_metadata_url() {
+  if [[ -n "${KNOWYOU_UPDATE_METADATA_URL:-}" ]]; then
+    printf '%s\n' "$KNOWYOU_UPDATE_METADATA_URL"
+    return
+  fi
+
+  printf 'https://raw.githubusercontent.com/%s/main/update-feed/latest.json\n' "$download_repo"
+}
+
+release_update_feed_json() {
+  local published_at="${KNOWYOU_RELEASE_PUBLISHED_AT:-$(release_date)T00:00:00Z}"
+
+  python3 - <<'PY' \
+    "$(marketing_version)" \
+    "$(download_release_title)" \
+    "$published_at" \
+    "$(download_asset_url)"
+import json
+import sys
+
+version = sys.argv[1]
+title = sys.argv[2]
+published_at = sys.argv[3]
+download_url = sys.argv[4]
+
+payload = {
+    "version": version,
+    "summary": f"{title} is available.",
+    "publishedAt": published_at,
+    "downloadURL": download_url,
+}
+
+json.dump(payload, sys.stdout, ensure_ascii=False, indent=2)
+sys.stdout.write("\n")
+PY
+}
+
 release_notes_body() {
   cat <<EOF
 KnowYou turns daily computer context into a story-first journal on macOS.

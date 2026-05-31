@@ -251,6 +251,47 @@ final class OnboardingProgressTests: XCTestCase {
     }
 
     @MainActor
+    func testCompletedOldUserCanQueueMissingRecentHistoryBootstrap() {
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 20, hour: 9).date!
+        defaults.set(true, forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
+        defaults.set(OnboardingProgressState.complete.rawValue, forKey: AppState.UserDefaultsKeys.onboardingProgressState)
+        defaults.set(OnboardingBootstrapState.idle.rawValue, forKey: AppState.UserDefaultsKeys.onboardingBootstrapState)
+        let appState = AppState(
+            bootstrapServices: false,
+            currentDate: { now },
+            userDefaults: defaults
+        )
+
+        XCTAssertTrue(appState.queueRecentHistoryBootstrapIfNeeded())
+
+        XCTAssertEqual(appState.onboardingBootstrapState, OnboardingBootstrapState.pending)
+        XCTAssertEqual(appState.onboardingBootstrapDayKeys, ["2026-04-20", "2026-04-19", "2026-04-18"])
+        XCTAssertEqual(
+            appState.onboardingBootstrapNotice?.message,
+            "Generate the last 3 days from available local history. Keep KnowYou open while it writes."
+        )
+    }
+
+    @MainActor
+    func testCompletedBootstrapDoesNotQueueMissingRecentHistoryAgain() {
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 20, hour: 9).date!
+        defaults.set(true, forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
+        defaults.set(OnboardingProgressState.complete.rawValue, forKey: AppState.UserDefaultsKeys.onboardingProgressState)
+        defaults.set(OnboardingBootstrapState.complete.rawValue, forKey: AppState.UserDefaultsKeys.onboardingBootstrapState)
+        let appState = AppState(
+            bootstrapServices: false,
+            currentDate: { now },
+            userDefaults: defaults
+        )
+
+        XCTAssertFalse(appState.queueRecentHistoryBootstrapIfNeeded())
+
+        XCTAssertEqual(appState.onboardingBootstrapState, OnboardingBootstrapState.complete)
+        XCTAssertTrue(appState.onboardingBootstrapDayKeys.isEmpty)
+        XCTAssertNil(appState.onboardingBootstrapNotice)
+    }
+
+    @MainActor
     func testCompletedOnboardingDoesNotReappearDuringBootstrappedLaunch() throws {
         let firstLaunch = AppState(bootstrapServices: false, userDefaults: defaults)
         firstLaunch.completeOnboarding()

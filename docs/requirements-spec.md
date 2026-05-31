@@ -71,7 +71,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 
 ### 4.7 管理统一待办
 
-用户应能从左侧 `Todo` 入口查看统一待办。open todo 必须优先展示，completed todo 必须保留并排在底部。用户可以在 Todo 页直接输入新任务；每日生成的候选待办可以被高置信自动归集，也可以在 Todo 页右侧 `Inbox / 待选` 列表或日记里手动转入。
+用户应能从左侧 `Todo` 入口查看统一待办。open todo 必须优先展示，completed todo 必须保留并排在底部。用户可以在 Todo 页直接输入新任务；每日生成的候选待办可以被高置信自动归集，也可以在 Todo 页右侧 `Inbox / Candidates` 列表或日记里手动转入。
 
 ## 5. 功能范围
 
@@ -175,10 +175,10 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - `待办事项` 必须只生成 0-3 个明确、可执行、尚未完成的候选项；没有足够证据时必须允许为空
 - `待办事项` 不得生成泛泛建议、重复项、无证据推测，或文本中已经显示完成/已发送/已提交/已约定的事项
 - 每日日记刷新成功后，系统必须用 summarizer 对候选待办与现有 todo 做语义 `create/merge/ignore` 归集；只有高置信 `create` 可以自动写入统一 todo，高置信 `merge` 只补充来源证据
-- 低/中置信或无法判断的候选待办不得自动入库，但必须能在 Todo 页右侧 `Inbox / 待选` 列表手动 Add、Merge 或 Dismiss，并能在日记阅读区手动 `Add to Todo`
+- 低/中置信或无法判断的候选待办不得自动入库，但必须能在 Todo 页右侧 `Inbox / Candidates` 列表手动 Add、Merge 或 Dismiss，并能在日记阅读区手动 `Add to Todo`
 - 日记刷新即使没有新事件，也必须重新评估 Todo 候选和关闭建议，保证手动刷新后的 `Inbox` 状态可解释
 - 每日日记刷新成功后，系统必须用后续证据保守判断 open todo 是否完成；只有明确出现已完成、已发送、已提交、已约定等高置信证据时才能自动标记 completed，并保存 evidence event ID
-- 中/低置信完成判断不得自动关闭，必须进入 Todo 页右侧 `推荐关闭` 列表，用户可选择 Close 或 Keep
+- 中/低置信完成判断不得自动关闭，必须进入 Todo 页右侧 `Ready to close` 列表，用户可选择 Close 或 Keep
 - 当 summarizer 不可用、失败或返回不可解析结果时，自动归集和自动完成必须进入 degraded 状态，不得静默使用低质量规则替代；手动 `Add to Todo` 必须继续可用
 - `详情` 中的每个事务线程都应成为独立的 story paragraph，并各自保留自己的 `sourceEventIDs`
 - 当前产品不对 `详情` 段落数量设置硬性上限，分段质量主要由 prompt 约束“合理分段、避免碎片化”
@@ -212,7 +212,9 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 单个 source 扫描失败不得阻塞其他 source。
 - 用户必须能手动触发 `Refresh`，它只重新扫描本地目录。
 - 当启用每日 source scan 时，系统必须安装独立于 Daily Memory Export 的用户级 `LaunchAgent`。
-- 侧边栏必须始终显示 `My Wiki`、`Other Source`、`My Diary` 三个同级一级入口。
+- 侧边栏必须始终显示 `Home`、`Networking`、`Todo`、`My Wiki`、`Other Source`、`My Diary` 这些同级一级入口，并且 `Home` 必须位于 `Networking` 前面。
+- `Home` 必须作为默认理解入口，使用英文短句和视觉资产提醒用户保持 KnowYou 在后台运行，展示下一次日记检查倒计时，提供 `Today’s Diary`、`My Wiki`、`Add Sources`、`Networking` 跳转，以及 `Generate Last 3 Days` 补生成按钮。
+- `Networking` 入口不得只显示 coming-soon placeholder；必须用英文短句和视觉资产说明用户可以创建不同场景的 profile，可用于求职、社交和 networking，并且 AI 可协助但身份必须清晰。
 - `My Wiki`、`Other Source`、`My Diary` 必须使用同一套 sidebar row 组件、字号、图标尺寸、行高和选中态。
 - 右上角 engine selector 必须固定在主窗口全局 toolbar 中，不得随 `My Wiki`、`Other Source`、`My Diary` 的内容切换改变位置或变成页面内部组件。
 - `Other Source` 必须是独立入口，不得折叠或收起其他来源。
@@ -263,6 +265,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 选择日期后加载该日 story
 - 左侧必须提供 `Todo` 一级入口，并展示 open todo 数量
 - `Todo` 页面必须展示 open todo 在上、completed todo 在下；用户必须能自由输入新 todo，并能手动标记 open todo 为 completed
+- `Todo` 页面用户可见控件文案必须使用英文，包括新建输入框、候选列表和推荐关闭列表。
 - `Todo` 页面必须采用简洁双栏工作台：左侧为统一 Todo 列表，右侧为较窄的 `Inbox` 列表；不得用统计卡片或快捷键提示占据主要空间
 - 右侧 `Inbox` 必须一屏展示尽可能多的候选和推荐关闭事项，并提供 Add/Merge/Dismiss/Close/Keep 这些直接操作
 - 点击段落后查看其来源事件

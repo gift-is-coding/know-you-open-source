@@ -52,6 +52,11 @@ final class DailyMarkdownViewTests: XCTestCase {
             calendar: gregorianCalendar
         )
 
+        XCTAssertEqual(presentation.homeRootItem.id, "home")
+        XCTAssertEqual(presentation.homeRootItem.title, "Home")
+        XCTAssertEqual(presentation.homeRootItem.selectionAction, .home)
+        XCTAssertFalse(presentation.homeRootItem.showsAddButton)
+        XCTAssertFalse(presentation.homeRootItem.isExpandable)
         XCTAssertEqual(presentation.myWikiRootItem.id, "my-wiki")
         XCTAssertEqual(presentation.myWikiRootItem.title, "My Wiki")
         XCTAssertFalse(presentation.myWikiRootItem.showsAddButton)
@@ -66,7 +71,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertFalse(presentation.networkingRootItem.isExpandable)
         XCTAssertEqual(presentation.diaryRootItem.id, "diary-root")
         XCTAssertEqual(presentation.diaryRootItem.title, "My Diary")
-        XCTAssertEqual(Array(presentation.rootItems.prefix(5)).map(\.id), ["todo-root", "my-wiki", "add-source", "networking", "diary-root"])
+        XCTAssertEqual(Array(presentation.rootItems.prefix(6)).map(\.id), ["home", "networking", "todo-root", "my-wiki", "add-source", "diary-root"])
         XCTAssertEqual(presentation.diarySections.first?.items.map(\.title), ["Today", "Yesterday"])
     }
 
@@ -85,7 +90,22 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.todoRootItem.badgeCount, 2)
         XCTAssertEqual(presentation.todoRootItem.selectionAction, .todo)
         XCTAssertTrue(presentation.todoRootItem.isSelected)
-        XCTAssertEqual(Array(presentation.rootItems.prefix(5)).map(\.id), ["todo-root", "my-wiki", "add-source", "networking", "diary-root"])
+        XCTAssertEqual(Array(presentation.rootItems.prefix(6)).map(\.id), ["home", "networking", "todo-root", "my-wiki", "add-source", "diary-root"])
+    }
+
+    func testSidebarPresentationShowsHomeBeforeNetworking() {
+        let presentation = DateSidebarPresentation(
+            dates: [],
+            selectedItemID: "home",
+            knowledgeImportConfig: .default,
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        XCTAssertEqual(presentation.homeRootItem.title, "Home")
+        XCTAssertEqual(presentation.homeRootItem.selectionAction, .home)
+        XCTAssertTrue(presentation.homeRootItem.isSelected)
+        XCTAssertEqual(Array(presentation.rootItems.prefix(2)).map(\.id), ["home", "networking"])
     }
 
     func testSidebarPresentationShowsNetworkingComingSoonRootItem() {
@@ -101,6 +121,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.networkingRootItem.title, "Networking")
         XCTAssertEqual(presentation.networkingRootItem.selectionAction, .networkingComingSoon)
         XCTAssertTrue(presentation.networkingRootItem.isSelected)
+        XCTAssertFalse(presentation.homeRootItem.isSelected)
         XCTAssertFalse(presentation.todoRootItem.isSelected)
         XCTAssertFalse(presentation.myWikiRootItem.isSelected)
         XCTAssertFalse(presentation.sourceRootItem.isSelected)
@@ -388,6 +409,7 @@ final class DailyMarkdownViewTests: XCTestCase {
 
     @MainActor
     func testDateSidebarSelectionActionRoutesRootAndConnectorIDs() {
+        XCTAssertEqual(DateSidebarView.selectionAction(for: "home"), .home)
         XCTAssertEqual(DateSidebarView.selectionAction(for: "todo-root"), .todo)
         XCTAssertEqual(DateSidebarView.selectionAction(for: "diary:2026-05-23"), .diaryDate("2026-05-23"))
         XCTAssertEqual(DateSidebarView.selectionAction(for: "my-wiki"), .knowledgeOntology)
@@ -400,6 +422,43 @@ final class DailyMarkdownViewTests: XCTestCase {
         )
         XCTAssertNil(DateSidebarView.selectionAction(for: "diary-root"))
         XCTAssertNil(DateSidebarView.selectionAction(for: "settings"))
+    }
+
+    func testHomeDashboardPresentationKeepsCopyShortVisualAndActionable() {
+        let presentation = HomeDashboardPresentation(
+            nextDiaryCheckDate: makeDate(year: 2026, month: 5, day: 23, hour: 15, minute: 0),
+            now: makeDate(year: 2026, month: 5, day: 23, hour: 14, minute: 12),
+            missingRecentDayCount: 2
+        )
+
+        XCTAssertEqual(presentation.heroTitle, "KnowYou works quietly in the background.")
+        XCTAssertEqual(presentation.nextCheckTitle, "Next diary check")
+        XCTAssertEqual(presentation.nextCheckValue, "48 min")
+        XCTAssertEqual(presentation.primaryActionTitle, "Generate Last 3 Days")
+        XCTAssertEqual(presentation.visualAssetName, "HomeDashboardHero")
+        XCTAssertEqual(presentation.featureCards.map(\.title), ["Today’s Diary", "My Wiki", "Add Sources", "Networking"])
+        XCTAssertTrue(presentation.featureCards.allSatisfy { $0.subtitle.count <= 42 })
+    }
+
+    func testNetworkingPreviewPresentationExplainsProfilesAndIdentityWithImageAssets() {
+        let presentation = NetworkingPreviewPresentation()
+
+        XCTAssertEqual(presentation.title, "Networking")
+        XCTAssertEqual(presentation.visualAssetName, "NetworkingPreviewHero")
+        XCTAssertTrue(presentation.statements.contains("Create profiles for different contexts."))
+        XCTAssertTrue(presentation.statements.contains("Use them for jobs, networking, and social discovery."))
+        XCTAssertTrue(presentation.statements.contains("Your AI can help, but identity stays clear."))
+    }
+
+    func testTodoInboxCopyContainsNoChineseUserFacingLabels() {
+        let visibleCopy = TodoInboxCopy.visibleStrings.joined(separator: "\n")
+
+        XCTAssertFalse(visibleCopy.contains("输入"))
+        XCTAssertFalse(visibleCopy.contains("待选"))
+        XCTAssertFalse(visibleCopy.contains("推荐关闭"))
+        XCTAssertTrue(visibleCopy.contains("Add a task to keep tracking across days"))
+        XCTAssertTrue(visibleCopy.contains("Candidates"))
+        XCTAssertTrue(visibleCopy.contains("Ready to close"))
     }
 
     @MainActor
@@ -424,6 +483,7 @@ final class DailyMarkdownViewTests: XCTestCase {
             isActive: true,
             isKnowledgeOntologySelected: false,
             todoOpenCount: 0,
+            onOpenHome: {},
             onSelectDiaryDate: { _ in },
             onOpenTodo: {},
             onSelectOtherSource: { _ in },
@@ -917,13 +977,15 @@ final class DailyMarkdownViewTests: XCTestCase {
         return calendar
     }
 
-    private func makeDate(year: Int, month: Int, day: Int) -> Date {
+    private func makeDate(year: Int, month: Int, day: Int, hour: Int = 0, minute: Int = 0) -> Date {
         DateComponents(
             calendar: gregorianCalendar,
             timeZone: TimeZone(secondsFromGMT: 0),
             year: year,
             month: month,
-            day: day
+            day: day,
+            hour: hour,
+            minute: minute
         ).date!
     }
 }

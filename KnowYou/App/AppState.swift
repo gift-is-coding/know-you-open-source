@@ -640,6 +640,7 @@ final class AppState {
     var updateOffer: UpdateOffer?
     var isShowingUpdateSheet = false
     var lastUpdateCheckAt: Date?
+    var nextDiaryAutomationCheckDate: Date?
     var launchAtLoginEnabled = false
     var launchAtLoginStatusMessage: String?
     private var refreshJobsByDay: [String: DayRefreshJob] = [:]
@@ -843,6 +844,7 @@ final class AppState {
                     )
                 )
                 if onboardingProgress.isComplete {
+                    _ = queueRecentHistoryBootstrapIfNeeded()
                     startAutomation(runImmediately: onboardingBootstrapState == .complete || onboardingBootstrapState == .idle)
                     resumeOnboardingBootstrapIfNeeded()
                 }
@@ -890,6 +892,7 @@ final class AppState {
                 )
             )
             if onboardingProgress.isComplete {
+                _ = queueRecentHistoryBootstrapIfNeeded()
                 startAutomation(runImmediately: onboardingBootstrapState == .complete || onboardingBootstrapState == .idle)
                 resumeOnboardingBootstrapIfNeeded()
             }
@@ -2237,6 +2240,10 @@ final class AppState {
         }
     }
 
+    var missingRecentHistoryBootstrapDayKeys: [String] {
+        Self.onboardingBootstrapDays(now: currentDate()).filter { noteIndex[$0] == nil }
+    }
+
     private func queueOnboardingBootstrapIfNeeded() {
         guard onboardingBootstrapState != .complete else { return }
 
@@ -2250,6 +2257,33 @@ final class AppState {
         persistOnboardingBootstrapState()
         rebuildAvailableDates()
         showOnboardingBootstrapNotice()
+    }
+
+    @discardableResult
+    func queueRecentHistoryBootstrapIfNeeded() -> Bool {
+        guard onboardingProgress.isComplete else { return false }
+        guard onboardingBootstrapState != .complete else { return false }
+
+        let missingDayKeys = missingRecentHistoryBootstrapDayKeys
+        guard missingDayKeys.isEmpty == false else {
+            markOnboardingBootstrapComplete()
+            return false
+        }
+
+        onboardingBootstrapState = .pending
+        onboardingBootstrapDayKeys = missingDayKeys
+        onboardingBootstrapProgress = OnboardingBootstrapProgress(
+            completedDayCount: 0,
+            totalDayCount: onboardingBootstrapDayKeys.count,
+            activeDayKey: onboardingBootstrapDayKeys.first
+        )
+        persistOnboardingBootstrapState()
+        rebuildAvailableDates()
+        showOnboardingBootstrapNotice(
+            message: "Generate the last 3 days from available local history. Keep KnowYou open while it writes."
+        )
+        resumeOnboardingBootstrapIfNeeded()
+        return true
     }
 
     private func resumeOnboardingBootstrapIfNeeded() {
@@ -4855,6 +4889,7 @@ extension AppState {
     func startAutomation(runImmediately: Bool = true) {
         automationTimer?.invalidate()
         notificationCatchUpTimer?.invalidate()
+        nextDiaryAutomationCheckDate = currentDate().addingTimeInterval(automationInterval)
 
         automationTimer = Timer.scheduledTimer(withTimeInterval: automationInterval, repeats: true) { [weak self] _ in
             guard let self else {
@@ -4863,6 +4898,7 @@ extension AppState {
 
             let now = self.currentDate()
             Task { @MainActor in
+                self.nextDiaryAutomationCheckDate = now.addingTimeInterval(self.automationInterval)
                 await self.checkForUpdatesIfNeeded(force: false, now: now)
                 await self.runAutomation(now: now)
             }
@@ -5430,9 +5466,11 @@ extension AppState {
         return persistedEngine
     }
 
-    private func showOnboardingBootstrapNotice() {
+    private func showOnboardingBootstrapNotice(
+        message: String = "KnowYou is generating your first 3 days from available local history. All local. No backend server."
+    ) {
         let notice = OnboardingBootstrapNotice(
-            message: "KnowYou is generating your first 3 days from available local history. All local. No backend server.",
+            message: message,
             progress: onboardingBootstrapProgress
         )
         onboardingBootstrapNotice = notice

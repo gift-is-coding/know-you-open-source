@@ -9,6 +9,7 @@ struct DateSidebarView: View {
     let isActive: Bool
     let isKnowledgeOntologySelected: Bool
     let todoOpenCount: Int
+    let onOpenHome: () -> Void
     let onSelectDiaryDate: (String) -> Void
     let onOpenTodo: () -> Void
     let onSelectOtherSource: (_ focusAddConnector: Bool) -> Void
@@ -27,10 +28,11 @@ struct DateSidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             List(selection: activeBinding) {
+                rootRow(presentation.homeRootItem)
+                rootRow(presentation.networkingRootItem)
                 rootRow(presentation.todoRootItem)
                 rootRow(presentation.myWikiRootItem)
                 rootRow(presentation.sourceRootItem)
-                rootRow(presentation.networkingRootItem)
 
                 DisclosureGroup(isExpanded: $isDiaryGroupExpanded) {
                     ForEach(presentation.diarySections) { section in
@@ -299,6 +301,8 @@ struct DateSidebarView: View {
 
     private func handleSelectionAction(_ action: SidebarSelectionAction?) {
         switch action {
+        case .home:
+            onOpenHome()
         case .todo:
             onOpenTodo()
         case .diaryDate(let dayKey):
@@ -321,6 +325,8 @@ struct DateSidebarView: View {
     static func selectionAction(for itemID: String) -> SidebarSelectionAction? {
         if let dayKey = dayKeyForSelection(itemID) {
             return .diaryDate(dayKey)
+        } else if itemID == "home" {
+            return .home
         } else if itemID == "todo-root" {
             return .todo
         } else if itemID == "my-wiki" {
@@ -426,6 +432,7 @@ struct SidebarIconMetrics: Equatable {
 }
 
 enum SidebarSelectionAction: Equatable {
+    case home
     case todo
     case diaryDate(String)
     case otherSource(focusAddConnector: Bool)
@@ -477,6 +484,7 @@ struct SidebarRootItem: Identifiable, Equatable {
 }
 
 struct DateSidebarPresentation {
+    let homeRootItem: SidebarRootItem
     let todoRootItem: SidebarRootItem
     let myWikiRootItem: SidebarRootItem
     let sourceRootItem: SidebarRootItem
@@ -505,6 +513,15 @@ struct DateSidebarPresentation {
         var monthBuckets: [Date: [DateSidebarItem]] = [:]
         var specialItems: [DateSidebarItem] = []
 
+        homeRootItem = SidebarRootItem(
+            id: "home",
+            title: "Home",
+            systemImage: "house",
+            isSelected: selectedItemID == "home",
+            isEnabled: true,
+            showsAddButton: false,
+            selectionAction: .home
+        )
         todoRootItem = SidebarRootItem(
             id: "todo-root",
             title: "Todo",
@@ -608,7 +625,7 @@ struct DateSidebarPresentation {
                 )
             ]
         }
-        rootItems = [todoRootItem, myWikiRootItem, sourceRootItem, networkingRootItem, diaryRootItem] + sourceItems
+        rootItems = [homeRootItem, networkingRootItem, todoRootItem, myWikiRootItem, sourceRootItem, diaryRootItem] + sourceItems
         sections = diarySections
     }
 

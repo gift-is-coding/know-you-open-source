@@ -17,6 +17,8 @@ KnowYou 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
   - `YYYY-MM-DD.md`：Markdown 导出工件
 - 维护统一 Todo inbox，把每日候选待办归集到 `Vault/Todo.md`
 - 在主界面中以 story-first 的方式阅读每天内容，并查看段落对应的原始来源
+- 提供视觉化 `Home` 入口，提醒用户保持应用后台运行，并给出日记检查节奏、主要功能跳转和最近 3 天补生成入口
+- 提供 `Networking` 预览入口，用 profile、多场景和 AI 身份透明说明未来社交方向
 
 ## 2. 系统总览
 
@@ -110,7 +112,7 @@ flowchart LR
 - 管理选中日期、选中 story、选中段落及其来源事件
 - 触发“按天刷新”、今日通知补同步与 today-only 自动刷新
 - 维护统一 Todo inbox 状态、每日候选待办的归集状态，以及日记刷新后的自动归集/完成 sweep
-- 持久化 onboarding 进度，并在首次确认后触发一次性最近 3 天 bootstrap
+- 持久化 onboarding 进度，并在首次确认后触发一次性最近 3 天 bootstrap；已完成 onboarding 但升级时错过 bootstrap 的老用户，会通过最近 3 天缺失检测重新进入同一补生成路径
 
 `AppEnvironment` 本身则负责组装主要依赖，包括数据库、隐私过滤器、采集器、composer 与 summarizer，见 [AppEnvironment.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppEnvironment.swift)。
 

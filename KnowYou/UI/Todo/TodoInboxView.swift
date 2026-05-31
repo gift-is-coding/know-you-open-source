@@ -1,5 +1,19 @@
 import SwiftUI
 
+enum TodoInboxCopy {
+    static let draftPlaceholder = "+ Add a task to keep tracking across days"
+    static let candidatesTitle = "Candidates"
+    static let readyToCloseTitle = "Ready to close"
+
+    static var visibleStrings: [String] {
+        [
+            draftPlaceholder,
+            candidatesTitle,
+            readyToCloseTitle,
+        ]
+    }
+}
+
 struct TodoInboxView: View {
     let items: [UnifiedTodoItem]
     let reviewCandidates: [TodoReviewCandidatePresentation]
@@ -44,7 +58,7 @@ struct TodoInboxView: View {
                 }
 
                 HStack(spacing: 8) {
-                    TextField("+ 输入一个跨天仍要跟进的任务", text: $draftTitle)
+                    TextField(TodoInboxCopy.draftPlaceholder, text: $draftTitle)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit(addDraft)
                     Button("Add", action: addDraft)
@@ -94,7 +108,7 @@ struct TodoInboxView: View {
                     .font(.headline)
                     .padding(.top, 2)
 
-                TodoInboxPanel(title: "待选", count: reviewCandidates.count) {
+                TodoInboxPanel(title: TodoInboxCopy.candidatesTitle, count: reviewCandidates.count) {
                     if reviewCandidates.isEmpty {
                         TodoInboxEmptyText("No candidates.")
                     } else {
@@ -108,7 +122,7 @@ struct TodoInboxView: View {
                     }
                 }
 
-                TodoInboxPanel(title: "推荐关闭", count: closeRecommendations.count) {
+                TodoInboxPanel(title: TodoInboxCopy.readyToCloseTitle, count: closeRecommendations.count) {
                     if closeRecommendations.isEmpty {
                         TodoInboxEmptyText("No close recommendations.")
                     } else {

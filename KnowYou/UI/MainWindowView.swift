@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 
 private enum MainWindowMode {
+    case home
     case journal
     case knowledgeOntology
     case networkingComingSoon
@@ -20,7 +21,7 @@ struct MainWindowView: View {
     @State private var apiConfigDraft = SummarizerConfig.load()
     @State private var apiProviderStatuses: [LLMAPIProviderID: EngineRuntimeStatus] = [:]
     @State private var isTestingAPIConnection = false
-    @State private var mode: MainWindowMode = .journal
+    @State private var mode: MainWindowMode = .home
     @State private var selectedMyWikiEntry: MyWikiEntry?
     let showsOnboardingEngineButton: Bool
     let onOpenEngineSetup: (() -> Void)?
@@ -189,9 +190,12 @@ struct MainWindowView: View {
             selectedItemID: selectedSidebarItemID,
             knowledgeImportConfig: appState.knowledgeImportConfig,
             knowledgeDocumentsByConnector: appState.knowledgeDocumentsByConnector,
-            isActive: mode == .knowledgeOntology || mode == .networkingComingSoon || (mode == .journal && appState.readerFocus == .dateList),
+            isActive: mode == .home || mode == .knowledgeOntology || mode == .networkingComingSoon || (mode == .journal && appState.readerFocus == .dateList),
             isKnowledgeOntologySelected: mode == .knowledgeOntology,
             todoOpenCount: appState.openTodoCount,
+            onOpenHome: {
+                mode = .home
+            },
             onSelectDiaryDate: { dayKey in
                 mode = .journal
                 appState.selectDate(dayKey)
@@ -224,7 +228,9 @@ struct MainWindowView: View {
 
     @ViewBuilder
     private var mainContentPane: some View {
-        if mode == .knowledgeOntology {
+        if mode == .home {
+            homeDashboardContent
+        } else if mode == .knowledgeOntology {
             knowledgeOntologyContent
         } else if mode == .networkingComingSoon {
             networkingComingSoonContent
@@ -267,17 +273,32 @@ struct MainWindowView: View {
         }
     }
 
+    private var homeDashboardContent: some View {
+        HomeDashboardView(
+            nextDiaryCheckDate: appState.nextDiaryAutomationCheckDate ?? Date().addingTimeInterval(10_800),
+            missingRecentDayCount: appState.missingRecentHistoryBootstrapDayKeys.count,
+            onOpenToday: {
+                mode = .journal
+                appState.selectDate(ISO8601DayKey.format(Date()))
+            },
+            onOpenMyWiki: {
+                mode = .knowledgeOntology
+            },
+            onAddSources: {
+                mode = .journal
+                appState.selectOtherSourceManager(focusAddConnector: true)
+            },
+            onOpenNetworking: {
+                mode = .networkingComingSoon
+            },
+            onGenerateRecentHistory: {
+                _ = appState.queueRecentHistoryBootstrapIfNeeded()
+            }
+        )
+    }
+
     private var networkingComingSoonContent: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "network")
-                .font(.system(size: 34, weight: .medium))
-                .foregroundStyle(.secondary)
-            Text("Will coming soon")
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(.primary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .textBackgroundColor))
+        NetworkingPreviewView(presentation: NetworkingPreviewPresentation())
     }
 
     private var knowledgeOntologyContent: some View {
@@ -358,7 +379,7 @@ struct MainWindowView: View {
 
     private var detailPane: some View {
         Group {
-            if mode == .knowledgeOntology || mode == .networkingComingSoon {
+            if mode == .home || mode == .knowledgeOntology || mode == .networkingComingSoon {
                 Color.clear
                     .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 0)
             } else {
@@ -380,7 +401,9 @@ struct MainWindowView: View {
     }
 
     private var selectedSidebarItemID: String? {
-        if mode == .knowledgeOntology {
+        if mode == .home {
+            return "home"
+        } else if mode == .knowledgeOntology {
             return "my-wiki"
         } else if mode == .networkingComingSoon {
             return "networking"
@@ -771,6 +794,186 @@ struct MainWindowView: View {
     private func openSyncMemoryFolder(at path: String?) {
         guard let path, path.isEmpty == false else { return }
         NSWorkspace.shared.open(URL(fileURLWithPath: path, isDirectory: true))
+    }
+}
+
+struct HomeFeatureCardPresentation: Equatable, Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let systemImage: String
+}
+
+struct HomeDashboardPresentation: Equatable {
+    let heroTitle = "KnowYou works quietly in the background."
+    let nextCheckTitle = "Next diary check"
+    let nextCheckValue: String
+    let primaryActionTitle = "Generate Last 3 Days"
+    let visualAssetName = "HomeDashboardHero"
+    let featureCards: [HomeFeatureCardPresentation]
+    let missingRecentDayCount: Int
+
+    init(nextDiaryCheckDate: Date, now: Date, missingRecentDayCount: Int) {
+        self.nextCheckValue = Self.countdownText(from: now, to: nextDiaryCheckDate)
+        self.missingRecentDayCount = missingRecentDayCount
+        self.featureCards = [
+            HomeFeatureCardPresentation(id: "today", title: "Today’s Diary", subtitle: "A living story of today.", systemImage: "book.pages"),
+            HomeFeatureCardPresentation(id: "wiki", title: "My Wiki", subtitle: "People, projects, patterns.", systemImage: "point.3.connected.trianglepath.dotted"),
+            HomeFeatureCardPresentation(id: "sources", title: "Add Sources", subtitle: "Bring more context in.", systemImage: "plus.square.on.square"),
+            HomeFeatureCardPresentation(id: "networking", title: "Networking", subtitle: "Profiles for each context.", systemImage: "network"),
+        ]
+    }
+
+    private static func countdownText(from now: Date, to date: Date) -> String {
+        let seconds = max(0, Int(date.timeIntervalSince(now)))
+        let minutes = seconds / 60
+        if minutes < 60 {
+            return "\(minutes) min"
+        }
+        return "\(minutes / 60)h \(minutes % 60)m"
+    }
+}
+
+private struct HomeDashboardView: View {
+    let nextDiaryCheckDate: Date
+    let missingRecentDayCount: Int
+    let onOpenToday: () -> Void
+    let onOpenMyWiki: () -> Void
+    let onAddSources: () -> Void
+    let onOpenNetworking: () -> Void
+    let onGenerateRecentHistory: () -> Void
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            let presentation = HomeDashboardPresentation(
+                nextDiaryCheckDate: nextDiaryCheckDate,
+                now: context.date,
+                missingRecentDayCount: missingRecentDayCount
+            )
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    hero(presentation)
+                    featureGrid(presentation)
+                }
+                .padding(28)
+                .frame(maxWidth: 980, alignment: .topLeading)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .textBackgroundColor))
+        }
+    }
+
+    private func hero(_ presentation: HomeDashboardPresentation) -> some View {
+        HStack(alignment: .center, spacing: 24) {
+            Image(presentation.visualAssetName)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 340, height: 210)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 16) {
+                Text(presentation.heroTitle)
+                    .font(.system(size: 32, weight: .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 12) {
+                    Label(presentation.nextCheckTitle, systemImage: "timer")
+                        .font(.headline)
+                    Text(presentation.nextCheckValue)
+                        .font(.title2.monospacedDigit().weight(.semibold))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+
+                Button(action: onGenerateRecentHistory) {
+                    Label(presentation.primaryActionTitle, systemImage: "sparkles")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .help("\(presentation.missingRecentDayCount) recent day(s) need a generated diary.")
+            }
+        }
+    }
+
+    private func featureGrid(_ presentation: HomeDashboardPresentation) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 14)], spacing: 14) {
+            ForEach(presentation.featureCards) { card in
+                Button {
+                    open(card)
+                } label: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Image(systemName: card.systemImage)
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(Color.accentColor)
+                        Text(card.title)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text(card.subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
+                    .padding(14)
+                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func open(_ card: HomeFeatureCardPresentation) {
+        switch card.id {
+        case "today":
+            onOpenToday()
+        case "wiki":
+            onOpenMyWiki()
+        case "sources":
+            onAddSources()
+        case "networking":
+            onOpenNetworking()
+        default:
+            break
+        }
+    }
+}
+
+struct NetworkingPreviewPresentation: Equatable {
+    let title = "Networking"
+    let visualAssetName = "NetworkingPreviewHero"
+    let statements = [
+        "Create profiles for different contexts.",
+        "Use them for jobs, networking, and social discovery.",
+        "Your AI can help, but identity stays clear.",
+    ]
+}
+
+private struct NetworkingPreviewView: View {
+    let presentation: NetworkingPreviewPresentation
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 28) {
+            Image(presentation.visualAssetName)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 430, height: 310)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 18) {
+                Text(presentation.title)
+                    .font(.largeTitle.weight(.semibold))
+                ForEach(presentation.statements, id: \.self) { statement in
+                    Label(statement, systemImage: "checkmark.circle.fill")
+                        .font(.title3.weight(.medium))
+                        .foregroundStyle(.primary)
+                }
+            }
+            .frame(maxWidth: 460, alignment: .leading)
+        }
+        .padding(34)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .textBackgroundColor))
     }
 }
 

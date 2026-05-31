@@ -196,7 +196,7 @@ Add Source 与 Daily Memory Export 是边界不同的能力。Daily Memory Expor
 通知权限入口目前分布在两个 UI 表面：
 
 - `OnboardingView` 的 `permissions` 步骤会并列展示 Full Disk Access 与 Notifications，并把通知用途明确说明为 `8:30 PM daily review reminder`
-- Full Disk Access 没有应用内授权 API。onboarding 会先确认当前进程来自 `/Applications/KnowYou.app`，再打开系统设置，并把 `Show KnowYou in Finder` + 拖入 Full Disk Access 列表作为主路径；`+` 选择 `KnowYou.app` 只是拖入失败时的备用路径
+- Full Disk Access 没有应用内授权 API。onboarding 会先确认当前进程来自 `/Applications/KnowYou.app`；New User 权限回归则来自 `/Applications/KnowYou New User.app`。权限页打开系统设置后，明确提示如果列表里没有 KnowYou，就点击 `+`，从 Applications 选择当前 app；`Show App to Add` 只负责在 Finder 中定位正确 bundle，并配有 `FullDiskAccessAddGuide` 示意图
 - `SettingsView` 继续显示 reminder 开关、通知权限状态和测试入口；用户拒绝通知权限后，也通过这里跳转到 Notification Settings
 
 当前 `AppState` 还负责应用更新提醒编排：
@@ -519,7 +519,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - `demoReference` 解释段落与 reference 的追溯关系
 - `privacy` 用居中 coachmark 强调 `.md` 纯本地与“没有服务端”
 - `installApp` 要求生产用户先从 `/Applications/KnowYou.app` 运行；主按钮会尝试复制当前 bundle 到 `/Applications/KnowYou.app` 并重启，失败时提供 Finder reveal 供用户手动拖动
-- `permissions` 只 gate `Full Disk Access`，并在同位置 coachmark 里解释通知与剪贴板上下文价值；如果系统列表里没有 KnowYou，主路径是用 `Show KnowYou in Finder` 定位 app bundle 后拖入系统列表，`+` 仅作为备用添加方式
+- `permissions` 只 gate `Full Disk Access`，并在同位置 coachmark 里解释通知与剪贴板上下文价值；如果系统列表里没有 KnowYou，主路径是点击 `+` 后从 Applications 选择当前 app，`Show App to Add` 用于在 Finder 中定位正确 bundle，页面同时展示 `FullDiskAccessAddGuide` bitmap 示意图
 - `enginePrompt` 只负责高亮真实产品里的引擎按钮，`engineSetup` 则在现有引擎配置组件里完成默认引擎设置
 - `generating` 在权限与引擎都 ready 后先展示首次历史生成确认弹窗，明确 **KnowYou** 只在当前 Mac 本地生成，包含 `All local. No backend server.` 隐私承诺
 - 用户确认后才完成 onboarding，并自动触发一次性最近 3 天 bootstrap，而不是要求用户手动点刷新

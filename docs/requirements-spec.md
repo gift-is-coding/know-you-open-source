@@ -245,10 +245,10 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 点击 `generate` 通知时，系统必须唤起 KnowYou、定位到今天，并立即开始生成今天的 diary
 - 通知点击路由必须优先复用现有主窗口；仅在没有主窗口时才允许新开窗口
 - 设置页必须显示晚间提醒开关、通知权限状态、测试入口和简短规则说明
-- onboarding 的 `installApp` 步骤必须在 `permissions` 之前确认生产用户正在从 `/Applications/KnowYou.app` 运行；未满足时不得进入 Full Disk Access 引导
+- onboarding 的 `installApp` 步骤必须在 `permissions` 之前确认生产用户正在从 `/Applications/KnowYou.app` 运行；New User 权限回归必须从 `/Applications/KnowYou New User.app` 运行；未满足对应安装路径时不得进入 Full Disk Access 引导
 - onboarding 的 `permissions` 步骤必须同时解释 Full Disk Access 与 Notifications，其中通知说明必须明确它用于 `8:30 PM` 晚间回顾提醒
 - 通知权限不得阻塞 onboarding 完成；Full Disk Access 仍是权限步骤唯一硬阻塞条件
-- onboarding 的 Full Disk Access 引导必须把从 Finder 拖 `KnowYou.app` 到 Full Disk Access 列表作为主路径；`+` 选择 `KnowYou.app` 只能作为备用说明，且必须提供定位当前 app bundle 的 Finder 入口
+- onboarding 的 Full Disk Access 引导必须把 `Open Full Disk Access -> 点击 + -> 从 Applications 选择当前 app` 作为主路径，并提供 `Show App to Add` 定位当前 app bundle 的 Finder 入口与 `FullDiskAccessAddGuide` bitmap 示意图
 - onboarding 中的通知授权入口在 `notDetermined` 时必须触发系统通知权限请求，在 `denied` 时必须引导打开 Notification Settings
 - onboarding 之后不再要求主窗口额外显示 reminder 权限 CTA；后续补授权路径以 Settings 为主
 
@@ -345,7 +345,7 @@ onboarding 的配置约束为：
 - `privacy` 必须直接说明“内容以本地 `.md` 文件保存在当前 Mac 上、没有服务端”
 - `installApp` 必须把 `/Applications/KnowYou.app` 作为生产推荐安装路径；自动移动失败时必须提供 Finder 入口，让用户手动拖到 Applications
 - `permissions` 只允许把 `Full Disk Access` 作为唯一权限硬 gate，并且必须解释通知与剪贴板上下文如何帮助 story 生成
-- `permissions` 必须把 Full Disk Access 拆成可执行步骤：打开系统设置、从 Finder 拖入 `KnowYou.app`、必要时用 `+` 手动选择 `KnowYou.app`、返回后重新检查
+- `permissions` 必须把 Full Disk Access 拆成可执行步骤：打开系统设置、如果列表没有 KnowYou 则点击 `+`、从 Applications 选择当前 app、返回后重新检查；页面必须解释 `Show App to Add` 是用来定位当前 app bundle
 - `enginePrompt` 必须高亮真实产品里的引擎按钮，`engineSetup` 必须复用现有引擎配置模块，而不是造一套 onboarding 专用配置页
 - 引擎配置必须阻塞 onboarding 完成；未配置成功前不得进入真实生成流程
 - onboarding 最后一步在权限与引擎都 ready 后，必须先展示首次历史生成确认弹窗；用户点击开始后才完成 onboarding 并进入真实生成流程

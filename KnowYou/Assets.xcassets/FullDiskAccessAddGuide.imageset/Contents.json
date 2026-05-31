@@ -1,0 +1,13 @@
+{
+  "images" : [
+    {
+      "filename" : "full-disk-access-add-guide.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

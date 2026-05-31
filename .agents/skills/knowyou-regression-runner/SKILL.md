@@ -36,7 +36,7 @@ If the user gives no level, default to `app-clean` pre-push coverage plus the `p
 ## Environment Selection
 
 - `app-clean`: create an isolated run directory under `build/regression/<run-id>/`, set isolated profile-related environment variables when supported, use deterministic fixtures, and verify My Diary, Todo, Other Source, My Wiki, and Settings without touching daily app data.
-- `permission-clean`: build or launch a regression-only bundle id such as `dev.knowyou.regression`, reset TCC only for that bundle id if the repo provides a safe command, and verify first-permission guidance. Never operate on `dev.knowyou.app`.
+- `permission-clean`: run `scripts/install-new-user-app.sh --no-launch` from the current worktree, then launch `/Applications/KnowYou New User.app`. This installed app uses bundle id `dev.knowyou.newuser` and is not a DerivedData app. Reset TCC only for `dev.knowyou.newuser` when the case needs the missing-permission path. If the user has already authorized this app and TCC is preserved, use it to verify the authorized-through path. Never operate on `dev.knowyou.app`.
 - `true-clean`: guide a manual pass in an independent macOS user or VM/snapshot using a fresh signed app or DMG. Treat this as release acceptance, not routine pre-push automation.
 - `real-machine`: run only when validating this Mac's real clipboard or Notification Center ingestion. Do not describe it as first-user proof.
 
@@ -46,6 +46,8 @@ If the user gives no level, default to `app-clean` pre-push coverage plus the `p
 2. Check `git status --short --branch` and note whether the workspace is already dirty.
 3. Build or launch the current app using the repo's existing macOS workflow. Prefer `./scripts/run-dev-app.sh` for a development launch when no regression runner script exists yet.
 4. Prepare the selected environment without touching daily `dev.knowyou.app` state.
+   - For `permission-clean`, do not run multiple worktrees in parallel because the last install intentionally overwrites `/Applications/KnowYou New User.app`.
+   - For ordinary feature regression, use app-clean/dev-bypass or an already configured profile instead of stopping on the Full Disk Access gate.
 5. Use Codex GUI / ComputerUser to execute each test case step from the user's point of view. Click only visible, user-reachable controls.
 6. Use shell evidence for persisted artifacts, such as files under the regression profile, SQLite rows, build logs, and release logs.
 7. Record each case as `pass`, `fail`, `blocked`, or `manual-only`, with the failing step and visible evidence.

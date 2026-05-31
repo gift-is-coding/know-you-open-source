@@ -49,10 +49,26 @@ enum OnboardingRequirement: String, Equatable, Hashable {
 }
 
 struct OnboardingApplicationInstallPolicy {
-    static let targetBundleURL = URL(fileURLWithPath: "/Applications/KnowYou.app", isDirectory: true)
+    static let productionTargetBundleURL = URL(fileURLWithPath: "/Applications/KnowYou.app", isDirectory: true)
+    static let newUserTargetBundleURL = URL(fileURLWithPath: "/Applications/KnowYou New User.app", isDirectory: true)
+
+    static var targetBundleURL: URL {
+        targetBundleURL(bundleIdentifier: Bundle.main.bundleIdentifier)
+    }
+
+    static func targetBundleURL(bundleIdentifier: String?) -> URL {
+        if bundleIdentifier == AppRuntimeProfile.newUserBundleIdentifier {
+            return newUserTargetBundleURL
+        }
+        return productionTargetBundleURL
+    }
 
     static func isInstalledInApplications(bundleURL: URL) -> Bool {
-        bundleURL.standardizedFileURL.path == targetBundleURL.standardizedFileURL.path
+        isInstalledInApplications(bundleURL: bundleURL, bundleIdentifier: Bundle.main.bundleIdentifier)
+    }
+
+    static func isInstalledInApplications(bundleURL: URL, bundleIdentifier: String?) -> Bool {
+        bundleURL.standardizedFileURL.path == targetBundleURL(bundleIdentifier: bundleIdentifier).standardizedFileURL.path
     }
 }
 
@@ -132,6 +148,7 @@ struct OnboardingFullDiskAccessGuidance: Equatable {
     let openSettingsButtonTitle: String
     let revealAppButtonTitle: String
     let recheckButtonTitle: String
+    let visualAssetName: String
 }
 
 struct OnboardingStepContent {
@@ -186,11 +203,12 @@ enum OnboardingHistoryBootstrapConfirmation {
 enum OnboardingContent {
     static let blockingGateStep: OnboardingStep = .permissions
     static let fullDiskAccessGuidance = OnboardingFullDiskAccessGuidance(
-        missingPermissionDetail: "Open Full Disk Access, then drag KnowYou.app into the Full Disk Access list. This lets KnowYou read the local Notification Center history.",
-        manualAddInstruction: "If KnowYou does not appear in the list, use Show KnowYou in Finder and drag it into System Settings. If dragging is not accepted, click + and select KnowYou.app.",
+        missingPermissionDetail: "Open Full Disk Access. If KnowYou is not listed, click + and choose the app from Applications.",
+        manualAddInstruction: "If KnowYou does not appear in the list, click + in Full Disk Access and choose this app. Use the button below to reveal the exact app bundle.",
         openSettingsButtonTitle: "Open Full Disk Access",
-        revealAppButtonTitle: "Show KnowYou in Finder",
-        recheckButtonTitle: "Check Again"
+        revealAppButtonTitle: "Show App to Add",
+        recheckButtonTitle: "Check Again",
+        visualAssetName: "FullDiskAccessAddGuide"
     )
 
     private static let voiceLinks = [

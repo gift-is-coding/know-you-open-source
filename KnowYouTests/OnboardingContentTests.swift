@@ -99,17 +99,62 @@ final class OnboardingContentTests: XCTestCase {
     func testFullDiskAccessGuidanceExplainsHowToAddKnowYouWhenItIsNotListed() {
         let guidance = OnboardingContent.fullDiskAccessGuidance
 
-        XCTAssertTrue(guidance.missingPermissionDetail.contains("drag KnowYou.app into the Full Disk Access list"))
+        XCTAssertTrue(guidance.missingPermissionDetail.contains("click +"))
+        XCTAssertTrue(guidance.missingPermissionDetail.contains("Applications"))
         XCTAssertTrue(guidance.manualAddInstruction.contains("does not appear"))
-        XCTAssertTrue(guidance.manualAddInstruction.contains("Show KnowYou in Finder"))
+        XCTAssertTrue(guidance.manualAddInstruction.contains("choose this app"))
         XCTAssertTrue(guidance.manualAddInstruction.contains("+"))
         XCTAssertEqual(guidance.openSettingsButtonTitle, "Open Full Disk Access")
-        XCTAssertEqual(guidance.revealAppButtonTitle, "Show KnowYou in Finder")
+        XCTAssertEqual(guidance.revealAppButtonTitle, "Show App to Add")
         XCTAssertEqual(guidance.recheckButtonTitle, "Check Again")
+        XCTAssertEqual(guidance.visualAssetName, "FullDiskAccessAddGuide")
+        XCTAssertFalse(guidance.manualAddInstruction.contains("Show KnowYou in Finder"))
+    }
+
+    func testRegressionDocsUseInstalledNewUserAppForPermissionCleanRuns() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let readme = try String(
+            contentsOf: repoRoot.appending(path: "docs/regression/README.md"),
+            encoding: .utf8
+        )
+        let firstRun = try String(
+            contentsOf: repoRoot.appending(path: "docs/regression/test-cases/01-first-run-onboarding.md"),
+            encoding: .utf8
+        )
+        let installer = try String(
+            contentsOf: repoRoot.appending(path: "scripts/install-new-user-app.sh"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(readme.contains("scripts/install-new-user-app.sh --no-launch"))
+        XCTAssertTrue(readme.contains("/Applications/KnowYou New User.app"))
+        XCTAssertTrue(readme.contains("dev.knowyou.newuser"))
+        XCTAssertTrue(readme.contains("not a DerivedData app"))
+        XCTAssertFalse(readme.contains("dev.knowyou.regression"))
+
+        XCTAssertTrue(firstRun.contains("/Applications/KnowYou New User.app"))
+        XCTAssertTrue(firstRun.contains("dev.knowyou.newuser"))
+        XCTAssertTrue(firstRun.contains("not a DerivedData app"))
+        XCTAssertFalse(firstRun.contains("dev.knowyou.regression"))
+
+        XCTAssertTrue(installer.contains("installed_app=\"${INSTALL_APP_PATH:-/Applications/KnowYou New User.app}\""))
+        XCTAssertTrue(installer.contains("derived_data_path=\"${DERIVED_DATA_PATH:-$repo_root/.derived-data/new-user}\""))
+    }
+
+    func testFullDiskAccessGuideImageAssetIsBundled() {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let assetURL = repoRoot.appending(path: "KnowYou/Assets.xcassets/FullDiskAccessAddGuide.imageset/Contents.json")
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: assetURL.path), "Missing \(assetURL.path)")
     }
 
     func testApplicationInstallPolicyRequiresApplicationsKnowYouBundle() {
         let installedAppURL = URL(fileURLWithPath: "/Applications/KnowYou.app")
+        let installedNewUserURL = URL(fileURLWithPath: "/Applications/KnowYou New User.app")
         let mountedDMGURL = URL(fileURLWithPath: "/Volumes/KnowYou/KnowYou.app")
         let downloadsURL = URL(fileURLWithPath: "/Users/me/Downloads/KnowYou.app")
         let developmentBuildURL = URL(
@@ -117,9 +162,27 @@ final class OnboardingContentTests: XCTestCase {
         )
 
         XCTAssertTrue(OnboardingApplicationInstallPolicy.isInstalledInApplications(bundleURL: installedAppURL))
+        XCTAssertTrue(
+            OnboardingApplicationInstallPolicy.isInstalledInApplications(
+                bundleURL: installedNewUserURL,
+                bundleIdentifier: AppRuntimeProfile.newUserBundleIdentifier
+            )
+        )
         XCTAssertFalse(OnboardingApplicationInstallPolicy.isInstalledInApplications(bundleURL: mountedDMGURL))
         XCTAssertFalse(OnboardingApplicationInstallPolicy.isInstalledInApplications(bundleURL: downloadsURL))
         XCTAssertFalse(OnboardingApplicationInstallPolicy.isInstalledInApplications(bundleURL: developmentBuildURL))
+        XCTAssertFalse(
+            OnboardingApplicationInstallPolicy.isInstalledInApplications(
+                bundleURL: installedAppURL,
+                bundleIdentifier: AppRuntimeProfile.newUserBundleIdentifier
+            )
+        )
+        XCTAssertFalse(
+            OnboardingApplicationInstallPolicy.isInstalledInApplications(
+                bundleURL: installedNewUserURL,
+                bundleIdentifier: "dev.knowyou.app"
+            )
+        )
     }
 
     func testFullDiskAccessBypassIsLimitedToDerivedDataDebugBuilds() {

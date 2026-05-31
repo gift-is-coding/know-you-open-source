@@ -28,8 +28,8 @@ Every test case should keep these fields current:
 
 ## Environment Types
 
-- `app-clean`: isolates app data only. The runner creates a temporary profile root such as `build/regression/<run-id>/profile`, points KnowYou at isolated Application Support, UserDefaults suite, Keychain service, Vault, and SQLite locations, and uses deterministic fixtures. This is the default pre-push environment for seeded UI journeys. It does not prove macOS permissions are fresh.
-- `permission-clean`: isolates permission state by using a regression-only bundle id such as `dev.knowyou.regression`, then resetting TCC only for that bundle id before launch. It must not reset, delete, or modify the daily-use `dev.knowyou.app` bundle id. This environment verifies missing-permission onboarding and blocked/degraded states.
+- `app-clean`: isolates app data only. The runner creates a temporary profile root such as `build/regression/<run-id>/profile`, points KnowYou at isolated Application Support, UserDefaults suite, Keychain service, Vault, and SQLite locations, and uses deterministic fixtures. This is the default pre-push environment for seeded UI journeys. It does not open Full Disk Access and does not prove macOS permissions are fresh.
+- `permission-clean`: isolates permission state with the installed New User app at `/Applications/KnowYou New User.app`. Build it from the current worktree with `scripts/install-new-user-app.sh --no-launch`; the app uses bundle id `dev.knowyou.newuser` and is not a DerivedData app. Reset TCC only for `dev.knowyou.newuser` when a missing-permission pass is required, and never reset, delete, or modify the daily-use `dev.knowyou.app` bundle id. This environment verifies missing-permission onboarding and blocked/degraded states.
 - `true-clean`: uses an independent macOS user or VM/snapshot with a freshly installed signed app. It is the only environment that represents a real first-time user across app data, Keychain, TCC permissions, login items, and system prompts.
 - `real-machine`: uses this Mac's real clipboard or Notification Center behavior to verify signal ingestion. It validates the data pipeline, not first-user permission freshness.
 
@@ -58,12 +58,13 @@ Future setup helpers may expose these modes, but they must remain setup helpers
 for the Codex Skill rather than the UI automation mechanism itself:
 
 - `scripts/regression/run-user-journey.sh --app-clean`
+- `scripts/install-new-user-app.sh --no-launch`
 - `scripts/regression/run-user-journey.sh --permission-clean`
 - `scripts/regression/run-user-journey.sh --true-clean-checklist`
 
 The app-clean setup helper should set `KNOWYOU_PROFILE_ROOT`, `KNOWYOU_USER_DEFAULTS_SUITE`, `KNOWYOU_KEYCHAIN_SERVICE`, a fixed clock, a deterministic summarizer, and regression-safe flags that disable real LaunchAgent registration, update-network effects, and external agent config writes.
 
-The permission-clean setup helper should build or launch a regression bundle id and reset TCC only for that bundle id. The Codex Skill verifies the product's no-permission guidance through GUI / ComputerUser. The helper and skill must never reset the daily app's `dev.knowyou.app` permissions.
+The permission-clean setup helper installs the current worktree over `/Applications/KnowYou New User.app`. Multiple worktrees must not run this New User permission test in parallel because the last install intentionally wins. If `dev.knowyou.newuser` already has Full Disk Access and its TCC state is not reset, launching from `/Applications/KnowYou New User.app` should verify the authorized-through path. The Codex Skill verifies the product's no-permission guidance through GUI / ComputerUser. The helper and skill must never reset the daily app's `dev.knowyou.app` permissions.
 
 ## Regression Levels
 

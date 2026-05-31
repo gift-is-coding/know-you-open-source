@@ -426,6 +426,11 @@ struct OnboardingView: View {
 
         case .permissions:
             VStack(alignment: .leading, spacing: 10) {
+                Text("If KnowYou is not listed, click + in Full Disk Access and choose this app.")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
                 HStack(spacing: 12) {
                     Button(fullDiskAccessGuidance.openSettingsButtonTitle) {
                         openFullDiskAccess()
@@ -539,6 +544,24 @@ struct OnboardingView: View {
                 }
                 .buttonStyle(.bordered)
             }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(fullDiskAccessGuidance.manualAddInstruction)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Image(fullDiskAccessGuidance.visualAssetName)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+            }
+            .padding(.top, 4)
 
             if let optionalEnhancement = currentContent.optionalEnhancement {
                 VStack(alignment: .leading, spacing: 6) {
@@ -858,7 +881,7 @@ struct OnboardingView: View {
             }
         } catch {
             isMovingToApplications = false
-            applicationInstallError = "Could not move automatically. Use Show KnowYou in Finder, then drag KnowYou.app to Applications."
+            applicationInstallError = "Could not move automatically. Show the app in Finder, then drag it to Applications."
         }
     }
 

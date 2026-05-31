@@ -16,7 +16,7 @@
 
 The default pre-push gate should cover:
 
-1. First-run onboarding correctly shows missing-permission guidance under the permission-clean regression bundle id.
+1. First-run onboarding correctly shows missing-permission guidance under the installed `dev.knowyou.newuser` New User app.
 2. My Diary loads seeded days, supports paragraph selection, and shows source detail.
 3. Refresh actions do not affect the wrong date or leave the UI permanently busy.
 4. Todo supports manual add, candidate promotion, and completion persistence.

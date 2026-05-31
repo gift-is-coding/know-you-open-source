@@ -1,0 +1,7 @@
+interface:
+  display_name: "KnowYou Regression Runner"
+  short_description: "Run KnowYou UI regression with Codex GUI"
+  default_prompt: "Use $knowyou-regression-runner to run the KnowYou app-clean pre-push user journey."
+
+policy:
+  allow_implicit_invocation: true

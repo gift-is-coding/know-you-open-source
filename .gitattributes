@@ -3,3 +3,6 @@
 *.pdf binary
 *.png binary
 *.zip binary
+
+docs/regression/** export-ignore
+.agents/skills/knowyou-regression-runner/** export-ignore

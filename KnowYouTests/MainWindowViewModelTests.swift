@@ -604,10 +604,30 @@ private struct BlockingSummarizer: SummaryGenerating {
     func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
         await gate.markStarted(dayKey: dayKey)
         await gate.waitForRelease(dayKey: dayKey)
+        let sourceEventIDs = extractUUIDsForBlockingSummary(from: markdown).map(\.uuidString)
         return """
-        {"sections":[{"id":"daily-journal","paragraphs":[{"text":"# Summary\\n- \(dayKey)","sourceEventIDs":[]}]}]}
+        {"sections":[{"id":"daily-journal","paragraphs":[{"text":"# Summary\\n- \(dayKey)","sourceEventIDs":\(jsonArrayForBlockingSummary(sourceEventIDs))}]}]}
         """
     }
+}
+
+private func extractUUIDsForBlockingSummary(from text: String) -> [UUID] {
+    guard let regex = try? NSRegularExpression(
+        pattern: #"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"#
+    ) else {
+        return []
+    }
+
+    let range = NSRange(text.startIndex..<text.endIndex, in: text)
+    return regex.matches(in: text, range: range).compactMap { match in
+        guard let matchRange = Range(match.range, in: text) else { return nil }
+        return UUID(uuidString: String(text[matchRange]))
+    }
+}
+
+private func jsonArrayForBlockingSummary(_ values: [String]) -> String {
+    let body = values.map { "\"\($0)\"" }.joined(separator: ",")
+    return "[\(body)]"
 }
 
 @MainActor
@@ -4790,9 +4810,29 @@ final class MainWindowViewModelTests: XCTestCase {
         _ = await (refreshNine, refreshTen)
     }
 
-    func testCompletingOnboardingStartsTodayThenYesterdayBootstrapSerially() async throws {
+    func testCompletingOnboardingStartsThreeDayBootstrapSerially() async throws {
         let (environment, gate) = try makeBlockingRefreshEnvironment()
         let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        let expectedDays = [
+            "2026-04-11",
+            "2026-04-10",
+            "2026-04-09"
+        ]
+        for (offset, dayKey) in expectedDays.enumerated() {
+            try environment.databaseWriter.insert(
+                EventRecord(
+                    id: UUID(),
+                    sourceType: .clipboard,
+                    sourceApp: "Notes",
+                    capturedAt: now.addingTimeInterval(TimeInterval(-86_400 * offset)),
+                    dayKey: dayKey,
+                    text: "bootstrap serial \(dayKey)",
+                    auditText: nil,
+                    privacyAction: .keep,
+                    contentHash: "bootstrap-serial-\(dayKey)"
+                )
+            )
+        }
         let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
@@ -4814,19 +4854,33 @@ final class MainWindowViewModelTests: XCTestCase {
         let yesterdayStartedBeforeRelease = await gate.startCount(for: "2026-04-10")
         XCTAssertEqual(todayStartedBeforeRelease, 1)
         XCTAssertEqual(yesterdayStartedBeforeRelease, 0, "Expected yesterday to wait until today's refresh finishes")
-        XCTAssertEqual(Array(appState.availableDates.prefix(3)), ["2026-04-11", "2026-04-10", OnboardingDemoStory.demoDayKey])
-        XCTAssertEqual(appState.onboardingBootstrapNotice?.message, "KnowYou is generating today and yesterday from your local context. Come back 2 minutes later.")
+        XCTAssertEqual(Array(appState.availableDates.prefix(4)), expectedDays + [OnboardingDemoStory.demoDayKey])
+        XCTAssertEqual(appState.onboardingBootstrapNotice?.message, "KnowYou is generating your first 3 days from available local history. All local. No backend server.")
+        XCTAssertEqual(
+            appState.onboardingBootstrapNotice?.progress,
+            OnboardingBootstrapProgress(completedDayCount: 0, totalDayCount: 3, activeDayKey: "2026-04-11")
+        )
 
-        await gate.release(dayKey: "2026-04-11")
-        await gate.waitUntilStarted(dayKey: "2026-04-10")
-        let yesterdayStartedAfterRelease = await gate.startCount(for: "2026-04-10")
-        XCTAssertEqual(yesterdayStartedAfterRelease, 1)
-
-        await gate.release(dayKey: "2026-04-10")
+        for (index, dayKey) in expectedDays.enumerated() {
+            if index > 0 {
+                await gate.waitUntilStarted(dayKey: dayKey)
+                let startedCount = await gate.startCount(for: dayKey)
+                XCTAssertEqual(startedCount, 1)
+                XCTAssertEqual(
+                    appState.onboardingBootstrapNotice?.progress,
+                    OnboardingBootstrapProgress(
+                        completedDayCount: index,
+                        totalDayCount: expectedDays.count,
+                        activeDayKey: dayKey
+                    )
+                )
+            }
+            await gate.release(dayKey: dayKey)
+        }
         let completed = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
             appState.onboardingBootstrapState == .complete
         }
-        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after both serial refreshes were released")
+        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after all three serial refreshes were released")
     }
 
     func testCompletingOnboardingSkipsBootstrapDaysThatAlreadyExist() async throws {
@@ -4837,11 +4891,13 @@ final class MainWindowViewModelTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
         try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
-        try "# Existing".write(
-            to: environment.vaultURL.appending(path: "2026-04-10.md"),
-            atomically: true,
-            encoding: .utf8
-        )
+        for existingDay in ["2026-04-10", "2026-04-09"] {
+            try "# Existing \(existingDay)".write(
+                to: environment.vaultURL.appending(path: "\(existingDay).md"),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
 
         let appState = AppState(
             environment: environment,
@@ -4858,8 +4914,10 @@ final class MainWindowViewModelTests: XCTestCase {
 
         let todayStarted = await gate.startCount(for: "2026-04-11")
         let yesterdayStarted = await gate.startCount(for: "2026-04-10")
+        let oldestStarted = await gate.startCount(for: "2026-04-05")
         XCTAssertEqual(todayStarted, 1)
         XCTAssertEqual(yesterdayStarted, 0)
+        XCTAssertEqual(oldestStarted, 0)
 
         await gate.release(dayKey: "2026-04-11")
         let completed = await waitUntil(timeoutNanoseconds: 5_000_000_000) {
@@ -4871,41 +4929,32 @@ final class MainWindowViewModelTests: XCTestCase {
     func testCompletingOnboardingSendsCompletionNotificationAfterBootstrapSucceeds() async throws {
         let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
         let writer = try DatabaseWriter.inMemory()
-        let todayID = UUID()
-        let yesterdayID = UUID()
-        try writer.insert(
-            EventRecord(
-                id: todayID,
-                sourceType: .clipboard,
-                sourceApp: "Terminal",
-                capturedAt: now,
-                dayKey: "2026-04-11",
-                text: "Wrapped the onboarding polish.",
-                auditText: nil,
-                privacyAction: .keep,
-                contentHash: "onboarding-bootstrap-notification-today"
-            )
+        let expectedDays = [
+            "2026-04-11",
+            "2026-04-10",
+            "2026-04-09"
+        ]
+        let sourceIDsByDay = Dictionary(
+            uniqueKeysWithValues: expectedDays.map { ($0, UUID()) }
         )
-        try writer.insert(
-            EventRecord(
-                id: yesterdayID,
-                sourceType: .clipboard,
-                sourceApp: "Notes",
-                capturedAt: now.addingTimeInterval(-86_400),
-                dayKey: "2026-04-10",
-                text: "Outlined the onboarding journey.",
-                auditText: nil,
-                privacyAction: .keep,
-                contentHash: "onboarding-bootstrap-notification-yesterday"
+        for (offset, dayKey) in expectedDays.enumerated() {
+            try writer.insert(
+                EventRecord(
+                    id: sourceIDsByDay[dayKey]!,
+                    sourceType: .clipboard,
+                    sourceApp: offset == 0 ? "Terminal" : "Notes",
+                    capturedAt: now.addingTimeInterval(TimeInterval(-86_400 * offset)),
+                    dayKey: dayKey,
+                    text: "Onboarding bootstrap source for \(dayKey).",
+                    auditText: nil,
+                    privacyAction: .keep,
+                    contentHash: "onboarding-bootstrap-notification-\(dayKey)"
+                )
             )
-        )
+        }
         let summarizer = HandlerIncrementalSummarizer(
             summarizeHandler: { dayKey, _, _ in
-                let sourceID = switch dayKey {
-                case "2026-04-11": todayID
-                case "2026-04-10": yesterdayID
-                default: UUID()
-                }
+                let sourceID = sourceIDsByDay[dayKey] ?? UUID()
                 return """
                 {
                   "sections": [{
@@ -4937,6 +4986,14 @@ final class MainWindowViewModelTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
+        try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
+        for existingDay in ["2026-04-09"] {
+            try "# Existing \(existingDay)".write(
+                to: environment.vaultURL.appending(path: "\(existingDay).md"),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
         let notifiedDayKeys = ThreadSafeDayKeyCapture()
         let appState = AppState(
             environment: environment,
@@ -4948,20 +5005,24 @@ final class MainWindowViewModelTests: XCTestCase {
             userDefaults: defaults,
             keychainService: "MainWindowViewModelTests"
         )
+        appState.refreshNotesIndex()
 
         appState.completeOnboarding()
 
         let completed = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
             appState.onboardingBootstrapState == .complete
         }
-        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after both successful serial refreshes")
-        XCTAssertEqual(notifiedDayKeys.value.sorted(by: >), ["2026-04-11", "2026-04-10"])
+        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after all three successful serial refreshes")
+        XCTAssertEqual(notifiedDayKeys.value.sorted(by: >), expectedDays)
     }
 
-    func testCompletingOnboardingContinuesToYesterdayAfterTodayFails() async throws {
+    func testCompletingOnboardingContinuesToLaterBootstrapDaysAfterTodayFails() async throws {
         let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
         let writer = try DatabaseWriter.inMemory()
-        let yesterdayID = UUID()
+        let successfulDayIDs = [
+            "2026-04-10": UUID(),
+            "2026-04-09": UUID()
+        ]
         try writer.insert(
             EventRecord(
                 id: UUID(),
@@ -4975,24 +5036,27 @@ final class MainWindowViewModelTests: XCTestCase {
                 contentHash: "onboarding-bootstrap-failure-today"
             )
         )
-        try writer.insert(
-            EventRecord(
-                id: yesterdayID,
-                sourceType: .clipboard,
-                sourceApp: "Notes",
-                capturedAt: now.addingTimeInterval(-86_400),
-                dayKey: "2026-04-10",
-                text: "Yesterday should still succeed.",
-                auditText: nil,
-                privacyAction: .keep,
-                contentHash: "onboarding-bootstrap-failure-yesterday"
+        for (offset, dayKey) in ["2026-04-10", "2026-04-09"].enumerated() {
+            try writer.insert(
+                EventRecord(
+                    id: successfulDayIDs[dayKey]!,
+                    sourceType: .clipboard,
+                    sourceApp: "Notes",
+                    capturedAt: now.addingTimeInterval(TimeInterval(-86_400 * (offset + 1))),
+                    dayKey: dayKey,
+                    text: "\(dayKey) should still succeed.",
+                    auditText: nil,
+                    privacyAction: .keep,
+                    contentHash: "onboarding-bootstrap-failure-\(dayKey)"
+                )
             )
-        )
+        }
 
         let summarizer = HandlerSummarizer { dayKey, _, _ in
             if dayKey == "2026-04-11" {
                 throw URLError(.cannotConnectToHost)
             }
+            let sourceID = successfulDayIDs[dayKey] ?? UUID()
 
             return """
             {
@@ -5000,7 +5064,7 @@ final class MainWindowViewModelTests: XCTestCase {
                     "id": "daily-journal",
                     "paragraphs": [{
                       "text": "# Details\\n\\nRecovered \(dayKey).",
-                      "sourceEventIDs": ["\(yesterdayID.uuidString)"]
+                      "sourceEventIDs": ["\(sourceID.uuidString)"]
                     }]
                   }]
                 }
@@ -5020,6 +5084,7 @@ final class MainWindowViewModelTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
+        try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
         let appState = AppState(
             environment: environment,
             bootstrapServices: false,
@@ -5027,6 +5092,7 @@ final class MainWindowViewModelTests: XCTestCase {
             userDefaults: defaults,
             keychainService: "MainWindowViewModelTests"
         )
+        appState.refreshNotesIndex()
 
         appState.completeOnboarding()
 
@@ -5036,6 +5102,7 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertTrue(completed, "Expected onboarding bootstrap to finish even when today's generation fails")
         XCTAssertNil(appState.noteIndex["2026-04-11"])
         XCTAssertNotNil(appState.noteIndex["2026-04-10"], "Expected onboarding bootstrap to keep going and generate yesterday")
+        XCTAssertNotNil(appState.noteIndex["2026-04-09"], "Expected onboarding bootstrap to continue past yesterday")
     }
 
     func testCompletingOnboardingChunksBootstrapDaysAboveFiftyEvents() async throws {
@@ -5076,6 +5143,14 @@ final class MainWindowViewModelTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
+        try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
+        for existingDay in ["2026-04-09"] {
+            try "# Existing \(existingDay)".write(
+                to: environment.vaultURL.appending(path: "\(existingDay).md"),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
         let notifiedDayKeys = ThreadSafeDayKeyCapture()
         let appState = AppState(
             environment: environment,
@@ -5087,6 +5162,7 @@ final class MainWindowViewModelTests: XCTestCase {
             userDefaults: defaults,
             keychainService: "MainWindowViewModelTests"
         )
+        appState.refreshNotesIndex()
 
         appState.completeOnboarding()
 
@@ -5112,7 +5188,10 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         XCTAssertEqual(invocations.map { $0.eventIDs.count }, [50, 50, 50, 50, 5, 50, 50, 20])
         XCTAssertTrue(invocations.allSatisfy { $0.eventIDs.count <= 50 })
-        XCTAssertEqual(notifiedDayKeys.value.sorted(by: >), ["2026-04-11", "2026-04-10"])
+        XCTAssertEqual(
+            notifiedDayKeys.value.sorted(by: >),
+            ["2026-04-11", "2026-04-10", "2026-04-09"]
+        )
 
         let refreshLogs = try FileManager.default.contentsOfDirectory(
             at: environment.refreshLogsDirectoryURL,
@@ -5171,6 +5250,14 @@ final class MainWindowViewModelTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
+        try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
+        for existingDay in ["2026-04-09"] {
+            try "# Existing \(existingDay)".write(
+                to: environment.vaultURL.appending(path: "\(existingDay).md"),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
         let notifiedDayKeys = ThreadSafeDayKeyCapture()
         let appState = AppState(
             environment: environment,
@@ -5182,6 +5269,7 @@ final class MainWindowViewModelTests: XCTestCase {
             userDefaults: defaults,
             keychainService: "MainWindowViewModelTests"
         )
+        appState.refreshNotesIndex()
 
         appState.completeOnboarding()
 
@@ -5248,6 +5336,14 @@ final class MainWindowViewModelTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
+        try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
+        for existingDay in ["2026-04-09"] {
+            try "# Existing \(existingDay)".write(
+                to: environment.vaultURL.appending(path: "\(existingDay).md"),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
         let appState = AppState(
             environment: environment,
             bootstrapServices: false,
@@ -5255,6 +5351,7 @@ final class MainWindowViewModelTests: XCTestCase {
             userDefaults: defaults,
             keychainService: "MainWindowViewModelTests"
         )
+        appState.refreshNotesIndex()
 
         appState.completeOnboarding()
 

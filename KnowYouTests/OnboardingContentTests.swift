@@ -195,8 +195,17 @@ final class OnboardingContentTests: XCTestCase {
         XCTAssertFalse(generating.showsContinueAction)
         XCTAssertEqual(generating.lifecycleAction, .autoAdvanceToFirstGeneration)
         XCTAssertEqual(generating.progression, .automaticGeneration)
-        XCTAssertEqual(generating.title, "We’re generating today and yesterday")
-        XCTAssertTrue(generating.body.contains("first two entries"))
+        XCTAssertEqual(generating.title, "We’re preparing your first 3 days")
+        XCTAssertTrue(generating.body.contains("All local"))
+        XCTAssertTrue(generating.body.contains("No backend server"))
+    }
+
+    func testHistoryBootstrapConfirmationCopyEmphasizesLocalPrivacy() {
+        XCTAssertEqual(OnboardingHistoryBootstrapConfirmation.title, "Your first 3 days are being prepared")
+        XCTAssertTrue(OnboardingHistoryBootstrapConfirmation.message.contains("**KnowYou**"))
+        XCTAssertTrue(OnboardingHistoryBootstrapConfirmation.message.contains("All local"))
+        XCTAssertTrue(OnboardingHistoryBootstrapConfirmation.message.contains("No backend server"))
+        XCTAssertEqual(OnboardingHistoryBootstrapConfirmation.confirmButtonTitle, "Start generating")
     }
 
     func testDemoStoryCarriesRealStoryAndReferenceData() {

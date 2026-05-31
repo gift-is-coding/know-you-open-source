@@ -15,6 +15,51 @@ struct AppSupportMetadata {
     static let copyrightLine = "Copyright © 2026 Shanghai Erren Beiwu Software Co., Ltd. All rights reserved."
 }
 
+struct AppRuntimeProfile {
+    static let newUserBundleIdentifier = "dev.knowyou.newuser"
+
+    let displayName: String
+    let supportDirectoryName: String
+    let keychainService: String
+
+    init(bundleIdentifier: String?) {
+        if bundleIdentifier == Self.newUserBundleIdentifier {
+            displayName = "KnowYou New User"
+            supportDirectoryName = "KnowYou New User"
+            keychainService = Self.newUserBundleIdentifier
+        } else {
+            displayName = "KnowYou"
+            supportDirectoryName = "KnowYou"
+            keychainService = "com.knowyou.app"
+        }
+    }
+
+    init(bundle: Bundle = .main) {
+        self.init(bundleIdentifier: bundle.bundleIdentifier)
+    }
+
+    static var current: AppRuntimeProfile {
+        AppRuntimeProfile()
+    }
+
+    static func applicationSupportDirectoryURL(create: Bool = true) throws -> URL {
+        let applicationSupportURL = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: create
+        )
+        let appDirectoryURL = applicationSupportURL.appending(
+            path: current.supportDirectoryName,
+            directoryHint: .isDirectory
+        )
+        if create {
+            try FileManager.default.createDirectory(at: appDirectoryURL, withIntermediateDirectories: true)
+        }
+        return appDirectoryURL
+    }
+}
+
 struct AppBuildMetadata: Equatable {
     let marketingVersion: String
     let buildNumber: String
@@ -99,8 +144,8 @@ struct AppSupportDocument: Identifiable {
         Privacy filtering happens before content is persisted. That means obviously sensitive content should not be written verbatim into local SQLite storage, and local Markdown output is not intended to be an unfiltered dump of raw context.
 
         By default, KnowYou stores runtime data locally on this Mac, including:
-        - ~/Library/Application Support/KnowYou/events.sqlite
-        - ~/Library/Application Support/KnowYou/Vault
+        - ~/Library/Application Support/\(AppRuntimeProfile.current.supportDirectoryName)/events.sqlite
+        - ~/Library/Application Support/\(AppRuntimeProfile.current.supportDirectoryName)/Vault
 
         External summarizers are optional enhancements. They are not required for onboarding or for generating your first local story.
 

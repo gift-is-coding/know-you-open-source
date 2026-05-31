@@ -45,6 +45,58 @@ struct OnboardingRenderPlan: Equatable {
     }
 }
 
+private struct OnboardingCoachmarkCardStyle {
+    let titlePointSize: CGFloat
+    let iconPointSize: CGFloat
+    let iconContainerSize: CGFloat
+    let iconCornerRadius: CGFloat
+    let bodyFont: Font
+    let padding: CGFloat
+    let cornerRadius: CGFloat
+    let shadowOpacity: Double
+    let shadowRadius: CGFloat
+    let shadowY: CGFloat
+
+    static let compact = OnboardingCoachmarkCardStyle(
+        titlePointSize: 20,
+        iconPointSize: 15,
+        iconContainerSize: 28,
+        iconCornerRadius: 8,
+        bodyFont: .subheadline,
+        padding: 18,
+        cornerRadius: 18,
+        shadowOpacity: 0.12,
+        shadowRadius: 18,
+        shadowY: 10
+    )
+
+    static let prominent = OnboardingCoachmarkCardStyle(
+        titlePointSize: 28,
+        iconPointSize: 18,
+        iconContainerSize: 32,
+        iconCornerRadius: 10,
+        bodyFont: .callout,
+        padding: 24,
+        cornerRadius: 28,
+        shadowOpacity: 0.18,
+        shadowRadius: 28,
+        shadowY: 18
+    )
+
+    static let setup = OnboardingCoachmarkCardStyle(
+        titlePointSize: 23,
+        iconPointSize: 16,
+        iconContainerSize: 30,
+        iconCornerRadius: 9,
+        bodyFont: .subheadline,
+        padding: 20,
+        cornerRadius: 22,
+        shadowOpacity: 0.15,
+        shadowRadius: 22,
+        shadowY: 14
+    )
+}
+
 struct OnboardingView: View {
     @Environment(AppState.self) private var appState
 
@@ -53,8 +105,9 @@ struct OnboardingView: View {
     @State private var step: OnboardingStep
     @State private var summarizerConfig = SummarizerConfig.load()
     @State private var isEngineSheetPresented = false
+    @State private var isHistoryBootstrapConfirmationPresented = false
     @State private var generationStarted = false
-    @State private var generationMessage = "Starting today and yesterday..."
+    @State private var generationMessage = "Preparing your first 3 days..."
     @State private var generationError: String?
     @State private var referenceAdvancePolicy = OnboardingReferenceAdvancePolicy()
     @State private var referenceAdvanceTask: Task<Void, Never>?
@@ -83,20 +136,17 @@ struct OnboardingView: View {
         .overlayPreferenceValue(OnboardingCoachmarkTargetPreferenceKey.self) { preferences in
             GeometryReader { proxy in
                 ZStack(alignment: .topLeading) {
-                    Color.black.opacity(overlayOpacity)
+                    Color(nsColor: .windowBackgroundColor)
+                        .opacity(overlayOpacity)
                         .ignoresSafeArea()
                         .allowsHitTesting(false)
 
                     if let highlightRect = highlightedRect(from: preferences, in: proxy) {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(Color.accentColor.opacity(0.95), lineWidth: 3)
-                            .background(
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .fill(Color.white.opacity(0.06))
-                            )
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.accentColor.opacity(0.9), lineWidth: 2)
                             .frame(width: highlightRect.width + 12, height: highlightRect.height + 12)
                             .position(x: highlightRect.midX, y: highlightRect.midY)
-                            .shadow(color: Color.accentColor.opacity(0.22), radius: 24, x: 0, y: 0)
+                            .shadow(color: Color.accentColor.opacity(0.18), radius: 12, x: 0, y: 0)
                             .allowsHitTesting(false)
                     }
 
@@ -106,6 +156,16 @@ struct OnboardingView: View {
         }
         .sheet(isPresented: $isEngineSheetPresented) {
             engineSetupSheet
+        }
+        .alert(
+            OnboardingHistoryBootstrapConfirmation.title,
+            isPresented: $isHistoryBootstrapConfirmationPresented
+        ) {
+            Button(OnboardingHistoryBootstrapConfirmation.confirmButtonTitle) {
+                finishOnboardingAfterHistoryConfirmation()
+            }
+        } message: {
+            Text(.init(OnboardingHistoryBootstrapConfirmation.message))
         }
         .onAppear {
             summarizerConfig = SummarizerConfig.load()
@@ -197,11 +257,11 @@ struct OnboardingView: View {
     private var overlayOpacity: Double {
         switch step {
         case .demoRead, .demoClick, .demoReference, .enginePrompt:
-            return 0.16
-        case .privacy, .installApp, .permissions, .generating:
-            return 0.28
-        case .engineSetup:
             return 0.08
+        case .privacy, .installApp, .permissions, .generating:
+            return 0.14
+        case .engineSetup:
+            return 0.04
         }
     }
 
@@ -213,32 +273,32 @@ struct OnboardingView: View {
         switch currentContent.target {
         case .storyPanel:
             if let rect = preferences[.storyPanel].map({ proxy[$0] }) {
-                anchoredCard(rect: rect, width: 360) {
-                    coachmarkCard
+                anchoredCard(rect: rect, width: 320, proxy: proxy) {
+                    coachmarkCard(style: .compact)
                 }
             }
         case .sourcesPanel:
             if let rect = preferences[.sourcesPanel].map({ proxy[$0] }) {
-                anchoredCard(rect: rect, width: 360) {
-                    coachmarkCard
+                anchoredCard(rect: rect, width: 300, proxy: proxy, yOffset: 52) {
+                    coachmarkCard(style: .compact)
                 }
             }
         case .engineButton:
             if let rect = preferences[.engineButton].map({ proxy[$0] }) {
-                engineAnchoredCard(rect: rect, width: 320) {
-                    coachmarkCard
+                engineAnchoredCard(rect: rect, width: 300, proxy: proxy) {
+                    coachmarkCard(style: .compact)
                 }
             }
         case .sharedCenterCard:
-            centeredCard {
-                coachmarkCard
+            centeredCard(width: step == .permissions ? 430 : 460) {
+                coachmarkCard(style: step == .permissions ? .setup : .prominent)
             }
         case .engineSheet:
             EmptyView()
         }
     }
 
-    private var coachmarkCard: some View {
+    private func coachmarkCard(style: OnboardingCoachmarkCardStyle) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             if let activationStepLabel = currentContent.activationStepLabel {
                 HStack(spacing: 10) {
@@ -259,17 +319,18 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center, spacing: 12) {
                     Image(systemName: currentContent.iconName)
-                        .font(.title3.weight(.semibold))
+                        .font(.system(size: style.iconPointSize, weight: .semibold))
                         .foregroundStyle(Color.accentColor)
-                        .frame(width: 32, height: 32)
-                        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .frame(width: style.iconContainerSize, height: style.iconContainerSize)
+                        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: style.iconCornerRadius, style: .continuous))
 
                     Text(currentContent.title)
-                        .font(.system(size: 28, weight: .semibold, design: .rounded))
+                        .font(.system(size: style.titlePointSize, weight: .semibold, design: .rounded))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Text(currentContent.body)
-                    .font(.callout)
+                    .font(style.bodyFont)
                     .foregroundStyle(.secondary)
             }
 
@@ -292,62 +353,10 @@ struct OnboardingView: View {
             }
 
             if step == .permissions {
-                VStack(alignment: .leading, spacing: 10) {
-                    statusRow(
-                        title: "Full Disk Access",
-                        detail: notificationsAvailable
-                            ? "Ready. KnowYou can read the local Notification Center store and rebuild who reached you and when."
-                            : fullDiskAccessGuidance.missingPermissionDetail,
-                        ok: notificationsAvailable
-                    )
-
-                    statusRow(
-                        title: "Notifications",
-                        detail: reminderNotificationDetail,
-                        ok: reminderNotificationsReady
-                    )
-
-                    HStack(spacing: 12) {
-                        if reminderAuthorizationStatus == .authorized {
-                            Label("Notifications On", systemImage: "checkmark.circle.fill")
-                                .font(.callout.weight(.semibold))
-                                .foregroundStyle(.green)
-                        } else {
-                            Button(reminderAuthorizationStatus == .denied ? "Open Notification Settings" : "Enable Notifications") {
-                                if reminderAuthorizationStatus == .denied {
-                                    openNotificationSettings()
-                                } else {
-                                    Task { @MainActor in
-                                        await appState.requestDailyReviewReminderAuthorization()
-                                    }
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-
-                    if !notificationsAvailable {
-                        Text(fullDiskAccessGuidance.manualAddInstruction)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if let optionalEnhancement = currentContent.optionalEnhancement {
-                        Text(optionalEnhancement.title)
-                            .font(.headline)
-
-                        Text(optionalEnhancement.detail)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-
-                        VStack(spacing: 10) {
-                            ForEach(optionalEnhancement.helperLinks) { helperLink in
-                                helperLinkCard(helperLink)
-                            }
-                        }
-                    }
+                ScrollView(.vertical, showsIndicators: true) {
+                    permissionRequirementsSection
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxHeight: 278)
             }
 
             if step == .generating {
@@ -367,14 +376,14 @@ struct OnboardingView: View {
 
             cardActions
         }
-        .padding(24)
+        .padding(style.padding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
+            RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.18), radius: 28, x: 0, y: 18)
+        .shadow(color: Color.black.opacity(style.shadowOpacity), radius: style.shadowRadius, x: 0, y: style.shadowY)
     }
 
     @ViewBuilder
@@ -497,39 +506,98 @@ struct OnboardingView: View {
         .interactiveDismissDisabled(true)
     }
 
+    @ViewBuilder
+    private var permissionRequirementsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            statusRow(
+                title: "Full Disk Access",
+                detail: notificationsAvailable
+                    ? "Ready. KnowYou can read the local Notification Center store and rebuild who reached you and when."
+                    : "Turn this on in macOS so KnowYou can read the local Notification Center store and rebuild who reached you and when.",
+                ok: notificationsAvailable
+            )
+
+            statusRow(
+                title: "Notifications",
+                detail: reminderNotificationDetail,
+                ok: reminderNotificationsReady
+            )
+
+            if reminderAuthorizationStatus == .authorized {
+                Label("Notifications On", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.green)
+            } else {
+                Button(reminderAuthorizationStatus == .denied ? "Open Notification Settings" : "Enable Notifications") {
+                    if reminderAuthorizationStatus == .denied {
+                        openNotificationSettings()
+                    } else {
+                        Task { @MainActor in
+                            await appState.requestDailyReviewReminderAuthorization()
+                        }
+                    }
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if let optionalEnhancement = currentContent.optionalEnhancement {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(optionalEnhancement.title)
+                        .font(.subheadline.weight(.semibold))
+
+                    Text(optionalEnhancement.detail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 2)
+
+                VStack(spacing: 8) {
+                    ForEach(optionalEnhancement.helperLinks) { helperLink in
+                        helperLinkCard(helperLink)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func anchoredCard<Content: View>(
         rect: CGRect,
         width: CGFloat,
+        proxy: GeometryProxy,
         yOffset: CGFloat = 24,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        let originX = max(24, min(rect.minX + 18, 1280 - width - 24))
-        let originY = max(24, rect.minY + yOffset)
+        let maxOriginX = max(24, proxy.size.width - width - 24)
+        let originX = max(24, min(rect.minX + 18, maxOriginX))
+        let originY = max(24, min(rect.minY + yOffset, proxy.size.height - 220))
 
         return content()
             .frame(width: width)
-            .position(x: originX + (width / 2), y: originY + 120)
+            .offset(x: originX, y: originY)
     }
 
     private func engineAnchoredCard<Content: View>(
         rect: CGRect,
         width: CGFloat,
+        proxy: GeometryProxy,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        let maxX = NSScreen.main?.visibleFrame.width ?? 1440
-        let originX = max(24, min(rect.maxX - width, maxX - width - 24))
+        let maxOriginX = max(24, proxy.size.width - width - 24)
+        let originX = max(24, min(rect.maxX - width, maxOriginX))
         let topY = max(20, rect.maxY + 14)
 
         return content()
             .frame(width: width)
-            .position(x: originX + (width / 2), y: topY + 110)
+            .offset(x: originX, y: topY)
     }
 
     private func centeredCard<Content: View>(
+        width: CGFloat,
         @ViewBuilder content: () -> Content
     ) -> some View {
         content()
-            .frame(width: 460)
+            .frame(width: width)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
@@ -556,16 +624,16 @@ struct OnboardingView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
 
                 Text(detail)
-                    .font(.callout)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(16)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func helperLinkCard(_ helperLink: OnboardingHelperLink) -> some View {
@@ -588,7 +656,7 @@ struct OnboardingView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
                         Text(helperLink.title)
-                            .font(.headline)
+                            .font(.subheadline.weight(.semibold))
 
                         Text("Optional")
                             .font(.caption.weight(.semibold))
@@ -598,8 +666,9 @@ struct OnboardingView: View {
                     }
 
                     Text(helperLink.detail)
-                        .font(.callout)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
 
                 Spacer()
@@ -608,8 +677,8 @@ struct OnboardingView: View {
                     .font(.headline)
                     .foregroundStyle(.secondary)
             }
-            .padding(14)
-            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(12)
+            .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -713,7 +782,7 @@ struct OnboardingView: View {
 
         generationStarted = true
         generationError = nil
-        generationMessage = "Starting today and yesterday..."
+        generationMessage = "Preparing your first 3 days..."
 
         persistEngineConfiguration()
 
@@ -734,10 +803,16 @@ struct OnboardingView: View {
             return
         }
 
-        generationMessage = "Preparing today and yesterday…"
+        generationMessage = "Review the local-only first generation…"
         try? await Task.sleep(nanoseconds: 500_000_000)
 
         guard step == .generating else { return }
+        isHistoryBootstrapConfirmationPresented = true
+    }
+
+    private func finishOnboardingAfterHistoryConfirmation() {
+        guard step == .generating else { return }
+        generationMessage = "Generating your first 3 days…"
         appState.completeOnboarding()
         onComplete()
     }

@@ -135,6 +135,21 @@ struct DayRefreshGenerationResult: Equatable {
 struct OnboardingBootstrapNotice: Equatable, Identifiable {
     let id = UUID()
     var message: String
+    var progress: OnboardingBootstrapProgress?
+}
+
+struct OnboardingBootstrapProgress: Equatable {
+    var completedDayCount: Int
+    var totalDayCount: Int
+    var activeDayKey: String?
+
+    var presentationText: String? {
+        guard totalDayCount > 0 else { return nil }
+        if let activeDayKey {
+            return "\(completedDayCount)/\(totalDayCount) complete · Now writing \(activeDayKey)"
+        }
+        return "\(completedDayCount)/\(totalDayCount) complete"
+    }
 }
 
 enum DayRefreshMode: Equatable {
@@ -621,6 +636,7 @@ final class AppState {
     var onboardingBootstrapState: OnboardingBootstrapState
     var onboardingBootstrapDayKeys: [String]
     var onboardingBootstrapNotice: OnboardingBootstrapNotice?
+    var onboardingBootstrapProgress: OnboardingBootstrapProgress?
     var updateOffer: UpdateOffer?
     var isShowingUpdateSheet = false
     var lastUpdateCheckAt: Date?
@@ -793,6 +809,7 @@ final class AppState {
         onboardingBootstrapState = Self.loadOnboardingBootstrapState(from: resolvedUserDefaults)
         onboardingBootstrapDayKeys = Self.loadOnboardingBootstrapDayKeys(from: resolvedUserDefaults)
         onboardingBootstrapNotice = nil
+        onboardingBootstrapProgress = nil
         if explicitSummarizerConfig == nil,
            environment?.summarizer == nil,
             self.summarizerConfig.defaultEngine != loadedDefaultEngine {
@@ -2078,14 +2095,7 @@ final class AppState {
     }
 
     static func defaultVaultURL() throws -> URL {
-        let applicationSupportURL = try FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        return applicationSupportURL
-            .appending(path: "KnowYou", directoryHint: .isDirectory)
+        try AppRuntimeProfile.applicationSupportDirectoryURL()
             .appending(path: "Vault", directoryHint: .isDirectory)
     }
 
@@ -2140,6 +2150,7 @@ final class AppState {
     func markOnboardingBootstrapComplete() {
         onboardingBootstrapState = .complete
         onboardingBootstrapDayKeys = []
+        onboardingBootstrapProgress = nil
         dismissOnboardingBootstrapNotice()
         persistOnboardingBootstrapState()
     }
@@ -2220,7 +2231,7 @@ final class AppState {
 
     private static func onboardingBootstrapDays(now: Date) -> [String] {
         let calendar = Calendar(identifier: .gregorian)
-        return (0..<2).compactMap { offset in
+        return (0..<3).compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: -offset, to: now) else { return nil }
             return ISO8601DayKey.format(date)
         }
@@ -2231,6 +2242,11 @@ final class AppState {
 
         onboardingBootstrapState = .pending
         onboardingBootstrapDayKeys = Self.onboardingBootstrapDays(now: currentDate())
+        onboardingBootstrapProgress = OnboardingBootstrapProgress(
+            completedDayCount: 0,
+            totalDayCount: onboardingBootstrapDayKeys.count,
+            activeDayKey: onboardingBootstrapDayKeys.first
+        )
         persistOnboardingBootstrapState()
         rebuildAvailableDates()
         showOnboardingBootstrapNotice()
@@ -2256,9 +2272,17 @@ final class AppState {
 
             var completedDayKeys = self.onboardingBootstrapDayKeys.filter { self.noteIndex[$0] != nil }
             for dayKey in self.onboardingBootstrapDayKeys where completedDayKeys.contains(dayKey) == false {
+                self.updateOnboardingBootstrapProgress(
+                    completedDayCount: completedDayKeys.count,
+                    activeDayKey: dayKey
+                )
                 let didComplete = await self.generateOnboardingBootstrapNote(for: dayKey)
                 if didComplete {
                     completedDayKeys.append(dayKey)
+                    self.updateOnboardingBootstrapProgress(
+                        completedDayCount: completedDayKeys.count,
+                        activeDayKey: nil
+                    )
                 }
             }
 
@@ -4783,14 +4807,7 @@ extension AppState {
     }
 
     static func makeDatabaseURL() throws -> URL {
-        let applicationSupportURL = try FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let appDirectoryURL = applicationSupportURL.appending(path: "KnowYou", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: appDirectoryURL, withIntermediateDirectories: true)
+        let appDirectoryURL = try AppRuntimeProfile.applicationSupportDirectoryURL()
         return appDirectoryURL.appending(path: "events.sqlite")
     }
 
@@ -5415,19 +5432,22 @@ extension AppState {
 
     private func showOnboardingBootstrapNotice() {
         let notice = OnboardingBootstrapNotice(
-            message: "KnowYou is generating today and yesterday from your local context. Come back 2 minutes later."
+            message: "KnowYou is generating your first 3 days from available local history. All local. No backend server.",
+            progress: onboardingBootstrapProgress
         )
         onboardingBootstrapNotice = notice
         onboardingBootstrapNoticeDismissTask?.cancel()
-        onboardingBootstrapNoticeDismissTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 10_000_000_000)
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                guard let self, self.onboardingBootstrapNotice?.id == notice.id else { return }
-                self.onboardingBootstrapNoticeDismissTask = nil
-                self.onboardingBootstrapNotice = nil
-            }
-        }
+        onboardingBootstrapNoticeDismissTask = nil
+    }
+
+    private func updateOnboardingBootstrapProgress(completedDayCount: Int, activeDayKey: String?) {
+        let progress = OnboardingBootstrapProgress(
+            completedDayCount: completedDayCount,
+            totalDayCount: onboardingBootstrapDayKeys.count,
+            activeDayKey: activeDayKey
+        )
+        onboardingBootstrapProgress = progress
+        onboardingBootstrapNotice?.progress = progress
     }
 
     private static func deliverOnboardingBootstrapCompletionNotification(for dayKeys: [String]) async {
@@ -5444,8 +5464,8 @@ extension AppState {
 
         let content = UNMutableNotificationContent()
         content.title = "KnowYou entries are ready"
-        content.body = dayKeys.count == 2
-            ? "Today and yesterday are ready in KnowYou."
+        content.body = dayKeys.count >= 3
+            ? "Your first 3 days are ready in KnowYou."
             : "Your new KnowYou entry is ready."
         content.sound = .default
 

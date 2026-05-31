@@ -343,8 +343,8 @@ onboarding 的配置约束为：
 - 引擎配置必须阻塞 onboarding 完成；未配置成功前不得进入真实生成流程
 - onboarding 最后一步在权限与引擎都 ready 后，必须先展示首次历史生成确认弹窗；用户点击开始后才完成 onboarding 并进入真实生成流程
 - 确认弹窗必须说明 **KnowYou** 会只在当前 Mac 本地生成近期日记，并包含 `All local. No backend server.` 语义
-- onboarding 完成后必须自动启动一次性过去 7 天 bootstrap，而不是要求用户手动刷新
-- onboarding 完成后必须在主窗口显示非阻塞提醒，告知用户首批 7 天正在本地生成，并按天显示进度
+- onboarding 完成后必须自动启动一次性最近 3 天 bootstrap，而不是要求用户手动刷新
+- onboarding 完成后必须在主窗口显示非阻塞提醒，告知用户首批 3 天会从可用本地历史生成，并按天显示进度
 - `Demo Day` 在 onboarding 完成后不得消失，必须继续保留在左侧列表底部
 - 如果当前默认引擎为 `None` 且用户没有显式保持 `None`，主应用后续可以自动选择一个已验证绿色引擎；如果用户已明确选择某个非 `None` 引擎，或已明确保持 `None`，则不得被被动覆盖
 
@@ -355,10 +355,10 @@ onboarding 的配置约束为：
 - 用户在 KnowYou 中关闭 `Launch at Login` 后，后续启动不得再次自动打开该设置
 - 应用启动时必须立即执行一次自动刷新
 - 应用启动时还必须立即执行一次今天的通知补同步
-- 首次完成 onboarding 时，系统必须额外执行一次且仅一次“过去 7 天 bootstrap”
-- onboarding bootstrap 必须覆盖包含今天在内的过去 7 个自然日，并跳过已有成功内容的日期
+- 首次完成 onboarding 时，系统必须额外执行一次且仅一次“最近 3 天 bootstrap”
+- onboarding bootstrap 必须覆盖包含今天在内的最近 3 个自然日，并跳过已有成功内容的日期
 - onboarding bootstrap 应按顺序从今天开始逐日向前串行生成；若某一天失败，仍应继续尝试后续日期
-- onboarding bootstrap 的主窗口提醒必须展示轻量进度，例如当前正在生成的 day key 与已完成天数；左侧列表必须继续显示 7 天占位，未生成日期的正文保持生成中空态
+- onboarding bootstrap 的主窗口提醒必须展示轻量进度，例如当前正在生成的 day key 与已完成天数；左侧列表必须继续显示 3 天占位，未生成日期的正文保持生成中空态
 - onboarding bootstrap 在单日事件数超过 `50` 条时，必须启用分批生成：首批 `50` 条走 full recovery，剩余事件按最多 `50` 条一批顺序走 incremental append
 - onboarding bootstrap 的分批失败不得回滚已成功块落盘的部分内容，但也不得把该日期记为 bootstrap 全部成功
 - onboarding bootstrap 不得在后续正常启动时重复执行
@@ -571,4 +571,4 @@ Markdown 导出也应服务于这个目标：
 - 用户手动刷新某天时，只会刷新该天，不会顺带刷新其他日期
 - 用户首次进入应用时，先看到真实阅读器里的 `Demo Day` 与 coachmarks，而不是配置项堆叠
 - 用户在理解 Demo Day 与右侧 reference 之后，才会被请求理解隐私、权限与引擎配置
-- 用户只有完成 `Full Disk Access + 引擎配置` 后，才会自动开始生成过去 7 天的真实日记
+- 用户只有完成 `Full Disk Access + 引擎配置` 后，才会自动开始生成最近 3 天的真实日记；文案不得暗示 macOS 一定保留更早 Notification Center 历史

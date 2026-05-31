@@ -107,7 +107,7 @@ struct OnboardingView: View {
     @State private var isEngineSheetPresented = false
     @State private var isHistoryBootstrapConfirmationPresented = false
     @State private var generationStarted = false
-    @State private var generationMessage = "Preparing your first 7 days..."
+    @State private var generationMessage = "Preparing your first 3 days..."
     @State private var generationError: String?
     @State private var referenceAdvancePolicy = OnboardingReferenceAdvancePolicy()
     @State private var referenceAdvanceTask: Task<Void, Never>?
@@ -724,7 +724,7 @@ struct OnboardingView: View {
 
         generationStarted = true
         generationError = nil
-        generationMessage = "Preparing your first 7 days..."
+        generationMessage = "Preparing your first 3 days..."
 
         persistEngineConfiguration()
 
@@ -754,7 +754,7 @@ struct OnboardingView: View {
 
     private func finishOnboardingAfterHistoryConfirmation() {
         guard step == .generating else { return }
-        generationMessage = "Generating your first 7 days…"
+        generationMessage = "Generating your first 3 days…"
         appState.completeOnboarding()
         onComplete()
     }

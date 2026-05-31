@@ -751,7 +751,7 @@ struct OnboardingBootstrapNoticePresentation: Equatable {
     let progressText: String?
 
     init(notice: OnboardingBootstrapNotice) {
-        title = "First 7 days are generating"
+        title = "First 3 days are generating"
         message = notice.message
         progressText = notice.progress?.presentationText
     }

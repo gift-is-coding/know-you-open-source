@@ -110,7 +110,7 @@ flowchart LR
 - 管理选中日期、选中 story、选中段落及其来源事件
 - 触发“按天刷新”、今日通知补同步与 today-only 自动刷新
 - 维护统一 Todo inbox 状态、每日候选待办的归集状态，以及日记刷新后的自动归集/完成 sweep
-- 持久化 onboarding 进度，并在首次确认后触发一次性过去 7 天 bootstrap
+- 持久化 onboarding 进度，并在首次确认后触发一次性最近 3 天 bootstrap
 
 `AppEnvironment` 本身则负责组装主要依赖，包括数据库、隐私过滤器、采集器、composer 与 summarizer，见 [AppEnvironment.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppEnvironment.swift)。
 
@@ -335,7 +335,7 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 每日 Markdown 里的 `# 待办事项` 不再承担任务状态源职责。它可以显示当天候选待办，但 open/completed、完成证据和排序都来自 `Vault/Todo.md`。
 
-本机新用户 QA 测试使用独立安装包 `KnowYou New User.app`，只用于验证首次 onboarding、Full Disk Access 与首次过去 7 天 bootstrap。该测试包的 bundle id 是 `dev.knowyou.newuser`，展示名、bundle name 与 executable name 都是 `KnowYou New User`；运行数据写入 `~/Library/Application Support/KnowYou New User`，Keychain service 是 `dev.knowyou.newuser`。除这个 bundle id 外，`AppRuntimeProfile` 必须回到普通 `KnowYou` profile，因此日常开发与生产安装继续使用 `~/Library/Application Support/KnowYou` 和现有 Keychain service。
+本机新用户 QA 测试使用独立安装包 `KnowYou New User.app`，只用于验证首次 onboarding、Full Disk Access 与首次最近 3 天 bootstrap。该测试包的 bundle id 是 `dev.knowyou.newuser`，展示名、bundle name 与 executable name 都是 `KnowYou New User`；运行数据写入 `~/Library/Application Support/KnowYou New User`，Keychain service 是 `dev.knowyou.newuser`。除这个 bundle id 外，`AppRuntimeProfile` 必须回到普通 `KnowYou` profile，因此日常开发与生产安装继续使用 `~/Library/Application Support/KnowYou` 和现有 Keychain service。
 
 ## 7. 生成层
 
@@ -518,8 +518,8 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - `permissions` 只 gate `Full Disk Access`，并在同位置 coachmark 里解释通知与剪贴板上下文价值
 - `enginePrompt` 只负责高亮真实产品里的引擎按钮，`engineSetup` 则在现有引擎配置组件里完成默认引擎设置
 - `generating` 在权限与引擎都 ready 后先展示首次历史生成确认弹窗，明确 **KnowYou** 只在当前 Mac 本地生成，包含 `All local. No backend server.` 隐私承诺
-- 用户确认后才完成 onboarding，并自动触发一次性过去 7 天 bootstrap，而不是要求用户手动点刷新
-- bootstrap 启动时主窗口会显示一个非阻塞轻提醒，告知用户首批 7 天内容正在本地生成，并按天展示进度
+- 用户确认后才完成 onboarding，并自动触发一次性最近 3 天 bootstrap，而不是要求用户手动点刷新
+- bootstrap 启动时主窗口会显示一个非阻塞轻提醒，告知用户首批 3 天内容会从可用本地历史生成，并按天展示进度
 - onboarding bootstrap 仍复用同一套 refresh pipeline，但当冷启动 full recovery 单日事件数超过 `50` 条时，会改为分批：首批 `50` 条先写出初始 story，后续块再逐块 incremental append
 - 正式 reader 的刷新按钮右侧会显示一个小三角下拉菜单；通过隐藏系统 menu indicator，界面上只保留一个三角，不会出现双三角
 - 下拉菜单对当前选中的真实日期都可用，因此历史日期也能主动触发 full refresh；`Demo Day` 仍保持只读
@@ -532,7 +532,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 - 设置 `hasCompletedOnboarding`
 - 持久化 onboarding 当前步骤，支持退出后恢复
-- onboarding 完成后恢复真实列表，并自动补写过去 7 天缺失日记
+- onboarding 完成后恢复真实列表，并自动补写最近 3 天缺失日记
 - `Demo Day` 不会消失，而是作为只读 demo 项保留在左侧列表底部
 
 当前 onboarding 的阻塞顺序是：`Demo Day -> reference -> privacy -> Full Disk Access -> engine -> generating`。
@@ -703,8 +703,8 @@ sequenceDiagram
 5. `enginePrompt` 高亮右上角真实引擎按钮，用户在 `engineSetup` 中完成默认引擎设置
 6. `generating` 步骤展示首次历史生成确认弹窗；弹窗说明 **KnowYou** 只在当前 Mac 本地生成近期日记，并包含 `All local. No backend server.` 隐私承诺
 7. 用户确认后，`completeOnboarding()` 写入 `hasCompletedOnboarding` 与 onboarding 进度状态
-8. 应用立即触发一次性过去 7 天 bootstrap，并把缺失日期先以占位形式插入左侧列表，同时显示一个非阻塞提醒
-   生成顺序固定为今天、昨天、前天依次向前 7 个自然日；若某一天失败，仍继续尝试后续日期
+8. 应用立即触发一次性最近 3 天 bootstrap，并把缺失日期先以占位形式插入左侧列表，同时显示一个非阻塞提醒
+   生成顺序固定为今天、昨天、前天；若某一天失败，仍继续尝试后续日期。由于 macOS Notification Center 不是可靠长期历史归档，文案只承诺从可用本地历史生成。
    若某一天在 bootstrap 开始时事件数超过 `50` 条，则该日内部改为按 `50` 条一批串行生成，并在 refresh log 中记录 chunk 进度
 9. bootstrap 完成后恢复 steady-state 自动化；`Demo Day` 继续留在列表底部供用户回看
 

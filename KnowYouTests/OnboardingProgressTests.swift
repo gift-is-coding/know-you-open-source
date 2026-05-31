@@ -161,7 +161,7 @@ final class OnboardingProgressTests: XCTestCase {
     }
 
     @MainActor
-    func testCompletingOnboardingQueuesOneTimeSevenDayBootstrap() {
+    func testCompletingOnboardingQueuesOneTimeThreeDayBootstrap() {
         let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 20, hour: 9).date!
         let appState = AppState(
             bootstrapServices: false,
@@ -177,11 +177,7 @@ final class OnboardingProgressTests: XCTestCase {
             [
                 "2026-04-20",
                 "2026-04-19",
-                "2026-04-18",
-                "2026-04-17",
-                "2026-04-16",
-                "2026-04-15",
-                "2026-04-14"
+                "2026-04-18"
             ]
         )
     }
@@ -194,7 +190,7 @@ final class OnboardingProgressTests: XCTestCase {
 
         XCTAssertEqual(
             appState.onboardingBootstrapNotice?.message,
-            "KnowYou is generating your first 7 days from this Mac. All local. No backend server."
+            "KnowYou is generating your first 3 days from available local history. All local. No backend server."
         )
     }
 

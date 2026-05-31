@@ -55,7 +55,7 @@ final class OnboardingViewLayoutTests: XCTestCase {
         XCTAssertTrue(plan.usesRealReaderChrome)
         XCTAssertTrue(plan.keepsSourcesPanelVisible)
         XCTAssertTrue(plan.showsEngineButton)
-        XCTAssertEqual(plan.coachmarkTitle, "We’re preparing your first 7 days")
+        XCTAssertEqual(plan.coachmarkTitle, "We’re preparing your first 3 days")
         XCTAssertFalse(plan.coachmarkTitle.contains("Reader preview"))
     }
 

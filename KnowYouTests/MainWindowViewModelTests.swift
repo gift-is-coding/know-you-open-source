@@ -4810,17 +4810,13 @@ final class MainWindowViewModelTests: XCTestCase {
         _ = await (refreshNine, refreshTen)
     }
 
-    func testCompletingOnboardingStartsSevenDayBootstrapSerially() async throws {
+    func testCompletingOnboardingStartsThreeDayBootstrapSerially() async throws {
         let (environment, gate) = try makeBlockingRefreshEnvironment()
         let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
         let expectedDays = [
             "2026-04-11",
             "2026-04-10",
-            "2026-04-09",
-            "2026-04-08",
-            "2026-04-07",
-            "2026-04-06",
-            "2026-04-05"
+            "2026-04-09"
         ]
         for (offset, dayKey) in expectedDays.enumerated() {
             try environment.databaseWriter.insert(
@@ -4858,11 +4854,11 @@ final class MainWindowViewModelTests: XCTestCase {
         let yesterdayStartedBeforeRelease = await gate.startCount(for: "2026-04-10")
         XCTAssertEqual(todayStartedBeforeRelease, 1)
         XCTAssertEqual(yesterdayStartedBeforeRelease, 0, "Expected yesterday to wait until today's refresh finishes")
-        XCTAssertEqual(Array(appState.availableDates.prefix(8)), expectedDays + [OnboardingDemoStory.demoDayKey])
-        XCTAssertEqual(appState.onboardingBootstrapNotice?.message, "KnowYou is generating your first 7 days from this Mac. All local. No backend server.")
+        XCTAssertEqual(Array(appState.availableDates.prefix(4)), expectedDays + [OnboardingDemoStory.demoDayKey])
+        XCTAssertEqual(appState.onboardingBootstrapNotice?.message, "KnowYou is generating your first 3 days from available local history. All local. No backend server.")
         XCTAssertEqual(
             appState.onboardingBootstrapNotice?.progress,
-            OnboardingBootstrapProgress(completedDayCount: 0, totalDayCount: 7, activeDayKey: "2026-04-11")
+            OnboardingBootstrapProgress(completedDayCount: 0, totalDayCount: 3, activeDayKey: "2026-04-11")
         )
 
         for (index, dayKey) in expectedDays.enumerated() {
@@ -4884,7 +4880,7 @@ final class MainWindowViewModelTests: XCTestCase {
         let completed = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
             appState.onboardingBootstrapState == .complete
         }
-        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after all seven serial refreshes were released")
+        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after all three serial refreshes were released")
     }
 
     func testCompletingOnboardingSkipsBootstrapDaysThatAlreadyExist() async throws {
@@ -4895,7 +4891,7 @@ final class MainWindowViewModelTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
         try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
-        for existingDay in ["2026-04-10", "2026-04-09", "2026-04-08", "2026-04-07", "2026-04-06", "2026-04-05"] {
+        for existingDay in ["2026-04-10", "2026-04-09"] {
             try "# Existing \(existingDay)".write(
                 to: environment.vaultURL.appending(path: "\(existingDay).md"),
                 atomically: true,
@@ -4936,11 +4932,7 @@ final class MainWindowViewModelTests: XCTestCase {
         let expectedDays = [
             "2026-04-11",
             "2026-04-10",
-            "2026-04-09",
-            "2026-04-08",
-            "2026-04-07",
-            "2026-04-06",
-            "2026-04-05"
+            "2026-04-09"
         ]
         let sourceIDsByDay = Dictionary(
             uniqueKeysWithValues: expectedDays.map { ($0, UUID()) }
@@ -4995,7 +4987,7 @@ final class MainWindowViewModelTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
         try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
-        for existingDay in ["2026-04-09", "2026-04-08", "2026-04-07", "2026-04-06", "2026-04-05"] {
+        for existingDay in ["2026-04-09"] {
             try "# Existing \(existingDay)".write(
                 to: environment.vaultURL.appending(path: "\(existingDay).md"),
                 atomically: true,
@@ -5020,7 +5012,7 @@ final class MainWindowViewModelTests: XCTestCase {
         let completed = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
             appState.onboardingBootstrapState == .complete
         }
-        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after all seven successful serial refreshes")
+        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after all three successful serial refreshes")
         XCTAssertEqual(notifiedDayKeys.value.sorted(by: >), expectedDays)
     }
 
@@ -5093,13 +5085,6 @@ final class MainWindowViewModelTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
         try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
-        for existingDay in ["2026-04-08", "2026-04-07", "2026-04-06", "2026-04-05"] {
-            try "# Existing \(existingDay)".write(
-                to: environment.vaultURL.appending(path: "\(existingDay).md"),
-                atomically: true,
-                encoding: .utf8
-            )
-        }
         let appState = AppState(
             environment: environment,
             bootstrapServices: false,
@@ -5159,7 +5144,7 @@ final class MainWindowViewModelTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
         try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
-        for existingDay in ["2026-04-09", "2026-04-08", "2026-04-07", "2026-04-06", "2026-04-05"] {
+        for existingDay in ["2026-04-09"] {
             try "# Existing \(existingDay)".write(
                 to: environment.vaultURL.appending(path: "\(existingDay).md"),
                 atomically: true,
@@ -5205,7 +5190,7 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertTrue(invocations.allSatisfy { $0.eventIDs.count <= 50 })
         XCTAssertEqual(
             notifiedDayKeys.value.sorted(by: >),
-            ["2026-04-11", "2026-04-10", "2026-04-09", "2026-04-08", "2026-04-07", "2026-04-06", "2026-04-05"]
+            ["2026-04-11", "2026-04-10", "2026-04-09"]
         )
 
         let refreshLogs = try FileManager.default.contentsOfDirectory(
@@ -5266,7 +5251,7 @@ final class MainWindowViewModelTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
         try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
-        for existingDay in ["2026-04-09", "2026-04-08", "2026-04-07", "2026-04-06", "2026-04-05"] {
+        for existingDay in ["2026-04-09"] {
             try "# Existing \(existingDay)".write(
                 to: environment.vaultURL.appending(path: "\(existingDay).md"),
                 atomically: true,
@@ -5352,7 +5337,7 @@ final class MainWindowViewModelTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
         try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
-        for existingDay in ["2026-04-09", "2026-04-08", "2026-04-07", "2026-04-06", "2026-04-05"] {
+        for existingDay in ["2026-04-09"] {
             try "# Existing \(existingDay)".write(
                 to: environment.vaultURL.appending(path: "\(existingDay).md"),
                 atomically: true,

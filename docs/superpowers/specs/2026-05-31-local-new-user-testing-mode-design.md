@@ -2,7 +2,7 @@
 
 ## 目标
 
-为了在开发机上真实验证首次用户路径，KnowYou 保留一个本机 QA 测试包：`KnowYou New User.app`。它只用于验证 onboarding、Full Disk Access、通知权限与首次过去 7 天 bootstrap，不作为正式发布包，也不替代日常开发使用的 `KnowYou.app`。
+为了在开发机上真实验证首次用户路径，KnowYou 保留一个本机 QA 测试包：`KnowYou New User.app`。它只用于验证 onboarding、Full Disk Access、通知权限与首次最近 3 天 bootstrap，不作为正式发布包，也不替代日常开发使用的 `KnowYou.app`。
 
 ## 设计
 

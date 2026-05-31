@@ -2196,7 +2196,7 @@ final class AppState {
 
     private static func onboardingBootstrapDays(now: Date) -> [String] {
         let calendar = Calendar(identifier: .gregorian)
-        return (0..<7).compactMap { offset in
+        return (0..<3).compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: -offset, to: now) else { return nil }
             return ISO8601DayKey.format(date)
         }
@@ -5397,7 +5397,7 @@ extension AppState {
 
     private func showOnboardingBootstrapNotice() {
         let notice = OnboardingBootstrapNotice(
-            message: "KnowYou is generating your first 7 days from this Mac. All local. No backend server.",
+            message: "KnowYou is generating your first 3 days from available local history. All local. No backend server.",
             progress: onboardingBootstrapProgress
         )
         onboardingBootstrapNotice = notice
@@ -5429,8 +5429,8 @@ extension AppState {
 
         let content = UNMutableNotificationContent()
         content.title = "KnowYou entries are ready"
-        content.body = dayKeys.count >= 7
-            ? "Your first 7 days are ready in KnowYou."
+        content.body = dayKeys.count >= 3
+            ? "Your first 3 days are ready in KnowYou."
             : "Your new KnowYou entry is ready."
         content.sound = .default
 

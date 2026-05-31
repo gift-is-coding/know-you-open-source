@@ -11,6 +11,8 @@
 - [x] 增加 New User 身份设计文档。
 - [x] 增加稳定安装脚本，统一 bundle id、display name、bundle name 和 executable name。
 - [x] 安装脚本清理旧 DerivedData New User app，避免 Full Disk Access 选择器混淆。
+- [x] 明确 New User 是本机 QA 测试包；普通 `KnowYou` 和未知 bundle id 必须回到默认 runtime profile。
+- [x] 增加 focused XCTest 覆盖普通 profile 与 New User profile 的数据目录 / Keychain service 边界。
 - [x] 运行脚本并验证安装产物 Info.plist 与 executable。
 - [x] 确认生产版 `KnowYou.app` 未被修改。
 - [x] 提交变更。

@@ -57,6 +57,31 @@ final class SettingsMetadataTests: XCTestCase {
         )
     }
 
+    func testRuntimeProfileDefaultsToProductionIdentityForNormalAndUnknownBundleIDs() {
+        let normalProfile = AppRuntimeProfile(bundleIdentifier: "dev.knowyou.app")
+        XCTAssertEqual(normalProfile.displayName, "KnowYou")
+        XCTAssertEqual(normalProfile.supportDirectoryName, "KnowYou")
+        XCTAssertEqual(normalProfile.keychainService, "com.knowyou.app")
+
+        let unknownProfile = AppRuntimeProfile(bundleIdentifier: "com.example.local-debug")
+        XCTAssertEqual(unknownProfile.displayName, "KnowYou")
+        XCTAssertEqual(unknownProfile.supportDirectoryName, "KnowYou")
+        XCTAssertEqual(unknownProfile.keychainService, "com.knowyou.app")
+
+        let missingBundleProfile = AppRuntimeProfile(bundleIdentifier: nil)
+        XCTAssertEqual(missingBundleProfile.displayName, "KnowYou")
+        XCTAssertEqual(missingBundleProfile.supportDirectoryName, "KnowYou")
+        XCTAssertEqual(missingBundleProfile.keychainService, "com.knowyou.app")
+    }
+
+    func testRuntimeProfileIsolatesNewUserTestingBundle() {
+        let profile = AppRuntimeProfile(bundleIdentifier: "dev.knowyou.newuser")
+
+        XCTAssertEqual(profile.displayName, "KnowYou New User")
+        XCTAssertEqual(profile.supportDirectoryName, "KnowYou New User")
+        XCTAssertEqual(profile.keychainService, "dev.knowyou.newuser")
+    }
+
     func testInAppDocumentsExposeReadableContentWithoutRepositoryLinks() {
         let privacy = AppSupportDocument.privacy
         XCTAssertEqual(privacy.buttonTitle, "Privacy Policy")

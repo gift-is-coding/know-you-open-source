@@ -335,6 +335,8 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 每日 Markdown 里的 `# 待办事项` 不再承担任务状态源职责。它可以显示当天候选待办，但 open/completed、完成证据和排序都来自 `Vault/Todo.md`。
 
+本机新用户 QA 测试使用独立安装包 `KnowYou New User.app`，只用于验证首次 onboarding、Full Disk Access 与首次过去 7 天 bootstrap。该测试包的 bundle id 是 `dev.knowyou.newuser`，展示名、bundle name 与 executable name 都是 `KnowYou New User`；运行数据写入 `~/Library/Application Support/KnowYou New User`，Keychain service 是 `dev.knowyou.newuser`。除这个 bundle id 外，`AppRuntimeProfile` 必须回到普通 `KnowYou` profile，因此日常开发与生产安装继续使用 `~/Library/Application Support/KnowYou` 和现有 Keychain service。
+
 ## 7. 生成层
 
 ### 7.1 DailyStory 数据模型

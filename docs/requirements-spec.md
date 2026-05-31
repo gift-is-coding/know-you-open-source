@@ -152,6 +152,8 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 系统必须把每次刷新写成独立日志文件，存放在应用支持目录下
 - 系统必须在 `Vault/Todo.md` 中保存统一 todo 状态；每条 task row 必须保留标题、open/completed、来源日期、来源事件 ID、创建/完成时间、完成证据、归集方式和完成方式等元数据
 - 统一 todo 必须按语义去重/合并来源证据；completed todo 不得删除，读取时必须排在 open todo 之后；如果旧 SQLite `todo_items` 存在而 `Todo.md` 缺失，系统必须先 seed Markdown 文件
+- 本机新用户测试只能通过独立 `KnowYou New User.app` 进行：bundle id 为 `dev.knowyou.newuser`，数据目录为 `~/Library/Application Support/KnowYou New User`，Keychain service 为 `dev.knowyou.newuser`
+- 普通 `KnowYou.app` 与未知 bundle id 必须继续使用默认 `KnowYou` runtime profile，不得因为新用户测试模式改变 `~/Library/Application Support/KnowYou`、现有 Keychain service 或生产版 macOS 权限
 
 ## 6.4 生成需求
 

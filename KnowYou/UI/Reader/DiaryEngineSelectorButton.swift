@@ -53,6 +53,47 @@ struct DiaryEngineSelectorButton: View {
     }
 }
 
+enum DiaryEngineRecoveryNudgeKind: Equatable {
+    case setupRequired
+    case repairRequired
+}
+
+struct DiaryEngineRecoveryNudgePresentation: Equatable {
+    let kind: DiaryEngineRecoveryNudgeKind
+    let toolbarTitle: String
+    let toolbarState: EngineIndicatorState
+    let title: String
+    let detail: String
+
+    static func make(
+        defaultEngine: DiaryEngine,
+        engineStatuses: [DiaryEngine: EngineRuntimeStatus]
+    ) -> DiaryEngineRecoveryNudgePresentation? {
+        if defaultEngine == .none {
+            return DiaryEngineRecoveryNudgePresentation(
+                kind: .setupRequired,
+                toolbarTitle: "Add Diary Engine",
+                toolbarState: .yellow,
+                title: "Choose a Diary Engine",
+                detail: "Connect any engine to generate and refresh diary entries."
+            )
+        }
+
+        let status = engineStatuses[defaultEngine] ?? EngineRuntimeStatus()
+        guard status.state == .green else {
+            return DiaryEngineRecoveryNudgePresentation(
+                kind: .repairRequired,
+                toolbarTitle: "Fix Diary Engine",
+                toolbarState: .yellow,
+                title: "Diary Engine needs attention",
+                detail: "\(defaultEngine.displayName) is not ready. Retest it or configure another engine."
+            )
+        }
+
+        return nil
+    }
+}
+
 struct EngineIndicatorLight: View {
     let state: EngineIndicatorState
 

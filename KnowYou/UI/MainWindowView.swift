@@ -76,15 +76,16 @@ struct MainWindowView: View {
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 DiaryEngineSelectorButton(
-                    title: currentEngineTitle,
-                    state: currentEngineState,
-                    emphasized: showsOnboardingEngineButton || !appState.summarizerStatus.isConfigured,
+                    title: engineRecoveryNudge?.toolbarTitle ?? currentEngineTitle,
+                    state: engineRecoveryNudge?.toolbarState ?? currentEngineState,
+                    emphasized: showsOnboardingEngineButton || engineRecoveryNudge != nil,
                     action: openEngineSelector
                 )
                 .onboardingCoachmarkTarget(.engineButton)
                 .popover(isPresented: $isShowingEnginePanel, arrowEdge: .top) {
                     DiaryEnginePanel(
                         rows: engineRows,
+                        recoveryNudge: engineRecoveryNudge,
                         isRetestingAll: appState.isRetestingEngines,
                         onSelectDefault: { engine in
                             appState.selectDefaultEngine(engine)
@@ -296,6 +297,13 @@ struct MainWindowView: View {
 
     private var currentEngineTitle: String {
         appState.defaultEngine == .none ? "Select Engine" : appState.defaultEngine.displayName
+    }
+
+    private var engineRecoveryNudge: DiaryEngineRecoveryNudgePresentation? {
+        DiaryEngineRecoveryNudgePresentation.make(
+            defaultEngine: appState.defaultEngine,
+            engineStatuses: appState.engineStatuses
+        )
     }
 
     private var selectedRefreshJob: DayRefreshJob? {

@@ -5,6 +5,7 @@ enum OnboardingStep: Int, CaseIterable {
     case demoClick
     case demoReference
     case privacy
+    case installApp
     case permissions
     case enginePrompt
     case engineSetup
@@ -15,6 +16,7 @@ enum OnboardingStep: Int, CaseIterable {
         .demoClick,
         .demoReference,
         .privacy,
+        .installApp,
         .permissions,
         .enginePrompt,
         .engineSetup,
@@ -42,7 +44,16 @@ enum OnboardingStep: Int, CaseIterable {
 }
 
 enum OnboardingRequirement: String, Equatable, Hashable {
+    case applicationInstalled
     case fullDiskAccess
+}
+
+struct OnboardingApplicationInstallPolicy {
+    static let targetBundleURL = URL(fileURLWithPath: "/Applications/KnowYou.app", isDirectory: true)
+
+    static func isInstalledInApplications(bundleURL: URL) -> Bool {
+        bundleURL.standardizedFileURL.path == targetBundleURL.standardizedFileURL.path
+    }
 }
 
 struct OnboardingPermissionBypassPolicy {
@@ -169,8 +180,8 @@ struct OnboardingStepContent {
 enum OnboardingContent {
     static let blockingGateStep: OnboardingStep = .permissions
     static let fullDiskAccessGuidance = OnboardingFullDiskAccessGuidance(
-        missingPermissionDetail: "Open Full Disk Access, click +, and select KnowYou.app. This lets KnowYou read the local Notification Center history.",
-        manualAddInstruction: "If KnowYou does not appear in the list, use Show KnowYou in Finder, then add that app in System Settings.",
+        missingPermissionDetail: "Open Full Disk Access, then drag KnowYou.app into the Full Disk Access list. This lets KnowYou read the local Notification Center history.",
+        manualAddInstruction: "If KnowYou does not appear in the list, use Show KnowYou in Finder and drag it into System Settings. If dragging is not accepted, click + and select KnowYou.app.",
         openSettingsButtonTitle: "Open Full Disk Access",
         revealAppButtonTitle: "Show KnowYou in Finder",
         recheckButtonTitle: "Check Again"
@@ -264,6 +275,26 @@ enum OnboardingContent {
                 activationFollowupLabel: nil,
                 helperLinks: [],
                 blockingGate: nil,
+                optionalEnhancement: nil,
+                recommendedBehavior: nil,
+                lifecycleAction: nil,
+                progression: .continueFlow,
+                requiresParagraphSelection: false,
+                requiresEngineButtonTap: false,
+                requiresEngineConfiguration: false
+            )
+
+        case .installApp:
+            return OnboardingStepContent(
+                iconName: "arrow.down.app.fill",
+                title: "Move KnowYou to Applications",
+                body: "Install KnowYou at /Applications/KnowYou.app before granting permissions. This keeps macOS privacy permissions attached to the stable app.",
+                primaryCTA: "Move to Applications and Relaunch",
+                target: .sharedCenterCard,
+                activationStepLabel: nil,
+                activationFollowupLabel: nil,
+                helperLinks: [],
+                blockingGate: .applicationInstalled,
                 optionalEnhancement: nil,
                 recommendedBehavior: nil,
                 lifecycleAction: nil,

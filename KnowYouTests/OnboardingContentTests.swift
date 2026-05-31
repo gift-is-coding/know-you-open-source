@@ -5,7 +5,7 @@ final class OnboardingContentTests: XCTestCase {
     func testOnboardingStepStoryFlowUsesTheRealReaderCoachmarkOrder() {
         XCTAssertEqual(
             OnboardingStep.storyFlow,
-            [.demoRead, .demoClick, .demoReference, .privacy, .permissions, .enginePrompt, .engineSetup, .generating]
+            [.demoRead, .demoClick, .demoReference, .privacy, .installApp, .permissions, .enginePrompt, .engineSetup, .generating]
         )
     }
 
@@ -20,9 +20,12 @@ final class OnboardingContentTests: XCTestCase {
         XCTAssertEqual(OnboardingStep.demoReference.next, .privacy)
 
         XCTAssertEqual(OnboardingStep.privacy.previous, .demoReference)
-        XCTAssertEqual(OnboardingStep.privacy.next, .permissions)
+        XCTAssertEqual(OnboardingStep.privacy.next, .installApp)
 
-        XCTAssertEqual(OnboardingStep.permissions.previous, .privacy)
+        XCTAssertEqual(OnboardingStep.installApp.previous, .privacy)
+        XCTAssertEqual(OnboardingStep.installApp.next, .permissions)
+
+        XCTAssertEqual(OnboardingStep.permissions.previous, .installApp)
         XCTAssertEqual(OnboardingStep.permissions.next, .enginePrompt)
 
         XCTAssertEqual(OnboardingStep.enginePrompt.previous, .permissions)
@@ -54,14 +57,27 @@ final class OnboardingContentTests: XCTestCase {
         XCTAssertEqual(content.body, "These references come from notifications and your input.")
     }
 
-    func testPrivacyAndPermissionsReuseTheSharedCenteredCard() {
+    func testPrivacyInstallAndPermissionsReuseTheSharedCenteredCard() {
         let privacy = OnboardingContent.content(for: .privacy)
+        let install = OnboardingContent.content(for: .installApp)
         let permissions = OnboardingContent.content(for: .permissions)
 
         XCTAssertEqual(privacy.target, .sharedCenterCard)
+        XCTAssertEqual(install.target, .sharedCenterCard)
         XCTAssertEqual(permissions.target, .sharedCenterCard)
         XCTAssertTrue(privacy.usesSharedCenterCard)
+        XCTAssertTrue(install.usesSharedCenterCard)
         XCTAssertTrue(permissions.usesSharedCenterCard)
+    }
+
+    func testInstallAppStepRequiresApplicationsInstallBeforePermissions() {
+        let content = OnboardingContent.content(for: .installApp)
+
+        XCTAssertEqual(content.blockingRequirement, .applicationInstalled)
+        XCTAssertEqual(content.title, "Move KnowYou to Applications")
+        XCTAssertEqual(content.primaryCTA, "Move to Applications and Relaunch")
+        XCTAssertTrue(content.body.contains("/Applications"))
+        XCTAssertTrue(content.blocksProgress)
     }
 
     func testPermissionStepFramesActivationAsOnlyTwoRemainingSteps() {
@@ -83,13 +99,27 @@ final class OnboardingContentTests: XCTestCase {
     func testFullDiskAccessGuidanceExplainsHowToAddKnowYouWhenItIsNotListed() {
         let guidance = OnboardingContent.fullDiskAccessGuidance
 
-        XCTAssertTrue(guidance.missingPermissionDetail.contains("click +"))
-        XCTAssertTrue(guidance.missingPermissionDetail.contains("select KnowYou.app"))
+        XCTAssertTrue(guidance.missingPermissionDetail.contains("drag KnowYou.app into the Full Disk Access list"))
         XCTAssertTrue(guidance.manualAddInstruction.contains("does not appear"))
         XCTAssertTrue(guidance.manualAddInstruction.contains("Show KnowYou in Finder"))
+        XCTAssertTrue(guidance.manualAddInstruction.contains("+"))
         XCTAssertEqual(guidance.openSettingsButtonTitle, "Open Full Disk Access")
         XCTAssertEqual(guidance.revealAppButtonTitle, "Show KnowYou in Finder")
         XCTAssertEqual(guidance.recheckButtonTitle, "Check Again")
+    }
+
+    func testApplicationInstallPolicyRequiresApplicationsKnowYouBundle() {
+        let installedAppURL = URL(fileURLWithPath: "/Applications/KnowYou.app")
+        let mountedDMGURL = URL(fileURLWithPath: "/Volumes/KnowYou/KnowYou.app")
+        let downloadsURL = URL(fileURLWithPath: "/Users/me/Downloads/KnowYou.app")
+        let developmentBuildURL = URL(
+            fileURLWithPath: "/Users/me/Library/Developer/Xcode/DerivedData/KnowYou/Build/Products/Debug/KnowYou.app"
+        )
+
+        XCTAssertTrue(OnboardingApplicationInstallPolicy.isInstalledInApplications(bundleURL: installedAppURL))
+        XCTAssertFalse(OnboardingApplicationInstallPolicy.isInstalledInApplications(bundleURL: mountedDMGURL))
+        XCTAssertFalse(OnboardingApplicationInstallPolicy.isInstalledInApplications(bundleURL: downloadsURL))
+        XCTAssertFalse(OnboardingApplicationInstallPolicy.isInstalledInApplications(bundleURL: developmentBuildURL))
     }
 
     func testFullDiskAccessBypassIsLimitedToDerivedDataDebugBuilds() {

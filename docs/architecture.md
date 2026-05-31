@@ -194,7 +194,7 @@ Add Source 与 Daily Memory Export 是边界不同的能力。Daily Memory Expor
 通知权限入口目前分布在两个 UI 表面：
 
 - `OnboardingView` 的 `permissions` 步骤会并列展示 Full Disk Access 与 Notifications，并把通知用途明确说明为 `8:30 PM daily review reminder`
-- Full Disk Access 没有应用内授权 API，onboarding 只负责打开系统设置、解释 `+` 手动添加 `KnowYou.app` 的路径，并通过 Finder reveal 帮用户定位当前 app bundle
+- Full Disk Access 没有应用内授权 API。onboarding 会先确认当前进程来自 `/Applications/KnowYou.app`，再打开系统设置，并把 `Show KnowYou in Finder` + 拖入 Full Disk Access 列表作为主路径；`+` 选择 `KnowYou.app` 只是拖入失败时的备用路径
 - `SettingsView` 继续显示 reminder 开关、通知权限状态和测试入口；用户拒绝通知权限后，也通过这里跳转到 Notification Settings
 
 当前 `AppState` 还负责应用更新提醒编排：
@@ -514,7 +514,8 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - `demoClick` 要求用户点击正文段落，右侧 sources 随阅读位置联动
 - `demoReference` 解释段落与 reference 的追溯关系
 - `privacy` 用居中 coachmark 强调 `.md` 纯本地与“没有服务端”
-- `permissions` 只 gate `Full Disk Access`，并在同位置 coachmark 里解释通知与剪贴板上下文价值；如果系统列表里没有 KnowYou，用户可以用 `Show KnowYou in Finder` 定位 app bundle 后手动添加
+- `installApp` 要求生产用户先从 `/Applications/KnowYou.app` 运行；主按钮会尝试复制当前 bundle 到 `/Applications/KnowYou.app` 并重启，失败时提供 Finder reveal 供用户手动拖动
+- `permissions` 只 gate `Full Disk Access`，并在同位置 coachmark 里解释通知与剪贴板上下文价值；如果系统列表里没有 KnowYou，主路径是用 `Show KnowYou in Finder` 定位 app bundle 后拖入系统列表，`+` 仅作为备用添加方式
 - `enginePrompt` 只负责高亮真实产品里的引擎按钮，`engineSetup` 则在现有引擎配置组件里完成默认引擎设置
 - `generating` 在完成 onboarding 后自动触发一次性今天+昨天 bootstrap，而不是要求用户手动点刷新
 - bootstrap 启动时主窗口会显示一个非阻塞轻提醒，告知用户两天内容正在生成、约 2 分钟后可回来查看
@@ -533,7 +534,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - onboarding 完成后恢复真实列表，并自动补写今天与昨天缺失日记
 - `Demo Day` 不会消失，而是作为只读 demo 项保留在左侧列表底部
 
-当前 onboarding 的阻塞顺序是：`Demo Day -> reference -> privacy -> Full Disk Access -> engine -> generating`。
+当前 onboarding 的阻塞顺序是：`Demo Day -> reference -> privacy -> Applications install -> Full Disk Access -> engine -> generating`。
 
 ### 9.2 主阅读器
 
@@ -697,13 +698,14 @@ sequenceDiagram
 1. 用户首次进入真实主阅读器，默认选中 `Demo Day`
 2. `demoRead` / `demoClick` / `demoReference` 依次引导用户先读正文、再点段落、再理解右侧 reference
 3. `privacy` 先建立 “`.md` 纯本地、无服务端” 的信任边界
-4. `permissions` 只要求用户完成 `Full Disk Access`
-5. `enginePrompt` 高亮右上角真实引擎按钮，用户在 `engineSetup` 中完成默认引擎设置
-6. `completeOnboarding()` 写入 `hasCompletedOnboarding` 与 onboarding 进度状态
-7. 应用立即触发一次性今天+昨天 bootstrap，并把缺失日期先以占位形式插入左侧列表，同时显示一个非阻塞提醒
+4. `installApp` 确认用户正在从 `/Applications/KnowYou.app` 运行；如果不是，则要求移动到 Applications 后重启
+5. `permissions` 只要求用户完成 `Full Disk Access`
+6. `enginePrompt` 高亮右上角真实引擎按钮，用户在 `engineSetup` 中完成默认引擎设置
+7. `completeOnboarding()` 写入 `hasCompletedOnboarding` 与 onboarding 进度状态
+8. 应用立即触发一次性今天+昨天 bootstrap，并把缺失日期先以占位形式插入左侧列表，同时显示一个非阻塞提醒
    生成顺序固定为今天后昨天；若今天失败，仍继续尝试昨天
    若某一天在 bootstrap 开始时事件数超过 `50` 条，则该日内部改为按 `50` 条一批串行生成，并在 refresh log 中记录 chunk 进度
-8. bootstrap 完成后恢复 steady-state 自动化；`Demo Day` 继续留在列表底部供用户回看
+9. bootstrap 完成后恢复 steady-state 自动化；`Demo Day` 继续留在列表底部供用户回看
 
 ## 11. My Wiki 子系统
 

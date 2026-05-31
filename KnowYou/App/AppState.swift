@@ -398,6 +398,7 @@ enum OnboardingProgressState: String, Codable, Equatable {
     case demoClickPending
     case demoReferencePending
     case privacyPending
+    case applicationInstallPending
     case permissionsPending
     case enginePromptPending
     case engineSetupPending
@@ -414,6 +415,8 @@ enum OnboardingProgressState: String, Codable, Equatable {
             return .demoReference
         case .privacyPending:
             return .privacy
+        case .applicationInstallPending:
+            return .installApp
         case .permissionsPending:
             return .permissions
         case .enginePromptPending:
@@ -441,6 +444,8 @@ enum OnboardingProgressState: String, Codable, Equatable {
             return .demoReferencePending
         case .privacy:
             return .privacyPending
+        case .installApp:
+            return .applicationInstallPending
         case .permissions:
             return .permissionsPending
         case .enginePrompt:
@@ -475,27 +480,46 @@ struct OnboardingProgress: Equatable {
     func restored(
         isFullDiskAccessReady: Bool,
         isEngineReady: Bool,
+        isInstalledInApplications: Bool = true,
         allowsFullDiskAccessBypass: Bool = false
     ) -> OnboardingProgress {
         guard let currentStep else {
             return self
         }
+        let canProceedPastApplicationInstall = isInstalledInApplications || allowsFullDiskAccessBypass
         let canProceedPastPermissions = isFullDiskAccessReady || allowsFullDiskAccessBypass
 
         switch currentStep {
         case .demoRead, .demoClick, .demoReference, .privacy:
             return self
+        case .installApp:
+            if !canProceedPastApplicationInstall {
+                return OnboardingProgress(state: .applicationInstallPending)
+            }
+            if !canProceedPastPermissions {
+                return OnboardingProgress(state: .permissionsPending)
+            }
+            return OnboardingProgress(state: .enginePromptPending)
         case .permissions:
+            if !canProceedPastApplicationInstall {
+                return OnboardingProgress(state: .applicationInstallPending)
+            }
             if !canProceedPastPermissions {
                 return OnboardingProgress(state: .permissionsPending)
             }
             return OnboardingProgress(state: .enginePromptPending)
         case .enginePrompt:
+            if !canProceedPastApplicationInstall {
+                return OnboardingProgress(state: .applicationInstallPending)
+            }
             if !canProceedPastPermissions {
                 return OnboardingProgress(state: .permissionsPending)
             }
             return OnboardingProgress(state: .enginePromptPending)
         case .engineSetup:
+            if !canProceedPastApplicationInstall {
+                return OnboardingProgress(state: .applicationInstallPending)
+            }
             if !canProceedPastPermissions {
                 return OnboardingProgress(state: .permissionsPending)
             }
@@ -504,6 +528,9 @@ struct OnboardingProgress: Equatable {
             }
             return OnboardingProgress(state: .firstGenerationInProgress)
         case .generating:
+            if !canProceedPastApplicationInstall {
+                return OnboardingProgress(state: .applicationInstallPending)
+            }
             if !canProceedPastPermissions {
                 return OnboardingProgress(state: .permissionsPending)
             }
@@ -793,7 +820,10 @@ final class AppState {
                 queueEndOfDayReminderBootstrap()
                 restoreOnboardingProgress(
                     isFullDiskAccessReady: notificationStatus.isDatabaseAvailable,
-                    isEngineReady: summarizerStatus.isConfigured
+                    isEngineReady: summarizerStatus.isConfigured,
+                    isInstalledInApplications: OnboardingApplicationInstallPolicy.isInstalledInApplications(
+                        bundleURL: Bundle.main.bundleURL
+                    )
                 )
                 if onboardingProgress.isComplete {
                     startAutomation(runImmediately: onboardingBootstrapState == .complete || onboardingBootstrapState == .idle)
@@ -837,7 +867,10 @@ final class AppState {
             queueEndOfDayReminderBootstrap()
             restoreOnboardingProgress(
                 isFullDiskAccessReady: notificationStatus.isDatabaseAvailable,
-                isEngineReady: summarizerStatus.isConfigured
+                isEngineReady: summarizerStatus.isConfigured,
+                isInstalledInApplications: OnboardingApplicationInstallPolicy.isInstalledInApplications(
+                    bundleURL: Bundle.main.bundleURL
+                )
             )
             if onboardingProgress.isComplete {
                 startAutomation(runImmediately: onboardingBootstrapState == .complete || onboardingBootstrapState == .idle)
@@ -2079,6 +2112,7 @@ final class AppState {
         isEngineReady: Bool,
         hasVoiceTool _: Bool = false,
         hasLaunchAtLogin _: Bool = false,
+        isInstalledInApplications: Bool = true,
         allowsFullDiskAccessBypass: Bool = false
     ) {
         guard !onboardingProgress.isComplete else { return }
@@ -2086,6 +2120,7 @@ final class AppState {
             onboardingProgress.restored(
                 isFullDiskAccessReady: isFullDiskAccessReady,
                 isEngineReady: isEngineReady,
+                isInstalledInApplications: isInstalledInApplications,
                 allowsFullDiskAccessBypass: allowsFullDiskAccessBypass
             )
         )

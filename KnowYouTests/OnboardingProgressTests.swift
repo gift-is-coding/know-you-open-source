@@ -83,6 +83,40 @@ final class OnboardingProgressTests: XCTestCase {
     }
 
     @MainActor
+    func testMissingApplicationsInstallCannotEnterPermissionsDuringRestore() {
+        let appState = AppState(bootstrapServices: false, userDefaults: defaults)
+
+        appState.resumeOnboardingStep(.permissions)
+        appState.restoreOnboardingProgress(
+            isFullDiskAccessReady: true,
+            isEngineReady: true,
+            hasVoiceTool: false,
+            hasLaunchAtLogin: false,
+            isInstalledInApplications: false
+        )
+
+        XCTAssertEqual(appState.onboardingProgress.state, .applicationInstallPending)
+        XCTAssertEqual(appState.currentOnboardingStep, .installApp)
+    }
+
+    @MainActor
+    func testInstalledApplicationCanEnterPermissionsDuringRestore() {
+        let appState = AppState(bootstrapServices: false, userDefaults: defaults)
+
+        appState.resumeOnboardingStep(.installApp)
+        appState.restoreOnboardingProgress(
+            isFullDiskAccessReady: false,
+            isEngineReady: false,
+            hasVoiceTool: false,
+            hasLaunchAtLogin: false,
+            isInstalledInApplications: true
+        )
+
+        XCTAssertEqual(appState.onboardingProgress.state, .permissionsPending)
+        XCTAssertEqual(appState.currentOnboardingStep, .permissions)
+    }
+
+    @MainActor
     func testDevelopmentBypassCanContinuePastPermissionsWithoutFullDiskAccess() {
         let appState = AppState(bootstrapServices: false, userDefaults: defaults)
 

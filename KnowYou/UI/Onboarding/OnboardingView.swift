@@ -59,6 +59,8 @@ struct OnboardingView: View {
     @State private var referenceAdvancePolicy = OnboardingReferenceAdvancePolicy()
     @State private var referenceAdvanceTask: Task<Void, Never>?
     @State private var didBypassFullDiskAccessForDevelopment = false
+    @State private var isMovingToApplications = false
+    @State private var applicationInstallError: String?
 
     init(
         onComplete: @escaping () -> Void,
@@ -161,6 +163,10 @@ struct OnboardingView: View {
         OnboardingPermissionBypassPolicy.allowsFullDiskAccessBypass(bundleURL: Bundle.main.bundleURL)
     }
 
+    private var isInstalledInApplications: Bool {
+        OnboardingApplicationInstallPolicy.isInstalledInApplications(bundleURL: Bundle.main.bundleURL)
+    }
+
     private var permissionsReadyForOnboarding: Bool {
         notificationsAvailable || didBypassFullDiskAccessForDevelopment
     }
@@ -192,7 +198,7 @@ struct OnboardingView: View {
         switch step {
         case .demoRead, .demoClick, .demoReference, .enginePrompt:
             return 0.16
-        case .privacy, .permissions, .generating:
+        case .privacy, .installApp, .permissions, .generating:
             return 0.28
         case .engineSetup:
             return 0.08
@@ -265,6 +271,24 @@ struct OnboardingView: View {
                 Text(currentContent.body)
                     .font(.callout)
                     .foregroundStyle(.secondary)
+            }
+
+            if step == .installApp {
+                VStack(alignment: .leading, spacing: 10) {
+                    statusRow(
+                        title: "Install location",
+                        detail: isInstalledInApplications
+                            ? "Ready. KnowYou is running from /Applications/KnowYou.app."
+                            : "KnowYou is not running from /Applications yet. Move it first so macOS permissions attach to the stable app.",
+                        ok: isInstalledInApplications
+                    )
+
+                    if let applicationInstallError {
+                        Text(applicationInstallError)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
             }
 
             if step == .permissions {
@@ -367,6 +391,29 @@ struct OnboardingView: View {
 
         case .demoClick:
             EmptyView()
+
+        case .installApp:
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    Button(isMovingToApplications ? "Moving..." : currentContent.primaryCTA) {
+                        moveToApplicationsAndRelaunch()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isMovingToApplications)
+
+                    Button("Show KnowYou in Finder") {
+                        revealKnowYouInFinder()
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                if allowsFullDiskAccessBypass {
+                    Button("Continue in this dev build without moving") {
+                        step = .permissions
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
 
         case .permissions:
             VStack(alignment: .leading, spacing: 10) {
@@ -639,6 +686,7 @@ struct OnboardingView: View {
         appState.restoreOnboardingProgress(
             isFullDiskAccessReady: false,
             isEngineReady: isEngineConfigured,
+            isInstalledInApplications: isInstalledInApplications,
             allowsFullDiskAccessBypass: true
         )
         if appState.currentOnboardingStep == .enginePrompt {
@@ -650,6 +698,7 @@ struct OnboardingView: View {
         appState.restoreOnboardingProgress(
             isFullDiskAccessReady: notificationsAvailable,
             isEngineReady: isEngineConfigured,
+            isInstalledInApplications: isInstalledInApplications,
             allowsFullDiskAccessBypass: didBypassFullDiskAccessForDevelopment
         )
 
@@ -703,6 +752,39 @@ struct OnboardingView: View {
 
     private func revealKnowYouInFinder() {
         NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+    }
+
+    private func moveToApplicationsAndRelaunch() {
+        applicationInstallError = nil
+
+        let sourceURL = Bundle.main.bundleURL.standardizedFileURL
+        let targetURL = OnboardingApplicationInstallPolicy.targetBundleURL.standardizedFileURL
+
+        if OnboardingApplicationInstallPolicy.isInstalledInApplications(bundleURL: sourceURL) {
+            step = .permissions
+            return
+        }
+
+        isMovingToApplications = true
+
+        do {
+            let fileManager = FileManager.default
+            if fileManager.fileExists(atPath: targetURL.path) {
+                try fileManager.removeItem(at: targetURL)
+            }
+            try fileManager.copyItem(at: sourceURL, to: targetURL)
+
+            guard NSWorkspace.shared.open(targetURL) else {
+                throw CocoaError(.fileNoSuchFile)
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                NSApp.terminate(nil)
+            }
+        } catch {
+            isMovingToApplications = false
+            applicationInstallError = "Could not move automatically. Use Show KnowYou in Finder, then drag KnowYou.app to Applications."
+        }
     }
 
     private func openNotificationSettings() {

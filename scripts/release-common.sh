@@ -72,7 +72,7 @@ release_date() {
 }
 
 artifact_basename() {
-  printf 'KnowYou-%s-%s\n' "$(marketing_version)" "$(build_number)"
+  printf 'KnowYou-%s-%s\n' "$(marketing_version)" "$(release_repo_build_number)"
 }
 
 release_zip_path() {

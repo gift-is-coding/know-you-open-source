@@ -1960,6 +1960,19 @@ final class AppState {
         isRetestingEngines = !retestingEngines.isEmpty
     }
 
+    func repairDefaultEngineIfNeeded() async -> Bool {
+        guard defaultEngine != .none else { return false }
+        let status = engineStatuses[defaultEngine] ?? Self.makeBaselineStatus(
+            for: defaultEngine,
+            config: summarizerConfig,
+            environment: processEnvironment
+        )
+        guard status.state != .green else { return false }
+
+        await retestEngine(defaultEngine)
+        return true
+    }
+
     func testLLMAPIProvider(
         _ providerID: LLMAPIProviderID,
         draftConfig: SummarizerConfig
@@ -2260,9 +2273,9 @@ final class AppState {
     }
 
     @discardableResult
-    func queueRecentHistoryBootstrapIfNeeded() -> Bool {
+    func queueRecentHistoryBootstrapIfNeeded(force: Bool = false) -> Bool {
         guard onboardingProgress.isComplete else { return false }
-        guard onboardingBootstrapState != .complete else { return false }
+        guard force || onboardingBootstrapState != .complete else { return false }
 
         let missingDayKeys = missingRecentHistoryBootstrapDayKeys
         guard missingDayKeys.isEmpty == false else {

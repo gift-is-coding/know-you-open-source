@@ -292,7 +292,7 @@ struct MainWindowView: View {
                 mode = .networkingComingSoon
             },
             onGenerateRecentHistory: {
-                _ = appState.queueRecentHistoryBootstrapIfNeeded()
+                _ = appState.queueRecentHistoryBootstrapIfNeeded(force: true)
             }
         )
     }
@@ -519,6 +519,11 @@ struct MainWindowView: View {
             onOpenEngineSetup()
         } else {
             openEnginePanel()
+            if engineRecoveryNudge?.kind == .repairRequired {
+                Task { @MainActor in
+                    _ = await appState.repairDefaultEngineIfNeeded()
+                }
+            }
         }
     }
 

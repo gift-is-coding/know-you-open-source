@@ -4926,6 +4926,62 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after refreshing the missing day")
     }
 
+    func testManualRecentHistoryBootstrapRequeuesMissingDaysAfterPreviousCompletion() async throws {
+        let (environment, gate) = try makeBlockingRefreshEnvironment()
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
+        let suiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(OnboardingProgressState.complete.rawValue, forKey: AppState.UserDefaultsKeys.onboardingProgressState)
+        defaults.set(true, forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
+        defaults.set(OnboardingBootstrapState.complete.rawValue, forKey: AppState.UserDefaultsKeys.onboardingBootstrapState)
+        defaults.removeObject(forKey: AppState.UserDefaultsKeys.onboardingBootstrapDayKeys)
+        try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
+        for existingDay in ["2026-04-10", "2026-04-09"] {
+            try "# Existing \(existingDay)".write(
+                to: environment.vaultURL.appending(path: "\(existingDay).md"),
+                atomically: true,
+                encoding: .utf8
+            )
+        }
+        try environment.databaseWriter.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: now,
+                dayKey: "2026-04-11",
+                text: "manual bootstrap should repair the missing recent day",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "manual-bootstrap-requeues-missing-day"
+            )
+        )
+
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            currentDate: { now },
+            userDefaults: defaults,
+            keychainService: "MainWindowViewModelTests"
+        )
+        appState.refreshNotesIndex()
+
+        let queued = appState.queueRecentHistoryBootstrapIfNeeded(force: true)
+
+        XCTAssertTrue(queued)
+        XCTAssertEqual(appState.onboardingBootstrapDayKeys, ["2026-04-11"])
+        XCTAssertEqual(appState.onboardingBootstrapState, .inProgress)
+        XCTAssertEqual(
+            appState.onboardingBootstrapNotice?.message,
+            "Generate the last 3 days from available local history. Keep KnowYou open while it writes."
+        )
+
+        await gate.waitUntilStarted(dayKey: "2026-04-11")
+        await gate.release(dayKey: "2026-04-11")
+    }
+
     func testCompletingOnboardingSendsCompletionNotificationAfterBootstrapSucceeds() async throws {
         let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
         let writer = try DatabaseWriter.inMemory()
@@ -5987,6 +6043,39 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.detail, "Executable found. Retest required.")
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.lastVerifiedAt, nil)
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.configurationSignature, "codex|\(updatedExecutableURL.path)")
+    }
+
+    func testRepairDefaultEngineRetestsCurrentDefaultEngine() async throws {
+        let executableURL = try makeStubExecutable(named: "codex")
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_381_200)
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        config.codexCLIPath = executableURL.path
+
+        let appState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            probeEngine: { engine, _, _ in
+                EngineProbeResult(
+                    engine: engine,
+                    state: .green,
+                    detail: "Smoke test succeeded.",
+                    verifiedAt: verifiedAt
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .yellow)
+
+        let repaired = await appState.repairDefaultEngineIfNeeded()
+
+        XCTAssertTrue(repaired)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.detail, "Smoke test succeeded.")
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.lastVerifiedAt, verifiedAt)
     }
 
     func testRetestAllEnginesStartsProbesInParallel() async {

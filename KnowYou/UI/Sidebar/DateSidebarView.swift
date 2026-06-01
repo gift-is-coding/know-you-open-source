@@ -32,7 +32,6 @@ struct DateSidebarView: View {
                 rootRow(presentation.networkingRootItem)
                 rootRow(presentation.todoRootItem)
                 rootRow(presentation.myWikiRootItem)
-                rootRow(presentation.sourceRootItem)
 
                 DisclosureGroup(isExpanded: $isDiaryGroupExpanded) {
                     ForEach(presentation.diarySections) { section in
@@ -41,6 +40,8 @@ struct DateSidebarView: View {
                 } label: {
                     diaryGroupLabel(presentation.diaryRootItem)
                 }
+
+                rootRow(presentation.sourceRootItem)
 
                 ForEach(presentation.sourceItems) { item in
                     sourceNodeRow(item)
@@ -625,7 +626,7 @@ struct DateSidebarPresentation {
                 )
             ]
         }
-        rootItems = [homeRootItem, networkingRootItem, todoRootItem, myWikiRootItem, sourceRootItem, diaryRootItem] + sourceItems
+        rootItems = [homeRootItem, networkingRootItem, todoRootItem, myWikiRootItem, diaryRootItem, sourceRootItem] + sourceItems
         sections = diarySections
     }
 

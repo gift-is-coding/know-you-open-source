@@ -114,6 +114,7 @@ struct MainWindowView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
+                        .padding(.leading, 10)
                         .frame(maxWidth: 260, alignment: .leading)
                         .help("Your data stays local. No backend server.")
                 }
@@ -287,6 +288,10 @@ struct MainWindowView: View {
                 Task { @MainActor in
                     await appState.refreshSelectedDay()
                 }
+            },
+            onOpenTodo: {
+                mode = .journal
+                appState.openTodoInbox()
             },
             onOpenMyWiki: {
                 mode = .knowledgeOntology
@@ -844,10 +849,10 @@ struct HomeDashboardPresentation: Equatable {
                 systemImage: "network"
             ),
             HomeFeatureCardPresentation(
-                id: "today",
-                title: "Today’s Diary",
-                subtitle: "Generate or refresh today’s diary from local notifications and clipboard context while the app runs.",
-                systemImage: "book.pages"
+                id: "todo",
+                title: "Todo",
+                subtitle: "Turn loose follow-ups into a simple inbox, then keep, close, or track them across days.",
+                systemImage: "checklist"
             ),
             HomeFeatureCardPresentation(
                 id: "wiki",
@@ -856,8 +861,14 @@ struct HomeDashboardPresentation: Equatable {
                 systemImage: "point.3.connected.trianglepath.dotted"
             ),
             HomeFeatureCardPresentation(
+                id: "today",
+                title: "Today’s Diary",
+                subtitle: "Generate or refresh today’s diary from local notifications and clipboard context while the app runs.",
+                systemImage: "book.pages"
+            ),
+            HomeFeatureCardPresentation(
                 id: "sources",
-                title: "Add Sources",
+                title: "Other Source",
                 subtitle: "Connect folders or prompt-backed Feishu, Notion, and Google Drive exports for richer context.",
                 systemImage: "plus.square.on.square"
             ),
@@ -878,6 +889,7 @@ private struct HomeDashboardView: View {
     let missingRecentDayCount: Int
     let onOpenToday: () -> Void
     let onGenerateToday: () -> Void
+    let onOpenTodo: () -> Void
     let onOpenMyWiki: () -> Void
     let onAddSources: () -> Void
     let onOpenNetworking: () -> Void
@@ -989,6 +1001,8 @@ private struct HomeDashboardView: View {
         switch card.id {
         case "today":
             onOpenToday()
+        case "todo":
+            onOpenTodo()
         case "wiki":
             onOpenMyWiki()
         case "sources":

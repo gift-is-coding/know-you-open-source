@@ -15,7 +15,7 @@
 **Files:**
 - Modify: `KnowYouTests/DailyMarkdownViewTests.swift`
 
-- [x] 写失败测试，断言 root 顺序为 `Home`、`Networking`、`Todo`、`My Wiki`、`Other Source`、`My Diary`。
+- [x] 写失败测试，断言 root 顺序为 `Home`、`Networking`、`Todo`、`My Wiki`、`My Diary`、`Other Source`。
 - [x] 写失败测试，断言 Home、Networking、Todo copy presentation 的英文文案和视觉 asset name。
 - [x] 运行 targeted tests，确认因缺少新 API/类型而失败。
 

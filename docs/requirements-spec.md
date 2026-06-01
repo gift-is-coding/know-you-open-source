@@ -212,10 +212,10 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 单个 source 扫描失败不得阻塞其他 source。
 - 用户必须能手动触发 `Refresh`，它只重新扫描本地目录。
 - 当启用每日 source scan 时，系统必须安装独立于 Daily Memory Export 的用户级 `LaunchAgent`。
-- 侧边栏必须始终显示 `Home`、`Networking (Coming soon)`、`Todo`、`My Wiki`、`Other Source`、`My Diary` 这些同级一级入口，并且 `Home` 必须位于 `Networking (Coming soon)` 前面。
+- 侧边栏必须始终显示 `Home`、`Networking (Coming soon)`、`Todo`、`My Wiki`、`My Diary`、`Other Source` 这些同级一级入口，并且 Feishu/Lark、Notion、Google Drive 等已添加来源必须排在 `Other Source` 后面。
 - Diary 左侧日期列表必须只显示 today 加 last 3 days；三天补生成必须只检查 yesterday、2 days ago、3 days ago，不得把 today 混进 `Generate Last 3 Days`。
 - `Home` 必须作为默认理解入口，使用英文短句和视觉资产提醒用户保持 KnowYou 在后台运行，展示 `Automatic Diary update` 和下一次自动更新本地时间，提供 `Generate Now` 刷新今天，并且只在过去三天缺少 model diary 时显示 `Generate Last 3 Days`。
-- `Home` 的四个功能入口必须单列显示，顺序为 `Networking (Coming soon)`、`Today’s Diary`、`My Wiki`、`Add Sources`，并用简短人话解释用途和工作方式。
+- `Home` 的功能入口必须单列显示，顺序为 `Networking (Coming soon)`、`Todo`、`My Wiki`、`Today’s Diary`、`Other Source`，并用简短人话解释用途和工作方式。
 - `Networking (Coming soon)` 入口不得只显示空白 placeholder；必须用英文短句和视觉资产说明用户可以创建不同场景的 profile，可用于求职、社交和 discovery；页面必须显示 `Coming soon`，且不得出现 `Clear identity` 或 `identity stays clear`。
 - `My Wiki`、`Other Source`、`My Diary` 必须使用同一套 sidebar row 组件、字号、图标尺寸、行高和选中态。
 - 右上角 engine selector 必须固定在主窗口全局 toolbar 中，不得随 `My Wiki`、`Other Source`、`My Diary` 的内容切换改变位置或变成页面内部组件。

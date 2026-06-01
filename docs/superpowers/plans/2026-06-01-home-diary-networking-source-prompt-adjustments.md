@@ -5,7 +5,7 @@
 - [x] 更新 `JournalListOrdering`，让主 Diary 列表固定为 today 加前三天，并保持 demo day 的特殊附加规则。
 - [x] 调整 onboarding / 老用户三天补生成：只检查 yesterday 到 3 days ago，today 改由 Home 的 `Generate Now` 更新。
 - [x] 更新 Home presentation：`Automatic Diary update` 显示本地时间，新增 `Generate Now`，并按缺失天数显示或隐藏 `Generate Last 3 Days`。
-- [x] 将 Home 功能入口改为单列，顺序为 Networking、Today’s Diary、My Wiki、Add Sources，并补充简短说明。
+- [x] 将 Home 功能入口改为单列，顺序为 Networking、Todo、My Wiki、Today’s Diary、Other Source，并补充简短说明。
 - [x] 将 Sidebar 和 Networking 页面统一为 `Networking (Coming soon)`，移除 clear identity 相关文案和图片文字。
 - [x] 移除 Other Source root 的 `+`。
 - [x] 更新 Generate Prompt 标题、prompt 模板和复制后的视觉引导弹窗。

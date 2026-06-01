@@ -71,7 +71,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertFalse(presentation.networkingRootItem.isExpandable)
         XCTAssertEqual(presentation.diaryRootItem.id, "diary-root")
         XCTAssertEqual(presentation.diaryRootItem.title, "My Diary")
-        XCTAssertEqual(Array(presentation.rootItems.prefix(6)).map(\.id), ["home", "networking", "todo-root", "my-wiki", "add-source", "diary-root"])
+        XCTAssertEqual(Array(presentation.rootItems.prefix(6)).map(\.id), ["home", "networking", "todo-root", "my-wiki", "diary-root", "add-source"])
         XCTAssertEqual(presentation.diarySections.first?.items.map(\.title), ["Today", "Yesterday"])
     }
 
@@ -90,7 +90,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.todoRootItem.badgeCount, 2)
         XCTAssertEqual(presentation.todoRootItem.selectionAction, .todo)
         XCTAssertTrue(presentation.todoRootItem.isSelected)
-        XCTAssertEqual(Array(presentation.rootItems.prefix(6)).map(\.id), ["home", "networking", "todo-root", "my-wiki", "add-source", "diary-root"])
+        XCTAssertEqual(Array(presentation.rootItems.prefix(6)).map(\.id), ["home", "networking", "todo-root", "my-wiki", "diary-root", "add-source"])
     }
 
     func testSidebarPresentationShowsHomeBeforeNetworking() {
@@ -461,7 +461,8 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.primaryActionTitle, "Generate Last 3 Days")
         XCTAssertTrue(presentation.showsRecentHistoryAction)
         XCTAssertEqual(presentation.visualAssetName, "HomeDashboardHero")
-        XCTAssertEqual(presentation.featureCards.map(\.title), ["Networking (Coming soon)", "Today’s Diary", "My Wiki", "Add Sources"])
+        XCTAssertEqual(presentation.featureCards.map(\.title), ["Networking (Coming soon)", "Todo", "My Wiki", "Today’s Diary", "Other Source"])
+        XCTAssertEqual(presentation.featureCards.map(\.id), ["networking", "todo", "wiki", "today", "sources"])
         XCTAssertTrue(presentation.featureCards.allSatisfy { $0.subtitle.count > 42 })
     }
 

@@ -166,7 +166,7 @@ Add Source 与 Daily Memory Export 是边界不同的能力。Daily Memory Expor
 
 ### 3.5 Home、Networking 与最近日记窗口
 
-主窗口一级导航顺序为 `Home`、`Networking (Coming soon)`、`Todo`、`My Wiki`、`Other Source`、`My Diary`。Home 是默认理解入口，用视觉资产、英文短句和少量动作解释 KnowYou 会在后台持续更新 diary。Home 的状态模块显示 `Automatic Diary update` 和下一次自动检查的本地时间；`Generate Now` 只刷新今天；`Generate Last 3 Days` 只在 yesterday、2 days ago、3 days ago 缺少 model diary 时出现。
+主窗口一级导航顺序为 `Home`、`Networking (Coming soon)`、`Todo`、`My Wiki`、`My Diary`、`Other Source`，随后是 Feishu/Lark、Notion、Google Drive 等已添加来源。Home 是默认理解入口，用视觉资产、英文短句和少量动作解释 KnowYou 会在后台持续更新 diary。Home 的状态模块显示 `Automatic Diary update` 和下一次自动检查的本地时间；`Generate Now` 只刷新今天；`Generate Last 3 Days` 只在 yesterday、2 days ago、3 days ago 缺少 model diary 时出现。
 
 Diary 左侧列表由 `JournalListOrdering` 统一裁剪为 today 加前三天，避免老内容把入口拉长。Onboarding 和老用户恢复使用同一套三天 bootstrap 队列，但队列只包含 yesterday 到 3 days ago，已有 model diary 的日期会跳过，today 由手动 `Generate Now` 或常规自动化负责。
 

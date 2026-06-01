@@ -6,7 +6,7 @@
 
 ## 产品行为
 
-- 左侧一级菜单顺序为 `Home`、`Networking`、`Todo`、`My Wiki`、`Other Source`、`My Diary`。
+- 左侧一级菜单顺序为 `Home`、`Networking`、`Todo`、`My Wiki`、`My Diary`、`Other Source`，随后是已添加的 Feishu/Lark、Notion、Google Drive 等来源。
 - `Home` 是默认入口，页面使用少量英文短句、视觉资产、下一次日记检查倒计时、4 个功能跳转卡片和 `Generate Last 3 Days` 按钮。
 - `Networking` 页面不再显示简单 coming-soon 文案，而是用英文短句和视觉资产说明 profile、求职/社交多场景、AI 身份透明。
 - Todo 页面中创建待办和右侧 inbox 的用户可见中文文案全部改为英文。

@@ -51,13 +51,24 @@ struct TodoReconciler: Sendable {
         guard let summarizer else {
             return TodoReconciliationResult(decisions: [], isDegraded: true)
         }
+        let prompt = Self.prompt(candidates: candidates, existingTodos: existingTodos, dayKey: dayKey)
 
         do {
-            let raw = try await summarizer.summarize(
-                dayKey: dayKey,
-                markdown: Self.prompt(candidates: candidates, existingTodos: existingTodos, dayKey: dayKey),
-                context: .defaultBehavior
-            )
+            let raw: String
+            if let jsonSummarizer = summarizer as? any JSONSummaryGenerating {
+                raw = try await jsonSummarizer.summarizeJSON(
+                    dayKey: dayKey,
+                    prompt: prompt,
+                    schema: Self.reconciliationSchema,
+                    context: .defaultBehavior
+                )
+            } else {
+                raw = try await summarizer.summarize(
+                    dayKey: dayKey,
+                    markdown: prompt,
+                    context: .defaultBehavior
+                )
+            }
             let payload = try Self.decodePayload(raw)
             let candidateIDs = Set(candidates.map(\.id))
             let todoIDs = Set(existingTodos.map(\.id))
@@ -140,6 +151,10 @@ struct TodoReconciler: Sendable {
         """
     }
 
+    private static let reconciliationSchema = """
+    {"type":"object","additionalProperties":false,"required":["decisions"],"properties":{"decisions":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["candidateID","action","confidence","targetTodoID","reason"],"properties":{"candidateID":{"type":"string"},"action":{"type":"string","enum":["create","merge","ignore"]},"confidence":{"type":"string","enum":["high","medium","low"]},"targetTodoID":{"anyOf":[{"type":"string"},{"type":"null"}]},"reason":{"type":"string"}}}}}}
+    """
+
     private static func decodePayload(_ raw: String) throws -> ReconciliationPayload {
         let data = try jsonObjectData(from: raw)
         return try JSONDecoder().decode(ReconciliationPayload.self, from: data)
@@ -184,13 +199,24 @@ struct TodoCompletionSweep: Sendable {
         guard let summarizer else {
             return TodoCompletionSweepResult(completions: [], isDegraded: true)
         }
+        let prompt = Self.prompt(openTodos: openTodos, story: story, dayKey: dayKey)
 
         do {
-            let raw = try await summarizer.summarize(
-                dayKey: dayKey,
-                markdown: Self.prompt(openTodos: openTodos, story: story, dayKey: dayKey),
-                context: .defaultBehavior
-            )
+            let raw: String
+            if let jsonSummarizer = summarizer as? any JSONSummaryGenerating {
+                raw = try await jsonSummarizer.summarizeJSON(
+                    dayKey: dayKey,
+                    prompt: prompt,
+                    schema: Self.completionSchema,
+                    context: .defaultBehavior
+                )
+            } else {
+                raw = try await summarizer.summarize(
+                    dayKey: dayKey,
+                    markdown: prompt,
+                    context: .defaultBehavior
+                )
+            }
             let payload = try Self.decodePayload(raw)
             let todoIDs = Set(openTodos.map(\.id))
             let evidenceIDs = Set(story.sections.flatMap(\.paragraphs).flatMap(\.sourceEventIDs))
@@ -260,6 +286,10 @@ struct TodoCompletionSweep: Sendable {
         \(evidenceLines)
         """
     }
+
+    private static let completionSchema = """
+    {"type":"object","additionalProperties":false,"required":["completed"],"properties":{"completed":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["todoID","confidence","evidenceEventIDs","reason"],"properties":{"todoID":{"type":"string"},"confidence":{"type":"string","enum":["high","medium","low"]},"evidenceEventIDs":{"type":"array","items":{"type":"string","pattern":"^[0-9A-Fa-f-]{36}$"}},"reason":{"type":"string"}}}}}}
+    """
 
     private static func decodePayload(_ raw: String) throws -> CompletionPayload {
         let data = try jsonObjectData(from: raw)

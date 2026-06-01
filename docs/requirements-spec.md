@@ -175,6 +175,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - `待办事项` 必须只生成 0-3 个明确、可执行、尚未完成的候选项；没有足够证据时必须允许为空
 - `待办事项` 不得生成泛泛建议、重复项、无证据推测，或文本中已经显示完成/已发送/已提交/已约定的事项
 - 每日日记刷新成功后，系统必须用 summarizer 对候选待办与现有 todo 做语义 `create/merge/ignore` 归集；只有高置信 `create` 可以自动写入统一 todo，高置信 `merge` 只补充来源证据
+- CLI summarizer 进行 Todo 归集或完成判断时，必须使用 Todo 专用 JSON schema，而不得复用 diary story schema；归集 payload 必须包含 `decisions`，完成判断 payload 必须包含 `completed`
 - 低/中置信或无法判断的候选待办不得自动入库，但必须能在 Todo 页右侧 `Inbox / Candidates` 列表手动 Add、Merge 或 Dismiss，并能在日记阅读区手动 `Add to Todo`
 - 日记刷新即使没有新事件，也必须重新评估 Todo 候选和关闭建议，保证手动刷新后的 `Inbox` 状态可解释
 - 每日日记刷新成功后，系统必须用后续证据保守判断 open todo 是否完成；只有明确出现已完成、已发送、已提交、已约定等高置信证据时才能自动标记 completed，并保存 evidence event ID

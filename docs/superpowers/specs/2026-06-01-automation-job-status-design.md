@@ -9,6 +9,7 @@ Todo 过去没有独立的定时入口，只在 Diary 生成或刷新后顺带�
 - Home 统一显示 `Diary`、`Todo`、`My Wiki` 三类后台任务的最新状态，每类只保留一条快照，不堆积历史。
 - Diary 保持 3 小时自动更新节奏。
 - Todo 在 Diary 准备好后跟随运行，页面显示 `Next update` 与 `Update Now`。
+- Todo 使用 LLM 做语义归集时，CLI 引擎必须使用 Todo 专用 JSON schema：候选归集返回 `decisions`，完成 sweep 返回 `completed`，不能复用 diary story 的 `sections` schema。
 - My Wiki 每天一次，在 Diary 和 Todo 就绪后运行，页面显示 `Last update` 与 `Next update`。
 - Onboarding / 最近三天补生成流程中，Diary 完成后补 Todo，全部完成后补 My Wiki。
 - LLM 不可用时，Todo 只显示 degraded 状态，不伪造任务。

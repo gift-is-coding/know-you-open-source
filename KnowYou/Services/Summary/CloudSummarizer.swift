@@ -10,6 +10,15 @@ protocol SummaryGenerating: Sendable {
     func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String
 }
 
+protocol JSONSummaryGenerating: SummaryGenerating {
+    func summarizeJSON(
+        dayKey: String,
+        prompt: String,
+        schema: String,
+        context: SummaryInvocationContext
+    ) async throws -> String
+}
+
 protocol IncrementalSummaryGenerating: SummaryGenerating {
     func summarizeIncremental(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String
 }

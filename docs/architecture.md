@@ -185,6 +185,8 @@ Networking 当前是 preview 页面，侧边栏与页面标题都标记为 `Netw
 5. 通过 `TodoCompletionSweep` 用新 story 证据保守判断 open todo 是否已经完成；高置信自动完成，中/低置信进入 `推荐关闭` 列表
 6. 在 summarizer 不可用或返回不可解析结果时进入 degraded 状态，不做自动归集或自动完成，保留手动 `Add to Todo` 和 Todo 页自由输入
 
+CLI 引擎的 Todo 语义判断必须使用 Todo 专用 JSON schema：`TodoReconciler` 需要 `decisions` payload，`TodoCompletionSweep` 需要 `completed` payload，不能复用 diary story 的 `sections` schema。否则 Codex/Claude CLI 会产出无法被 Todo 解析的结构，导致有候选任务但仍显示 degraded。
+
 `TodoStore` 是统一 todo 持久化边界，负责创建、合并来源证据、读取排序、完成标记，以及 Markdown/SQLite 之间的一次性 seed。它不执行外部动作：v1 的“自动解决”只表示根据后续证据标记完成。Todo 会在 app 初始化、打开 Todo 页、日记刷新成功后、无新事件的日记刷新、手动新增、手动完成时刷新；外部编辑 `Todo.md` 会在下一次 Todo 刷新/open 时读取，当前没有持续文件监听。
 
 当前 `AppState` 也负责晚间回顾提醒配置与通知后的前台路由：

@@ -183,7 +183,7 @@ private final class ProcessCancellationController: @unchecked Sendable {
     }
 }
 
-struct CLISummarizer: SummaryGenerating {
+struct CLISummarizer: JSONSummaryGenerating {
     enum Tool: String, Sendable {
         case claude
         case codex
@@ -195,6 +195,7 @@ struct CLISummarizer: SummaryGenerating {
         case story
         case incrementalUpdate
         case acknowledgement
+        case jsonSchema(String)
     }
 
     private struct InvocationPlan {
@@ -237,6 +238,15 @@ struct CLISummarizer: SummaryGenerating {
         context: SummaryInvocationContext
     ) async throws -> String {
         try await summarizeStructured(prompt: markdown, expectation: .incrementalUpdate, context: context)
+    }
+
+    func summarizeJSON(
+        dayKey: String,
+        prompt: String,
+        schema: String,
+        context: SummaryInvocationContext
+    ) async throws -> String {
+        try await summarizeStructured(prompt: prompt, expectation: .jsonSchema(schema), context: context)
     }
 
     func smokeTest(prompt: String? = nil) async throws -> String {
@@ -458,6 +468,8 @@ struct CLISummarizer: SummaryGenerating {
             return Self.incrementalUpdateSchema
         case .acknowledgement:
             return Self.acknowledgementSchema
+        case .jsonSchema(let schema):
+            return schema
         }
     }
 
@@ -469,7 +481,21 @@ struct CLISummarizer: SummaryGenerating {
             return incrementalRepairPrompt(for: raw)
         case .acknowledgement:
             return #"{"ok":"OK"}"#
+        case .jsonSchema(let schema):
+            return genericJSONRepairPrompt(for: raw, schema: schema)
         }
+    }
+
+    private func genericJSONRepairPrompt(for raw: String, schema: String) -> String {
+        """
+        Convert the following content into strict JSON only. Do not add markdown fences.
+
+        Required JSON schema:
+        \(schema)
+
+        Content to repair:
+        \(raw)
+        """
     }
 
     private func storyRepairPrompt(for raw: String) -> String {
@@ -556,7 +582,36 @@ struct CLISummarizer: SummaryGenerating {
             return validatedIncrementalOutput(from: raw)
         case .acknowledgement:
             return normalizedAcknowledgement(from: raw) == nil ? nil : #"{"ok":"OK"}"#
+        case .jsonSchema:
+            return validatedGenericJSONObject(from: raw)
         }
+    }
+
+    private func validatedGenericJSONObject(from raw: String) -> String? {
+        if let structuredOutput = extractClaudeStructuredOutput(from: raw),
+           let validated = validatedJSONObjectJSON(from: structuredOutput) {
+            return validated
+        }
+        if let extracted = extractedTextOutput(from: raw),
+           let validated = validatedJSONObjectJSON(from: extracted) {
+            return validated
+        }
+        return validatedJSONObjectJSON(from: raw)
+    }
+
+    private func validatedJSONObjectJSON(from raw: String) -> String? {
+        guard
+            let normalized = normalizedStoryJSONText(from: raw),
+            let data = normalized.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data),
+            json is [String: Any],
+            let serialized = try? JSONSerialization.data(withJSONObject: json, options: []),
+            let text = String(data: serialized, encoding: .utf8)
+        else {
+            return nil
+        }
+
+        return text
     }
 
     private func validatedStoryOutput(from raw: String) -> String? {

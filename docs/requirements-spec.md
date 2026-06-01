@@ -458,6 +458,7 @@ onboarding 的配置约束为：
 - `Source Library` 必须使用宽面板和左右布局：左侧主要展示 source tree，右侧展示状态统计、筛选、批量操作、`Manual Uploads` 导入区、`Update My Wiki` 和 `Close`
 - 手动 drop/import 的文件必须复制到底层 `raw/sources/Manual Imports`，但 UI root 必须显示为 `Manual Uploads`；导入后默认 included 且 `Pending`，但不得自动进入 ingest
 - Source 选择变更必须立即保存到 `.knowyou/source-catalog.json`；`Close` 只关闭窗口，只有点击 `Update My Wiki` 才能触发 My Wiki ingest
+- My Wiki 主页面必须明确展示 digest 的触发方式：当前 digest 只在用户点击 `Update Now` / `Update My Wiki` 时运行，不因进入页面或选择 source 自动运行；页面必须显示上次更新时间，未运行过时显示 `Not updated yet`
 - My Diary source 首次出现时必须默认 included，但用户可以取消选择；external connector source 首次出现时必须默认 not included，只有用户主动 include 后才允许进入 My Wiki ingest
 - 已经 indexed 的 source 被取消选择时，系统不得删除旧 `wiki/sources`、entity 或 concept 输出；该 source 应显示为 `Excluded, indexed` 并从后续 ingest plan 排除
 - 已经 indexed 且内容未变的 source 再次 included 时不得重复处理；内容 hash 变化后应显示为 `Changed` 并进入下一次 Update My Wiki
@@ -482,6 +483,7 @@ onboarding 的配置约束为：
 - 仓库中的旧 starter extractor 不得再作为产品代码或测试入口保留；读取层不得为了兼容旧 starter 输出而过滤或重分类原生 `entities` / `concepts` 页面
 - My Wiki 生成页的 frontmatter type 由 llm_wiki 原生 pipeline 决定；KnowYou 展示层只读取 `wiki/sources`、`wiki/entities`、`wiki/concepts` 内的 Markdown 和 frontmatter，不再兼容旧 `person`、`organization`、`project`、`event`、`topic`、`decision`、`preference`、`follow-up`、`summary` 页面
 - KnowYou 必须优先连接 bundled llm_wiki helper；没有 bundled helper 时，允许回退到 `ThirdParty/llm_wiki` 开发源码目录
+- 回退到 `ThirdParty/llm_wiki` 开发源码目录时，如果 `node_modules/vite` 缺失，系统必须先尝试在该目录执行 `npm install`，安装失败时写入明确 failed 状态，不得只向用户暴露 Node 的 `ERR_MODULE_NOT_FOUND` 堆栈
 - 第一版只能导出 KnowYou 已生成的每日 Markdown，不得直接导出未经额外授权的 SQLite 原始事件
 - 系统必须提供本地服务层能力，让 Codex、Claude、Cowork 等 agent 能读取 My Wiki 的最小必要背景摘要
 - My Wiki 必须提供 `Use My Wiki in Agents` 用户入口，并且该入口必须接入新版 My Wiki 页面，不得回退到旧 KnowledgeOntology 控制面板

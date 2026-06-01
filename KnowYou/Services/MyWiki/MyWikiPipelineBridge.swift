@@ -139,6 +139,8 @@ struct MyWikiPipelineBridge {
             throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
         }
 
+        try ensureDevelopmentDependencies(sourceURL: sourceURL, projectRoot: projectRoot)
+
         var arguments = [
             "npm",
             "run",
@@ -177,6 +179,31 @@ struct MyWikiPipelineBridge {
         }
 
         try writeSuccessStatus(message: "My Wiki pipeline completed.", projectRoot: projectRoot)
+    }
+
+    private func ensureDevelopmentDependencies(sourceURL: URL, projectRoot: URL) throws {
+        let viteDependencyURL = sourceURL.appending(path: "node_modules/vite", directoryHint: .isDirectory)
+        guard FileManager.default.fileExists(atPath: viteDependencyURL.path) == false else {
+            return
+        }
+
+        let result = try processRunner.run(
+            executable: npmExecutable,
+            arguments: ["npm", "install"],
+            workingDirectory: sourceURL,
+            timeoutSeconds: 10 * 60
+        )
+        guard result.terminationStatus == 0 else {
+            let detail = [result.stderr, result.stdout]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { $0.isEmpty == false }
+                .joined(separator: "\n")
+            let message = detail.isEmpty
+                ? "Could not install llm_wiki dependencies."
+                : "Could not install llm_wiki dependencies:\n\(detail)"
+            try writeFailureStatus(message: message, projectRoot: projectRoot)
+            throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
+        }
     }
 }
 

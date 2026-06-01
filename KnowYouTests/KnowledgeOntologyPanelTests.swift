@@ -223,6 +223,27 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(MyWikiSourceLibraryEntryPolicy.manageButtonMinHeight, 34)
     }
 
+    func testDigestSchedulePresentationExplainsManualTriggerAndLastRunTime() {
+        let progress = MyWikiIngestProgress(
+            state: .succeeded,
+            message: "My Wiki pipeline completed.",
+            updatedAt: "2026-06-01T07:30:00Z",
+            sourcesProcessed: 2,
+            totalSources: 2
+        )
+
+        let presentation = MyWikiDigestSchedulePresentation(
+            ingestProgress: progress,
+            displayTimeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        XCTAssertEqual(presentation.title, "My Wiki digest")
+        XCTAssertEqual(presentation.triggerText, "Runs when you click Update Now.")
+        XCTAssertEqual(presentation.lastRunTitle, "Last update")
+        XCTAssertEqual(presentation.lastRunValue, "7:30 AM")
+        XCTAssertEqual(presentation.updateNowTitle, "Update Now")
+    }
+
     func testDetailMoreMenuIncludesAgentContextAction() {
         XCTAssertTrue(MyWikiDetailMoreMenuPolicy.includesAgentContext)
     }

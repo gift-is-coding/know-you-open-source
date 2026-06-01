@@ -76,6 +76,10 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
             atomically: true,
             encoding: .utf8
         )
+        try FileManager.default.createDirectory(
+            at: dev.appending(path: "node_modules/vite", directoryHint: .isDirectory),
+            withIntermediateDirectories: true
+        )
 
         let runner = RecordingMyWikiPipelineRunner(
             result: MyWikiPipelineProcessResult(
@@ -113,6 +117,35 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
         XCTAssertTrue(statusText.contains(#""status":"succeeded""#), statusText)
     }
 
+    func testRunIngestInstallsDevelopmentDependenciesWhenViteIsMissing() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let dev = root.appending(path: "ThirdParty/llm_wiki", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: dev, withIntermediateDirectories: true)
+        try #"{"scripts":{"knowyou:ingest":"node scripts/knowyou-ingest-runner.mjs"}}"#.write(
+            to: dev.appending(path: "package.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let runner = RecordingMyWikiPipelineRunner(
+            result: MyWikiPipelineProcessResult(
+                stdout: #"{"status":"succeeded","sourcesProcessed":1}"#,
+                stderr: "",
+                terminationStatus: 0
+            )
+        )
+
+        try MyWikiPipelineBridge(processRunner: runner).runIngest(target: .developmentSource(dev), projectRoot: root)
+
+        XCTAssertEqual(runner.calls.count, 2)
+        XCTAssertEqual(runner.calls[0].arguments, ["npm", "install"])
+        XCTAssertEqual(runner.calls[0].workingDirectory, dev)
+        XCTAssertEqual(Array(runner.calls[1].arguments.prefix(3)), ["npm", "run", "knowyou:ingest"])
+    }
+
     func testRunIngestPassesManifestToDevelopmentHeadlessRunner() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
@@ -124,6 +157,10 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
             to: dev.appending(path: "package.json"),
             atomically: true,
             encoding: .utf8
+        )
+        try FileManager.default.createDirectory(
+            at: dev.appending(path: "node_modules/vite", directoryHint: .isDirectory),
+            withIntermediateDirectories: true
         )
 
         let manifestURL = root.appending(path: "raw/source-selection-manifest.json")
@@ -174,6 +211,10 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
             to: dev.appending(path: "package.json"),
             atomically: true,
             encoding: .utf8
+        )
+        try FileManager.default.createDirectory(
+            at: dev.appending(path: "node_modules/vite", directoryHint: .isDirectory),
+            withIntermediateDirectories: true
         )
 
         let runner = RecordingMyWikiPipelineRunner(

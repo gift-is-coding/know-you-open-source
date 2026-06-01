@@ -116,6 +116,7 @@ struct MyWikiPanel: View {
     private var indexPane: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
+            digestScheduleView
             searchField
             ingestProgressView
             duplicateSuggestionBanner
@@ -206,6 +207,49 @@ struct MyWikiPanel: View {
                             .stroke(MyWikiTheme.border, lineWidth: 1)
                     )
             )
+    }
+
+    private var digestScheduleView: some View {
+        let presentation = MyWikiDigestSchedulePresentation(ingestProgress: ingestProgress)
+        return HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(presentation.title)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(presentation.triggerText)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 10)
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(presentation.lastRunTitle)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text(presentation.lastRunValue)
+                    .font(.system(size: 13, weight: .semibold))
+            }
+
+            Button {
+                syncDiaries()
+            } label: {
+                Text(isSyncing ? "Updating..." : presentation.updateNowTitle)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(minWidth: 92, minHeight: 32)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isSyncing)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(MyWikiTheme.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(MyWikiTheme.border, lineWidth: 1)
+                )
+        )
     }
 
     @ViewBuilder

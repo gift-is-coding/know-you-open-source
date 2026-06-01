@@ -305,6 +305,30 @@ enum MyWikiSourceLibraryEntryPolicy {
     static let manageButtonMinHeight: CGFloat = 36
 }
 
+struct MyWikiDigestSchedulePresentation: Equatable {
+    let title = "My Wiki digest"
+    let triggerText = "Runs when you click Update Now."
+    let lastRunTitle = "Last update"
+    let lastRunValue: String
+    let updateNowTitle = "Update Now"
+
+    init(ingestProgress: MyWikiIngestProgress?, displayTimeZone: TimeZone = .current) {
+        if let updatedAt = ingestProgress?.updatedAt,
+           let date = ISO8601DateFormatter().date(from: updatedAt) {
+            let formatter = DateFormatter()
+            formatter.timeStyle = .short
+            formatter.dateStyle = .none
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = displayTimeZone
+            lastRunValue = formatter.string(from: date)
+                .replacingOccurrences(of: "\u{202F}", with: " ")
+                .replacingOccurrences(of: "\u{00A0}", with: " ")
+        } else {
+            lastRunValue = "Not updated yet"
+        }
+    }
+}
+
 enum MyWikiDetailMaintenancePolicy {
     static func showsDuplicateSuggestionCard(
         duplicateSuggestionCount: Int,

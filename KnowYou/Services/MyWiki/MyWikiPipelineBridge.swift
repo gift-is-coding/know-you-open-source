@@ -207,6 +207,76 @@ struct MyWikiPipelineBridge {
     }
 }
 
+struct MyWikiDigestRunResult: Equatable {
+    let message: String
+    let didSucceed: Bool
+}
+
+struct MyWikiDigestRunner {
+    func run(
+        projectRoot: URL,
+        sourceVault: URL?,
+        importedDocuments: [ImportedKnowledgeDocument],
+        target: MyWikiPipelineTarget
+    ) async -> MyWikiDigestRunResult {
+        await Task.detached(priority: .userInitiated) {
+            do {
+                try MyWikiProjectExporter().ensureProject(at: projectRoot)
+
+                let builder = MyWikiSourceCatalogBuilder()
+                var snapshot = try builder.refreshCatalog(
+                    projectRoot: projectRoot,
+                    sourceVault: sourceVault,
+                    importedDocuments: importedDocuments
+                )
+                let plan = builder.ingestPlan(
+                    snapshot: snapshot,
+                    maxSources: MyWikiIngestBatchPolicy.maxSourcesPerRun
+                )
+
+                guard plan.sources.isEmpty == false else {
+                    return MyWikiDigestRunResult(
+                        message: "My Wiki sources are already up to date.",
+                        didSucceed: true
+                    )
+                }
+
+                let materialized = try builder.materialize(
+                    plan: plan,
+                    from: snapshot,
+                    projectRoot: projectRoot
+                )
+
+                do {
+                    try MyWikiPipelineBridge().runIngest(
+                        target: target,
+                        projectRoot: projectRoot,
+                        manifestURL: materialized.manifestURL
+                    )
+                    snapshot = builder.mark(plan: plan, succeededIn: snapshot, at: Date())
+                    try MyWikiSourceCatalogStore(projectRoot: projectRoot).save(snapshot)
+                    return MyWikiDigestRunResult(
+                        message: "Updated \(materialized.materializedCount) My Wiki source(s).",
+                        didSucceed: true
+                    )
+                } catch {
+                    snapshot = builder.mark(plan: plan, failedWith: error.localizedDescription, in: snapshot)
+                    try? MyWikiSourceCatalogStore(projectRoot: projectRoot).save(snapshot)
+                    return MyWikiDigestRunResult(
+                        message: "My Wiki source update failed: \(error.localizedDescription)",
+                        didSucceed: false
+                    )
+                }
+            } catch {
+                return MyWikiDigestRunResult(
+                    message: error.localizedDescription,
+                    didSucceed: false
+                )
+            }
+        }.value
+    }
+}
+
 private struct MyWikiIngestStatus: Encodable {
     let status: String
     let message: String

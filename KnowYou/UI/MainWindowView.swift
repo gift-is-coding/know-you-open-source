@@ -245,6 +245,8 @@ struct MainWindowView: View {
                     reviewCandidates: appState.todoReviewCandidates,
                     closeRecommendations: appState.todoCloseRecommendations,
                     automationStatusMessage: appState.todoAutomationStatusMessage,
+                    nextUpdateDate: appState.nextTodoAutomationCheckDate,
+                    lastUpdateDate: appState.automationJobSnapshots.first(where: { $0.kind == .todo })?.lastRunAt,
                     onAdd: { title in
                         appState.addTodo(title: title)
                     },
@@ -262,6 +264,14 @@ struct MainWindowView: View {
                     },
                     onKeepRecommendation: { id in
                         appState.keepTodoCloseRecommendation(id: id)
+                    },
+                    onUpdateNow: {
+                        Task { @MainActor in
+                            await appState.runTodoAutomation(
+                                dayKeys: [ISO8601DayKey.format(Date())],
+                                trigger: .manual
+                            )
+                        }
                     }
                 )
             case .otherSourceManager(let focusAddConnector):
@@ -278,6 +288,7 @@ struct MainWindowView: View {
         HomeDashboardView(
             nextDiaryCheckDate: appState.nextDiaryAutomationCheckDate ?? Date().addingTimeInterval(10_800),
             missingRecentDayCount: appState.missingRecentHistoryBootstrapDayKeys.count,
+            jobSnapshots: appState.automationJobSnapshots,
             onOpenToday: {
                 mode = .journal
                 appState.selectDate(ISO8601DayKey.format(Date()))
@@ -322,6 +333,7 @@ struct MainWindowView: View {
                 developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL(),
                 bundledHelperAppURL: KnowledgeOntologyLauncher.defaultBundledHelperAppURL(),
                 importedDocuments: appState.knowledgeDocumentsByConnector.values.flatMap { $0 },
+                nextDigestUpdateDate: appState.nextMyWikiAutomationCheckDate,
                 selectedEntry: $selectedMyWikiEntry
             )
             .frame(minWidth: 860, maxWidth: .infinity, maxHeight: .infinity)
@@ -821,6 +833,46 @@ struct HomeFeatureCardPresentation: Equatable, Identifiable {
     let systemImage: String
 }
 
+struct HomeJobRowPresentation: Equatable, Identifiable {
+    let id: AutomationJobKind
+    let title: String
+    let statusText: String
+    let detail: String
+    let progress: Double?
+    let lastRunText: String?
+    let nextRunText: String?
+    let systemImage: String
+
+    init(snapshot: AutomationJobSnapshot, displayTimeZone: TimeZone = .current) {
+        id = snapshot.kind
+        title = snapshot.title
+        statusText = snapshot.status.displayText
+        detail = snapshot.detail
+        progress = snapshot.progress
+        lastRunText = snapshot.lastRunAt.map { "Last \(Self.timeText(for: $0, timeZone: displayTimeZone))" }
+        nextRunText = snapshot.nextRunAt.map { "Next \(Self.timeText(for: $0, timeZone: displayTimeZone))" }
+        systemImage = switch snapshot.kind {
+        case .diary:
+            "book.pages"
+        case .todo:
+            "checklist"
+        case .wiki:
+            "point.3.connected.trianglepath.dotted"
+        }
+    }
+
+    private static func timeText(for date: Date, timeZone: TimeZone) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        return formatter.string(from: date)
+            .replacingOccurrences(of: "\u{202F}", with: " ")
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
+    }
+}
+
 struct HomeDashboardPresentation: Equatable {
     let heroTitle = "KnowYou works quietly in the background."
     let nextCheckTitle = "Automatic Diary update"
@@ -828,6 +880,8 @@ struct HomeDashboardPresentation: Equatable {
     let generateTodayActionTitle = "Generate Now"
     let primaryActionTitle = "Generate Last 3 Days"
     let visualAssetName = "HomeDashboardHero"
+    let jobSectionTitle = "Background jobs"
+    let jobRows: [HomeJobRowPresentation]
     let featureCards: [HomeFeatureCardPresentation]
     let missingRecentDayCount: Int
     let showsRecentHistoryAction: Bool
@@ -836,11 +890,15 @@ struct HomeDashboardPresentation: Equatable {
         nextDiaryCheckDate: Date,
         now: Date,
         missingRecentDayCount: Int,
+        jobSnapshots: [AutomationJobSnapshot] = [],
         displayTimeZone: TimeZone = .current
     ) {
         self.nextCheckValue = Self.checkTimeText(for: nextDiaryCheckDate, timeZone: displayTimeZone)
         self.missingRecentDayCount = missingRecentDayCount
         self.showsRecentHistoryAction = missingRecentDayCount > 0
+        self.jobRows = jobSnapshots
+            .sorted { $0.kind.sortIndex < $1.kind.sortIndex }
+            .map { HomeJobRowPresentation(snapshot: $0, displayTimeZone: displayTimeZone) }
         self.featureCards = [
             HomeFeatureCardPresentation(
                 id: "networking",
@@ -887,6 +945,7 @@ struct HomeDashboardPresentation: Equatable {
 private struct HomeDashboardView: View {
     let nextDiaryCheckDate: Date
     let missingRecentDayCount: Int
+    let jobSnapshots: [AutomationJobSnapshot]
     let onOpenToday: () -> Void
     let onGenerateToday: () -> Void
     let onOpenTodo: () -> Void
@@ -900,11 +959,13 @@ private struct HomeDashboardView: View {
             let presentation = HomeDashboardPresentation(
                 nextDiaryCheckDate: nextDiaryCheckDate,
                 now: context.date,
-                missingRecentDayCount: missingRecentDayCount
+                missingRecentDayCount: missingRecentDayCount,
+                jobSnapshots: jobSnapshots
             )
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     hero(presentation)
+                    jobList(presentation)
                     featureGrid(presentation)
                 }
                 .padding(28)
@@ -997,6 +1058,70 @@ private struct HomeDashboardView: View {
         }
     }
 
+    @ViewBuilder
+    private func jobList(_ presentation: HomeDashboardPresentation) -> some View {
+        if presentation.jobRows.isEmpty == false {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(presentation.jobSectionTitle)
+                    .font(.headline)
+
+                VStack(spacing: 8) {
+                    ForEach(presentation.jobRows) { row in
+                        Button {
+                            open(row.id)
+                        } label: {
+                            HStack(alignment: .center, spacing: 12) {
+                                Image(systemName: row.systemImage)
+                                    .font(.headline)
+                                    .foregroundStyle(Color.accentColor)
+                                    .frame(width: 30, height: 30)
+                                    .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+
+                                VStack(alignment: .leading, spacing: 5) {
+                                    HStack(spacing: 8) {
+                                        Text(row.title)
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(.primary)
+                                        Text(row.statusText)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text(row.detail)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                    if let progress = row.progress, progress < 1 {
+                                        ProgressView(value: progress)
+                                            .progressViewStyle(.linear)
+                                            .frame(maxWidth: 280)
+                                    }
+                                }
+
+                                Spacer(minLength: 12)
+
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    if let lastRunText = row.lastRunText {
+                                        Text(lastRunText)
+                                    }
+                                    if let nextRunText = row.nextRunText {
+                                        Text(nextRunText)
+                                    }
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
     private func open(_ card: HomeFeatureCardPresentation) {
         switch card.id {
         case "today":
@@ -1011,6 +1136,17 @@ private struct HomeDashboardView: View {
             onOpenNetworking()
         default:
             break
+        }
+    }
+
+    private func open(_ kind: AutomationJobKind) {
+        switch kind {
+        case .diary:
+            onOpenToday()
+        case .todo:
+            onOpenTodo()
+        case .wiki:
+            onOpenMyWiki()
         }
     }
 }

@@ -234,13 +234,16 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
 
         let presentation = MyWikiDigestSchedulePresentation(
             ingestProgress: progress,
+            nextRunDate: DateComponents(calendar: Calendar(identifier: .gregorian), timeZone: TimeZone(secondsFromGMT: 0), year: 2026, month: 6, day: 1, hour: 15, minute: 30).date!,
             displayTimeZone: TimeZone(secondsFromGMT: 0)!
         )
 
         XCTAssertEqual(presentation.title, "My Wiki digest")
-        XCTAssertEqual(presentation.triggerText, "Runs when you click Update Now.")
+        XCTAssertEqual(presentation.triggerText, "Updates daily after Diary and Todo are ready.")
         XCTAssertEqual(presentation.lastRunTitle, "Last update")
         XCTAssertEqual(presentation.lastRunValue, "7:30 AM")
+        XCTAssertEqual(presentation.nextRunTitle, "Next update")
+        XCTAssertEqual(presentation.nextRunValue, "3:30 PM")
         XCTAssertEqual(presentation.updateNowTitle, "Update Now")
     }
 

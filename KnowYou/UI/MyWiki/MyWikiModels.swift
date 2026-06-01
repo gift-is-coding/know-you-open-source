@@ -307,25 +307,36 @@ enum MyWikiSourceLibraryEntryPolicy {
 
 struct MyWikiDigestSchedulePresentation: Equatable {
     let title = "My Wiki digest"
-    let triggerText = "Runs when you click Update Now."
+    let triggerText = "Updates daily after Diary and Todo are ready."
     let lastRunTitle = "Last update"
     let lastRunValue: String
+    let nextRunTitle = "Next update"
+    let nextRunValue: String
     let updateNowTitle = "Update Now"
 
-    init(ingestProgress: MyWikiIngestProgress?, displayTimeZone: TimeZone = .current) {
+    init(
+        ingestProgress: MyWikiIngestProgress?,
+        nextRunDate: Date? = nil,
+        displayTimeZone: TimeZone = .current
+    ) {
         if let updatedAt = ingestProgress?.updatedAt,
            let date = ISO8601DateFormatter().date(from: updatedAt) {
-            let formatter = DateFormatter()
-            formatter.timeStyle = .short
-            formatter.dateStyle = .none
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.timeZone = displayTimeZone
-            lastRunValue = formatter.string(from: date)
-                .replacingOccurrences(of: "\u{202F}", with: " ")
-                .replacingOccurrences(of: "\u{00A0}", with: " ")
+            lastRunValue = Self.timeText(for: date, timeZone: displayTimeZone)
         } else {
             lastRunValue = "Not updated yet"
         }
+        nextRunValue = nextRunDate.map { Self.timeText(for: $0, timeZone: displayTimeZone) } ?? "After Diary and Todo"
+    }
+
+    private static func timeText(for date: Date, timeZone: TimeZone) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        return formatter.string(from: date)
+            .replacingOccurrences(of: "\u{202F}", with: " ")
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
     }
 }
 

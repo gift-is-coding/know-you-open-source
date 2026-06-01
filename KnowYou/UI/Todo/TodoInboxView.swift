@@ -14,17 +14,52 @@ enum TodoInboxCopy {
     }
 }
 
+struct TodoAutomationPresentation: Equatable {
+    let title = "Todo automation"
+    let nextUpdateTitle = "Next update"
+    let nextUpdateValue: String
+    let lastUpdateTitle = "Last update"
+    let lastUpdateValue: String
+    let updateNowTitle = "Update Now"
+    let statusMessage: String?
+
+    init(
+        nextUpdateDate: Date?,
+        lastUpdateDate: Date?,
+        statusMessage: String?,
+        displayTimeZone: TimeZone = .current
+    ) {
+        nextUpdateValue = nextUpdateDate.map { Self.timeText(for: $0, timeZone: displayTimeZone) } ?? "After Diary"
+        lastUpdateValue = lastUpdateDate.map { Self.timeText(for: $0, timeZone: displayTimeZone) } ?? "Not updated yet"
+        self.statusMessage = statusMessage
+    }
+
+    private static func timeText(for date: Date, timeZone: TimeZone) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        return formatter.string(from: date)
+            .replacingOccurrences(of: "\u{202F}", with: " ")
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
+    }
+}
+
 struct TodoInboxView: View {
     let items: [UnifiedTodoItem]
     let reviewCandidates: [TodoReviewCandidatePresentation]
     let closeRecommendations: [TodoCloseRecommendationPresentation]
     let automationStatusMessage: String?
+    let nextUpdateDate: Date?
+    let lastUpdateDate: Date?
     let onAdd: (String) -> Void
     let onAddCandidate: (String) -> Void
     let onDismissCandidate: (String) -> Void
     let onComplete: (String) -> Void
     let onCloseRecommendation: (String) -> Void
     let onKeepRecommendation: (String) -> Void
+    let onUpdateNow: () -> Void
     @State private var draftTitle = ""
     @State private var showCompleted = true
 
@@ -56,6 +91,8 @@ struct TodoInboxView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                automationSchedule
 
                 HStack(spacing: 8) {
                     TextField(TodoInboxCopy.draftPlaceholder, text: $draftTitle)
@@ -140,6 +177,43 @@ struct TodoInboxView: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private var automationSchedule: some View {
+        let presentation = TodoAutomationPresentation(
+            nextUpdateDate: nextUpdateDate,
+            lastUpdateDate: lastUpdateDate,
+            statusMessage: automationStatusMessage
+        )
+        return HStack(alignment: .center, spacing: 14) {
+            Label(presentation.title, systemImage: "checklist")
+                .font(.headline)
+
+            Spacer(minLength: 10)
+
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(presentation.lastUpdateTitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(presentation.lastUpdateValue)
+                    .font(.callout.weight(.semibold))
+            }
+
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(presentation.nextUpdateTitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(presentation.nextUpdateValue)
+                    .font(.callout.weight(.semibold))
+            }
+
+            Button(presentation.updateNowTitle, action: onUpdateNow)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var openItems: [UnifiedTodoItem] {

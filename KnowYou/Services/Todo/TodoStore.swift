@@ -64,6 +64,12 @@ struct TodoStore {
         return try databaseWriter.fetchTodoItems()
     }
 
+    func ensureDocumentExists() throws {
+        guard let documentStore, documentStore.exists == false else { return }
+        let databaseItems = try databaseWriter.fetchTodoItems()
+        try documentStore.writeItems(databaseItems)
+    }
+
     func completeTodo(
         id: String,
         completedAt: Date,
@@ -108,10 +114,8 @@ struct TodoStore {
     private func fetchMarkdownBackedItems(using documentStore: TodoMarkdownDocumentStore) throws -> [UnifiedTodoItem] {
         if !documentStore.exists {
             let databaseItems = try databaseWriter.fetchTodoItems()
-            if !databaseItems.isEmpty {
-                try documentStore.writeItems(databaseItems)
-                return Self.sortedItems(databaseItems)
-            }
+            try documentStore.writeItems(databaseItems)
+            return Self.sortedItems(databaseItems)
         }
 
         return Self.sortedItems(try documentStore.fetchItems())

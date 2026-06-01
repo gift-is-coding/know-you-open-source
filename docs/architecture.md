@@ -742,7 +742,7 @@ My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责
 - `Tools/MyWikiMCP` 只保留为开发期/兼容性 wrapper，不是用户默认配置路径；`.agents/skills/my-wiki-context` 是给支持 Skill 的 agent 的使用说明
 - [MyWikiAgentConnectionSheet.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/UI/MyWiki/MyWikiAgentConnectionSheet.swift) 提供 `Use My Wiki in Agents` 入口。默认 UX 是选择内置 agent 后点击 `Add My Wiki`：Codex 写入带 `# BEGIN/END KnowYou My Wiki MCP` 标记的 `~/.codex/config.toml` 受控配置块；Claude Code、Claude Desktop、Cursor、Gemini CLI 和 OpenClaw 合并写入各自 JSON MCP 配置；Codex、Claude Code、Cursor、Gemini CLI 和 OpenClaw 同步安装 `my-wiki-context` Skill；generic MCP 配置保留在 `Advanced MCP Config`
 - [MyWikiSourceLibrary.swift](../KnowYou/Services/MyWiki/MyWikiSourceLibrary.swift) 与 [MyWikiSourceLibraryView.swift](../KnowYou/UI/MyWiki/MyWikiSourceLibraryView.swift) 提供分层 Source Library 管理入口。UI 从 Source Catalog snapshot 渲染 diary、external documents 和 manual imports，支持 title/path 搜索、status filter、目录三态选择、include/exclude/invert visible 批量操作和 summary 链接；手动导入支持选择文件夹、多文件导入和拖拽，新文件仍放入 `raw/sources/Manual Imports`，但展示 root 是 `Manual Uploads`。导入只刷新 catalog，不触发 ingest；选择变更自动保存，`Update My Wiki` 才运行处理
-- [MyWikiPanel.swift](../KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底 My Wiki 工作区：左侧是高密度可折叠索引，分类顺序为 `Entities`、`Concepts`、`Sources`，每个分类默认显示 10 个 name-only 条目；超过 10 个时用当前分类底部的 `Show more (N)` 原地展开，并用 `Show less` 收回，不再进入分类全量列表页。左侧顶部显示 `My Wiki digest` 状态条，明确说明 digest 只在点击 `Update Now` 时触发，并显示上次更新时间；source/progress 区域把进度卡作为纯状态展示，旁边提供 `Manage Sources` 按钮；每个分类的 tag 筛选从当前条目 frontmatter `tags` 动态统计，按频次降序、同频按名称排序，`other` 排在具体 tag 后；默认只显示前 6 个 tag，剩余可展开；无 tags 时不显示筛选。Header 和详情页 `More` 菜单都提供 `Use My Wiki in Agents`
+- [MyWikiPanel.swift](../KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底 My Wiki 工作区：左侧是高密度可折叠索引，分类顺序为 `Entities`、`Concepts`、`Sources`，每个分类默认显示 10 个 name-only 条目；超过 10 个时用当前分类底部的 `Show more (N)` 原地展开，并用 `Show less` 收回，不再进入分类全量列表页。左侧顶部显示 `My Wiki digest` 状态条，明确说明 digest 会在 Diary 和 Todo 就绪后每日自动更新，也可点击 `Update Now` 手动触发，并同时显示上次与下次更新时间；source/progress 区域把进度卡作为纯状态展示，旁边提供 `Manage Sources` 按钮；每个分类的 tag 筛选从当前条目 frontmatter `tags` 动态统计，按频次降序、同频按名称排序，`other` 排在具体 tag 后；默认只显示前 6 个 tag，剩余可展开；无 tags 时不显示筛选。Header 和详情页 `More` 菜单都提供 `Use My Wiki in Agents`
 - [MyWikiDetailView.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiDetailView.swift) 提供 LLM Wiki 风格详情页，顶部 header 展示 summary，正文区域默认展示完整 `markdownBody`，并保留 Recent Mentions、Related、Duplicate Suggestions 等 metadata 区；不再重复渲染独立 Summary 卡片；`Sources` 放在详情最后，仍可点击打开原 source
 
 数据流如下：
@@ -765,7 +765,13 @@ flowchart LR
 
 My Wiki 只处理用户授权进入 catalog 的 source。KnowYou diary 默认可用但可取消选择；外部 source 只在用户主动 include 后进入 ingest；手动 drop/import 只进入 `Manual Uploads` 并保持 pending，不会自动处理；取消选择已处理 source 不删除旧 `wiki/sources`、entity 或 concept 输出。不直接导出未经额外授权的 SQLite 原始事件。用户界面避免暴露内部工程术语，把复杂关系计算、结构化文件和 llm_wiki 开发入口留在底层；主界面保留 `My Wiki`、搜索、可折叠分类索引、详情阅读、编辑和确认式合并。`Open Project`、journal count、last date 等维护信息不占主界面，而进入 `More` 菜单或状态弹窗。
 
-## 12. 当前架构约束
+## 12. 后台任务调度
+
+AppState 维护覆盖式 `AutomationJobSnapshot`，按 `Diary`、`Todo`、`My Wiki` 三类保存最新任务状态，而不是追加历史日志。Home 的 `Background jobs` 区域直接读取这些快照，展示状态、进度、上次运行时间和下一次运行时间，并允许用户点击跳转到对应页面。
+
+Diary 仍是主节拍，每 3 小时自动检查和刷新一次。Todo 默认排在 Diary 之后 10 分钟，也会在手动或 onboarding diary 完成后处理对应 story；如果没有 today story，Todo 状态显示 blocked，并提示先生成今天的 diary。My Wiki 默认排在 Diary 和 Todo 就绪后运行，每天一次；页面内的 `Update Now` 与后台调度复用同一个 digest runner。
+
+## 13. 当前架构约束
 
 - 仅支持 macOS
 - 仅支持单机、本地存储
@@ -776,7 +782,7 @@ My Wiki 只处理用户授权进入 catalog 的 source。KnowYou diary 默认可
 - onboarding 的 `Demo Day` 使用静态叙事内容，不是从真实用户数据实时生成
 - 当前 Xcode 工程对本地 Debug 构建使用手动代码签名，以减少重启后 TCC 权限丢失带来的验证噪音
 
-## 13. 设计取向总结
+## 14. 设计取向总结
 
 当前实现的核心取向不是“做一个原始日志查看器”，而是：
 

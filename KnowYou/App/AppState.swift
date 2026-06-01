@@ -72,6 +72,94 @@ struct DayRefreshStatus {
     var lastError: String?
 }
 
+enum AutomationJobKind: String, CaseIterable, Equatable, Hashable {
+    case diary
+    case todo
+    case wiki
+
+    var title: String {
+        switch self {
+        case .diary:
+            return "Diary"
+        case .todo:
+            return "Todo"
+        case .wiki:
+            return "My Wiki"
+        }
+    }
+
+    var sortIndex: Int {
+        switch self {
+        case .diary:
+            return 0
+        case .todo:
+            return 1
+        case .wiki:
+            return 2
+        }
+    }
+}
+
+enum AutomationJobStatus: String, Equatable {
+    case scheduled
+    case running
+    case completed
+    case degraded
+    case failed
+    case blocked
+
+    var displayText: String {
+        switch self {
+        case .scheduled:
+            return "Scheduled"
+        case .running:
+            return "Running"
+        case .completed:
+            return "Completed"
+        case .degraded:
+            return "Needs attention"
+        case .failed:
+            return "Failed"
+        case .blocked:
+            return "Blocked"
+        }
+    }
+}
+
+struct AutomationJobSnapshot: Identifiable, Equatable {
+    var kind: AutomationJobKind
+    var status: AutomationJobStatus
+    var detail: String
+    var progress: Double?
+    var lastRunAt: Date?
+    var nextRunAt: Date?
+
+    var id: AutomationJobKind { kind }
+    var title: String { kind.title }
+
+    init(
+        kind: AutomationJobKind,
+        status: AutomationJobStatus,
+        detail: String,
+        progress: Double? = nil,
+        lastRunAt: Date? = nil,
+        nextRunAt: Date? = nil
+    ) {
+        self.kind = kind
+        self.status = status
+        self.detail = detail
+        self.progress = progress
+        self.lastRunAt = lastRunAt
+        self.nextRunAt = nextRunAt
+    }
+}
+
+enum AutomationJobTrigger: Equatable {
+    case automatic
+    case manual
+    case onboarding
+}
+
 enum DayRefreshStage: Equatable, Hashable {
     case syncingNotifications
     case loadingEvents
@@ -655,12 +743,21 @@ final class AppState {
     var isShowingUpdateSheet = false
     var lastUpdateCheckAt: Date?
     var nextDiaryAutomationCheckDate: Date?
+    var nextTodoAutomationCheckDate: Date?
+    var nextMyWikiAutomationCheckDate: Date?
+    private var automationJobsByKind: [AutomationJobKind: AutomationJobSnapshot] = [:]
+    var automationJobSnapshots: [AutomationJobSnapshot] {
+        AutomationJobKind.allCases.compactMap { automationJobsByKind[$0] }
+            .sorted { $0.kind.sortIndex < $1.kind.sortIndex }
+    }
     var launchAtLoginEnabled = false
     var launchAtLoginStatusMessage: String?
     private var refreshJobsByDay: [String: DayRefreshJob] = [:]
     private(set) var environment: AppEnvironment?
     @ObservationIgnored private var automationTimer: Timer?
     @ObservationIgnored private var notificationCatchUpTimer: Timer?
+    @ObservationIgnored private var todoAutomationTimer: Timer?
+    @ObservationIgnored private var myWikiAutomationTimer: Timer?
     @ObservationIgnored private var onboardingBootstrapTask: Task<Void, Never>?
     @ObservationIgnored private var onboardingBootstrapNoticeDismissTask: Task<Void, Never>?
     @ObservationIgnored private var paragraphSelectionByDay: [String: String] = [:]
@@ -670,6 +767,8 @@ final class AppState {
     @ObservationIgnored private var isPresentingOnboardingDemo = false
     @ObservationIgnored private let notificationSyncInterval: TimeInterval = 30
     @ObservationIgnored private let automationInterval: TimeInterval = 10_800
+    @ObservationIgnored private let todoAutomationOffset: TimeInterval = 600
+    @ObservationIgnored private let myWikiAutomationOffset: TimeInterval = 1_800
     @ObservationIgnored private let notificationOverlapBuffer: TimeInterval = 30
     @ObservationIgnored private let maxConcurrentRefreshes = 2
     @ObservationIgnored private let refreshEventBatchSize = 50
@@ -1139,6 +1238,61 @@ final class AppState {
         updateTrackedTodoCandidateIDs()
     }
 
+    private func setAutomationJob(
+        kind: AutomationJobKind,
+        status: AutomationJobStatus,
+        detail: String,
+        progress: Double? = nil,
+        lastRunAt: Date? = nil,
+        nextRunAt: Date? = nil
+    ) {
+        automationJobsByKind[kind] = AutomationJobSnapshot(
+            kind: kind,
+            status: status,
+            detail: detail,
+            progress: progress.map { min(max($0, 0), 1) },
+            lastRunAt: lastRunAt,
+            nextRunAt: nextRunAt
+        )
+    }
+
+    private func refreshFollowerAutomationSchedule(after diaryDate: Date, includeWiki: Bool = true) {
+        nextTodoAutomationCheckDate = diaryDate.addingTimeInterval(todoAutomationOffset)
+        setAutomationJob(
+            kind: .todo,
+            status: .scheduled,
+            detail: "After Diary is ready",
+            progress: 0,
+            lastRunAt: automationJobsByKind[.todo]?.lastRunAt,
+            nextRunAt: nextTodoAutomationCheckDate
+        )
+        guard includeWiki else { return }
+
+        nextMyWikiAutomationCheckDate = diaryDate.addingTimeInterval(myWikiAutomationOffset)
+        setAutomationJob(
+            kind: .wiki,
+            status: .scheduled,
+            detail: "Daily after Diary and Todo are ready",
+            progress: 0,
+            lastRunAt: automationJobsByKind[.wiki]?.lastRunAt,
+            nextRunAt: nextMyWikiAutomationCheckDate
+        )
+    }
+
+    private func configureAutomationSchedule(from now: Date) {
+        let nextDiary = now.addingTimeInterval(automationInterval)
+        nextDiaryAutomationCheckDate = nextDiary
+        setAutomationJob(
+            kind: .diary,
+            status: .scheduled,
+            detail: "Every 3 hours",
+            progress: 0,
+            lastRunAt: automationJobsByKind[.diary]?.lastRunAt,
+            nextRunAt: nextDiary
+        )
+        refreshFollowerAutomationSchedule(after: nextDiary)
+    }
+
     private func processTodosAfterRefresh(
         dayKey: String,
         story: DailyStory,
@@ -1147,9 +1301,19 @@ final class AppState {
         _ = events
         guard let environment else { return }
 
+        let startedAt = currentDate()
+        setAutomationJob(
+            kind: .todo,
+            status: .running,
+            detail: "Updating Todo from \(dayKey)",
+            progress: 0.2,
+            lastRunAt: automationJobsByKind[.todo]?.lastRunAt,
+            nextRunAt: nextTodoAutomationCheckDate
+        )
         let candidates = DailyTodoCandidate.extract(from: story)
         selectedTodoCandidates = candidates
         refreshTodoItems(using: environment)
+        try? environment.todoStore.ensureDocumentExists()
 
         let reconciler = TodoReconciler(summarizer: environment.summarizer)
         let reconciliation = (try? await reconciler.reconcile(
@@ -1162,6 +1326,14 @@ final class AppState {
             if !candidates.isEmpty || todoItems.contains(where: { $0.status == .open }) {
                 todoAutomationStatusMessage = "Todo automation degraded: no available LLM result; manual add still works."
             }
+            setAutomationJob(
+                kind: .todo,
+                status: .degraded,
+                detail: todoAutomationStatusMessage ?? "No available LLM result.",
+                progress: 1,
+                lastRunAt: startedAt,
+                nextRunAt: nextTodoAutomationCheckDate
+            )
             updateTrackedTodoCandidateIDs()
             return
         }
@@ -1220,6 +1392,14 @@ final class AppState {
             if !openTodos.isEmpty {
                 todoAutomationStatusMessage = "Todo completion sweep degraded: no available LLM result."
             }
+            setAutomationJob(
+                kind: .todo,
+                status: .degraded,
+                detail: todoAutomationStatusMessage ?? "Completion sweep needs an available LLM.",
+                progress: 1,
+                lastRunAt: startedAt,
+                nextRunAt: nextTodoAutomationCheckDate
+            )
         } else {
             for completion in sweep.highConfidenceCompletions {
                 try? environment.todoStore.completeTodo(
@@ -1244,11 +1424,113 @@ final class AppState {
                 )
             }
             todoAutomationStatusMessage = nil
+            setAutomationJob(
+                kind: .todo,
+                status: .completed,
+                detail: candidates.isEmpty ? "No new todo candidates." : "Todo is up to date.",
+                progress: 1,
+                lastRunAt: startedAt,
+                nextRunAt: nextTodoAutomationCheckDate
+            )
         }
 
         refreshTodoItems(using: environment)
         selectedTodoCandidates = candidates
         updateTrackedTodoCandidateIDs()
+    }
+
+    func runTodoAutomation(dayKeys: [String], trigger: AutomationJobTrigger) async {
+        guard let environment else {
+            todoAutomationStatusMessage = "Todo automation blocked: app data is unavailable."
+            setAutomationJob(
+                kind: .todo,
+                status: .blocked,
+                detail: "App data is unavailable.",
+                progress: 1,
+                lastRunAt: currentDate(),
+                nextRunAt: nextTodoAutomationCheckDate
+            )
+            return
+        }
+
+        let targetDayKeys = dayKeys.isEmpty ? [ISO8601DayKey.format(currentDate())] : dayKeys
+        try? environment.todoStore.ensureDocumentExists()
+        for (index, dayKey) in targetDayKeys.enumerated() {
+            guard let story = try? environment.loadDailyStory(dayKey: dayKey) else {
+                todoAutomationStatusMessage = "Generate today’s diary first."
+                setAutomationJob(
+                    kind: .todo,
+                    status: .blocked,
+                    detail: "Generate today’s diary first.",
+                    progress: 1,
+                    lastRunAt: currentDate(),
+                    nextRunAt: nextTodoAutomationCheckDate
+                )
+                return
+            }
+
+            let progress = Double(index) / Double(max(targetDayKeys.count, 1))
+            setAutomationJob(
+                kind: .todo,
+                status: .running,
+                detail: "Updating Todo from \(dayKey)",
+                progress: progress,
+                lastRunAt: automationJobsByKind[.todo]?.lastRunAt,
+                nextRunAt: nextTodoAutomationCheckDate
+            )
+            await processTodosAfterRefresh(dayKey: dayKey, story: story, events: [])
+        }
+    }
+
+    func runMyWikiDigest(trigger: AutomationJobTrigger) async {
+        guard let environment else {
+            setAutomationJob(
+                kind: .wiki,
+                status: .blocked,
+                detail: "App data is unavailable.",
+                progress: 1,
+                lastRunAt: currentDate(),
+                nextRunAt: nextMyWikiAutomationCheckDate
+            )
+            return
+        }
+
+        let projectRoot = environment.vaultURL
+            .deletingLastPathComponent()
+            .appending(path: "KnowledgeOntology/KnowYouContext", directoryHint: .isDirectory)
+        let importedDocuments = (try? environment.databaseWriter.fetchImportedKnowledgeDocuments()) ?? []
+        let target = MyWikiPipelineBridge.resolveTarget(
+            bundledHelperAppURL: KnowledgeOntologyLauncher.defaultBundledHelperAppURL(),
+            developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL()
+        )
+        let startedAt = currentDate()
+        setAutomationJob(
+            kind: .wiki,
+            status: .running,
+            detail: "Updating My Wiki digest",
+            progress: 0.2,
+            lastRunAt: automationJobsByKind[.wiki]?.lastRunAt,
+            nextRunAt: nextMyWikiAutomationCheckDate
+        )
+
+        let outcome = await MyWikiDigestRunner().run(
+            projectRoot: projectRoot,
+            sourceVault: environment.vaultURL,
+            importedDocuments: importedDocuments,
+            target: target
+        )
+
+        let nextRun = startedAt.addingTimeInterval(86_400)
+        nextMyWikiAutomationCheckDate = nextRun
+        setAutomationJob(
+            kind: .wiki,
+            status: outcome.didSucceed ? .completed : .failed,
+            detail: outcome.message,
+            progress: 1,
+            lastRunAt: startedAt,
+            nextRunAt: nextRun
+        )
+        refreshKnowledgeDocumentTree()
     }
 
     private func refreshKnowledgeDocumentTree() {
@@ -2339,6 +2621,7 @@ final class AppState {
                 )
                 let didComplete = await self.generateOnboardingBootstrapNote(for: dayKey)
                 if didComplete {
+                    await self.runTodoAutomation(dayKeys: [dayKey], trigger: .onboarding)
                     completedDayKeys.append(dayKey)
                     self.updateOnboardingBootstrapProgress(
                         completedDayCount: completedDayKeys.count,
@@ -2355,6 +2638,9 @@ final class AppState {
             self.rebuildAvailableDates()
             if shouldNotifyCompletion {
                 self.notifyOnboardingBootstrapCompletion(completedDayKeys)
+                Task { @MainActor [weak self] in
+                    await self?.runMyWikiDigest(trigger: .onboarding)
+                }
             }
         }
     }
@@ -4918,7 +5204,10 @@ extension AppState {
     func startAutomation(runImmediately: Bool = true) {
         automationTimer?.invalidate()
         notificationCatchUpTimer?.invalidate()
-        nextDiaryAutomationCheckDate = currentDate().addingTimeInterval(automationInterval)
+        todoAutomationTimer?.invalidate()
+        myWikiAutomationTimer?.invalidate()
+        let startDate = currentDate()
+        configureAutomationSchedule(from: startDate)
 
         automationTimer = Timer.scheduledTimer(withTimeInterval: automationInterval, repeats: true) { [weak self] _ in
             guard let self else {
@@ -4927,11 +5216,49 @@ extension AppState {
 
             let now = self.currentDate()
             Task { @MainActor in
+                self.setAutomationJob(
+                    kind: .diary,
+                    status: .running,
+                    detail: "Refreshing today's diary",
+                    progress: 0.2,
+                    lastRunAt: self.automationJobsByKind[.diary]?.lastRunAt,
+                    nextRunAt: self.nextDiaryAutomationCheckDate
+                )
                 self.nextDiaryAutomationCheckDate = now.addingTimeInterval(self.automationInterval)
+                self.refreshFollowerAutomationSchedule(after: now, includeWiki: false)
                 await self.checkForUpdatesIfNeeded(force: false, now: now)
                 await self.runAutomation(now: now)
+                self.setAutomationJob(
+                    kind: .diary,
+                    status: .completed,
+                    detail: "Diary is up to date.",
+                    progress: 1,
+                    lastRunAt: now,
+                    nextRunAt: self.nextDiaryAutomationCheckDate
+                )
             }
         }
+
+        todoAutomationTimer = Timer.scheduledTimer(withTimeInterval: automationInterval, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            let now = self.currentDate()
+            Task { @MainActor in
+                self.nextTodoAutomationCheckDate = now.addingTimeInterval(self.automationInterval)
+                await self.runTodoAutomation(
+                    dayKeys: [ISO8601DayKey.format(now)],
+                    trigger: .automatic
+                )
+            }
+        }
+        todoAutomationTimer?.fireDate = nextTodoAutomationCheckDate ?? startDate.addingTimeInterval(automationInterval + todoAutomationOffset)
+
+        myWikiAutomationTimer = Timer.scheduledTimer(withTimeInterval: 86_400, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                await self.runMyWikiDigest(trigger: .automatic)
+            }
+        }
+        myWikiAutomationTimer?.fireDate = nextMyWikiAutomationCheckDate ?? startDate.addingTimeInterval(automationInterval + myWikiAutomationOffset)
 
         notificationCatchUpTimer = Timer.scheduledTimer(withTimeInterval: notificationSyncInterval, repeats: true) { [weak self] _ in
             guard let self else {

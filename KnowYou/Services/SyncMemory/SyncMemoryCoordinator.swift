@@ -97,6 +97,7 @@ struct SyncMemoryCoordinator {
         )
         let markdownFiles = files
             .filter { $0.pathExtension == "md" }
+            .filter { Self.isDiaryMarkdownFileName($0.lastPathComponent) }
             .sorted { $0.lastPathComponent > $1.lastPathComponent }
 
         guard !markdownFiles.isEmpty else {
@@ -104,6 +105,11 @@ struct SyncMemoryCoordinator {
         }
 
         return markdownFiles
+    }
+
+    private static func isDiaryMarkdownFileName(_ fileName: String) -> Bool {
+        let pattern = #"^\d{4}-\d{2}-\d{2}\.md$"#
+        return fileName.range(of: pattern, options: .regularExpression) != nil
     }
 
     private func exportMarkdown(_ markdown: String) -> String {

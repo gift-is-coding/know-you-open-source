@@ -580,6 +580,9 @@ Markdown 导出也应服务于这个目标：
 
 - 用户启动应用后，系统能自动运行采集与刷新
 - 用户启动应用后，系统还能在后台持续补同步今天的新通知，而不要求手动刷新
+- Home 必须显示 `Diary`、`Todo`、`My Wiki` 三类后台任务的最新状态和下一次更新时间；每类只保留最新状态，不堆积历史
+- Todo 页面必须显示 `Next update` 与 `Update Now`；没有 today story 时必须提示先生成今天的 diary，LLM 不可用时必须显示 degraded 而不能伪造任务
+- My Wiki digest 必须同时显示 `Last update` 与 `Next update`，并说明它会在 Diary 和 Todo 就绪后每日更新，也可手动更新
 - 用户能在日期列表里看到已有日期
 - 用户选中某天后，能看到可阅读的 story
 - 用户手动刷新某天时，只会刷新该天，不会顺带刷新其他日期

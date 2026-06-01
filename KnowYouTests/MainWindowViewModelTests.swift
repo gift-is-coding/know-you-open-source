@@ -4895,6 +4895,23 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertTrue(completed, "Expected onboarding bootstrap to finish after all three serial refreshes were released")
     }
 
+    @MainActor
+    func testAutomationStartSchedulesDiaryTodoAndWikiJobSnapshots() {
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 6, day: 1, hour: 9).date!
+        let appState = AppState(
+            bootstrapServices: false,
+            currentDate: { now }
+        )
+
+        appState.startAutomation(runImmediately: false)
+
+        XCTAssertEqual(appState.nextDiaryAutomationCheckDate, now.addingTimeInterval(10_800))
+        XCTAssertEqual(appState.nextTodoAutomationCheckDate, now.addingTimeInterval(11_400))
+        XCTAssertEqual(appState.nextMyWikiAutomationCheckDate, now.addingTimeInterval(12_600))
+        XCTAssertEqual(appState.automationJobSnapshots.map(\.kind), [.diary, .todo, .wiki])
+        XCTAssertEqual(appState.automationJobSnapshots.map(\.status), [.scheduled, .scheduled, .scheduled])
+    }
+
     func testCompletingOnboardingSkipsBootstrapDaysThatAlreadyExist() async throws {
         let (environment, gate) = try makeBlockingRefreshEnvironment()
         let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!

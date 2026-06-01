@@ -7,6 +7,7 @@ struct MyWikiPanel: View {
     let developmentSourceURL: URL
     let bundledHelperAppURL: URL?
     let importedDocuments: [ImportedKnowledgeDocument]
+    let nextDigestUpdateDate: Date?
     @Binding var selectedEntry: MyWikiEntry?
 
     @State private var query = ""
@@ -210,7 +211,10 @@ struct MyWikiPanel: View {
     }
 
     private var digestScheduleView: some View {
-        let presentation = MyWikiDigestSchedulePresentation(ingestProgress: ingestProgress)
+        let presentation = MyWikiDigestSchedulePresentation(
+            ingestProgress: ingestProgress,
+            nextRunDate: nextDigestUpdateDate
+        )
         return HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(presentation.title)
@@ -223,12 +227,9 @@ struct MyWikiPanel: View {
 
             Spacer(minLength: 10)
 
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(presentation.lastRunTitle)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text(presentation.lastRunValue)
-                    .font(.system(size: 13, weight: .semibold))
+            VStack(alignment: .trailing, spacing: 6) {
+                scheduleMetric(title: presentation.lastRunTitle, value: presentation.lastRunValue)
+                scheduleMetric(title: presentation.nextRunTitle, value: presentation.nextRunValue)
             }
 
             Button {
@@ -250,6 +251,16 @@ struct MyWikiPanel: View {
                         .stroke(MyWikiTheme.border, lineWidth: 1)
                 )
         )
+    }
+
+    private func scheduleMetric(title: String, value: String) -> some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 13, weight: .semibold))
+        }
     }
 
     @ViewBuilder
@@ -407,8 +418,8 @@ struct MyWikiPanel: View {
 
             if expandedCategoryIDs.contains(category.id), sectionPresentation.tagFacets.isEmpty == false {
                 tagFacetChips(category: category, facets: sectionPresentation.tagFacets)
-                    .padding(.bottom, 4)
-            }
+        .padding(.bottom, 4)
+    }
 
             ForEach(presentation.visibleEntries) { entry in
                 MyWikiIndexRow(entry: entry, isSelected: isSelected(entry)) {
@@ -544,52 +555,15 @@ struct MyWikiPanel: View {
         let sourceVault = sourceVault
         let importedDocuments = importedDocuments
         Task {
-            let outcome = await Task.detached(priority: .userInitiated) {
-                do {
-                    try MyWikiProjectExporter().ensureProject(at: projectRoot)
-
-                    let builder = MyWikiSourceCatalogBuilder()
-                    var snapshot = try builder.refreshCatalog(
-                        projectRoot: projectRoot,
-                        sourceVault: sourceVault,
-                        importedDocuments: importedDocuments
-                    )
-                    let plan = builder.ingestPlan(
-                        snapshot: snapshot,
-                        maxSources: MyWikiIngestBatchPolicy.maxSourcesPerRun
-                    )
-
-                    guard plan.sources.isEmpty == false else {
-                        return "My Wiki sources are already up to date."
-                    }
-
-                    let materialized = try builder.materialize(
-                        plan: plan,
-                        from: snapshot,
-                        projectRoot: projectRoot
-                    )
-
-                    do {
-                        try MyWikiPipelineBridge().runIngest(
-                            target: target,
-                            projectRoot: projectRoot,
-                            manifestURL: materialized.manifestURL
-                        )
-                        snapshot = builder.mark(plan: plan, succeededIn: snapshot, at: Date())
-                        try MyWikiSourceCatalogStore(projectRoot: projectRoot).save(snapshot)
-                        return "Updated \(materialized.materializedCount) My Wiki source(s)."
-                    } catch {
-                        snapshot = builder.mark(plan: plan, failedWith: error.localizedDescription, in: snapshot)
-                        try? MyWikiSourceCatalogStore(projectRoot: projectRoot).save(snapshot)
-                        return "My Wiki source update failed: \(error.localizedDescription)"
-                    }
-                } catch {
-                    return error.localizedDescription
-                }
-            }.value
+            let outcome = await MyWikiDigestRunner().run(
+                projectRoot: projectRoot,
+                sourceVault: sourceVault,
+                importedDocuments: importedDocuments,
+                target: target
+            )
 
             await MainActor.run {
-                statusMessage = outcome
+                statusMessage = outcome.message
                 isSyncing = false
                 loadDashboard()
             }

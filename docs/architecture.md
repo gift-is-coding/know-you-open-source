@@ -146,7 +146,7 @@ flowchart LR
 - 暴露 `importKnowledgeNow()` 兼容入口和 source scan 状态文案
 - 持有 `MainContentSelection`，把 diary 阅读、`Add Source` 管理页、source 内容页和 linked document 选择分开建模
 - 从 source 实例配置创建 Local Folder、Obsidian，以及 prompt-backed 的 Feishu/Lark、Notion、Google Drive 本地目录扫描器
-- 对 Feishu/Lark、Notion、Google Drive 不保存 token、OAuth secret、cookie、CLI 登录态或 bearer token；远端授权和定时任务由用户复制 prompt 到 Codex / Cloud Code 后在外部环境完成
+- 对 Feishu/Lark、Notion、Google Drive 不保存 token、OAuth secret、cookie、CLI 登录态或 bearer token；远端授权和定时任务由用户复制 prompt 到 Codex / Claude Code 后在外部环境完成
 - 在用户修改每日扫描配置时注册或移除独立的 `LaunchAgent`
 - 通过 `KnowledgeImportCoordinator` 扫描本地 Markdown/TXT 文件并写入轻量 index；文件型 source 的预览读取原始 source path，不复制正文内容
 
@@ -160,11 +160,19 @@ Add Source 与 Daily Memory Export 是边界不同的能力。Daily Memory Expor
 
 主窗口左侧导航现在把 `My Wiki`、`Other Source`、`My Diary` 渲染为同一组一级 root row。`My Wiki` 只切换中间内容区，不替换窗口框架；右上角 engine selector 始终保留在全局 toolbar 中，不随左侧入口切换移动。`Other Source` 复用既有 Add Source/source management route；`My Diary` 是内置来源，负责按天生成的 diary 内容；Local Folder、Obsidian、Feishu/Lark、Notion、Google Drive 等连接器添加后也作为平行的一级来源出现。连接器 root 和 folder 点击只展开或折叠本地路径推导出的文件树，不会在主区域打开第二份索引；点击 Markdown/TXT 叶子后，主区域直接进入 Markdown preview。侧边栏优先使用已有品牌 logo，并在从本地路径推导文件树时去掉重复的 connector root 文件夹名，避免 Obsidian vault 下多出一层同名目录。
 
-`Other Source` 主页面只呈现一个 `Sources` 列表。Local Folder 和 Obsidian 直接指向本地目录；Feishu/Lark、Notion、Google Drive 的主动作是 `Generate Prompt`，用弹窗展示 prompt 生成器，默认 daily 且本地时间 11:00，让用户复制到 Codex / Cloud Code 创建每日或每周定时同步任务。Daily Memory Export 保留底层能力和独立配置面板，但不再与 Other Source 的导入入口混在一起。
+`Other Source` 主页面只呈现一个 `Sources` 列表。Local Folder 和 Obsidian 直接指向本地目录；Feishu/Lark、Notion、Google Drive 的主动作是 `Generate Prompt`，用弹窗展示 prompt 生成器，默认 daily 且本地时间 11:00，让用户复制到 Codex / Claude Code 创建每日或每周定时同步任务。Prompt 明确要求外部自动化环境先检查 Feishu、Notion、Google Drive 所需 CLI、MCP 或本地工具是否安装并已授权，缺失时在外部环境安装并引导授权；复制后显示 `ExternalPromptRunGuide` 引导图。Daily Memory Export 保留底层能力和独立配置面板，但不再与 Other Source 的导入入口混在一起。
 
 `MainContentSelection` 避免把非 diary 页面编码成日期字符串。刷新完成后，`AppState.importKnowledgeNow()` 只刷新用户当前仍在查看的 knowledge 页面；如果用户停留在 connector root，只更新左侧文件树且不自动打开第一篇文档；如果用户正在阅读某个 source 文档，则保持该文档选择并重新加载 Markdown。Source 阅读状态不显示第三栏说明面板，避免和左侧文件树形成重复索引。
 
-### 3.5 Unified Todo
+### 3.5 Home、Networking 与最近日记窗口
+
+主窗口一级导航顺序为 `Home`、`Networking (Coming soon)`、`Todo`、`My Wiki`、`Other Source`、`My Diary`。Home 是默认理解入口，用视觉资产、英文短句和少量动作解释 KnowYou 会在后台持续更新 diary。Home 的状态模块显示 `Automatic Diary update` 和下一次自动检查的本地时间；`Generate Now` 只刷新今天；`Generate Last 3 Days` 只在 yesterday、2 days ago、3 days ago 缺少 model diary 时出现。
+
+Diary 左侧列表由 `JournalListOrdering` 统一裁剪为 today 加前三天，避免老内容把入口拉长。Onboarding 和老用户恢复使用同一套三天 bootstrap 队列，但队列只包含 yesterday 到 3 days ago，已有 model diary 的日期会跳过，today 由手动 `Generate Now` 或常规自动化负责。
+
+Networking 当前是 preview 页面，侧边栏与页面标题都标记为 `Networking (Coming soon)`。页面用 `Coming soon` 状态、profile / job / social discovery 说明和本地视觉资产表达未来方向，不再使用 `Clear identity` 或 `identity stays clear` 文案。
+
+### 3.6 Unified Todo
 
 统一 Todo inbox 的权威状态在 `Vault/Todo.md`，不是每日 Markdown 的派生状态。每日 `# 待办事项` 只保留“候选待办”的叙事职责，`Todo.md` 记录 open/completed、来源日期、来源事件、创建/完成时间、完成证据、归集方式与完成方式。旧 SQLite `todo_items` 表保留为兼容和首次 seed 来源：当 `Todo.md` 不存在但 SQLite 里已有 todo 时，`TodoStore` 会先写出 Markdown 文件。
 

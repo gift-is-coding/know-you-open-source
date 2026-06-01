@@ -393,11 +393,19 @@ enum JournalListOrdering {
     static func orderedDates(
         noteDays: Set<String>,
         placeholderDays: [String] = [],
-        includeDemoDay: Bool
+        includeDemoDay: Bool,
+        today: Date? = nil,
+        calendar: Calendar = .current
     ) -> [String] {
-        let allRealDays = noteDays
-            .union(placeholderDays)
+        let recentWindow = today.map { recentVisibleDayKeys(today: $0, calendar: calendar) }
+        let visibleRealDays = recentWindow.map { noteDays.union(placeholderDays).union($0) }
+            ?? noteDays.union(placeholderDays)
+        let allRealDays = visibleRealDays
             .filter { $0 != OnboardingDemoStory.demoDayKey }
+            .filter { dayKey in
+                guard let recentWindow else { return true }
+                return recentWindow.contains(dayKey)
+            }
             .sorted(by: >)
 
         if includeDemoDay {
@@ -405,6 +413,12 @@ enum JournalListOrdering {
         }
 
         return allRealDays
+    }
+
+    private static func recentVisibleDayKeys(today: Date, calendar: Calendar) -> Set<String> {
+        Set((0..<4).compactMap { offset in
+            calendar.date(byAdding: .day, value: -offset, to: today).map(ISO8601DayKey.format)
+        })
     }
 }
 
@@ -2247,7 +2261,7 @@ final class AppState {
 
     private static func onboardingBootstrapDays(now: Date) -> [String] {
         let calendar = Calendar(identifier: .gregorian)
-        return (0..<3).compactMap { offset in
+        return (1...3).compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: -offset, to: now) else { return nil }
             return ISO8601DayKey.format(date)
         }
@@ -4884,7 +4898,9 @@ extension AppState {
         availableDates = JournalListOrdering.orderedDates(
             noteDays: Set(noteIndex.keys),
             placeholderDays: onboardingBootstrapState == .complete ? [] : onboardingBootstrapDayKeys,
-            includeDemoDay: includeDemoDay
+            includeDemoDay: includeDemoDay,
+            today: currentDate(),
+            calendar: Calendar(identifier: .gregorian)
         )
     }
 

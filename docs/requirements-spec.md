@@ -204,7 +204,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - Add Source 必须支持 Local Folder、Obsidian、Feishu/Lark、Notion 和 Google Drive 类型的本地 source。
 - Feishu/Lark、Notion 和 Google Drive 必须通过 prompt-backed 本地目录工作：KnowYou 只生成 prompt、保存本地 source 元数据，并扫描 `Application Support/KnowYou/ExternalSources/<platform>/` 下的 Markdown/TXT 文件。
 - KnowYou 不得为 Feishu/Lark、Notion 或 Google Drive 保存 token、OAuth secret、cookie、CLI 登录态、bearer token 或账号授权状态。
-- 外部平台 prompt 必须要求 Codex / Cloud Code 在外部环境自行完成授权、定时任务、远端拉取、Markdown 转换和稳定路径覆盖更新。
+- 外部平台 prompt 必须要求 Codex / Claude Code 在外部环境自行完成授权、定时任务、远端拉取、Markdown 转换和稳定路径覆盖更新。
 - 文件型 source 必须只保存轻量 metadata 和 SQLite index；`localContentPath` 必须指向原始本地文件路径。
 - Obsidian 扫描必须默认跳过 `<vault>/KnowYou/Daily Memories/`。
 - 扫描器必须跳过带有 `knowyou_export: daily_memory` 的 KnowYou 导出文件。
@@ -212,9 +212,11 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 单个 source 扫描失败不得阻塞其他 source。
 - 用户必须能手动触发 `Refresh`，它只重新扫描本地目录。
 - 当启用每日 source scan 时，系统必须安装独立于 Daily Memory Export 的用户级 `LaunchAgent`。
-- 侧边栏必须始终显示 `Home`、`Networking`、`Todo`、`My Wiki`、`Other Source`、`My Diary` 这些同级一级入口，并且 `Home` 必须位于 `Networking` 前面。
-- `Home` 必须作为默认理解入口，使用英文短句和视觉资产提醒用户保持 KnowYou 在后台运行，展示下一次日记检查倒计时，提供 `Today’s Diary`、`My Wiki`、`Add Sources`、`Networking` 跳转，以及 `Generate Last 3 Days` 补生成按钮。
-- `Networking` 入口不得只显示 coming-soon placeholder；必须用英文短句和视觉资产说明用户可以创建不同场景的 profile，可用于求职、社交和 networking，并且 AI 可协助但身份必须清晰。
+- 侧边栏必须始终显示 `Home`、`Networking (Coming soon)`、`Todo`、`My Wiki`、`Other Source`、`My Diary` 这些同级一级入口，并且 `Home` 必须位于 `Networking (Coming soon)` 前面。
+- Diary 左侧日期列表必须只显示 today 加 last 3 days；三天补生成必须只检查 yesterday、2 days ago、3 days ago，不得把 today 混进 `Generate Last 3 Days`。
+- `Home` 必须作为默认理解入口，使用英文短句和视觉资产提醒用户保持 KnowYou 在后台运行，展示 `Automatic Diary update` 和下一次自动更新本地时间，提供 `Generate Now` 刷新今天，并且只在过去三天缺少 model diary 时显示 `Generate Last 3 Days`。
+- `Home` 的四个功能入口必须单列显示，顺序为 `Networking (Coming soon)`、`Today’s Diary`、`My Wiki`、`Add Sources`，并用简短人话解释用途和工作方式。
+- `Networking (Coming soon)` 入口不得只显示空白 placeholder；必须用英文短句和视觉资产说明用户可以创建不同场景的 profile，可用于求职、社交和 discovery；页面必须显示 `Coming soon`，且不得出现 `Clear identity` 或 `identity stays clear`。
 - `My Wiki`、`Other Source`、`My Diary` 必须使用同一套 sidebar row 组件、字号、图标尺寸、行高和选中态。
 - 右上角 engine selector 必须固定在主窗口全局 toolbar 中，不得随 `My Wiki`、`Other Source`、`My Diary` 的内容切换改变位置或变成页面内部组件。
 - `Other Source` 必须是独立入口，不得折叠或收起其他来源。
@@ -225,6 +227,9 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - `Other Source` 主页面不得出现顶部重复的 `Add Connector` 入口，所有未连接、已连接或异常来源必须在一个 `Sources` 列表中呈现。
 - `Other Source` 主页面不得提供泛化的 `Add API` 选项；外部平台必须以平台名称或本地文件来源名称呈现。
 - Feishu/Lark、Notion 和 Google Drive 的 `Generate Prompt` 必须打开弹窗，不得在 `Sources` 列表下方插入 inline prompt 表单。
+- Generate Prompt 弹窗标题必须为 `Generate Prompt and Run in Codex/Claude to Set Up`。
+- Generate Prompt 文本必须要求 Codex / Claude Code 先检查 Feishu、Notion、Google Drive 所需 CLI、MCP 或本地工具是否 installed 和 authorized；如缺失必须 install 并引导 authorization，验证能读取 scope 后再写入本地目录。
+- 点击 `Copy Prompt` 后必须显示 `ExternalPromptRunGuide` 引导弹窗，说明去 Codex / Claude Code 粘贴运行并完成平台授权。
 - Prompt 生成器默认更新频率为 daily，默认更新时间为本地时间 `11:00`。
 - 添加 source 后，该 source 必须作为 `Other Source` 管理的并列来源条目出现。
 - 点击连接器来源条目必须在侧边栏展开或折叠该来源的路径层级；点击 Markdown/TXT 文档叶子必须打开 Markdown 预览。

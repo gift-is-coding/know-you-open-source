@@ -281,6 +281,13 @@ struct MainWindowView: View {
                 mode = .journal
                 appState.selectDate(ISO8601DayKey.format(Date()))
             },
+            onGenerateToday: {
+                mode = .journal
+                appState.selectDate(ISO8601DayKey.format(Date()))
+                Task { @MainActor in
+                    await appState.refreshSelectedDay()
+                }
+            },
             onOpenMyWiki: {
                 mode = .knowledgeOntology
             },
@@ -811,31 +818,58 @@ struct HomeFeatureCardPresentation: Equatable, Identifiable {
 
 struct HomeDashboardPresentation: Equatable {
     let heroTitle = "KnowYou works quietly in the background."
-    let nextCheckTitle = "Next diary check"
+    let nextCheckTitle = "Automatic Diary update"
     let nextCheckValue: String
+    let generateTodayActionTitle = "Generate Now"
     let primaryActionTitle = "Generate Last 3 Days"
     let visualAssetName = "HomeDashboardHero"
     let featureCards: [HomeFeatureCardPresentation]
     let missingRecentDayCount: Int
+    let showsRecentHistoryAction: Bool
 
-    init(nextDiaryCheckDate: Date, now: Date, missingRecentDayCount: Int) {
-        self.nextCheckValue = Self.countdownText(from: now, to: nextDiaryCheckDate)
+    init(
+        nextDiaryCheckDate: Date,
+        now: Date,
+        missingRecentDayCount: Int,
+        displayTimeZone: TimeZone = .current
+    ) {
+        self.nextCheckValue = Self.checkTimeText(for: nextDiaryCheckDate, timeZone: displayTimeZone)
         self.missingRecentDayCount = missingRecentDayCount
+        self.showsRecentHistoryAction = missingRecentDayCount > 0
         self.featureCards = [
-            HomeFeatureCardPresentation(id: "today", title: "Today’s Diary", subtitle: "A living story of today.", systemImage: "book.pages"),
-            HomeFeatureCardPresentation(id: "wiki", title: "My Wiki", subtitle: "People, projects, patterns.", systemImage: "point.3.connected.trianglepath.dotted"),
-            HomeFeatureCardPresentation(id: "sources", title: "Add Sources", subtitle: "Bring more context in.", systemImage: "plus.square.on.square"),
-            HomeFeatureCardPresentation(id: "networking", title: "Networking", subtitle: "Profiles for each context.", systemImage: "network"),
+            HomeFeatureCardPresentation(
+                id: "networking",
+                title: "Networking (Coming soon)",
+                subtitle: "Create separate profiles for work, hiring, social, and founder moments when you are ready to share.",
+                systemImage: "network"
+            ),
+            HomeFeatureCardPresentation(
+                id: "today",
+                title: "Today’s Diary",
+                subtitle: "Generate or refresh today’s diary from local notifications and clipboard context while the app runs.",
+                systemImage: "book.pages"
+            ),
+            HomeFeatureCardPresentation(
+                id: "wiki",
+                title: "My Wiki",
+                subtitle: "Turn diaries and selected sources into people, projects, patterns, and searchable memory.",
+                systemImage: "point.3.connected.trianglepath.dotted"
+            ),
+            HomeFeatureCardPresentation(
+                id: "sources",
+                title: "Add Sources",
+                subtitle: "Connect folders or prompt-backed Feishu, Notion, and Google Drive exports for richer context.",
+                systemImage: "plus.square.on.square"
+            ),
         ]
     }
 
-    private static func countdownText(from now: Date, to date: Date) -> String {
-        let seconds = max(0, Int(date.timeIntervalSince(now)))
-        let minutes = seconds / 60
-        if minutes < 60 {
-            return "\(minutes) min"
-        }
-        return "\(minutes / 60)h \(minutes % 60)m"
+    private static func checkTimeText(for date: Date, timeZone: TimeZone) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "h:mm a"
+        formatter.timeZone = timeZone
+        return formatter.string(from: date)
     }
 }
 
@@ -843,6 +877,7 @@ private struct HomeDashboardView: View {
     let nextDiaryCheckDate: Date
     let missingRecentDayCount: Int
     let onOpenToday: () -> Void
+    let onGenerateToday: () -> Void
     let onOpenMyWiki: () -> Void
     let onAddSources: () -> Void
     let onOpenNetworking: () -> Void
@@ -881,46 +916,68 @@ private struct HomeDashboardView: View {
                     .font(.system(size: 32, weight: .semibold))
                     .fixedSize(horizontal: false, vertical: true)
 
-                HStack(spacing: 12) {
-                    Label(presentation.nextCheckTitle, systemImage: "timer")
-                        .font(.headline)
-                    Text(presentation.nextCheckValue)
-                        .font(.title2.monospacedDigit().weight(.semibold))
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 12) {
+                        Label(presentation.nextCheckTitle, systemImage: "clock.arrow.circlepath")
+                            .font(.headline)
+                        Text(presentation.nextCheckValue)
+                            .font(.title2.monospacedDigit().weight(.semibold))
+                    }
+
+                    HStack(spacing: 10) {
+                        Button(action: onGenerateToday) {
+                            Label(presentation.generateTodayActionTitle, systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        if presentation.showsRecentHistoryAction {
+                            Button(action: onGenerateRecentHistory) {
+                                Label(presentation.primaryActionTitle, systemImage: "sparkles")
+                            }
+                            .buttonStyle(.bordered)
+                            .help("\(presentation.missingRecentDayCount) recent day(s) need a generated diary.")
+                        }
+                    }
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
-
-                Button(action: onGenerateRecentHistory) {
-                    Label(presentation.primaryActionTitle, systemImage: "sparkles")
-                }
-                .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .help("\(presentation.missingRecentDayCount) recent day(s) need a generated diary.")
             }
         }
     }
 
     private func featureGrid(_ presentation: HomeDashboardPresentation) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 14)], spacing: 14) {
+        VStack(spacing: 12) {
             ForEach(presentation.featureCards) { card in
                 Button {
                     open(card)
                 } label: {
-                    VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .center, spacing: 16) {
                         Image(systemName: card.systemImage)
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(Color.accentColor)
-                        Text(card.title)
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        Text(card.subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                            .frame(width: 34, height: 34)
+                            .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(card.title)
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            Text(card.subtitle)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        Spacer(minLength: 12)
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
-                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
                     .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
@@ -945,12 +1002,13 @@ private struct HomeDashboardView: View {
 }
 
 struct NetworkingPreviewPresentation: Equatable {
-    let title = "Networking"
+    let title = "Networking (Coming soon)"
+    let status = "Coming soon"
     let visualAssetName = "NetworkingPreviewHero"
     let statements = [
         "Create profiles for different contexts.",
         "Use them for jobs, networking, and social discovery.",
-        "Your AI can help, but identity stays clear.",
+        "Choose what to share before anything goes public.",
     ]
 }
 
@@ -966,6 +1024,9 @@ private struct NetworkingPreviewView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
             VStack(alignment: .leading, spacing: 18) {
+                Text(presentation.status)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
                 Text(presentation.title)
                     .font(.largeTitle.weight(.semibold))
                 ForEach(presentation.statements, id: \.self) { statement in

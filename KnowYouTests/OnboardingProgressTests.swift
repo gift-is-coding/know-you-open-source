@@ -209,9 +209,9 @@ final class OnboardingProgressTests: XCTestCase {
         XCTAssertEqual(
             appState.onboardingBootstrapDayKeys,
             [
-                "2026-04-20",
                 "2026-04-19",
-                "2026-04-18"
+                "2026-04-18",
+                "2026-04-17"
             ]
         )
     }
@@ -265,7 +265,7 @@ final class OnboardingProgressTests: XCTestCase {
         XCTAssertTrue(appState.queueRecentHistoryBootstrapIfNeeded())
 
         XCTAssertEqual(appState.onboardingBootstrapState, OnboardingBootstrapState.pending)
-        XCTAssertEqual(appState.onboardingBootstrapDayKeys, ["2026-04-20", "2026-04-19", "2026-04-18"])
+        XCTAssertEqual(appState.onboardingBootstrapDayKeys, ["2026-04-19", "2026-04-18", "2026-04-17"])
         XCTAssertEqual(
             appState.onboardingBootstrapNotice?.message,
             "Generate the last 3 days from available local history. Keep KnowYou open while it writes."

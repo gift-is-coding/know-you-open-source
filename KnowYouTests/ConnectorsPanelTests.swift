@@ -153,14 +153,34 @@ final class ConnectorsPanelTests: XCTestCase {
             externalSourcesRootURL: root
         )
 
+        XCTAssertEqual(prompt.sheetTitle, "Generate Prompt and Run in Codex/Claude to Set Up")
         XCTAssertEqual(prompt.platformName, "Feishu Docs")
         XCTAssertEqual(prompt.outputDirectory, root.appending(path: "feishu", directoryHint: .isDirectory).path)
         XCTAssertTrue(prompt.prompt.contains("daily"))
         XCTAssertTrue(prompt.prompt.contains("09:15"))
         XCTAssertTrue(prompt.prompt.contains("Marketing docs"))
         XCTAssertTrue(prompt.prompt.contains(prompt.outputDirectory))
+        XCTAssertTrue(prompt.prompt.localizedCaseInsensitiveContains("installed"))
+        XCTAssertTrue(prompt.prompt.localizedCaseInsensitiveContains("authorized"))
+        XCTAssertTrue(prompt.prompt.localizedCaseInsensitiveContains("install"))
+        XCTAssertTrue(prompt.prompt.contains("Feishu"))
+        XCTAssertTrue(prompt.prompt.contains("Notion"))
+        XCTAssertTrue(prompt.prompt.contains("Google Drive"))
+        XCTAssertTrue(prompt.prompt.contains("Codex"))
+        XCTAssertTrue(prompt.prompt.contains("Claude Code"))
         XCTAssertFalse(prompt.prompt.localizedCaseInsensitiveContains("paste token back to KnowYou"))
         XCTAssertFalse(prompt.prompt.localizedCaseInsensitiveContains("bearer token"))
+    }
+
+    func testExternalSourcePromptRunGuidePresentationExplainsWhereToPasteCopiedPrompt() {
+        let presentation = ExternalSourcePromptRunGuidePresentation()
+
+        XCTAssertEqual(presentation.title, "Prompt copied")
+        XCTAssertEqual(presentation.visualAssetName, "ExternalPromptRunGuide")
+        XCTAssertTrue(presentation.message.contains("Codex"))
+        XCTAssertTrue(presentation.message.contains("Claude Code"))
+        XCTAssertTrue(presentation.message.localizedCaseInsensitiveContains("paste"))
+        XCTAssertTrue(presentation.message.localizedCaseInsensitiveContains("authorization"))
     }
 
     func testLegacyConnectorsSheetPresentationOnlyKeepsDailyExportCopy() {

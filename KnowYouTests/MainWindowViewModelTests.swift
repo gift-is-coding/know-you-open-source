@@ -2322,7 +2322,13 @@ final class MainWindowViewModelTests: XCTestCase {
 
     func testReaderNavigationRestoresPerDayParagraphMemory() throws {
         let environment = try makeReaderEnvironment()
-        let appState = AppState(environment: environment, bootstrapServices: false)
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            currentDate: {
+                DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 8).date!
+            }
+        )
         appState.refreshNotesIndex()
 
         XCTAssertEqual(appState.readerFocus, .dateList)
@@ -2351,7 +2357,13 @@ final class MainWindowViewModelTests: XCTestCase {
 
     func testEscapeReturnsStoryFocusToDateList() throws {
         let environment = try makeReaderEnvironment()
-        let appState = AppState(environment: environment, bootstrapServices: false)
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            currentDate: {
+                DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 8).date!
+            }
+        )
         appState.refreshNotesIndex()
 
         appState.handleReaderMove(.right)
@@ -4814,9 +4826,9 @@ final class MainWindowViewModelTests: XCTestCase {
         let (environment, gate) = try makeBlockingRefreshEnvironment()
         let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
         let expectedDays = [
-            "2026-04-11",
             "2026-04-10",
-            "2026-04-09"
+            "2026-04-09",
+            "2026-04-08"
         ]
         for (offset, dayKey) in expectedDays.enumerated() {
             try environment.databaseWriter.insert(
@@ -4847,18 +4859,18 @@ final class MainWindowViewModelTests: XCTestCase {
 
         appState.completeOnboarding()
 
-        await gate.waitUntilStarted(dayKey: "2026-04-11")
+        await gate.waitUntilStarted(dayKey: "2026-04-10")
         await Task.yield()
 
-        let todayStartedBeforeRelease = await gate.startCount(for: "2026-04-11")
-        let yesterdayStartedBeforeRelease = await gate.startCount(for: "2026-04-10")
-        XCTAssertEqual(todayStartedBeforeRelease, 1)
-        XCTAssertEqual(yesterdayStartedBeforeRelease, 0, "Expected yesterday to wait until today's refresh finishes")
-        XCTAssertEqual(Array(appState.availableDates.prefix(4)), expectedDays + [OnboardingDemoStory.demoDayKey])
+        let firstPreviousDayStartedBeforeRelease = await gate.startCount(for: "2026-04-10")
+        let secondPreviousDayStartedBeforeRelease = await gate.startCount(for: "2026-04-09")
+        XCTAssertEqual(firstPreviousDayStartedBeforeRelease, 1)
+        XCTAssertEqual(secondPreviousDayStartedBeforeRelease, 0, "Expected the second previous day to wait until the first refresh finishes")
+        XCTAssertEqual(Array(appState.availableDates.prefix(4)), ["2026-04-11"] + expectedDays)
         XCTAssertEqual(appState.onboardingBootstrapNotice?.message, "KnowYou is generating your first 3 days from available local history. All local. No backend server.")
         XCTAssertEqual(
             appState.onboardingBootstrapNotice?.progress,
-            OnboardingBootstrapProgress(completedDayCount: 0, totalDayCount: 3, activeDayKey: "2026-04-11")
+            OnboardingBootstrapProgress(completedDayCount: 0, totalDayCount: 3, activeDayKey: "2026-04-10")
         )
 
         for (index, dayKey) in expectedDays.enumerated() {
@@ -4898,6 +4910,19 @@ final class MainWindowViewModelTests: XCTestCase {
                 encoding: .utf8
             )
         }
+        try environment.databaseWriter.insert(
+            EventRecord(
+                id: UUID(),
+                sourceType: .clipboard,
+                sourceApp: "Notes",
+                capturedAt: now.addingTimeInterval(-86_400 * 3),
+                dayKey: "2026-04-08",
+                text: "bootstrap should fill the third previous day",
+                auditText: nil,
+                privacyAction: .keep,
+                contentHash: "bootstrap-skip-existing-2026-04-08"
+            )
+        )
 
         let appState = AppState(
             environment: environment,
@@ -4909,17 +4934,19 @@ final class MainWindowViewModelTests: XCTestCase {
         appState.refreshNotesIndex()
 
         appState.completeOnboarding()
-        await gate.waitUntilStarted(dayKey: "2026-04-11")
+        await gate.waitUntilStarted(dayKey: "2026-04-08")
         await Task.yield()
 
         let todayStarted = await gate.startCount(for: "2026-04-11")
         let yesterdayStarted = await gate.startCount(for: "2026-04-10")
+        let thirdPreviousStarted = await gate.startCount(for: "2026-04-08")
         let oldestStarted = await gate.startCount(for: "2026-04-05")
-        XCTAssertEqual(todayStarted, 1)
+        XCTAssertEqual(todayStarted, 0)
         XCTAssertEqual(yesterdayStarted, 0)
+        XCTAssertEqual(thirdPreviousStarted, 1)
         XCTAssertEqual(oldestStarted, 0)
 
-        await gate.release(dayKey: "2026-04-11")
+        await gate.release(dayKey: "2026-04-08")
         let completed = await waitUntil(timeoutNanoseconds: 5_000_000_000) {
             appState.onboardingBootstrapState == .complete
         }
@@ -4950,8 +4977,8 @@ final class MainWindowViewModelTests: XCTestCase {
                 id: UUID(),
                 sourceType: .clipboard,
                 sourceApp: "Notes",
-                capturedAt: now,
-                dayKey: "2026-04-11",
+                capturedAt: now.addingTimeInterval(-86_400 * 3),
+                dayKey: "2026-04-08",
                 text: "manual bootstrap should repair the missing recent day",
                 auditText: nil,
                 privacyAction: .keep,
@@ -4971,24 +4998,24 @@ final class MainWindowViewModelTests: XCTestCase {
         let queued = appState.queueRecentHistoryBootstrapIfNeeded(force: true)
 
         XCTAssertTrue(queued)
-        XCTAssertEqual(appState.onboardingBootstrapDayKeys, ["2026-04-11"])
+        XCTAssertEqual(appState.onboardingBootstrapDayKeys, ["2026-04-08"])
         XCTAssertEqual(appState.onboardingBootstrapState, .inProgress)
         XCTAssertEqual(
             appState.onboardingBootstrapNotice?.message,
             "Generate the last 3 days from available local history. Keep KnowYou open while it writes."
         )
 
-        await gate.waitUntilStarted(dayKey: "2026-04-11")
-        await gate.release(dayKey: "2026-04-11")
+        await gate.waitUntilStarted(dayKey: "2026-04-08")
+        await gate.release(dayKey: "2026-04-08")
     }
 
     func testCompletingOnboardingSendsCompletionNotificationAfterBootstrapSucceeds() async throws {
         let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
         let writer = try DatabaseWriter.inMemory()
         let expectedDays = [
-            "2026-04-11",
             "2026-04-10",
-            "2026-04-09"
+            "2026-04-09",
+            "2026-04-08"
         ]
         let sourceIDsByDay = Dictionary(
             uniqueKeysWithValues: expectedDays.map { ($0, UUID()) }
@@ -5043,7 +5070,7 @@ final class MainWindowViewModelTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
         try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
-        for existingDay in ["2026-04-09"] {
+        for existingDay in ["2026-04-08"] {
             try "# Existing \(existingDay)".write(
                 to: environment.vaultURL.appending(path: "\(existingDay).md"),
                 atomically: true,
@@ -5072,33 +5099,33 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(notifiedDayKeys.value.sorted(by: >), expectedDays)
     }
 
-    func testCompletingOnboardingContinuesToLaterBootstrapDaysAfterTodayFails() async throws {
+    func testCompletingOnboardingContinuesToLaterBootstrapDaysAfterFirstPreviousDayFails() async throws {
         let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!
         let writer = try DatabaseWriter.inMemory()
         let successfulDayIDs = [
-            "2026-04-10": UUID(),
-            "2026-04-09": UUID()
+            "2026-04-09": UUID(),
+            "2026-04-08": UUID()
         ]
         try writer.insert(
             EventRecord(
                 id: UUID(),
                 sourceType: .clipboard,
                 sourceApp: "Terminal",
-                capturedAt: now,
-                dayKey: "2026-04-11",
-                text: "Today's note should fail.",
+                capturedAt: now.addingTimeInterval(-86_400),
+                dayKey: "2026-04-10",
+                text: "The first previous day should fail.",
                 auditText: nil,
                 privacyAction: .keep,
-                contentHash: "onboarding-bootstrap-failure-today"
+                contentHash: "onboarding-bootstrap-failure-first-previous-day"
             )
         )
-        for (offset, dayKey) in ["2026-04-10", "2026-04-09"].enumerated() {
+        for (offset, dayKey) in ["2026-04-09", "2026-04-08"].enumerated() {
             try writer.insert(
                 EventRecord(
                     id: successfulDayIDs[dayKey]!,
                     sourceType: .clipboard,
                     sourceApp: "Notes",
-                    capturedAt: now.addingTimeInterval(TimeInterval(-86_400 * (offset + 1))),
+                    capturedAt: now.addingTimeInterval(TimeInterval(-86_400 * (offset + 2))),
                     dayKey: dayKey,
                     text: "\(dayKey) should still succeed.",
                     auditText: nil,
@@ -5109,7 +5136,7 @@ final class MainWindowViewModelTests: XCTestCase {
         }
 
         let summarizer = HandlerSummarizer { dayKey, _, _ in
-            if dayKey == "2026-04-11" {
+            if dayKey == "2026-04-10" {
                 throw URLError(.cannotConnectToHost)
             }
             let sourceID = successfulDayIDs[dayKey] ?? UUID()
@@ -5155,10 +5182,10 @@ final class MainWindowViewModelTests: XCTestCase {
         let completed = await waitUntil(timeoutNanoseconds: 2_000_000_000) {
             appState.onboardingBootstrapState == .complete
         }
-        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish even when today's generation fails")
-        XCTAssertNil(appState.noteIndex["2026-04-11"])
-        XCTAssertNotNil(appState.noteIndex["2026-04-10"], "Expected onboarding bootstrap to keep going and generate yesterday")
-        XCTAssertNotNil(appState.noteIndex["2026-04-09"], "Expected onboarding bootstrap to continue past yesterday")
+        XCTAssertTrue(completed, "Expected onboarding bootstrap to finish even when the first previous day generation fails")
+        XCTAssertNil(appState.noteIndex["2026-04-10"])
+        XCTAssertNotNil(appState.noteIndex["2026-04-09"], "Expected onboarding bootstrap to keep going and generate the second previous day")
+        XCTAssertNotNil(appState.noteIndex["2026-04-08"], "Expected onboarding bootstrap to continue through the third previous day")
     }
 
     func testCompletingOnboardingChunksBootstrapDaysAboveFiftyEvents() async throws {
@@ -5181,8 +5208,8 @@ final class MainWindowViewModelTests: XCTestCase {
                 )
             }
         }
-        try insertEvents(count: 205, dayKey: "2026-04-11", baseDate: now, contentPrefix: "today-chunk")
-        try insertEvents(count: 120, dayKey: "2026-04-10", baseDate: now.addingTimeInterval(-86_400), contentPrefix: "yesterday-chunk")
+        try insertEvents(count: 205, dayKey: "2026-04-10", baseDate: now.addingTimeInterval(-86_400), contentPrefix: "first-previous-chunk")
+        try insertEvents(count: 120, dayKey: "2026-04-09", baseDate: now.addingTimeInterval(-86_400 * 2), contentPrefix: "second-previous-chunk")
 
         let summarizer = RecordingOnboardingBootstrapSummarizer()
         let environment = AppEnvironment(
@@ -5200,7 +5227,7 @@ final class MainWindowViewModelTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
         try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
-        for existingDay in ["2026-04-09"] {
+        for existingDay in ["2026-04-08"] {
             try "# Existing \(existingDay)".write(
                 to: environment.vaultURL.appending(path: "\(existingDay).md"),
                 atomically: true,
@@ -5231,8 +5258,8 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(
             invocations.map(\.dayKey),
             [
-                "2026-04-11", "2026-04-11", "2026-04-11", "2026-04-11", "2026-04-11",
-                "2026-04-10", "2026-04-10", "2026-04-10"
+                "2026-04-10", "2026-04-10", "2026-04-10", "2026-04-10", "2026-04-10",
+                "2026-04-09", "2026-04-09", "2026-04-09"
             ]
         )
         XCTAssertEqual(
@@ -5246,7 +5273,7 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertTrue(invocations.allSatisfy { $0.eventIDs.count <= 50 })
         XCTAssertEqual(
             notifiedDayKeys.value.sorted(by: >),
-            ["2026-04-11", "2026-04-10", "2026-04-09"]
+            ["2026-04-10", "2026-04-09", "2026-04-08"]
         )
 
         let refreshLogs = try FileManager.default.contentsOfDirectory(
@@ -5255,7 +5282,7 @@ final class MainWindowViewModelTests: XCTestCase {
         )
         let todayLogURL = try XCTUnwrap(
             refreshLogs
-                .filter { $0.lastPathComponent.contains("__2026-04-11__") }
+                .filter { $0.lastPathComponent.contains("__2026-04-10__") }
                 .max(by: {
                     let leftDate = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
                     let rightDate = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
@@ -5287,11 +5314,11 @@ final class MainWindowViewModelTests: XCTestCase {
                 )
             }
         }
-        try insertEvents(count: 150, dayKey: "2026-04-11", baseDate: now, contentPrefix: "today-partial")
-        try insertEvents(count: 2, dayKey: "2026-04-10", baseDate: now.addingTimeInterval(-86_400), contentPrefix: "yesterday-success")
+        try insertEvents(count: 150, dayKey: "2026-04-10", baseDate: now.addingTimeInterval(-86_400), contentPrefix: "first-previous-partial")
+        try insertEvents(count: 2, dayKey: "2026-04-09", baseDate: now.addingTimeInterval(-86_400 * 2), contentPrefix: "second-previous-success")
 
         let summarizer = RecordingOnboardingBootstrapSummarizer()
-        summarizer.failingIncrementalChunkByDay = ["2026-04-11": 1]
+        summarizer.failingIncrementalChunkByDay = ["2026-04-10": 1]
         let environment = AppEnvironment(
             databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
             vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
@@ -5307,7 +5334,7 @@ final class MainWindowViewModelTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
         try FileManager.default.createDirectory(at: environment.vaultURL, withIntermediateDirectories: true)
-        for existingDay in ["2026-04-09"] {
+        for existingDay in ["2026-04-08"] {
             try "# Existing \(existingDay)".write(
                 to: environment.vaultURL.appending(path: "\(existingDay).md"),
                 atomically: true,
@@ -5333,15 +5360,15 @@ final class MainWindowViewModelTests: XCTestCase {
             appState.onboardingBootstrapState == .complete
         }
         XCTAssertTrue(completed, "Expected onboarding bootstrap to finish even when a later chunk fails")
-        XCTAssertNotNil(appState.noteIndex["2026-04-11"], "Expected the first chunk to leave a partial story behind")
-        XCTAssertNotNil(appState.noteIndex["2026-04-10"], "Expected onboarding bootstrap to continue to yesterday")
+        XCTAssertNotNil(appState.noteIndex["2026-04-10"], "Expected the first chunk to leave a partial story behind")
+        XCTAssertNotNil(appState.noteIndex["2026-04-09"], "Expected onboarding bootstrap to continue to the second previous day")
         XCTAssertEqual(notifiedDayKeys.value, [])
 
-        let partialStory = try XCTUnwrap(environment.loadDailyStory(dayKey: "2026-04-11"))
+        let partialStory = try XCTUnwrap(environment.loadDailyStory(dayKey: "2026-04-10"))
         XCTAssertEqual(environment.composer.usedSourceEventIDs(in: partialStory).count, 50)
 
         let invocations = await summarizer.recorder.snapshot()
-        XCTAssertEqual(invocations.map(\.dayKey), ["2026-04-11", "2026-04-11", "2026-04-10"])
+        XCTAssertEqual(invocations.map(\.dayKey), ["2026-04-10", "2026-04-10", "2026-04-09"])
         XCTAssertEqual(invocations.map(\.kind), [.fullRecovery, .incrementalAppend, .fullRecovery])
     }
 
@@ -5354,8 +5381,8 @@ final class MainWindowViewModelTests: XCTestCase {
                     id: UUID(),
                     sourceType: .clipboard,
                     sourceApp: "Notes",
-                    capturedAt: now.addingTimeInterval(TimeInterval(index)),
-                    dayKey: "2026-04-11",
+                    capturedAt: now.addingTimeInterval(-86_400).addingTimeInterval(TimeInterval(index)),
+                    dayKey: "2026-04-10",
                     text: "exact-threshold \(index)",
                     auditText: nil,
                     privacyAction: .keep,
@@ -5368,9 +5395,9 @@ final class MainWindowViewModelTests: XCTestCase {
                 id: UUID(),
                 sourceType: .clipboard,
                 sourceApp: "Notes",
-                capturedAt: now.addingTimeInterval(-86_400),
-                dayKey: "2026-04-10",
-                text: "small yesterday",
+                capturedAt: now.addingTimeInterval(-86_400 * 2),
+                dayKey: "2026-04-09",
+                text: "small second previous day",
                 auditText: nil,
                 privacyAction: .keep,
                 contentHash: "small-yesterday"
@@ -7895,7 +7922,10 @@ final class MainWindowViewModelTests: XCTestCase {
             environment: environment
         )
 
-        let appState = AppState(environment: environment)
+        let appState = AppState(
+            environment: environment,
+            currentDate: { baseDate }
+        )
 
         let newerStory = try XCTUnwrap(environment.loadDailyStory(dayKey: newerDayKey))
         let olderStory = try XCTUnwrap(environment.loadDailyStory(dayKey: olderDayKey))
@@ -7907,7 +7937,7 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertTrue(olderMarkdown.contains("## Narrative"))
         XCTAssertTrue(olderMarkdown.contains("## Build review"))
 
-        XCTAssertEqual(appState.availableDates, [newerDayKey, olderDayKey, OnboardingDemoStory.demoDayKey])
+        XCTAssertEqual(appState.availableDates, [newerDayKey, olderDayKey, "2026-04-08", "2026-04-07", OnboardingDemoStory.demoDayKey])
         XCTAssertEqual(appState.selectedDate, newerDayKey)
         XCTAssertEqual(appState.mainContentSelection, .diary(dayKey: newerDayKey))
     }
@@ -8022,7 +8052,13 @@ final class MainWindowViewModelTests: XCTestCase {
 
     func testRefreshNotesIndexAutoSelectsDiaryMainContentSelection() throws {
         let environment = try makeReaderEnvironment()
-        let appState = AppState(environment: environment, bootstrapServices: false)
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            currentDate: {
+                DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 8).date!
+            }
+        )
 
         appState.refreshNotesIndex()
 

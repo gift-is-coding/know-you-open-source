@@ -37,6 +37,8 @@ struct ExternalSourcePromptPresentation: Equatable {
     var scopeDescription: String
     var externalSourcesRootURL: URL
 
+    let sheetTitle = "Generate Prompt and Run in Codex/Claude to Set Up"
+
     var platformName: String {
         switch connectorID {
         case .feishuImport:
@@ -92,6 +94,13 @@ struct ExternalSourcePromptPresentation: Equatable {
         Source scope:
         \(scopeLine)
 
+        Before creating the automation:
+        - Run this in Codex or Claude Code, not inside KnowYou.
+        - Check whether the required local CLI, MCP server, or platform client for Feishu Docs, Notion, and Google Drive is installed and authorized.
+        - If a required tool is missing, install it in that automation environment.
+        - If authorization is missing, guide me through the platform sign-in or authorization flow there.
+        - Verify access by listing or reading the requested source scope before writing files.
+
         Destination:
         - Write Markdown or plain text files into:
           \(outputDirectory)
@@ -100,7 +109,7 @@ struct ExternalSourcePromptPresentation: Equatable {
         - Convert supported remote documents to Markdown whenever possible.
 
         Authorization:
-        - Handle any required platform sign-in inside Codex or Cloud Code.
+        - Handle any required platform sign-in inside Codex or Claude Code.
         - Keep remote authorization state in that automation environment.
         - Do not ask the user to paste any remote credential into KnowYou.
 
@@ -183,6 +192,13 @@ struct ConnectorsPanelPresentation: Equatable {
         }
         return value
     }
+}
+
+struct ExternalSourcePromptRunGuidePresentation: Equatable {
+    let title = "Prompt copied"
+    let message = "Paste this prompt into Codex or Claude Code, run it there, and finish any platform authorization when asked."
+    let visualAssetName = "ExternalPromptRunGuide"
+    let doneButtonTitle = "Got it"
 }
 
 enum ConnectorsManagementSurface: Equatable {
@@ -369,7 +385,7 @@ struct ConnectorsManagementPresentation: Equatable {
             id: id,
             title: title,
             status: "Not connected",
-            detail: "Generate a Codex or Cloud Code prompt that writes Markdown into a local folder KnowYou can scan.",
+            detail: "Generate a Codex or Claude Code prompt that writes Markdown into a local folder KnowYou can scan.",
             systemImage: systemImage,
             brandAssetName: brandAssetName,
             primaryActionTitle: "Generate Prompt",
@@ -452,6 +468,7 @@ struct ConnectorsManagementView: View {
     @State private var promptImportTime = ExternalSourcePromptPresentation.defaultImportTime()
     @State private var promptScopeDescription = ""
     @State private var isShowingExternalPrompt = false
+    @State private var isShowingPromptRunGuide = false
 
     init(
         managementPresentation: ConnectorsManagementPresentation,
@@ -510,6 +527,12 @@ struct ConnectorsManagementView: View {
         }
         .sheet(isPresented: $isShowingExternalPrompt) {
             externalPromptSheet
+        }
+        .sheet(isPresented: $isShowingPromptRunGuide) {
+            ExternalSourcePromptRunGuideView(
+                presentation: ExternalSourcePromptRunGuidePresentation(),
+                onDone: { isShowingPromptRunGuide = false }
+            )
         }
     }
 
@@ -704,7 +727,7 @@ struct ConnectorsManagementView: View {
         )
 
         return VStack(alignment: .leading, spacing: 10) {
-            Text("Generate Prompt")
+            Text(promptPresentation.sheetTitle)
                 .font(.title2.weight(.semibold))
 
             Picker("Platform", selection: $promptConnectorID) {
@@ -768,6 +791,9 @@ struct ConnectorsManagementView: View {
             presentation.outputDirectory
         )
         isShowingExternalPrompt = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            isShowingPromptRunGuide = true
+        }
     }
 
     private func connectorSection(
@@ -871,6 +897,39 @@ struct ConnectorsManagementView: View {
         }
     }
 
+}
+
+private struct ExternalSourcePromptRunGuideView: View {
+    let presentation: ExternalSourcePromptRunGuidePresentation
+    let onDone: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(presentation.title)
+                .font(.title2.weight(.semibold))
+
+            Image(presentation.visualAssetName)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            Text(presentation.message)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Spacer()
+                Button(presentation.doneButtonTitle, action: onDone)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+            }
+        }
+        .padding(24)
+        .frame(width: 520)
+        .background(Color(nsColor: .textBackgroundColor))
+    }
 }
 
 struct ConnectorsPanel: View {

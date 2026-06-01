@@ -547,11 +547,11 @@ struct DateSidebarPresentation {
             systemImage: "plus.square.on.square",
             isSelected: selectedItemID == "add-source" || selectedItemID == "other-source",
             isEnabled: true,
-            showsAddButton: true
+            showsAddButton: false
         )
         networkingRootItem = SidebarRootItem(
             id: "networking",
-            title: "Networking",
+            title: "Networking (Coming soon)",
             systemImage: "network",
             isSelected: selectedItemID == "networking",
             isEnabled: true,

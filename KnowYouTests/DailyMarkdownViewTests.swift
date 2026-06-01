@@ -63,10 +63,10 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertFalse(presentation.myWikiRootItem.isExpandable)
         XCTAssertEqual(presentation.sourceRootItem.id, "add-source")
         XCTAssertEqual(presentation.sourceRootItem.title, "Other Source")
-        XCTAssertTrue(presentation.sourceRootItem.showsAddButton)
+        XCTAssertFalse(presentation.sourceRootItem.showsAddButton)
         XCTAssertFalse(presentation.sourceRootItem.isExpandable)
         XCTAssertEqual(presentation.networkingRootItem.id, "networking")
-        XCTAssertEqual(presentation.networkingRootItem.title, "Networking")
+        XCTAssertEqual(presentation.networkingRootItem.title, "Networking (Coming soon)")
         XCTAssertFalse(presentation.networkingRootItem.showsAddButton)
         XCTAssertFalse(presentation.networkingRootItem.isExpandable)
         XCTAssertEqual(presentation.diaryRootItem.id, "diary-root")
@@ -118,7 +118,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.networkingRootItem.id, "networking")
-        XCTAssertEqual(presentation.networkingRootItem.title, "Networking")
+        XCTAssertEqual(presentation.networkingRootItem.title, "Networking (Coming soon)")
         XCTAssertEqual(presentation.networkingRootItem.selectionAction, .networkingComingSoon)
         XCTAssertTrue(presentation.networkingRootItem.isSelected)
         XCTAssertFalse(presentation.homeRootItem.isSelected)
@@ -126,6 +126,28 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertFalse(presentation.myWikiRootItem.isSelected)
         XCTAssertFalse(presentation.sourceRootItem.isSelected)
         XCTAssertFalse(presentation.diaryRootItem.isSelected)
+    }
+
+    func testJournalListOrderingShowsOnlyTodayAndLastThreeDays() {
+        let today = makeDate(year: 2026, month: 5, day: 23)
+        let dates = Set([
+            "2026-05-23",
+            "2026-05-22",
+            "2026-05-21",
+            "2026-05-20",
+            "2026-05-19",
+            "2026-05-18",
+            "2026-05-17",
+        ])
+
+        let orderedDates = JournalListOrdering.orderedDates(
+            noteDays: dates,
+            includeDemoDay: false,
+            today: today,
+            calendar: gregorianCalendar
+        )
+
+        XCTAssertEqual(orderedDates, ["2026-05-23", "2026-05-22", "2026-05-21", "2026-05-20"])
     }
 
     func testSidebarPresentationSelectsMyWikiAsPeerRootItem() {
@@ -395,7 +417,7 @@ final class DailyMarkdownViewTests: XCTestCase {
             calendar: gregorianCalendar
         )
 
-        XCTAssertTrue(presentation.sourceRootItem.showsAddButton)
+        XCTAssertFalse(presentation.sourceRootItem.showsAddButton)
         XCTAssertTrue(presentation.sourceRootItem.isSelected)
     }
 
@@ -428,26 +450,42 @@ final class DailyMarkdownViewTests: XCTestCase {
         let presentation = HomeDashboardPresentation(
             nextDiaryCheckDate: makeDate(year: 2026, month: 5, day: 23, hour: 15, minute: 0),
             now: makeDate(year: 2026, month: 5, day: 23, hour: 14, minute: 12),
-            missingRecentDayCount: 2
+            missingRecentDayCount: 2,
+            displayTimeZone: TimeZone(secondsFromGMT: 0)!
         )
 
         XCTAssertEqual(presentation.heroTitle, "KnowYou works quietly in the background.")
-        XCTAssertEqual(presentation.nextCheckTitle, "Next diary check")
-        XCTAssertEqual(presentation.nextCheckValue, "48 min")
+        XCTAssertEqual(presentation.nextCheckTitle, "Automatic Diary update")
+        XCTAssertEqual(presentation.nextCheckValue, "3:00 PM")
+        XCTAssertEqual(presentation.generateTodayActionTitle, "Generate Now")
         XCTAssertEqual(presentation.primaryActionTitle, "Generate Last 3 Days")
+        XCTAssertTrue(presentation.showsRecentHistoryAction)
         XCTAssertEqual(presentation.visualAssetName, "HomeDashboardHero")
-        XCTAssertEqual(presentation.featureCards.map(\.title), ["Today’s Diary", "My Wiki", "Add Sources", "Networking"])
-        XCTAssertTrue(presentation.featureCards.allSatisfy { $0.subtitle.count <= 42 })
+        XCTAssertEqual(presentation.featureCards.map(\.title), ["Networking (Coming soon)", "Today’s Diary", "My Wiki", "Add Sources"])
+        XCTAssertTrue(presentation.featureCards.allSatisfy { $0.subtitle.count > 42 })
+    }
+
+    func testHomeDashboardHidesLastThreeDaysActionWhenRecentHistoryIsComplete() {
+        let presentation = HomeDashboardPresentation(
+            nextDiaryCheckDate: makeDate(year: 2026, month: 5, day: 23, hour: 15, minute: 0),
+            now: makeDate(year: 2026, month: 5, day: 23, hour: 14, minute: 12),
+            missingRecentDayCount: 0,
+            displayTimeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        XCTAssertFalse(presentation.showsRecentHistoryAction)
     }
 
     func testNetworkingPreviewPresentationExplainsProfilesAndIdentityWithImageAssets() {
         let presentation = NetworkingPreviewPresentation()
 
-        XCTAssertEqual(presentation.title, "Networking")
+        XCTAssertEqual(presentation.title, "Networking (Coming soon)")
+        XCTAssertEqual(presentation.status, "Coming soon")
         XCTAssertEqual(presentation.visualAssetName, "NetworkingPreviewHero")
         XCTAssertTrue(presentation.statements.contains("Create profiles for different contexts."))
         XCTAssertTrue(presentation.statements.contains("Use them for jobs, networking, and social discovery."))
-        XCTAssertTrue(presentation.statements.contains("Your AI can help, but identity stays clear."))
+        XCTAssertFalse(presentation.statements.joined(separator: "\n").localizedCaseInsensitiveContains("clear identity"))
+        XCTAssertFalse(presentation.statements.joined(separator: "\n").localizedCaseInsensitiveContains("identity stays clear"))
     }
 
     func testTodoInboxCopyContainsNoChineseUserFacingLabels() {

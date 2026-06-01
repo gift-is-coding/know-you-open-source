@@ -20,18 +20,22 @@ struct TodoAutomationPresentation: Equatable {
     let nextUpdateValue: String
     let lastUpdateTitle = "Last update"
     let lastUpdateValue: String
-    let updateNowTitle = "Update Now"
+    let updateNowTitle: String
+    let isUpdateNowDisabled: Bool
     let statusMessage: String?
 
     init(
         nextUpdateDate: Date?,
         lastUpdateDate: Date?,
         statusMessage: String?,
+        isUpdating: Bool = false,
         displayTimeZone: TimeZone = .current
     ) {
         nextUpdateValue = nextUpdateDate.map { Self.timeText(for: $0, timeZone: displayTimeZone) } ?? "After Diary"
         lastUpdateValue = lastUpdateDate.map { Self.timeText(for: $0, timeZone: displayTimeZone) } ?? "Not updated yet"
-        self.statusMessage = statusMessage
+        updateNowTitle = isUpdating ? "Updating..." : "Update Now"
+        isUpdateNowDisabled = isUpdating
+        self.statusMessage = isUpdating ? "Updating Todo..." : statusMessage
     }
 
     private static func timeText(for date: Date, timeZone: TimeZone) -> String {
@@ -53,6 +57,7 @@ struct TodoInboxView: View {
     let automationStatusMessage: String?
     let nextUpdateDate: Date?
     let lastUpdateDate: Date?
+    let isUpdating: Bool
     let onAdd: (String) -> Void
     let onAddCandidate: (String) -> Void
     let onDismissCandidate: (String) -> Void
@@ -183,7 +188,8 @@ struct TodoInboxView: View {
         let presentation = TodoAutomationPresentation(
             nextUpdateDate: nextUpdateDate,
             lastUpdateDate: lastUpdateDate,
-            statusMessage: automationStatusMessage
+            statusMessage: automationStatusMessage,
+            isUpdating: isUpdating
         )
         return HStack(alignment: .center, spacing: 14) {
             Label(presentation.title, systemImage: "checklist")
@@ -210,6 +216,7 @@ struct TodoInboxView: View {
             Button(presentation.updateNowTitle, action: onUpdateNow)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
+                .disabled(presentation.isUpdateNowDisabled)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)

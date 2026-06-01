@@ -215,10 +215,11 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 侧边栏必须始终显示 `Home`、`Networking (Coming soon)`、`Todo`、`My Wiki`、`My Diary`、`Other Source` 这些同级一级入口，并且 Feishu/Lark、Notion、Google Drive 等已添加来源必须排在 `Other Source` 后面。
 - Diary 左侧日期列表必须只显示 today 加 last 3 days；三天补生成必须只检查 yesterday、2 days ago、3 days ago，不得把 today 混进 `Generate Last 3 Days`。
 - `Home` 必须作为默认理解入口，使用英文短句和视觉资产提醒用户保持 KnowYou 在后台运行，展示 `Automatic Diary update` 和下一次自动更新本地时间，提供 `Generate Now` 刷新今天，并且只在过去三天缺少 model diary 时显示 `Generate Last 3 Days`。
+- `Home` 的更新区必须保持 compact：只在 `running`、`degraded`、`failed`、`blocked` 时显示在 hero 右下角，`scheduled` 和 `completed` 不得占用页面空间。
 - `Home` 的功能入口必须单列显示，顺序为 `Networking (Coming soon)`、`Todo`、`My Wiki`、`Today’s Diary`、`Other Source`，并用简短人话解释用途和工作方式。
 - `Networking (Coming soon)` 入口不得只显示空白 placeholder；必须用英文短句和视觉资产说明用户可以创建不同场景的 profile，可用于求职、社交和 discovery；页面必须显示 `Coming soon`，且不得出现 `Clear identity` 或 `identity stays clear`。
 - `My Wiki`、`Other Source`、`My Diary` 必须使用同一套 sidebar row 组件、字号、图标尺寸、行高和选中态。
-- 右上角 engine selector 必须固定在主窗口全局 toolbar 中，不得随 `My Wiki`、`Other Source`、`My Diary` 的内容切换改变位置或变成页面内部组件。
+- 右上角 engine selector 必须固定在主窗口全局 toolbar 中，不得随 `My Wiki`、`Other Source`、`My Diary` 的内容切换改变位置或变成页面内部组件；当前默认 engine 不可可靠生成 diary 时，胶囊外侧必须显示红色感叹号。
 - `Other Source` 必须是独立入口，不得折叠或收起其他来源。
 - `My Diary` 必须作为内置来源与 Obsidian、Local Folder、Feishu/Lark、Notion、Google Drive 等外部来源平行呈现。
 - `Other Source` 必须打开来源管理页，而不是混合资料总览页。
@@ -580,9 +581,10 @@ Markdown 导出也应服务于这个目标：
 
 - 用户启动应用后，系统能自动运行采集与刷新
 - 用户启动应用后，系统还能在后台持续补同步今天的新通知，而不要求手动刷新
-- Home 必须显示 `Diary`、`Todo`、`My Wiki` 三类后台任务的最新状态和下一次更新时间；每类只保留最新状态，不堆积历史
-- Todo 页面必须显示 `Next update` 与 `Update Now`；没有 today story 时必须提示先生成今天的 diary，LLM 不可用时必须显示 degraded 而不能伪造任务
+- Home 必须维护 `Diary`、`Todo`、`My Wiki` 三类后台任务的最新状态；每类只保留最新状态，不堆积历史，并且只把 active/attention 状态显示到 compact 更新区
+- Todo 页面必须显示 `Next update` 与 `Update Now`；点击 `Update Now` 后必须显示 `Updating...` 并禁用重复点击；没有 today story 时必须提示先生成今天的 diary，LLM 不可用时必须显示 degraded 而不能伪造任务
 - My Wiki digest 必须同时显示 `Last update` 与 `Next update`，并说明它会在 Diary 和 Todo 就绪后每日更新，也可手动更新
+- 启动后如果当前默认 diary engine 已配置但处于 yellow，系统必须后台自动 retest 一次；用户不应必须先打开 engine popover 才刷新状态
 - 用户能在日期列表里看到已有日期
 - 用户选中某天后，能看到可阅读的 story
 - 用户手动刷新某天时，只会刷新该天，不会顺带刷新其他日期

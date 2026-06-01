@@ -562,6 +562,10 @@ private actor ProbeStartTracker {
             waiters.append((engines, continuation))
         }
     }
+
+    func hasStarted(_ engine: DiaryEngine) -> Bool {
+        started.contains(engine)
+    }
 }
 
 private actor RefreshBlockGate {
@@ -6357,6 +6361,70 @@ final class MainWindowViewModelTests: XCTestCase {
 
         XCTAssertEqual(first, afterPopoverDismissal)
         XCTAssertEqual(afterPopoverDismissal?.toolbarTitle, "Add Diary Engine")
+    }
+
+    func testEngineToolbarPresentationShowsExternalAttentionIconForUnavailableDefault() {
+        let presentation = DiaryEngineToolbarPresentation.make(
+            defaultEngine: .codexCLI,
+            engineStatuses: [
+                .codexCLI: EngineRuntimeStatus(state: .yellow, detail: "Executable found. Retest required.")
+            ],
+            retestingEngines: []
+        )
+
+        XCTAssertEqual(presentation.title, "Fix Diary Engine")
+        XCTAssertEqual(presentation.state, .yellow)
+        XCTAssertEqual(presentation.attentionSystemImage, "exclamationmark.circle.fill")
+        XCTAssertEqual(presentation.attentionColorName, "red")
+    }
+
+    func testEngineToolbarPresentationShowsTestingWhileDefaultEngineIsRetesting() {
+        let presentation = DiaryEngineToolbarPresentation.make(
+            defaultEngine: .codexCLI,
+            engineStatuses: [
+                .codexCLI: EngineRuntimeStatus(state: .yellow, detail: "Executable found. Retest required.")
+            ],
+            retestingEngines: [.codexCLI]
+        )
+
+        XCTAssertEqual(presentation.title, "Testing Codex (CLI)")
+        XCTAssertEqual(presentation.attentionSystemImage, "exclamationmark.circle.fill")
+    }
+
+    func testStartupQueuesDefaultEngineRepairWithoutOpeningPopover() async throws {
+        let executableURL = try makeStubExecutable(named: "codex")
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        config.codexCLIPath = executableURL.path
+        let environment = try makeEngineEnvironment()
+        let tracker = ProbeStartTracker()
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_390_000)
+
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: true,
+            summarizerConfig: config,
+            probeEngine: { engine, _, _ in
+                await tracker.markStarted(engine)
+                return EngineProbeResult(
+                    engine: engine,
+                    state: .green,
+                    detail: "Smoke test succeeded.",
+                    verifiedAt: verifiedAt
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        let didStartRepair = await waitUntilAsync(timeoutNanoseconds: 2_000_000_000) {
+            await tracker.hasStarted(.codexCLI)
+        }
+
+        XCTAssertTrue(didStartRepair)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.state, .green)
+        XCTAssertEqual(appState.engineStatuses[.codexCLI]?.lastVerifiedAt, verifiedAt)
     }
 
     func testLoadedDefaultNoneAutoPicksVerifiedEngineWhenSuppressionWasNeverSaved() async throws {

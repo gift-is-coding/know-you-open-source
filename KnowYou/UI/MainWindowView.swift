@@ -76,10 +76,12 @@ struct MainWindowView: View {
                 }
             }
             ToolbarItemGroup(placement: .primaryAction) {
+                let engineToolbarPresentation = engineToolbarPresentation
                 DiaryEngineSelectorButton(
-                    title: engineRecoveryNudge?.toolbarTitle ?? currentEngineTitle,
-                    state: engineRecoveryNudge?.toolbarState ?? currentEngineState,
-                    emphasized: showsOnboardingEngineButton || engineRecoveryNudge != nil,
+                    title: engineToolbarPresentation.title,
+                    state: engineToolbarPresentation.state,
+                    emphasized: showsOnboardingEngineButton || engineToolbarPresentation.emphasized,
+                    attentionSystemImage: engineToolbarPresentation.attentionSystemImage,
                     action: openEngineSelector
                 )
                 .onboardingCoachmarkTarget(.engineButton)
@@ -247,6 +249,7 @@ struct MainWindowView: View {
                     automationStatusMessage: appState.todoAutomationStatusMessage,
                     nextUpdateDate: appState.nextTodoAutomationCheckDate,
                     lastUpdateDate: appState.automationJobSnapshots.first(where: { $0.kind == .todo })?.lastRunAt,
+                    isUpdating: appState.isUpdatingTodoNow,
                     onAdd: { title in
                         appState.addTodo(title: title)
                     },
@@ -267,10 +270,7 @@ struct MainWindowView: View {
                     },
                     onUpdateNow: {
                         Task { @MainActor in
-                            await appState.runTodoAutomation(
-                                dayKeys: [ISO8601DayKey.format(Date())],
-                                trigger: .manual
-                            )
+                            await appState.runTodayTodoAutomationNow()
                         }
                     }
                 )
@@ -342,6 +342,14 @@ struct MainWindowView: View {
 
     private var currentEngineTitle: String {
         appState.defaultEngine == .none ? "Select Engine" : appState.defaultEngine.displayName
+    }
+
+    private var engineToolbarPresentation: DiaryEngineToolbarPresentation {
+        DiaryEngineToolbarPresentation.make(
+            defaultEngine: appState.defaultEngine,
+            engineStatuses: appState.engineStatuses,
+            retestingEngines: appState.retestingEngines
+        )
     }
 
     private var engineRecoveryNudge: DiaryEngineRecoveryNudgePresentation? {
@@ -880,7 +888,7 @@ struct HomeDashboardPresentation: Equatable {
     let generateTodayActionTitle = "Generate Now"
     let primaryActionTitle = "Generate Last 3 Days"
     let visualAssetName = "HomeDashboardHero"
-    let jobSectionTitle = "Background jobs"
+    let activeJobsTitle = "Updating"
     let jobRows: [HomeJobRowPresentation]
     let featureCards: [HomeFeatureCardPresentation]
     let missingRecentDayCount: Int
@@ -897,6 +905,7 @@ struct HomeDashboardPresentation: Equatable {
         self.missingRecentDayCount = missingRecentDayCount
         self.showsRecentHistoryAction = missingRecentDayCount > 0
         self.jobRows = jobSnapshots
+            .filter { Self.shouldShowJob($0.status) }
             .sorted { $0.kind.sortIndex < $1.kind.sortIndex }
             .map { HomeJobRowPresentation(snapshot: $0, displayTimeZone: displayTimeZone) }
         self.featureCards = [
@@ -940,6 +949,15 @@ struct HomeDashboardPresentation: Equatable {
         formatter.timeZone = timeZone
         return formatter.string(from: date)
     }
+
+    private static func shouldShowJob(_ status: AutomationJobStatus) -> Bool {
+        switch status {
+        case .running, .degraded, .failed, .blocked:
+            return true
+        case .scheduled, .completed:
+            return false
+        }
+    }
 }
 
 private struct HomeDashboardView: View {
@@ -965,7 +983,6 @@ private struct HomeDashboardView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     hero(presentation)
-                    jobList(presentation)
                     featureGrid(presentation)
                 }
                 .padding(28)
@@ -989,33 +1006,37 @@ private struct HomeDashboardView: View {
                     .font(.system(size: 32, weight: .semibold))
                     .fixedSize(horizontal: false, vertical: true)
 
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 12) {
-                        Label(presentation.nextCheckTitle, systemImage: "clock.arrow.circlepath")
-                            .font(.headline)
-                        Text(presentation.nextCheckValue)
-                            .font(.title2.monospacedDigit().weight(.semibold))
-                    }
-
-                    HStack(spacing: 10) {
-                        Button(action: onGenerateToday) {
-                            Label(presentation.generateTodayActionTitle, systemImage: "arrow.clockwise")
+                HStack(alignment: .bottom, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 12) {
+                            Label(presentation.nextCheckTitle, systemImage: "clock.arrow.circlepath")
+                                .font(.headline)
+                            Text(presentation.nextCheckValue)
+                                .font(.title2.monospacedDigit().weight(.semibold))
                         }
-                        .buttonStyle(.borderedProminent)
 
-                        if presentation.showsRecentHistoryAction {
-                            Button(action: onGenerateRecentHistory) {
-                                Label(presentation.primaryActionTitle, systemImage: "sparkles")
+                        HStack(spacing: 10) {
+                            Button(action: onGenerateToday) {
+                                Label(presentation.generateTodayActionTitle, systemImage: "arrow.clockwise")
                             }
-                            .buttonStyle(.bordered)
-                            .help("\(presentation.missingRecentDayCount) recent day(s) need a generated diary.")
+                            .buttonStyle(.borderedProminent)
+
+                            if presentation.showsRecentHistoryAction {
+                                Button(action: onGenerateRecentHistory) {
+                                    Label(presentation.primaryActionTitle, systemImage: "sparkles")
+                                }
+                                .buttonStyle(.bordered)
+                                .help("\(presentation.missingRecentDayCount) recent day(s) need a generated diary.")
+                            }
                         }
                     }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                    .controlSize(.large)
+
+                    jobList(presentation)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
-                .controlSize(.large)
             }
         }
     }
@@ -1061,58 +1082,48 @@ private struct HomeDashboardView: View {
     @ViewBuilder
     private func jobList(_ presentation: HomeDashboardPresentation) -> some View {
         if presentation.jobRows.isEmpty == false {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(presentation.jobSectionTitle)
-                    .font(.headline)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(presentation.activeJobsTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
 
-                VStack(spacing: 8) {
+                VStack(spacing: 6) {
                     ForEach(presentation.jobRows) { row in
                         Button {
                             open(row.id)
                         } label: {
-                            HStack(alignment: .center, spacing: 12) {
+                            HStack(alignment: .center, spacing: 8) {
                                 Image(systemName: row.systemImage)
-                                    .font(.headline)
+                                    .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(Color.accentColor)
-                                    .frame(width: 30, height: 30)
+                                    .frame(width: 24, height: 24)
                                     .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
 
-                                VStack(alignment: .leading, spacing: 5) {
-                                    HStack(spacing: 8) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack(spacing: 6) {
                                         Text(row.title)
-                                            .font(.subheadline.weight(.semibold))
+                                            .font(.caption.weight(.semibold))
                                             .foregroundStyle(.primary)
                                         Text(row.statusText)
-                                            .font(.caption.weight(.semibold))
+                                            .font(.caption2.weight(.semibold))
                                             .foregroundStyle(.secondary)
                                     }
                                     Text(row.detail)
-                                        .font(.caption)
+                                        .font(.caption2)
                                         .foregroundStyle(.secondary)
-                                        .lineLimit(2)
+                                        .lineLimit(1)
                                     if let progress = row.progress, progress < 1 {
                                         ProgressView(value: progress)
                                             .progressViewStyle(.linear)
-                                            .frame(maxWidth: 280)
+                                            .frame(maxWidth: 160)
                                     }
                                 }
 
-                                Spacer(minLength: 12)
-
-                                VStack(alignment: .trailing, spacing: 4) {
-                                    if let lastRunText = row.lastRunText {
-                                        Text(lastRunText)
-                                    }
-                                    if let nextRunText = row.nextRunText {
-                                        Text(nextRunText)
-                                    }
-                                }
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                Spacer(minLength: 6)
                             }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .frame(width: 260, alignment: .leading)
                             .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)

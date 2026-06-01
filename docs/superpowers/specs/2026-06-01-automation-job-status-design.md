@@ -15,7 +15,9 @@ Todo 过去没有独立的定时入口，只在 Diary 生成或刷新后顺带�
 
 ## 用户体验
 
-Home 的 `Background jobs` 是用户理解后台工作的主入口。每行显示任务名、状态、说明、进度条、上次和下次时间，点击行跳转到对应栏目。Todo 页面给出下一次更新时间和手动触发按钮。My Wiki digest 条说明它会在 Diary 和 Todo 准备好后每日更新，同时保留手动按钮。
+Home 的更新区是用户理解后台工作的轻量入口，但不能在空闲时占用主屏空间。它只在 `running`、`degraded`、`failed`、`blocked` 时出现在 hero 右下角，每行显示任务名、状态、短说明和小进度条，点击行跳转到对应栏目；`scheduled` 和 `completed` 不在 Home 显示。Todo 页面给出下一次更新时间和手动触发按钮，点击后按钮立即变成 `Updating...` 并禁用重复点击。My Wiki digest 条说明它会在 Diary 和 Todo 准备好后每日更新，同时保留手动按钮。
+
+右上角 Diary Engine 胶囊必须在外侧直接显示红色感叹号，提醒当前默认 engine 不可可靠生成 diary。启动时如果默认 engine 已配置但处于 yellow 状态，AppState 会自动在后台跑一次默认 engine smoke test；用户不需要先点开 popover 才触发刷新。
 
 ## 状态模型
 
@@ -33,3 +35,4 @@ Home 的 `Background jobs` 是用户理解后台工作的主入口。每行显�
 - Todo：下一次默认排在 Diary 之后 10 分钟；手动 `Update Now` 立即处理今天 story。
 - My Wiki：下一次默认排在 Diary 之后 30 分钟；完成后下一次排到 24 小时后。
 - 依赖不满足时，Todo 显示 `Generate today’s diary first.`。
+- Engine：启动后只自动 retest 当前默认 yellow engine；gray 状态只显示外侧告警，不自动调用缺失的 CLI/API。

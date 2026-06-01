@@ -714,6 +714,7 @@ final class AppState {
     var defaultEngine: DiaryEngine
     var isRetestingEngines = false
     var retestingEngines: Set<DiaryEngine> = []
+    var isUpdatingTodoNow = false
     var selectedContentVersion = 0
     var selectedStory: DailyStory?
     var selectedStoryParagraphID: String?
@@ -758,6 +759,7 @@ final class AppState {
     @ObservationIgnored private var notificationCatchUpTimer: Timer?
     @ObservationIgnored private var todoAutomationTimer: Timer?
     @ObservationIgnored private var myWikiAutomationTimer: Timer?
+    @ObservationIgnored private var defaultEngineRepairTask: Task<Void, Never>?
     @ObservationIgnored private var onboardingBootstrapTask: Task<Void, Never>?
     @ObservationIgnored private var onboardingBootstrapNoticeDismissTask: Task<Void, Never>?
     @ObservationIgnored private var paragraphSelectionByDay: [String: String] = [:]
@@ -948,6 +950,7 @@ final class AppState {
             refreshTodoItems(using: environment)
             queueInitialLinkedSourceScanIfNeeded()
             if bootstrapServices {
+                queueDefaultEngineRepairIfNeeded(reason: "startup")
                 queueEndOfDayReminderBootstrap()
                 restoreOnboardingProgress(
                     isFullDiskAccessReady: notificationStatus.isDatabaseAvailable,
@@ -996,6 +999,7 @@ final class AppState {
             refreshTodoItems(using: environment)
             queueInitialLinkedSourceScanIfNeeded()
             statusMessage = "Capture services ready"
+            queueDefaultEngineRepairIfNeeded(reason: "startup")
             queueEndOfDayReminderBootstrap()
             restoreOnboardingProgress(
                 isFullDiskAccessReady: notificationStatus.isDatabaseAvailable,
@@ -1480,6 +1484,16 @@ final class AppState {
             )
             await processTodosAfterRefresh(dayKey: dayKey, story: story, events: [])
         }
+    }
+
+    func runTodayTodoAutomationNow() async {
+        guard !isUpdatingTodoNow else { return }
+        isUpdatingTodoNow = true
+        defer { isUpdatingTodoNow = false }
+        await runTodoAutomation(
+            dayKeys: [ISO8601DayKey.format(currentDate())],
+            trigger: .manual
+        )
     }
 
     func runMyWikiDigest(trigger: AutomationJobTrigger) async {
@@ -2258,6 +2272,7 @@ final class AppState {
 
     func repairDefaultEngineIfNeeded() async -> Bool {
         guard defaultEngine != .none else { return false }
+        guard !retestingEngines.contains(defaultEngine) else { return false }
         let status = engineStatuses[defaultEngine] ?? Self.makeBaselineStatus(
             for: defaultEngine,
             config: summarizerConfig,
@@ -2267,6 +2282,26 @@ final class AppState {
 
         await retestEngine(defaultEngine)
         return true
+    }
+
+    func queueDefaultEngineRepairIfNeeded(reason: String) {
+        _ = reason
+        guard defaultEngineRepairTask == nil else { return }
+        guard defaultEngine != .none else { return }
+        guard !retestingEngines.contains(defaultEngine) else { return }
+        let status = engineStatuses[defaultEngine] ?? Self.makeBaselineStatus(
+            for: defaultEngine,
+            config: summarizerConfig,
+            environment: processEnvironment
+        )
+        guard status.state == .yellow else { return }
+        guard !status.configurationSignature.isEmpty else { return }
+
+        defaultEngineRepairTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            _ = await self.repairDefaultEngineIfNeeded()
+            self.defaultEngineRepairTask = nil
+        }
     }
 
     func testLLMAPIProvider(

@@ -490,12 +490,49 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.featureCards.map(\.title), ["Networking (Coming soon)", "Todo", "My Wiki", "Today’s Diary", "Other Source"])
         XCTAssertEqual(presentation.featureCards.map(\.id), ["networking", "todo", "wiki", "today", "sources"])
         XCTAssertTrue(presentation.featureCards.allSatisfy { $0.subtitle.count > 42 })
-        XCTAssertEqual(presentation.jobSectionTitle, "Background jobs")
-        XCTAssertEqual(presentation.jobRows.map(\.title), ["Diary", "Todo", "My Wiki"])
-        XCTAssertEqual(presentation.jobRows.map(\.statusText), ["Running", "Scheduled", "Completed"])
+        XCTAssertEqual(presentation.activeJobsTitle, "Updating")
+        XCTAssertEqual(presentation.jobRows.map(\.title), ["Diary"])
+        XCTAssertEqual(presentation.jobRows.map(\.statusText), ["Running"])
         XCTAssertEqual(presentation.jobRows[0].nextRunText, "Next 3:00 PM")
-        XCTAssertEqual(presentation.jobRows[1].nextRunText, "Next 3:10 PM")
-        XCTAssertEqual(presentation.jobRows[2].lastRunText, "Last 12:30 PM")
+    }
+
+    func testHomeDashboardHidesIdleJobsAndShowsAttentionJobsOnly() {
+        let presentation = HomeDashboardPresentation(
+            nextDiaryCheckDate: makeDate(year: 2026, month: 5, day: 23, hour: 15, minute: 0),
+            now: makeDate(year: 2026, month: 5, day: 23, hour: 14, minute: 12),
+            missingRecentDayCount: 0,
+            jobSnapshots: [
+                AutomationJobSnapshot(
+                    kind: .diary,
+                    status: .scheduled,
+                    detail: "Every 3 hours",
+                    progress: 0,
+                    lastRunAt: nil,
+                    nextRunAt: makeDate(year: 2026, month: 5, day: 23, hour: 15, minute: 0)
+                ),
+                AutomationJobSnapshot(
+                    kind: .todo,
+                    status: .completed,
+                    detail: "Todo is up to date.",
+                    progress: 1,
+                    lastRunAt: makeDate(year: 2026, month: 5, day: 23, hour: 12, minute: 10),
+                    nextRunAt: makeDate(year: 2026, month: 5, day: 23, hour: 15, minute: 10)
+                ),
+                AutomationJobSnapshot(
+                    kind: .wiki,
+                    status: .degraded,
+                    detail: "My Wiki needs attention.",
+                    progress: 1,
+                    lastRunAt: makeDate(year: 2026, month: 5, day: 23, hour: 12, minute: 30),
+                    nextRunAt: makeDate(year: 2026, month: 5, day: 24, hour: 15, minute: 30)
+                ),
+            ],
+            displayTimeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        XCTAssertEqual(presentation.jobRows.map(\.title), ["My Wiki"])
+        XCTAssertEqual(presentation.jobRows.map(\.statusText), ["Needs attention"])
+        XCTAssertEqual(presentation.jobRows[0].lastRunText, "Last 12:30 PM")
     }
 
     func testHomeDashboardHidesLastThreeDaysActionWhenRecentHistoryIsComplete() {
@@ -523,7 +560,22 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.lastUpdateTitle, "Last update")
         XCTAssertEqual(presentation.lastUpdateValue, "12:10 PM")
         XCTAssertEqual(presentation.updateNowTitle, "Update Now")
+        XCTAssertFalse(presentation.isUpdateNowDisabled)
         XCTAssertEqual(presentation.statusMessage, "Todo automation degraded: no available LLM result; manual add still works.")
+    }
+
+    func testTodoAutomationPresentationShowsUpdatingState() {
+        let presentation = TodoAutomationPresentation(
+            nextUpdateDate: makeDate(year: 2026, month: 5, day: 23, hour: 15, minute: 10),
+            lastUpdateDate: nil,
+            statusMessage: nil,
+            isUpdating: true,
+            displayTimeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        XCTAssertEqual(presentation.updateNowTitle, "Updating...")
+        XCTAssertTrue(presentation.isUpdateNowDisabled)
+        XCTAssertEqual(presentation.statusMessage, "Updating Todo...")
     }
 
     func testNetworkingPreviewPresentationExplainsProfilesAndIdentityWithImageAssets() {

@@ -464,7 +464,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
   - 顶层 `output_text`
   - `output[].content[].text`
 - 旧 `.openAI` engine、旧 `apiBaseURL/apiModel/apiToken` 会迁移为 `.llmAPI` 和最匹配的 provider；无法识别的旧 URL 进入 Custom OpenAI-compatible
-- `EngineProbe` 会对 CLI/API/Codex Auth 引擎做最小 smoke test，并产出灰/黄/绿三色状态
+- `EngineProbe` 会对 CLI/API/Codex Auth 引擎做最小 smoke test，并产出灰/黄/绿三色状态；启动时如果当前默认引擎已配置但处于 yellow，`AppState` 会在后台自动 retest 一次，不再等用户点开 engine popover 才刷新
 - 若持久化的默认引擎在重启时无法证明仍可用，`AppState` 会把活动默认引擎归一到 `.none`，避免未验证引擎被直接重新激活
 - 状态刷新后的自动改选只会发生在当前默认值已经是 `.none` 的情况下；明确选中的非 `None` 引擎不会被被动覆盖
 
@@ -585,7 +585,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - 主窗口右下角会显示只读 build badge；marketing version 仍来自 bundle，build number、build time 与 git short SHA 由 Xcode build phase 写入构建产物
 - 主窗口标题栏左上角通过 toolbar leading 区域显示更新胶囊，并且不会覆盖 traffic lights 的点击区域
 - 当存在 `UpdateOffer` 时，点击胶囊会打开统一的更新 sheet；同一套 UI 会按渠道切换主按钮文案和动作
-- 窗口右上角提供 `DiaryEngineSelectorButton`
+- 窗口右上角提供 `DiaryEngineSelectorButton`，当当前默认引擎不可可靠生成 diary 时，胶囊外侧直接显示红色感叹号
 - 一级面板列出 `LLM API / Codex Auth / Claude Code CLI / Codex CLI / Gemini CLI / Openclaw CLI` 等引擎及状态灯
 - 只有绿色引擎允许直接切为默认项
 - `LLM API` 行会进入 `LLMAPIDetailSheet`，管理多个 provider 的 `baseURL`、`model`、Keychain token；wire format 按 provider 只读展示，并支持 `Save`、`Set Active`、`Test Provider`
@@ -767,9 +767,9 @@ My Wiki 只处理用户授权进入 catalog 的 source。KnowYou diary 默认可
 
 ## 12. 后台任务调度
 
-AppState 维护覆盖式 `AutomationJobSnapshot`，按 `Diary`、`Todo`、`My Wiki` 三类保存最新任务状态，而不是追加历史日志。Home 的 `Background jobs` 区域直接读取这些快照，展示状态、进度、上次运行时间和下一次运行时间，并允许用户点击跳转到对应页面。
+AppState 维护覆盖式 `AutomationJobSnapshot`，按 `Diary`、`Todo`、`My Wiki` 三类保存最新任务状态，而不是追加历史日志。Home 只把 `running`、`degraded`、`failed`、`blocked` 这些 active/attention 状态显示成 hero 右下角的 compact 更新区；`scheduled` 和 `completed` 不在 Home 占空间。每行展示任务、状态、短说明和小进度条，并允许用户点击跳转到对应页面。
 
-Diary 仍是主节拍，每 3 小时自动检查和刷新一次。Todo 默认排在 Diary 之后 10 分钟，也会在手动或 onboarding diary 完成后处理对应 story；如果没有 today story，Todo 状态显示 blocked，并提示先生成今天的 diary。My Wiki 默认排在 Diary 和 Todo 就绪后运行，每天一次；页面内的 `Update Now` 与后台调度复用同一个 digest runner。
+Diary 仍是主节拍，每 3 小时自动检查和刷新一次。Todo 默认排在 Diary 之后 10 分钟，也会在手动或 onboarding diary 完成后处理对应 story；如果没有 today story，Todo 状态显示 blocked，并提示先生成今天的 diary。Todo 页面的 `Update Now` 点击后立即进入 `Updating...` 状态，避免用户误以为没有反应。My Wiki 默认排在 Diary 和 Todo 就绪后运行，每天一次；页面内的 `Update Now` 与后台调度复用同一个 digest runner。
 
 ## 13. 当前架构约束
 

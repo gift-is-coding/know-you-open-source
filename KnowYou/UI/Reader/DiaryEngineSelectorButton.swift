@@ -4,17 +4,20 @@ struct DiaryEngineSelectorButton: View {
     let title: String
     let state: EngineIndicatorState
     let emphasized: Bool
+    let attentionSystemImage: String?
     let action: () -> Void
 
     init(
         title: String,
         state: EngineIndicatorState,
         emphasized: Bool = false,
+        attentionSystemImage: String? = nil,
         action: @escaping () -> Void
     ) {
         self.title = title
         self.state = state
         self.emphasized = emphasized
+        self.attentionSystemImage = attentionSystemImage
         self.action = action
     }
 
@@ -36,6 +39,16 @@ struct DiaryEngineSelectorButton: View {
                 Capsule()
                     .strokeBorder(borderColor, lineWidth: emphasized ? 1.5 : 0)
             )
+            .overlay(alignment: .topTrailing) {
+                if let attentionSystemImage {
+                    Image(systemName: attentionSystemImage)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.red)
+                        .background(Color(nsColor: .windowBackgroundColor), in: Circle())
+                        .offset(x: 5, y: -5)
+                        .accessibilityLabel("Diary engine needs attention")
+                }
+            }
             .shadow(color: emphasized ? Color.accentColor.opacity(0.18) : .clear, radius: 10, x: 0, y: 4)
         }
         .buttonStyle(.plain)
@@ -50,6 +63,52 @@ struct DiaryEngineSelectorButton: View {
 
     private var borderColor: Color {
         emphasized ? .accentColor.opacity(0.85) : .clear
+    }
+}
+
+struct DiaryEngineToolbarPresentation: Equatable {
+    let title: String
+    let state: EngineIndicatorState
+    let emphasized: Bool
+    let attentionSystemImage: String?
+    let attentionColorName: String?
+
+    static func make(
+        defaultEngine: DiaryEngine,
+        engineStatuses: [DiaryEngine: EngineRuntimeStatus],
+        retestingEngines: Set<DiaryEngine>
+    ) -> DiaryEngineToolbarPresentation {
+        if defaultEngine == .none {
+            return DiaryEngineToolbarPresentation(
+                title: "Add Diary Engine",
+                state: .yellow,
+                emphasized: true,
+                attentionSystemImage: "exclamationmark.circle.fill",
+                attentionColorName: "red"
+            )
+        }
+
+        let status = engineStatuses[defaultEngine] ?? EngineRuntimeStatus()
+        if status.state == .green {
+            return DiaryEngineToolbarPresentation(
+                title: defaultEngine.displayName,
+                state: .green,
+                emphasized: false,
+                attentionSystemImage: nil,
+                attentionColorName: nil
+            )
+        }
+
+        let title = retestingEngines.contains(defaultEngine)
+            ? "Testing \(defaultEngine.displayName)"
+            : "Fix Diary Engine"
+        return DiaryEngineToolbarPresentation(
+            title: title,
+            state: .yellow,
+            emphasized: true,
+            attentionSystemImage: "exclamationmark.circle.fill",
+            attentionColorName: "red"
+        )
     }
 }
 

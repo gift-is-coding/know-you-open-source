@@ -115,6 +115,38 @@ sparkle_signature_attributes() {
   "$signer" "$(release_dmg_path)" | tr -d '\n'
 }
 
+sign_release_app_nested_code() {
+  local target_app="${1:-$app_path}"
+  ensure_file_exists "$target_app"
+  require_command codesign
+
+  local sparkle_framework="$target_app/Contents/Frameworks/Sparkle.framework"
+  if [[ ! -d "$sparkle_framework" ]]; then
+    return
+  fi
+
+  local sparkle_version_dir="$sparkle_framework/Versions/B"
+  local signing_targets=(
+    "$sparkle_version_dir/XPCServices/Downloader.xpc"
+    "$sparkle_version_dir/XPCServices/Installer.xpc"
+    "$sparkle_version_dir/Updater.app"
+    "$sparkle_version_dir/Autoupdate"
+    "$sparkle_framework"
+    "$target_app"
+  )
+
+  for signing_target in "${signing_targets[@]}"; do
+    ensure_file_exists "$signing_target"
+    codesign \
+      --force \
+      --options runtime \
+      --timestamp \
+      --sign "$developer_id_identity" \
+      --preserve-metadata=identifier,entitlements,requirements \
+      "$signing_target"
+  done
+}
+
 download_release_tag() {
   printf 'v%s-build%s\n' "$(marketing_version)" "$(release_repo_build_number)"
 }

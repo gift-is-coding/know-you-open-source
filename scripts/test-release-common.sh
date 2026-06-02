@@ -68,6 +68,17 @@ assert_contains "$build_metadata_script" 'KYUpdateChannel' "build metadata scrip
 assert_contains "$build_metadata_script" 'KYUpdateMetadataURL' "build metadata script writes update metadata URL"
 assert_contains "$build_metadata_script" 'KNOWYOU_UPDATE_METADATA_URL' "build metadata script reads update metadata setting"
 
+release_common_script="$(cat "$repo_root/scripts/release-common.sh")"
+assert_contains "$release_common_script" 'sign_release_app_nested_code()' "release helper re-signs nested code"
+assert_contains "$release_common_script" 'Sparkle.framework' "release helper targets Sparkle framework"
+assert_contains "$release_common_script" 'XPCServices/Downloader.xpc' "release helper targets Sparkle downloader"
+assert_contains "$release_common_script" 'XPCServices/Installer.xpc' "release helper targets Sparkle installer"
+assert_contains "$release_common_script" 'Updater.app' "release helper targets Sparkle updater"
+assert_contains "$release_common_script" '--preserve-metadata=identifier,entitlements,requirements' "release helper preserves signing metadata"
+
+build_release_script="$(cat "$repo_root/scripts/build-release.sh")"
+assert_contains "$build_release_script" 'sign_release_app_nested_code "$app_path"' "build release signs app before zip"
+
 mkdir -p "$KNOWYOU_RELEASE_DIR"
 touch "$KNOWYOU_RELEASE_DIR/smoke.txt"
 ensure_file_exists "$KNOWYOU_RELEASE_DIR/smoke.txt"

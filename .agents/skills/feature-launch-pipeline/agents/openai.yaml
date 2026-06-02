@@ -1,0 +1,4 @@
+interface:
+  display_name: "Feature Launch Pipeline"
+  short_description: "Launch campaigns from new features"
+  default_prompt: "Create a launch campaign for this KnowYou feature: "

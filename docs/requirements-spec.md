@@ -218,7 +218,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - `Home` 必须作为默认理解入口，使用英文短句和视觉资产提醒用户保持 KnowYou 在后台运行，展示 `Automatic Diary update` 和下一次自动更新本地时间，提供 `Generate Now` 刷新今天，并且只在过去三天缺少 model diary 时显示 `Generate Last 3 Days`。
 - `Home` 的更新区必须保持 compact：只在 `running`、`degraded`、`failed`、`blocked` 时显示在 hero 右下角，`scheduled` 和 `completed` 不得占用页面空间。
 - `Home` 的功能入口必须单列显示，顺序为 `Networking (Coming soon)`、`Todo`、`My Wiki`、`Today’s Diary`、`Other Source`，并用简短人话解释用途和工作方式。
-- `Networking (Coming soon)` 入口不得只显示空白 placeholder；必须用英文短句和视觉资产说明用户可以创建不同场景的 profile，可用于求职、社交和 discovery；页面必须显示 `Coming soon`，且不得出现 `Clear identity` 或 `identity stays clear`。
+- `Networking (Coming soon)` 入口不得只显示空白 placeholder；必须用英文短句和视觉资产说明用户可以创建不同场景的 profile，可用于求职、社交和 discovery，并说明 My Diary / My Wiki 到本地 profiles 之间的数据边界；页面必须显示单独的 `Coming soon` 状态，且不得出现 `Clear identity` 或 `identity stays clear`。
 - `My Wiki`、`Other Source`、`My Diary` 必须使用同一套 sidebar row 组件、字号、图标尺寸、行高和选中态。
 - 右上角 engine selector 必须固定在主窗口全局 toolbar 中，不得随 `My Wiki`、`Other Source`、`My Diary` 的内容切换改变位置或变成页面内部组件；当前默认 engine 不可可靠生成 diary 时，胶囊外侧必须显示红色感叹号。
 - `Other Source` 必须是独立入口，不得折叠或收起其他来源。

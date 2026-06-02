@@ -1169,14 +1169,19 @@ private struct HomeDashboardView: View {
 }
 
 struct NetworkingPreviewPresentation: Equatable {
-    let title = "Networking (Coming soon)"
+    let title = "Networking"
     let status = "Coming soon"
     let visualAssetName = "NetworkingPreviewHero"
+    let profileLabels = ["Career", "Founder", "Social"]
     let statements = [
-        "Create profiles for different contexts.",
-        "Use them for jobs, networking, and social discovery.",
-        "Choose what to share before anything goes public.",
+        "My Diary and selected sources build My Wiki.",
+        "Profiles stay local until you choose what to share.",
+        "Data boundary keeps the full wiki out of public platforms.",
     ]
+
+    var visibleCopy: [String] {
+        [status, title] + profileLabels + statements
+    }
 }
 
 private struct NetworkingPreviewView: View {
@@ -1196,6 +1201,16 @@ private struct NetworkingPreviewView: View {
                     .foregroundStyle(Color.accentColor)
                 Text(presentation.title)
                     .font(.largeTitle.weight(.semibold))
+                HStack(spacing: 8) {
+                    ForEach(presentation.profileLabels, id: \.self) { label in
+                        Text(label)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.accentColor)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                    }
+                }
                 ForEach(presentation.statements, id: \.self) { statement in
                     Label(statement, systemImage: "checkmark.circle.fill")
                         .font(.title3.weight(.medium))

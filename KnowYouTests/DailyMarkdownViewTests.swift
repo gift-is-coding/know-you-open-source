@@ -578,16 +578,27 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.statusMessage, "Updating Todo...")
     }
 
-    func testNetworkingPreviewPresentationExplainsProfilesAndIdentityWithImageAssets() {
+    func testNetworkingPreviewPresentationExplainsLocalProfilesAndSingleComingSoonStatus() {
         let presentation = NetworkingPreviewPresentation()
+        let visibleCopy = presentation.visibleCopy
+        let visibleCopyText = visibleCopy.joined(separator: "\n")
+        let comingSoonMentions = visibleCopy.filter {
+            $0.range(of: "coming soon", options: [.caseInsensitive, .diacriticInsensitive]) != nil
+        }
 
-        XCTAssertEqual(presentation.title, "Networking (Coming soon)")
+        XCTAssertEqual(comingSoonMentions, ["Coming soon"])
+        XCTAssertEqual(presentation.title, "Networking")
         XCTAssertEqual(presentation.status, "Coming soon")
         XCTAssertEqual(presentation.visualAssetName, "NetworkingPreviewHero")
-        XCTAssertTrue(presentation.statements.contains("Create profiles for different contexts."))
-        XCTAssertTrue(presentation.statements.contains("Use them for jobs, networking, and social discovery."))
-        XCTAssertFalse(presentation.statements.joined(separator: "\n").localizedCaseInsensitiveContains("clear identity"))
-        XCTAssertFalse(presentation.statements.joined(separator: "\n").localizedCaseInsensitiveContains("identity stays clear"))
+        XCTAssertTrue(visibleCopyText.contains("My Diary"))
+        XCTAssertTrue(visibleCopyText.contains("My Wiki"))
+        XCTAssertTrue(visibleCopyText.contains("Data boundary"))
+        XCTAssertTrue(visibleCopyText.localizedCaseInsensitiveContains("profiles stay local"))
+        XCTAssertTrue(visibleCopy.contains("Career"))
+        XCTAssertTrue(visibleCopy.contains("Founder"))
+        XCTAssertTrue(visibleCopy.contains("Social"))
+        XCTAssertFalse(visibleCopyText.localizedCaseInsensitiveContains("clear identity"))
+        XCTAssertFalse(visibleCopyText.localizedCaseInsensitiveContains("identity stays clear"))
     }
 
     func testTodoInboxCopyContainsNoChineseUserFacingLabels() {

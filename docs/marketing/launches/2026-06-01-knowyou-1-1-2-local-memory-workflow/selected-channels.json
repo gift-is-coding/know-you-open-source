@@ -1,0 +1,220 @@
+{
+  "channels": [
+    {
+      "id": "x",
+      "name": "X / Twitter",
+      "enabled": true,
+      "priority": "P0",
+      "account": "@TianfuW49629",
+      "url": "https://x.com/TianfuW49629",
+      "best_for": [
+        "build-in-public",
+        "technical insight",
+        "short demos"
+      ],
+      "asset_types": [
+        "screenshot",
+        "gif",
+        "short video"
+      ],
+      "publish_mode": "chrome"
+    },
+    {
+      "id": "linkedin",
+      "name": "LinkedIn",
+      "enabled": true,
+      "priority": "P0",
+      "account": "Tianfu Wu",
+      "url": "https://www.linkedin.com/in/tianfu-wu/",
+      "best_for": [
+        "professional narrative",
+        "founder updates",
+        "AI productivity"
+      ],
+      "asset_types": [
+        "screenshot",
+        "carousel",
+        "short video"
+      ],
+      "publish_mode": "chrome"
+    },
+    {
+      "id": "product-hunt",
+      "name": "Product Hunt",
+      "enabled": true,
+      "priority": "P0",
+      "url": "https://www.producthunt.com/products/knowyou-mywiki",
+      "best_for": [
+        "major releases",
+        "public launch",
+        "maker comment"
+      ],
+      "asset_types": [
+        "gallery",
+        "gif",
+        "demo video"
+      ],
+      "publish_mode": "chrome"
+    },
+    {
+      "id": "reddit",
+      "name": "Reddit",
+      "enabled": true,
+      "priority": "P0",
+      "url": "https://www.reddit.com/",
+      "best_for": [
+        "community feedback",
+        "AI coding agents",
+        "Mac app users"
+      ],
+      "target_communities": [
+        "r/ChatGPTCoding",
+        "r/AI_Agents",
+        "r/macapps",
+        "r/SideProject",
+        "r/indiehackers",
+        "r/LocalLLaMA"
+      ],
+      "asset_types": [
+        "screenshot",
+        "demo video"
+      ],
+      "publish_mode": "chrome"
+    },
+    {
+      "id": "devto",
+      "name": "Dev.to",
+      "enabled": true,
+      "priority": "P1",
+      "url": "https://dev.to/",
+      "best_for": [
+        "technical articles",
+        "Swift/Mac implementation",
+        "local-first architecture"
+      ],
+      "asset_types": [
+        "cover image",
+        "code snippets",
+        "diagrams"
+      ],
+      "publish_mode": "chrome"
+    },
+    {
+      "id": "hacker-news",
+      "name": "Hacker News",
+      "enabled": true,
+      "priority": "P1",
+      "url": "https://news.ycombinator.com/submit",
+      "best_for": [
+        "technical launch",
+        "local-first/privacy discussion",
+        "agent infrastructure"
+      ],
+      "asset_types": [
+        "link"
+      ],
+      "publish_mode": "chrome",
+      "notes": "Account/login may still need manual handling."
+    },
+    {
+      "id": "indie-hackers",
+      "name": "Indie Hackers",
+      "enabled": true,
+      "priority": "P1",
+      "url": "https://www.indiehackers.com/",
+      "best_for": [
+        "founder journey",
+        "traction updates",
+        "lessons learned"
+      ],
+      "asset_types": [
+        "screenshot",
+        "metrics"
+      ],
+      "publish_mode": "chrome",
+      "notes": "New account previously had limited posting ability; engage if posting remains blocked."
+    },
+    {
+      "id": "youtube",
+      "name": "YouTube / Shorts",
+      "enabled": true,
+      "priority": "P1",
+      "url": "https://studio.youtube.com/",
+      "best_for": [
+        "demo videos",
+        "short workflow clips"
+      ],
+      "asset_types": [
+        "short video",
+        "thumbnail"
+      ],
+      "publish_mode": "chrome"
+    },
+    {
+      "id": "jike",
+      "name": "即刻",
+      "enabled": true,
+      "priority": "P1",
+      "url": "https://web.okjike.com/",
+      "best_for": [
+        "Chinese builder audience",
+        "casual launch notes"
+      ],
+      "asset_types": [
+        "screenshot",
+        "short text"
+      ],
+      "publish_mode": "chrome"
+    },
+    {
+      "id": "v2ex",
+      "name": "V2EX",
+      "enabled": true,
+      "priority": "P1",
+      "url": "https://www.v2ex.com/",
+      "best_for": [
+        "Mac app",
+        "developer tools",
+        "technical discussion"
+      ],
+      "asset_types": [
+        "link",
+        "screenshot"
+      ],
+      "publish_mode": "chrome"
+    },
+    {
+      "id": "sspai",
+      "name": "少数派",
+      "enabled": true,
+      "priority": "P2",
+      "url": "https://sspai.com/",
+      "best_for": [
+        "productivity essay",
+        "local-first knowledge workflow"
+      ],
+      "asset_types": [
+        "article",
+        "screenshots"
+      ],
+      "publish_mode": "chrome"
+    },
+    {
+      "id": "wechat",
+      "name": "微信公众号 / 朋友圈",
+      "enabled": true,
+      "priority": "P2",
+      "url": "https://mp.weixin.qq.com/",
+      "best_for": [
+        "owned Chinese audience",
+        "longer founder narrative"
+      ],
+      "asset_types": [
+        "article",
+        "screenshots",
+        "video"
+      ],
+      "publish_mode": "manual_or_chrome"
+    }
+  ]
+}

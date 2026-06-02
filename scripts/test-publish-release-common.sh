@@ -47,12 +47,12 @@ assert_eq "$expected_url" "$(download_asset_url)" "download_asset_url"
 assert_eq "https://raw.githubusercontent.com/gift-is-coding/know-you-downloads/main/update-feed/latest.json" "$(download_update_metadata_url)" "download_update_metadata_url"
 
 notes="$(release_notes_body)"
+assert_contains "$notes" "KnowYou 1.0.2 makes the app smoother to use and easier to keep up to date." "release_notes intro"
+assert_contains "$notes" "- Future direct-download updates can happen inside KnowYou after this version is installed." "release_notes in-app updates"
+assert_contains "$notes" "- Update messages now explain changes in plain language." "release_notes plain language"
 assert_contains "$notes" "- Version: 1.0.2" "release_notes version"
 assert_contains "$notes" "- Build: 116" "release_notes build"
-assert_contains "$notes" "- Commit: c2f294c" "release_notes commit"
-assert_contains "$notes" "- Artifact: KnowYou-1.0.2-116.dmg" "release_notes artifact"
-assert_contains "$notes" "- Notarization: Accepted on 2026-04-21" "release_notes notarization date"
-assert_contains "$notes" '- Open the DMG and drag `KnowYou.app` to `Applications`.' "release_notes install"
+assert_contains "$notes" "- Released: 2026-04-21" "release_notes date"
 
 temp_dir="$(mktemp -d)"
 trap 'rm -rf "$temp_dir"' EXIT
@@ -95,8 +95,8 @@ assert_contains "$updated_html" "Open the DMG and drag KnowYou to Applications" 
 
 update_feed_json="$(release_update_feed_json)"
 assert_contains "$update_feed_json" '"version": "1.0.2"' "update feed version"
-assert_contains "$update_feed_json" 'KnowYou turns daily computer context into a story-first journal on macOS.' "update feed release notes"
-assert_contains "$update_feed_json" 'Open the DMG and drag `KnowYou.app` to `Applications`.' "update feed install notes"
+assert_contains "$update_feed_json" 'KnowYou 1.0.2 makes the app smoother to use and easier to keep up to date.' "update feed release notes"
+assert_contains "$update_feed_json" 'Future direct-download updates can happen inside KnowYou' "update feed in-app updates"
 assert_contains "$update_feed_json" '"publishedAt": "2026-04-21T00:00:00Z"' "update feed publishedAt"
 assert_contains "$update_feed_json" '"downloadURL": "https://github.com/gift-is-coding/know-you-downloads/releases/download/v1.0.2-build116/KnowYou-1.0.2-116.dmg"' "update feed downloadURL"
 
@@ -106,8 +106,8 @@ assert_contains "$appcast_xml" '<sparkle:version>116</sparkle:version>' "appcast
 assert_contains "$appcast_xml" '<sparkle:shortVersionString>1.0.2</sparkle:shortVersionString>' "appcast marketing version"
 assert_contains "$appcast_xml" 'url="https://github.com/gift-is-coding/know-you-downloads/releases/download/v1.0.2-build116/KnowYou-1.0.2-116.dmg"' "appcast dmg url"
 assert_contains "$appcast_xml" 'sparkle:edSignature="abc123" length="123456"' "appcast signature attributes"
-assert_contains "$appcast_xml" 'KnowYou turns daily computer context into a story-first journal on macOS.' "appcast release notes"
-assert_contains "$appcast_xml" '- Artifact: KnowYou-1.0.2-116.dmg' "appcast artifact notes"
+assert_contains "$appcast_xml" 'KnowYou 1.0.2 makes the app smoother to use and easier to keep up to date.' "appcast release notes"
+assert_contains "$appcast_xml" '- Released: 2026-04-21' "appcast release date"
 
 custom_notes_file="$temp_dir/custom-release-notes.md"
 printf 'Custom release notes\n\n- Better updates\n' >"$custom_notes_file"

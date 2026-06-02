@@ -275,24 +275,19 @@ release_notes_body() {
   fi
 
   cat <<EOF
-KnowYou turns daily computer context into a story-first journal on macOS.
+KnowYou $(marketing_version) makes the app smoother to use and easier to keep up to date.
 
-Release:
+What's new:
+- The app window is cleaner: the KnowYou title, app icon, privacy reminder, and Diary Engine control now stay aligned.
+- The app icon is easier to see in the Dock and in the window title.
+- Diary Engine startup is smoother: KnowYou remembers when your selected engine was already working, so it should not briefly flash a warning every time you open the app.
+- Future direct-download updates can happen inside KnowYou after this version is installed. You should not need to download a new DMG and drag the app again for every update.
+- Update messages now explain changes in plain language.
+
+Release details:
 - Version: $(marketing_version)
 - Build: $(release_repo_build_number)
-- Commit: $(release_repo_commit)
-- Artifact: $(basename "$(release_dmg_path)")
-- Notarization: Accepted on $(release_date)
-
-Install:
-- Download the DMG asset below.
-- Open the DMG and drag \`KnowYou.app\` to \`Applications\`.
-- Launch the app and complete the macOS permission prompts for clipboard and notifications.
-
-Verification:
-- \`codesign --verify --deep --strict --verbose=2\` passed.
-- \`xcrun stapler validate\` passed.
-- \`spctl --assess --type execute -vv\` accepted the app as \`Notarized Developer ID\`.
+- Released: $(release_date)
 EOF
 }
 

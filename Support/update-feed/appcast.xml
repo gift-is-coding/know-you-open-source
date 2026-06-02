@@ -2,15 +2,19 @@
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
   <channel>
     <title>KnowYou Debug Updates</title>
-    <link>https://knowyou.example.com</link>
+    <link>http://127.0.0.1:8765/Support/update-feed/KnowYou-local-update-9.9.0.dmg</link>
     <description>Local debug appcast for previewing the Sparkle update flow.</description>
     <item>
-      <title>KnowYou Debug 1.1.0</title>
-      <sparkle:version>4</sparkle:version>
-      <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
-      <pubDate>Fri, 17 Apr 2026 11:50:00 +0000</pubDate>
-      <description><![CDATA[This local fake update previews the left title-bar update pill, the update sheet, and Sparkle handoff.]]></description>
-      <enclosure url="https://knowyou.example.com/KnowYou-debug.dmg" type="application/octet-stream" sparkle:edSignature="debug-signature-placeholder" length="1" />
+      <title>KnowYou Local Debug 9.9.0</title>
+      <sparkle:version>9999</sparkle:version>
+      <sparkle:shortVersionString>9.9.0</sparkle:shortVersionString>
+      <pubDate>Tue, 02 Jun 2026 00:00:00 +0000</pubDate>
+      <description><![CDATA[本地 fake 更新，用来测试 KnowYou 的更新胶囊、更新内容 sheet，以及 Sparkle 检查入口。
+
+- 左上角应该显示更明显的更新胶囊。
+- 点击胶囊后，sheet 应该显示完整更新内容。
+- 如果没有提供真实 DMG，这个 appcast 只用于 UI 预览；提供真实 DMG 后会写入 Sparkle 签名 enclosure。]]></description>
+      <enclosure url="http://127.0.0.1:8765/Support/update-feed/KnowYou-local-update-9.9.0.dmg" type="application/octet-stream" sparkle:edSignature="local-fixture-placeholder" length="1" />
     </item>
   </channel>
 </rss>

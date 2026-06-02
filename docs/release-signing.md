@@ -42,6 +42,36 @@ Release notes are shared across the GitHub release, the legacy `latest.json` upd
 
 The first Sparkle-enabled release still requires one manual DMG install by existing users. After that version is installed, later direct-channel updates can use Sparkle's progress, install, quit, replace, and relaunch flow.
 
+## Local Update Testing
+
+Debug builds read the local update metadata from:
+
+- `http://127.0.0.1:8765/Support/update-feed/debug-update.json`
+- `http://127.0.0.1:8765/Support/update-feed/appcast.xml`
+
+To fake a newer version for the KnowYou update pill and update sheet, generate the local fixture and serve the repo root:
+
+```bash
+./scripts/prepare-local-update-fixture.sh
+/usr/bin/python3 -m http.server 8765 --bind 127.0.0.1
+```
+
+The default fixture uses version `9.9.0`, so it should be newer than normal development builds. This UI-only fixture is enough to test that the title-bar update pill appears, the update sheet shows the release notes every time a new offer is detected, and the direct button hands off to Sparkle. Because no real DMG is present, Sparkle will not complete a download/install cycle from this placeholder appcast.
+
+To test a real Sparkle download/install/relaunch cycle, first build a notarized DMG with a newer bundle version, then pass that DMG to the fixture script:
+
+```bash
+KNOWYOU_LOCAL_UPDATE_VERSION=9.9.1 \
+KNOWYOU_LOCAL_UPDATE_BUILD=9991 \
+KNOWYOU_LOCAL_UPDATE_DMG=/path/to/KnowYou-9.9.1-9991.dmg \
+KNOWYOU_SPARKLE_SIGN_UPDATE=/path/to/Sparkle/bin/sign_update \
+  ./scripts/prepare-local-update-fixture.sh
+
+/usr/bin/python3 -m http.server 8765 --bind 127.0.0.1
+```
+
+When `KNOWYOU_LOCAL_UPDATE_DMG` is set, the script copies the DMG into `Support/update-feed/` and writes Sparkle `edSignature` plus `length` attributes into the appcast using the private key in Keychain. That signed fixture can exercise Sparkle's progress, verification, install, quit, replace, and relaunch path.
+
 If you need to run the steps manually, use the lower-level scripts below:
 
 1. Build the release archive and the first distributable zip:

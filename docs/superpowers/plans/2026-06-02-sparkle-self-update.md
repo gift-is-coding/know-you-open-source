@@ -69,3 +69,19 @@
 - [x] Note that live Sparkle install verification requires a real signed release with matching public/private EdDSA keys.
 
 Verification note: one full `xcodebuild test -scheme KnowYou -destination 'platform=macOS'` run completed successfully before the explicit Info.plist template correction. After the correction, a rerun of the full suite hung in an existing app-driven diary generation path and was terminated; the Sparkle/update-specific test slice, release helper tests, final macOS build, bundle Info.plist inspection, and `git diff --check` passed afterward.
+
+### Task 5: Add Local Fake Update Fixture
+
+**Files:**
+- Add: `scripts/prepare-local-update-fixture.sh`
+- Add: `scripts/test-local-update-fixture.sh`
+- Modify: `Support/update-feed/debug-update.json`
+- Modify: `Support/update-feed/appcast.xml`
+- Modify: `docs/release-signing.md`
+
+- [x] Add a focused script test for generating `debug-update.json` and `appcast.xml` into a temporary fixture directory.
+- [x] Verify the test fails before the fixture generator exists.
+- [x] Implement a fixture generator that defaults to version `9.9.0`, writes full release notes, and creates a UI-only placeholder appcast when no DMG is supplied.
+- [x] Add optional `KNOWYOU_LOCAL_UPDATE_DMG` support so a real DMG is copied into `Support/update-feed/` and signed with Sparkle `sign_update`.
+- [x] Regenerate the checked-in local update feed so Debug builds can immediately detect a fake newer version when the repo root is served on port `8765`.
+- [x] Document the UI-only fake path and the real signed-DMG Sparkle install path.

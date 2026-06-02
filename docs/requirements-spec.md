@@ -292,11 +292,11 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 主窗口右下角必须持续显示一个只读的 build badge，格式为 `v<marketing-version> · <MM-dd HH:mm> (<build-number>) · <git-short-sha>`；当没有 build time 或 SHA 时必须安全退回，只省略缺失片段
 - 当检测到真实新版本时，主窗口左上标题栏必须显示一个更新胶囊，位置应紧邻 traffic lights 但不得遮挡系统关闭、最小化、缩放按钮的命中区域
 - 更新胶囊默认隐藏，只有存在 `UpdateOffer` 时才允许显示
-- 更新胶囊文案固定为 `new updates`
+- 更新胶囊必须显著可见，并在文案中包含可用版本号
 - 用户点击更新胶囊后，系统必须打开更新 sheet，而不是直接开始更新
 - 用户关闭更新 sheet 而不更新时，更新胶囊必须继续保留
-- 更新 sheet 必须显示当前版本、可用版本和简短更新说明
-- direct build 的更新 sheet 主按钮必须表示下载或打开官网更新入口；App Store build 的主按钮必须表示前往 App Store
+- 更新 sheet 必须显示当前版本、可用版本、发布时间和更新说明；更新说明不得折叠成弱提示
+- direct build 的更新 sheet 主按钮必须通过 Sparkle 启动自更新；App Store build 的主按钮必须表示前往 App Store
 - App Store build 不得伪装成可在应用内自行安装更新
 
 ## 6.6 更新检查与分发需求
@@ -308,6 +308,9 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 如果当前构建未配置 update feed，系统必须安全退回为“无可用更新提醒”，而不是报错或显示伪状态
 - 更新提醒的可见行为必须在 direct build 和 App Store build 之间保持一致；两者差异只允许体现在主动作上
 - 更新胶囊必须在成功安装到该版本或更高版本后才消失；不得因为用户关闭 sheet 就消失
+- direct release 必须发布 Sparkle appcast，并保持 `latest.json` 兼容旧版本
+- 发布脚本必须允许发版人员提供本次 release notes，并让 `latest.json` 与 Sparkle appcast 使用同一份更新内容
+- 安装到新版本并重启后，系统必须自动显示一次 `What's New` 弹窗；用户关闭后同一版本不得重复弹出
 
 ## 6.7 键盘与焦点需求
 
@@ -409,6 +412,7 @@ onboarding 的配置约束为：
 - Apple ID app-specific password 不得保存在仓库文件中，必须通过 keychain `notarytool` profile 管理
 - 发布验证必须至少包含 `codesign --verify --deep --strict --verbose=2`、`stapler validate`、`spctl --assess --type execute -vv`
 - 对外下载主 artifact 必须是包含 `KnowYou.app` 与 `Applications` 链接的 DMG，以引导用户把 app 安装到 `/Applications`
+- Release 构建必须配置 Sparkle EdDSA public key；该公钥可以作为安全默认值进入项目配置，私钥必须留在发版用户 Keychain；发布脚本必须使用 Sparkle `sign_update` 为 DMG enclosure 生成签名属性
 - `fullRecovery` 成功写盘前必须执行一次规范化，以保证新生成 `Details` 保持 paragraph-level workstream 结构
 
 ## 6.9 状态反馈需求

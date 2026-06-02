@@ -7,6 +7,7 @@ source "$repo_root/scripts/release-common.sh"
 
 require_command xcodebuild
 require_command ditto
+require_sparkle_public_key
 
 prepare_release_dir
 rm -rf "$archive_path" "$app_path" "$(release_zip_path)" "$(notarized_zip_path)"
@@ -20,7 +21,8 @@ xcodebuild archive \
   CODE_SIGN_STYLE=Manual \
   DEVELOPMENT_TEAM="$developer_team" \
   CODE_SIGN_IDENTITY="$developer_id_identity" \
-  ENABLE_HARDENED_RUNTIME=YES
+  ENABLE_HARDENED_RUNTIME=YES \
+  KNOWYOU_SPARKLE_PUBLIC_ED_KEY="$(sparkle_public_ed_key)"
 
 ensure_file_exists "$archive_path/Products/Applications/KnowYou.app"
 

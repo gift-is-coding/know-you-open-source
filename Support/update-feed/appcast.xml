@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>KnowYou Debug Updates</title>
+    <link>https://knowyou.example.com</link>
+    <description>Local debug appcast for previewing the Sparkle update flow.</description>
+    <item>
+      <title>KnowYou Debug 1.1.0</title>
+      <sparkle:version>4</sparkle:version>
+      <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+      <pubDate>Fri, 17 Apr 2026 11:50:00 +0000</pubDate>
+      <description><![CDATA[This local fake update previews the left title-bar update pill, the update sheet, and Sparkle handoff.]]></description>
+      <enclosure url="https://knowyou.example.com/KnowYou-debug.dmg" type="application/octet-stream" sparkle:edSignature="debug-signature-placeholder" length="1" />
+    </item>
+  </channel>
+</rss>

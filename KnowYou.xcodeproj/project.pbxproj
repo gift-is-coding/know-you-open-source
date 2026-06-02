@@ -48,9 +48,10 @@
 		A1000001000000000000000D /* DatabaseWriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000101000000000000000D /* DatabaseWriterTests.swift */; };
 		A1000001000000000000000E /* RunRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000012 /* RunRecord.swift */; };
 		A1000001000000000000000F /* Migrations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000013 /* Migrations.swift */; };
-		A10000010000000000000010 /* DatabaseWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000014 /* DatabaseWriter.swift */; };
-		A10000010000000000000011 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A10000110000000000000001 /* GRDB */; };
-		A10000010000000000000012 /* ClipboardWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000015 /* ClipboardWatcher.swift */; };
+			A10000010000000000000010 /* DatabaseWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000014 /* DatabaseWriter.swift */; };
+			A10000010000000000000011 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A10000110000000000000001 /* GRDB */; };
+			A20000010000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A20000110000000000000001 /* Sparkle */; };
+			A10000010000000000000012 /* ClipboardWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000015 /* ClipboardWatcher.swift */; };
 		A10000010000000000000013 /* NotificationCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000016 /* NotificationCollector.swift */; };
 		A10000010000000000000014 /* SHA256Hasher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000017 /* SHA256Hasher.swift */; };
 		A10000010000000000000015 /* ISO8601DayKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000018 /* ISO8601DayKey.swift */; };
@@ -349,9 +350,10 @@
 		A10000050000000000000001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
-			files = (
-				A10000010000000000000011 /* GRDB in Frameworks */,
-			);
+				files = (
+					A10000010000000000000011 /* GRDB in Frameworks */,
+					A20000010000000000000001 /* Sparkle in Frameworks */,
+				);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A10000050000000000000002 /* Frameworks */ = {
@@ -813,9 +815,10 @@
 			dependencies = (
 			);
 			name = KnowYou;
-			packageProductDependencies = (
-				A10000110000000000000001 /* GRDB */,
-			);
+				packageProductDependencies = (
+					A10000110000000000000001 /* GRDB */,
+					A20000110000000000000001 /* Sparkle */,
+				);
 			productName = KnowYou;
 			productReference = A10001010000000000000010 /* KnowYou.app */;
 			productType = "com.apple.product-type.application";
@@ -866,9 +869,10 @@
 				Base,
 			);
 			mainGroup = A10000060000000000000001;
-			packageReferences = (
-				A10000100000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
-			);
+				packageReferences = (
+					A10000100000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+					A20000100000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				);
 			productRefGroup = A10000060000000000000011 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -1155,16 +1159,18 @@
 				DEVELOPMENT_TEAM = GXG64KMCF7;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_TESTABILITY = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = KnowYou;
-				INFOPLIST_KEY_KYUpdateChannel = direct;
-				INFOPLIST_KEY_KYUpdateMetadataURL = "http://127.0.0.1:8765/Support/update-feed/debug-update.json";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KnowYou/Config/Info.plist;
+				KNOWYOU_SPARKLE_FEED_URL = "http://127.0.0.1:8765/Support/update-feed/appcast.xml";
+				KNOWYOU_SPARKLE_PUBLIC_ED_KEY = "DPaKuqvU48UAoI0rOvKtWaStpzMsX9fwypStdx4md/M=";
+				KNOWYOU_UPDATE_CHANNEL = direct;
+				KNOWYOU_UPDATE_METADATA_URL = "http://127.0.0.1:8765/Support/update-feed/debug-update.json";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.knowyou.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -1187,16 +1193,18 @@
 				DEVELOPMENT_TEAM = 3DY726RPHL;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = KnowYou;
-				INFOPLIST_KEY_KYUpdateChannel = direct;
-				INFOPLIST_KEY_KYUpdateMetadataURL = "https://raw.githubusercontent.com/gift-is-coding/know-you-downloads/main/update-feed/latest.json";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KnowYou/Config/Info.plist;
+				KNOWYOU_SPARKLE_FEED_URL = "https://raw.githubusercontent.com/gift-is-coding/know-you-downloads/main/update-feed/appcast.xml";
+				KNOWYOU_SPARKLE_PUBLIC_ED_KEY = "DPaKuqvU48UAoI0rOvKtWaStpzMsX9fwypStdx4md/M=";
+				KNOWYOU_UPDATE_CHANNEL = direct;
+				KNOWYOU_UPDATE_METADATA_URL = "https://raw.githubusercontent.com/gift-is-coding/know-you-downloads/main/update-feed/latest.json";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.knowyou.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -1217,7 +1225,7 @@
 				DEVELOPMENT_TEAM = GXG64KMCF7;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.knowyou.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -1238,7 +1246,7 @@
 				DEVELOPMENT_TEAM = GXG64KMCF7;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.knowyou.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
@@ -1280,22 +1288,35 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		A10000100000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/groue/GRDB.swift";
-			requirement = {
-				kind = exactVersion;
-				version = 7.10.0;
+			A10000100000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
+				isa = XCRemoteSwiftPackageReference;
+				repositoryURL = "https://github.com/groue/GRDB.swift";
+				requirement = {
+					kind = exactVersion;
+					version = 7.10.0;
+				};
 			};
-		};
+			A20000100000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+				isa = XCRemoteSwiftPackageReference;
+				repositoryURL = "https://github.com/sparkle-project/Sparkle";
+				requirement = {
+					kind = upToNextMinorVersion;
+					minimumVersion = 2.9.2;
+				};
+			};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		A10000110000000000000001 /* GRDB */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A10000100000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
-			productName = GRDB;
-		};
+			A10000110000000000000001 /* GRDB */ = {
+				isa = XCSwiftPackageProductDependency;
+				package = A10000100000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+				productName = GRDB;
+			};
+			A20000110000000000000001 /* Sparkle */ = {
+				isa = XCSwiftPackageProductDependency;
+				package = A20000100000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */;
+				productName = Sparkle;
+			};
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A10000030000000000000001 /* Project object */;

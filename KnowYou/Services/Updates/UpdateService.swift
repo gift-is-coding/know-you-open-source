@@ -1,5 +1,8 @@
 import Foundation
 import AppKit
+#if canImport(Sparkle)
+import Sparkle
+#endif
 
 protocol UpdateServing: Sendable {
     func fetchOffer() async throws -> UpdateOffer?
@@ -28,6 +31,31 @@ enum DirectAppUpdateError: LocalizedError {
         }
     }
 }
+
+#if canImport(Sparkle)
+@MainActor
+final class SparkleDirectAppUpdater: DirectAppUpdating, @unchecked Sendable {
+    private let controller: SPUStandardUpdaterController
+
+    init(controller: SPUStandardUpdaterController = SPUStandardUpdaterController(
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )) {
+        self.controller = controller
+    }
+
+    func startUpdate(for _: UpdateOffer) async throws {
+        controller.checkForUpdates(nil)
+    }
+}
+#else
+@MainActor
+final class SparkleDirectAppUpdater: DirectAppUpdating, @unchecked Sendable {
+    func startUpdate(for _: UpdateOffer) async throws {
+        throw DirectAppUpdateError.notConfigured
+    }
+}
+#endif
 
 struct NoopDirectAppUpdater: DirectAppUpdating {
     func startUpdate(for offer: UpdateOffer) async throws {

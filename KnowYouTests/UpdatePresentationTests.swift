@@ -12,7 +12,8 @@ final class UpdatePresentationTests: XCTestCase {
             downloadURL: URL(string: "https://knowyou.example.com/download")
         )
 
-        XCTAssertEqual(offer.pillTitle, "new updates")
+        XCTAssertEqual(offer.pillTitle, "Update 1.1.0")
+        XCTAssertEqual(offer.primaryActionTitle, "Update Now")
     }
 
     func testUpdateOfferPillTitleUsesStableCopyWhenPublishedTimeMissing() {
@@ -25,6 +26,7 @@ final class UpdatePresentationTests: XCTestCase {
             downloadURL: URL(string: "https://knowyou.example.com/download")
         )
 
-        XCTAssertEqual(offer.pillTitle, "new updates")
+        XCTAssertEqual(offer.pillTitle, "Update 1.1.0")
+        XCTAssertEqual(offer.primaryActionTitle, "Update Now")
     }
 }

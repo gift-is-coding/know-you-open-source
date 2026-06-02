@@ -1068,34 +1068,60 @@ final class MainWindowViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_performUpdatePrimaryAction_usesDefaultDirectDownloaderWhenConfigured() throws {
-        let openedDownload = expectation(description: "download url opened")
+    func test_defaultDirectUpdaterUsesSparkleInsteadOfExternalDownload() throws {
         let environment = try makeEngineEnvironment(
-            externalURLOpener: { url in
-                XCTAssertEqual(url.absoluteString, "https://knowyou.example.com/download")
-                openedDownload.fulfill()
-            }
+            externalURLOpener: { _ in XCTFail("Direct updates should not open the DMG download URL by default") }
         )
+
+        XCTAssertTrue(environment.directAppUpdater is SparkleDirectAppUpdater)
+    }
+
+    @MainActor
+    func test_initShowsPostUpdateWhatsNewWhenCurrentVersionAdvances() throws {
+        engineDefaults.set("1.2.0", forKey: AppState.UserDefaultsKeys.lastSeenAppVersion)
+        let environment = try makeEngineEnvironment()
+
         let appState = AppState(
             environment: environment,
             bootstrapServices: false,
-            userDefaults: UserDefaults(suiteName: UUID().uuidString)!,
+            userDefaults: engineDefaults,
             keychain: AppStateTestKeychainStore(),
             keychainService: "MainWindowViewModelTests"
         )
-        appState.updateOffer = UpdateOffer(
-            availableVersion: "1.4.0",
-            releaseSummary: "Update pill shipped",
-            publishedAt: nil,
-            actionKind: .installInApp,
-            storeURL: nil,
-            downloadURL: URL(string: "https://knowyou.example.com/download")
+
+        XCTAssertTrue(appState.isShowingPostUpdateWhatsNew)
+        XCTAssertEqual(appState.postUpdateWhatsNewTitle, "What's New in v\(AppBuildMetadata.current.marketingVersion)")
+        XCTAssertTrue(appState.postUpdateWhatsNewSummary.contains(AppBuildMetadata.current.marketingVersion))
+    }
+
+    @MainActor
+    func test_dismissPostUpdateWhatsNewRemembersCurrentVersion() throws {
+        engineDefaults.set("1.2.0", forKey: AppState.UserDefaultsKeys.lastSeenAppVersion)
+        let environment = try makeEngineEnvironment()
+        let firstState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
         )
 
-        appState.performUpdatePrimaryAction()
+        firstState.dismissPostUpdateWhatsNew()
 
-        wait(for: [openedDownload], timeout: 2.0)
-        XCTAssertFalse(appState.isShowingUpdateSheet)
+        XCTAssertFalse(firstState.isShowingPostUpdateWhatsNew)
+        XCTAssertEqual(
+            engineDefaults.string(forKey: AppState.UserDefaultsKeys.lastDismissedWhatsNewVersion),
+            AppBuildMetadata.current.marketingVersion
+        )
+
+        let secondState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: AppStateTestKeychainStore(),
+            keychainService: "MainWindowViewModelTests"
+        )
+        XCTAssertFalse(secondState.isShowingPostUpdateWhatsNew)
     }
 
     func testSelectingDateLoadsMatchingMarkdownPath() {

@@ -45,13 +45,13 @@ struct UpdateOffer: Equatable {
     var downloadURL: URL? = nil
 
     var pillTitle: String {
-        "new updates"
+        "Update \(availableVersion)"
     }
 
     var primaryActionTitle: String {
         switch actionKind {
         case .installInApp:
-            return "Download Update"
+            return "Update Now"
         case .openAppStore:
             return "Open in App Store"
         case .unavailable:

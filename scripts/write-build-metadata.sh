@@ -29,9 +29,12 @@ set_plist_string() {
 }
 
 if [ -f "$info_plist_path" ]; then
+  update_channel="${KNOWYOU_UPDATE_CHANNEL:-${INFOPLIST_KEY_KYUpdateChannel:-}}"
+  update_metadata_url="${KNOWYOU_UPDATE_METADATA_URL:-${INFOPLIST_KEY_KYUpdateMetadataURL:-}}"
+
   set_plist_string "CFBundleVersion" "$auto_build_number"
-  set_plist_string "KYUpdateChannel" "${INFOPLIST_KEY_KYUpdateChannel:-}"
-  set_plist_string "KYUpdateMetadataURL" "${INFOPLIST_KEY_KYUpdateMetadataURL:-}"
+  set_plist_string "KYUpdateChannel" "$update_channel"
+  set_plist_string "KYUpdateMetadataURL" "$update_metadata_url"
 fi
 
 mkdir -p "$(dirname "$output_path")"

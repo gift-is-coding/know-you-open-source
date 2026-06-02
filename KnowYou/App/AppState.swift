@@ -742,6 +742,9 @@ final class AppState {
     var onboardingBootstrapProgress: OnboardingBootstrapProgress?
     var updateOffer: UpdateOffer?
     var isShowingUpdateSheet = false
+    var isShowingPostUpdateWhatsNew = false
+    var postUpdateWhatsNewTitle = ""
+    var postUpdateWhatsNewSummary = ""
     var lastUpdateCheckAt: Date?
     var nextDiaryAutomationCheckDate: Date?
     var nextTodoAutomationCheckDate: Date?
@@ -931,6 +934,7 @@ final class AppState {
         onboardingBootstrapDayKeys = Self.loadOnboardingBootstrapDayKeys(from: resolvedUserDefaults)
         onboardingBootstrapNotice = nil
         onboardingBootstrapProgress = nil
+        configurePostUpdateWhatsNewIfNeeded(userDefaults: resolvedUserDefaults)
         if explicitSummarizerConfig == nil,
            environment?.summarizer == nil,
             self.summarizerConfig.defaultEngine != loadedDefaultEngine {
@@ -1732,6 +1736,12 @@ final class AppState {
         isShowingUpdateSheet = false
     }
 
+    func dismissPostUpdateWhatsNew() {
+        isShowingPostUpdateWhatsNew = false
+        let currentVersion = AppBuildMetadata.current.marketingVersion
+        userDefaults.set(currentVersion, forKey: UserDefaultsKeys.lastDismissedWhatsNewVersion)
+    }
+
     func performUpdatePrimaryAction() {
         guard let offer = updateOffer else { return }
 
@@ -2483,8 +2493,28 @@ final class AppState {
         static let explicitlyDisabledSummarizerAutoSelection = "explicitlyDisabledSummarizerAutoSelection"
         static let engineRuntimeStatuses = "engineRuntimeStatuses"
         static let lastUpdateCheckAt = "lastUpdateCheckAt"
+        static let lastSeenAppVersion = "lastSeenAppVersion"
+        static let lastDismissedWhatsNewVersion = "lastDismissedWhatsNewVersion"
         static let launchAtLoginDefaultRegistrationAttempted = "launchAtLoginDefaultRegistrationAttempted"
         static let dayReviewStates = "dayReviewStates"
+    }
+
+    private func configurePostUpdateWhatsNewIfNeeded(userDefaults: UserDefaults) {
+        let currentVersion = AppBuildMetadata.current.marketingVersion
+        let previousVersion = userDefaults.string(forKey: UserDefaultsKeys.lastSeenAppVersion)
+        let dismissedVersion = userDefaults.string(forKey: UserDefaultsKeys.lastDismissedWhatsNewVersion)
+
+        userDefaults.set(currentVersion, forKey: UserDefaultsKeys.lastSeenAppVersion)
+
+        guard let previousVersion,
+              previousVersion != currentVersion,
+              dismissedVersion != currentVersion else {
+            return
+        }
+
+        postUpdateWhatsNewTitle = "What's New in v\(currentVersion)"
+        postUpdateWhatsNewSummary = "KnowYou \(currentVersion) is installed. This release includes the latest improvements, fixes, and update experience polish."
+        isShowingPostUpdateWhatsNew = true
     }
 
     private static func loadDayReviewStates(from userDefaults: UserDefaults) -> [String: DayReviewState] {

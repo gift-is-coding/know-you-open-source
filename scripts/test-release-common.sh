@@ -45,13 +45,39 @@ assert_eq "$repo_root/build/test-release/KnowYou-1.2.3-145-notarized.zip" "$(not
 assert_eq "$repo_root/build/test-release/KnowYou-1.2.3-145.dmg" "$(release_dmg_path)" "release_dmg_path"
 
 project_text="$(cat "$repo_root/KnowYou.xcodeproj/project.pbxproj")"
-assert_contains "$project_text" 'INFOPLIST_KEY_KYUpdateMetadataURL = "https://raw.githubusercontent.com/gift-is-coding/know-you-downloads/main/update-feed/latest.json";' "release update metadata URL"
-assert_contains "$project_text" 'INFOPLIST_KEY_KYUpdateMetadataURL = "http://127.0.0.1:8765/Support/update-feed/debug-update.json";' "debug update metadata URL"
+assert_contains "$project_text" 'INFOPLIST_FILE = KnowYou/Config/Info.plist;' "explicit app Info.plist"
+assert_contains "$project_text" 'KNOWYOU_SPARKLE_PUBLIC_ED_KEY = "DPaKuqvU48UAoI0rOvKtWaStpzMsX9fwypStdx4md/M=";' "Sparkle public key setting"
+assert_contains "$project_text" 'KNOWYOU_UPDATE_CHANNEL = direct;' "update channel setting"
+assert_contains "$project_text" 'KNOWYOU_UPDATE_METADATA_URL = "https://raw.githubusercontent.com/gift-is-coding/know-you-downloads/main/update-feed/latest.json";' "release update metadata URL"
+assert_contains "$project_text" 'KNOWYOU_UPDATE_METADATA_URL = "http://127.0.0.1:8765/Support/update-feed/debug-update.json";' "debug update metadata URL"
+assert_contains "$project_text" 'KNOWYOU_SPARKLE_FEED_URL = "https://raw.githubusercontent.com/gift-is-coding/know-you-downloads/main/update-feed/appcast.xml";' "release Sparkle appcast URL"
 assert_contains "$project_text" 'scripts/write-build-metadata.sh' "build metadata script path"
+
+info_plist="$(cat "$repo_root/KnowYou/Config/Info.plist")"
+assert_contains "$info_plist" '<key>KYUpdateMetadataURL</key>' "Info.plist update metadata key"
+assert_contains "$info_plist" '<string>$(KNOWYOU_UPDATE_CHANNEL)</string>' "Info.plist update channel setting"
+assert_contains "$info_plist" '<string>$(KNOWYOU_UPDATE_METADATA_URL)</string>' "Info.plist update metadata setting"
+assert_contains "$info_plist" '<key>SUFeedURL</key>' "Info.plist Sparkle feed key"
+assert_contains "$info_plist" '<string>$(KNOWYOU_SPARKLE_FEED_URL)</string>' "Info.plist Sparkle feed setting"
+assert_contains "$info_plist" '<key>SUPublicEDKey</key>' "Info.plist Sparkle public key"
+
+assert_eq "DPaKuqvU48UAoI0rOvKtWaStpzMsX9fwypStdx4md/M=" "$(sparkle_public_ed_key)" "sparkle_public_ed_key default"
 
 build_metadata_script="$(cat "$repo_root/scripts/write-build-metadata.sh")"
 assert_contains "$build_metadata_script" 'KYUpdateChannel' "build metadata script writes update channel"
 assert_contains "$build_metadata_script" 'KYUpdateMetadataURL' "build metadata script writes update metadata URL"
+assert_contains "$build_metadata_script" 'KNOWYOU_UPDATE_METADATA_URL' "build metadata script reads update metadata setting"
+
+release_common_script="$(cat "$repo_root/scripts/release-common.sh")"
+assert_contains "$release_common_script" 'sign_release_app_nested_code()' "release helper re-signs nested code"
+assert_contains "$release_common_script" 'Sparkle.framework' "release helper targets Sparkle framework"
+assert_contains "$release_common_script" 'XPCServices/Downloader.xpc' "release helper targets Sparkle downloader"
+assert_contains "$release_common_script" 'XPCServices/Installer.xpc' "release helper targets Sparkle installer"
+assert_contains "$release_common_script" 'Updater.app' "release helper targets Sparkle updater"
+assert_contains "$release_common_script" '--preserve-metadata=identifier,entitlements,requirements' "release helper preserves signing metadata"
+
+build_release_script="$(cat "$repo_root/scripts/build-release.sh")"
+assert_contains "$build_release_script" 'sign_release_app_nested_code "$app_path"' "build release signs app before zip"
 
 mkdir -p "$KNOWYOU_RELEASE_DIR"
 touch "$KNOWYOU_RELEASE_DIR/smoke.txt"

@@ -211,9 +211,9 @@ CLI 引擎的 Todo 语义判断必须使用 Todo 专用 JSON schema：`TodoRecon
 
 当前 `AppState` 还负责应用更新提醒编排：
 
-- 持有 `UpdateOffer`、`isShowingUpdateSheet`、`lastUpdateCheckAt`
+- 持有 `UpdateOffer`、`isShowingUpdateSheet`、`lastUpdateCheckAt` 以及重启后的 `What's New` 展示状态
 - 在启动时和长时间运行中的每日检查节奏上触发更新检查
-- 把 direct build 与 App Store build 的主动作分流为“打开官方下载链接”或“打开 App Store”
+- 把 direct build 与 App Store build 的主动作分流为“调用 Sparkle 自更新器”或“打开 App Store”
 - 保证更新胶囊只在存在真实 offer 时显示，并且关闭 sheet 后仍继续保留
 
 更新实现被拆成三个边界清晰的部件：
@@ -221,8 +221,9 @@ CLI 引擎的 Todo 语义判断必须使用 Todo 专用 JSON schema：`TodoRecon
 - `UpdateChannelResolver`：根据 `KYUpdateChannel` 解析当前分发渠道
 - `UpdateService`：拉取远端 metadata、比较版本、生成统一的 `UpdateOffer`
 - `MainWindowView.toolbar`：通过 toolbar leading 区域把 SwiftUI 胶囊稳定挂到主窗口标题栏左上角
+- `SparkleDirectAppUpdater`：把 direct 渠道更新主动作桥接到 Sparkle 标准下载、安装、重启流程
 
-当前 Release 构建配置了线上 update feed：`https://raw.githubusercontent.com/gift-is-coding/know-you-downloads/main/update-feed/latest.json`。如果构建元数据缺失或 URL 无效，系统会安全退回 `NoopUpdateService`。这让产品层已经具备双渠道 UI 和状态机；其中 direct 渠道当前会通过 `DirectAppUpdating` 默认实现打开远端 metadata 提供的官方下载链接，后续仍可继续桥接到 Sparkle 一类真正的自更新器。
+当前 Release 构建配置了两条线上更新 feed：`latest.json` 继续服务旧版本的自定义更新胶囊，`appcast.xml` 服务 Sparkle 自更新。如果构建元数据缺失或 URL 无效，系统会安全退回 `NoopUpdateService`。第一版 Sparkle-enabled app 仍需要用户通过 DMG 手动安装一次；从该版本之后，direct 渠道主按钮会交给 Sparkle 显示进度、验证签名、替换 app 并重启。重启后 `AppState` 通过版本号变化显示一次 `What's New` 弹窗。
 
 Settings 除了状态与配置外，还承接了一组对外信息入口：
 

@@ -81,7 +81,7 @@ final class AppEnvironment {
         self.dailyAutomationPlanner = dailyAutomationPlanner
         self.updateService = updateService
         self.externalURLOpener = externalURLOpener
-        self.directAppUpdater = directAppUpdater ?? ExternalLinkDirectAppUpdater(opener: externalURLOpener)
+        self.directAppUpdater = directAppUpdater ?? SparkleDirectAppUpdater()
         self.clipboardWatcher = ClipboardWatcher(
             privacyFilter: privacyFilter,
             databaseWriter: databaseWriter,

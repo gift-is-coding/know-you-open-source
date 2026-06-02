@@ -1,6 +1,6 @@
 {
-  "version": "1.1.0",
-  "summary": "这是一个本地 fake 更新，用来预览左上角更新胶囊和更新 sheet。",
-  "publishedAt": "2026-04-17T11:50:00Z",
-  "downloadURL": "https://knowyou.example.com/download"
+  "version": "9.9.0",
+  "summary": "本地 fake 更新，用来测试 KnowYou 的更新胶囊、更新内容 sheet，以及 Sparkle 检查入口。\n\n- 左上角应该显示更明显的更新胶囊。\n- 点击胶囊后，sheet 应该显示完整更新内容。\n- 如果没有提供真实 DMG，这个 appcast 只用于 UI 预览；提供真实 DMG 后会写入 Sparkle 签名 enclosure。",
+  "publishedAt": "2026-06-02T00:00:00Z",
+  "downloadURL": "http://127.0.0.1:8765/Support/update-feed/KnowYou-local-update-9.9.0.dmg"
 }

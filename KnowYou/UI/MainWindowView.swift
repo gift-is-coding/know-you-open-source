@@ -139,6 +139,24 @@ struct MainWindowView: View {
                 )
             }
         }
+        .sheet(
+            isPresented: Binding(
+                get: { appState.isShowingPostUpdateWhatsNew },
+                set: { isPresented in
+                    if isPresented == false {
+                        appState.dismissPostUpdateWhatsNew()
+                    }
+                }
+            )
+        ) {
+            PostUpdateWhatsNewSheet(
+                title: appState.postUpdateWhatsNewTitle,
+                summary: appState.postUpdateWhatsNewSummary,
+                onClose: {
+                    appState.dismissPostUpdateWhatsNew()
+                }
+            )
+        }
         .sheet(isPresented: $isShowingAPIDetail) {
             LLMAPIDetailSheet(
                 config: $apiConfigDraft,

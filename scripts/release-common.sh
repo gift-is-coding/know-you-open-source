@@ -12,12 +12,24 @@ notary_profile="${KNOWYOU_NOTARY_PROFILE:-know-you-notary}"
 developer_team="${KNOWYOU_DEVELOPER_TEAM:-3DY726RPHL}"
 developer_id_identity="${KNOWYOU_DEVELOPER_ID_IDENTITY:-Developer ID Application: danhu ouyang (3DY726RPHL)}"
 download_repo="${KNOWYOU_DOWNLOAD_REPO:-gift-is-coding/know-you-downloads}"
+default_sparkle_public_ed_key="DPaKuqvU48UAoI0rOvKtWaStpzMsX9fwypStdx4md/M="
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || {
     echo "Missing required command: $1" >&2
     exit 1
   }
+}
+
+require_sparkle_public_key() {
+  if [[ -z "$(sparkle_public_ed_key)" ]]; then
+    echo "Missing KNOWYOU_SPARKLE_PUBLIC_ED_KEY. Generate it with Sparkle generate_keys and export it before building a release." >&2
+    exit 1
+  fi
+}
+
+sparkle_public_ed_key() {
+  printf '%s\n' "${KNOWYOU_SPARKLE_PUBLIC_ED_KEY:-$default_sparkle_public_ed_key}"
 }
 
 build_setting() {
@@ -91,6 +103,50 @@ checksum_asset_name() {
   printf '%s.sha256\n' "$(basename "$(release_dmg_path)")"
 }
 
+sparkle_signature_attributes() {
+  local signer="${KNOWYOU_SPARKLE_SIGN_UPDATE:-sign_update}"
+
+  if [[ "$signer" == */* ]]; then
+    ensure_file_exists "$signer"
+  else
+    require_command "$signer"
+  fi
+
+  "$signer" "$(release_dmg_path)" | tr -d '\n'
+}
+
+sign_release_app_nested_code() {
+  local target_app="${1:-$app_path}"
+  ensure_file_exists "$target_app"
+  require_command codesign
+
+  local sparkle_framework="$target_app/Contents/Frameworks/Sparkle.framework"
+  if [[ ! -d "$sparkle_framework" ]]; then
+    return
+  fi
+
+  local sparkle_version_dir="$sparkle_framework/Versions/B"
+  local signing_targets=(
+    "$sparkle_version_dir/XPCServices/Downloader.xpc"
+    "$sparkle_version_dir/XPCServices/Installer.xpc"
+    "$sparkle_version_dir/Updater.app"
+    "$sparkle_version_dir/Autoupdate"
+    "$sparkle_framework"
+    "$target_app"
+  )
+
+  for signing_target in "${signing_targets[@]}"; do
+    ensure_file_exists "$signing_target"
+    codesign \
+      --force \
+      --options runtime \
+      --timestamp \
+      --sign "$developer_id_identity" \
+      --preserve-metadata=identifier,entitlements,requirements \
+      "$signing_target"
+  done
+}
+
 download_release_tag() {
   printf 'v%s-build%s\n' "$(marketing_version)" "$(release_repo_build_number)"
 }
@@ -117,23 +173,27 @@ download_update_metadata_url() {
 
 release_update_feed_json() {
   local published_at="${KNOWYOU_RELEASE_PUBLISHED_AT:-$(release_date)T00:00:00Z}"
+  local summary
+  summary="$(release_notes_body)"
 
-  python3 - <<'PY' \
+  KNOWYOU_RELEASE_SUMMARY="$summary" python3 - <<'PY' \
     "$(marketing_version)" \
     "$(download_release_title)" \
     "$published_at" \
     "$(download_asset_url)"
 import json
+import os
 import sys
 
 version = sys.argv[1]
 title = sys.argv[2]
 published_at = sys.argv[3]
 download_url = sys.argv[4]
+summary = os.environ["KNOWYOU_RELEASE_SUMMARY"]
 
 payload = {
     "version": version,
-    "summary": f"{title} is available.",
+    "summary": summary,
     "publishedAt": published_at,
     "downloadURL": download_url,
 }
@@ -143,7 +203,77 @@ sys.stdout.write("\n")
 PY
 }
 
+release_update_appcast_xml() {
+  local signature_attributes="$1"
+  local published_at="${KNOWYOU_RELEASE_PUBLISHED_AT:-$(release_date)T00:00:00Z}"
+  local release_notes
+  release_notes="$(release_notes_body)"
+
+  KNOWYOU_RELEASE_NOTES="$release_notes" python3 - <<'PY' \
+    "$(marketing_version)" \
+    "$(release_repo_build_number)" \
+    "$(download_release_title)" \
+    "$published_at" \
+    "$(download_asset_url)" \
+    "$signature_attributes"
+import email.utils
+import html
+import os
+import sys
+from datetime import datetime, timezone
+
+marketing_version = sys.argv[1]
+build_number = sys.argv[2]
+title = sys.argv[3]
+published_at = sys.argv[4]
+download_url = sys.argv[5]
+signature_attributes = sys.argv[6].strip()
+release_notes = os.environ["KNOWYOU_RELEASE_NOTES"]
+
+try:
+    parsed_date = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+except ValueError:
+    parsed_date = datetime.now(timezone.utc)
+
+if parsed_date.tzinfo is None:
+    parsed_date = parsed_date.replace(tzinfo=timezone.utc)
+
+pub_date = email.utils.format_datetime(parsed_date.astimezone(timezone.utc))
+escaped_title = html.escape(title)
+escaped_url = html.escape(download_url, quote=True)
+description = "<![CDATA[" + release_notes.replace("]]>", "]]]]><![CDATA[>") + "]]>"
+
+print(f"""<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>KnowYou Updates</title>
+    <link>https://github.com/gift-is-coding/know-you-downloads</link>
+    <description>KnowYou direct release updates</description>
+    <item>
+      <title>{escaped_title}</title>
+      <sparkle:version>{html.escape(build_number)}</sparkle:version>
+      <sparkle:shortVersionString>{html.escape(marketing_version)}</sparkle:shortVersionString>
+      <pubDate>{html.escape(pub_date)}</pubDate>
+      <description>{description}</description>
+      <enclosure url="{escaped_url}" type="application/octet-stream" {signature_attributes} />
+    </item>
+  </channel>
+</rss>""")
+PY
+}
+
 release_notes_body() {
+  if [[ -n "${KNOWYOU_RELEASE_NOTES_FILE:-}" ]]; then
+    ensure_file_exists "$KNOWYOU_RELEASE_NOTES_FILE"
+    cat "$KNOWYOU_RELEASE_NOTES_FILE"
+    return
+  fi
+
+  if [[ -n "${KNOWYOU_RELEASE_NOTES:-}" ]]; then
+    printf '%s\n' "$KNOWYOU_RELEASE_NOTES"
+    return
+  fi
+
   cat <<EOF
 KnowYou turns daily computer context into a story-first journal on macOS.
 

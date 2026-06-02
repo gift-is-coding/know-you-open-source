@@ -144,24 +144,30 @@ mkdir -p "$mount_point/.background"
 ditto "$background_path" "$mount_point/.background/background.png"
 SetFile -a V "$mount_point/.background"
 
-if ! osascript <<'APPLESCRIPT'
+if ! DMG_MOUNT_POINT="$mount_point" osascript <<'APPLESCRIPT'
+set mountPoint to system attribute "DMG_MOUNT_POINT"
+set backgroundPath to mountPoint & "/.background/background.png"
+
 with timeout of 300 seconds
   tell application "Finder"
-    tell disk "KnowYou"
-      open
-      set current view of container window to icon view
-      set toolbar visible of container window to false
-      set statusbar visible of container window to false
-      set bounds of container window to {100, 100, 660, 400}
-      set theViewOptions to icon view options of container window
-      set arrangement of theViewOptions to not arranged
-      set icon size of icon view options of container window to 96
-      set background picture of theViewOptions to file ".background:background.png"
-      set position of item "KnowYou.app" to {150, 148}
-      set position of item "Applications" to {430, 148}
-      delay 2
-      close
+    set installerFolder to POSIX file mountPoint as alias
+    open installerFolder
+    delay 1
+    set installerWindow to front Finder window
+    tell installerWindow
+      set current view to icon view
+      set toolbar visible to false
+      set statusbar visible to false
+      set bounds to {100, 100, 660, 400}
     end tell
+    set theViewOptions to icon view options of installerWindow
+    set arrangement of theViewOptions to not arranged
+    set icon size of theViewOptions to 96
+    set background picture of theViewOptions to POSIX file backgroundPath
+    set position of item "KnowYou.app" of installerFolder to {150, 148}
+    set position of item "Applications" of installerFolder to {430, 148}
+    delay 2
+    close installerWindow
   end tell
 end timeout
 APPLESCRIPT

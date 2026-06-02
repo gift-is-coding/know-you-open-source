@@ -170,6 +170,21 @@ then
   exit 1
 fi
 
+for _ in {1..30}; do
+  if [[ -s "$mount_point/.DS_Store" ]]; then
+    break
+  fi
+  osascript -e 'tell application "Finder" to update disk "KnowYou"' >/dev/null 2>&1 || true
+  sleep 1
+done
+
+if [[ ! -s "$mount_point/.DS_Store" ]]; then
+  echo "Finder did not persist DMG layout metadata: $mount_point/.DS_Store" >&2
+  ls -la "$mount_point" >&2
+  hdiutil detach "$device" || true
+  exit 1
+fi
+
 sync
 hdiutil detach "$device"
 hdiutil convert "$rw_dmg_path" -format UDZO -o "$(release_dmg_path)" -ov

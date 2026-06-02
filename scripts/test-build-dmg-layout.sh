@@ -31,5 +31,7 @@ assert_contains "$script" "set position of item \"KnowYou.app\" to {150, 148}" "
 assert_contains "$script" "set position of item \"Applications\" to {430, 148}" "Applications icon on the right"
 assert_contains "$script" "set icon size of icon view options of container window to 96" "large icon size"
 assert_contains "$script" "background.png" "custom background image"
+assert_contains "$script" '$mount_point/.DS_Store' "Finder layout metadata verification"
+assert_contains "$script" "Finder did not persist DMG layout metadata" "layout persistence failure message"
 
 echo "build-dmg layout tests passed"

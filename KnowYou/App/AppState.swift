@@ -429,7 +429,7 @@ struct SummarizerRuntimeStatus {
     var failureKind: FailureKind?
 }
 
-struct EngineRuntimeStatus: Equatable {
+struct EngineRuntimeStatus: Codable, Equatable {
     var state: EngineIndicatorState = .gray
     var detail: String = "Not configured."
     var lastVerifiedAt: Date?
@@ -833,6 +833,7 @@ final class AppState {
                     environment: processEnvironment
                 )
             )
+            persistEngineRuntimeStatuses()
         }
     }
 
@@ -910,9 +911,13 @@ final class AppState {
                 with: injectedSummarizer
             )
         }
-        let initialEngineStatuses = Self.makeInitialEngineStatuses(
+        let baselineEngineStatuses = Self.makeInitialEngineStatuses(
             config: self.summarizerConfig,
             environment: processEnvironment
+        )
+        let initialEngineStatuses = Self.reconciledEngineStatuses(
+            baseline: baselineEngineStatuses,
+            persisted: Self.loadPersistedEngineStatuses(from: resolvedUserDefaults)
         )
         self.engineStatuses = initialEngineStatuses
         self.defaultEngine = Self.initialDefaultEngine(
@@ -2239,6 +2244,7 @@ final class AppState {
         }
         engineStatuses = refreshed
         reconcileDefaultEngineAfterStatusChange()
+        persistEngineRuntimeStatuses()
     }
 
     func retestAllEngines() async {
@@ -2289,6 +2295,7 @@ final class AppState {
         }
 
         reconcileDefaultEngineAfterStatusChange()
+        persistEngineRuntimeStatuses()
     }
 
     func retestEngine(_ engine: DiaryEngine) async {
@@ -2322,6 +2329,7 @@ final class AppState {
         reconcileDefaultEngineAfterStatusChange()
         retestingEngines.remove(engine)
         isRetestingEngines = !retestingEngines.isEmpty
+        persistEngineRuntimeStatuses()
     }
 
     func repairDefaultEngineIfNeeded() async -> Bool {
@@ -2389,6 +2397,7 @@ final class AppState {
                 refreshActiveSummarizer()
             }
             reconcileDefaultEngineAfterStatusChange()
+            persistEngineRuntimeStatuses()
         }
 
         return status
@@ -2472,6 +2481,7 @@ final class AppState {
         static let lastNotificationImportAt = "lastNotificationImportAt"
         static let lastNotificationImportDatabasePath = "lastNotificationImportDatabasePath"
         static let explicitlyDisabledSummarizerAutoSelection = "explicitlyDisabledSummarizerAutoSelection"
+        static let engineRuntimeStatuses = "engineRuntimeStatuses"
         static let lastUpdateCheckAt = "lastUpdateCheckAt"
         static let launchAtLoginDefaultRegistrationAttempted = "launchAtLoginDefaultRegistrationAttempted"
         static let dayReviewStates = "dayReviewStates"
@@ -5601,6 +5611,16 @@ extension AppState {
         refreshActiveSummarizer()
     }
 
+    private func persistEngineRuntimeStatuses() {
+        let payload = Dictionary(
+            uniqueKeysWithValues: engineStatuses.map { engine, status in
+                (engine.rawValue, status)
+            }
+        )
+        guard let data = try? JSONEncoder().encode(payload) else { return }
+        userDefaults.set(data, forKey: UserDefaultsKeys.engineRuntimeStatuses)
+    }
+
     private func refreshActiveSummarizer() {
         environment?.summarizer = makeSummarizer(defaultEngine, summarizerConfig, processEnvironment)
     }
@@ -5694,6 +5714,7 @@ extension AppState {
                 environment: processEnvironment
             )
         )
+        persistEngineRuntimeStatuses()
     }
 
     private static func makeInitialEngineStatuses(
@@ -5705,6 +5726,52 @@ extension AppState {
                 (engine, makeBaselineStatus(for: engine, config: config, environment: environment))
             }
         )
+    }
+
+    private static func loadPersistedEngineStatuses(
+        from userDefaults: UserDefaults
+    ) -> [DiaryEngine: EngineRuntimeStatus] {
+        guard
+            let data = userDefaults.data(forKey: UserDefaultsKeys.engineRuntimeStatuses),
+            let decoded = try? JSONDecoder().decode([String: EngineRuntimeStatus].self, from: data)
+        else {
+            return [:]
+        }
+
+        var statuses: [DiaryEngine: EngineRuntimeStatus] = [:]
+        for (rawEngine, status) in decoded {
+            guard let engine = DiaryEngine.persistedEngine(rawValue: rawEngine) else {
+                continue
+            }
+            statuses[engine] = status
+        }
+        return statuses
+    }
+
+    private static func reconciledEngineStatuses(
+        baseline: [DiaryEngine: EngineRuntimeStatus],
+        persisted: [DiaryEngine: EngineRuntimeStatus]
+    ) -> [DiaryEngine: EngineRuntimeStatus] {
+        var reconciled = baseline
+        for engine in DiaryEngine.allCases {
+            guard
+                let baselineStatus = baseline[engine],
+                let persistedStatus = persisted[engine],
+                baselineStatus.state != .gray,
+                !baselineStatus.configurationSignature.isEmpty,
+                persistedStatus.configurationSignature == baselineStatus.configurationSignature
+            else {
+                continue
+            }
+
+            reconciled[engine] = EngineRuntimeStatus(
+                state: persistedStatus.state,
+                detail: persistedStatus.detail,
+                lastVerifiedAt: persistedStatus.lastVerifiedAt,
+                configurationSignature: baselineStatus.configurationSignature
+            )
+        }
+        return reconciled
     }
 
     private static func makeBaselineStatus(

@@ -95,11 +95,17 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertEqual(KnowYouMainWindowLaunchPolicy.title, "KnowYou")
         XCTAssertFalse(KnowYouMainWindowLaunchPolicy.usesSwiftUIWindowScene)
         XCTAssertTrue(KnowYouMainWindowLaunchPolicy.usesAppKitPresenter)
+        XCTAssertTrue(KnowYouMainWindowLaunchPolicy.showsAppIconInTitlebar)
+        XCTAssertEqual(KnowYouMainWindowLaunchPolicy.titlebarIconSize, 30)
+        XCTAssertEqual(KnowYouMainWindowLaunchPolicy.titlebarTitleFontSize, 21)
     }
 
     func testMainWindowWorkspacePolicyKeepsToolbarStableAcrossSidebarModes() {
         XCTAssertTrue(MainWindowWorkspacePolicy.usesUnifiedNavigationSplitViewAcrossModes)
         XCTAssertTrue(MainWindowWorkspacePolicy.keepsEngineSelectorInGlobalToolbar)
+        XCTAssertTrue(MainWindowWorkspacePolicy.showsPrivacyMessageOutsideEngineSelector)
+        XCTAssertEqual(MainWindowWorkspacePolicy.privacyMessage, "Your data stays local. No backend server.")
+        XCTAssertEqual(MainWindowWorkspacePolicy.privacyMessageFontSize, 14)
     }
 
     func testDetailPresentationShowsMarkdownPageByDefault() {

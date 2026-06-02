@@ -59,7 +59,7 @@ enum DiaryEngine: String, CaseIterable, Codable, Sendable {
     }
 }
 
-enum EngineIndicatorState: Equatable, Sendable {
+enum EngineIndicatorState: String, Codable, Equatable, Sendable {
     case gray
     case yellow
     case green

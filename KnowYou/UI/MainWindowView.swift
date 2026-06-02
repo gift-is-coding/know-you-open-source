@@ -11,6 +11,9 @@ private enum MainWindowMode {
 enum MainWindowWorkspacePolicy {
     static let usesUnifiedNavigationSplitViewAcrossModes = true
     static let keepsEngineSelectorInGlobalToolbar = true
+    static let showsPrivacyMessageOutsideEngineSelector = true
+    static let privacyMessage = "Your data stays local. No backend server."
+    static let privacyMessageFontSize: CGFloat = 14
 }
 
 struct MainWindowView: View {
@@ -108,17 +111,6 @@ struct MainWindowView: View {
                             openAPIDetail()
                         }
                     )
-                }
-
-                if !showsOnboardingEngineButton {
-                    Text("Your data stays local. No backend server.")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .padding(.leading, 10)
-                        .frame(maxWidth: 260, alignment: .leading)
-                        .help("Your data stays local. No backend server.")
                 }
             }
         }

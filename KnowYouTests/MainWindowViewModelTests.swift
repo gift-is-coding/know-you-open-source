@@ -5676,6 +5676,85 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.engineStatuses[.codexCLI]?.lastVerifiedAt, verifiedAt)
     }
 
+    func testAppStateRestoresPersistedGreenEngineStatusWhenConfigurationSignatureMatches() async throws {
+        let executableURL = try makeStubExecutable(named: "codex")
+        var config = SummarizerConfig.default
+        config.defaultEngine = .codexCLI
+        config.codexCLIPath = executableURL.path
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_160_000)
+
+        let firstAppState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            probeEngine: { engine, _, _ in
+                EngineProbeResult(
+                    engine: engine,
+                    state: .green,
+                    detail: "Smoke test succeeded.",
+                    verifiedAt: verifiedAt
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        await firstAppState.retestEngine(.codexCLI)
+
+        let relaunchedAppState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: config,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertEqual(relaunchedAppState.defaultEngine, .codexCLI)
+        XCTAssertEqual(relaunchedAppState.engineStatuses[.codexCLI]?.state, .green)
+        XCTAssertEqual(relaunchedAppState.engineStatuses[.codexCLI]?.detail, "Smoke test succeeded.")
+        XCTAssertEqual(relaunchedAppState.engineStatuses[.codexCLI]?.lastVerifiedAt, verifiedAt)
+    }
+
+    func testAppStateIgnoresPersistedGreenEngineStatusWhenConfigurationSignatureChanges() async throws {
+        let originalExecutableURL = try makeStubExecutable(named: "codex")
+        let updatedExecutableURL = try makeStubExecutable(named: "codex")
+        var originalConfig = SummarizerConfig.default
+        originalConfig.defaultEngine = .codexCLI
+        originalConfig.codexCLIPath = originalExecutableURL.path
+        let verifiedAt = Date(timeIntervalSince1970: 1_775_160_000)
+
+        let firstAppState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: originalConfig,
+            probeEngine: { engine, _, _ in
+                EngineProbeResult(
+                    engine: engine,
+                    state: .green,
+                    detail: "Smoke test succeeded.",
+                    verifiedAt: verifiedAt
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+        await firstAppState.retestEngine(.codexCLI)
+
+        var updatedConfig = originalConfig
+        updatedConfig.codexCLIPath = updatedExecutableURL.path
+        let relaunchedAppState = AppState(
+            bootstrapServices: false,
+            summarizerConfig: updatedConfig,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        XCTAssertEqual(relaunchedAppState.engineStatuses[.codexCLI]?.state, .yellow)
+        XCTAssertEqual(relaunchedAppState.engineStatuses[.codexCLI]?.detail, "Executable found. Retest required.")
+        XCTAssertEqual(relaunchedAppState.engineStatuses[.codexCLI]?.lastVerifiedAt, nil)
+    }
+
     func testAppStateExposesDefaultEngineAndStatusesForSelectorUI() {
         var config = SummarizerConfig.default
         config.defaultEngine = .codexCLI

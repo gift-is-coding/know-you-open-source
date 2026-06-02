@@ -182,6 +182,9 @@ enum KnowYouMainWindowLaunchPolicy {
     static var title: String { AppRuntimeProfile.current.displayName }
     static let usesSwiftUIWindowScene = false
     static let usesAppKitPresenter = true
+    static let showsAppIconInTitlebar = true
+    static let titlebarIconSize: CGFloat = 30
+    static let titlebarTitleFontSize: CGFloat = 21
 }
 
 @MainActor
@@ -230,12 +233,81 @@ private final class KnowYouMainWindowPresenter {
             defer: false
         )
         window.title = KnowYouMainWindowLaunchPolicy.title
+        window.titleVisibility = .hidden
         window.contentViewController = hostingController
         window.center()
         window.setFrameAutosaveName("KnowYouMainWindow")
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace]
+        installTitlebarTitleView(in: window)
         return NSWindowController(window: window)
+    }
+
+    private func installTitlebarTitleView(in window: NSWindow) {
+        guard KnowYouMainWindowLaunchPolicy.showsAppIconInTitlebar,
+              let titlebarView = window.standardWindowButton(.closeButton)?.superview else {
+            return
+        }
+
+        let titlebarIdentifier = NSUserInterfaceItemIdentifier("KnowYouTitlebarTitleView")
+        titlebarView.subviews
+            .filter { $0.identifier == titlebarIdentifier }
+            .forEach { $0.removeFromSuperview() }
+
+        let titleContainer = NSStackView()
+        titleContainer.identifier = titlebarIdentifier
+        titleContainer.orientation = .horizontal
+        titleContainer.alignment = .centerY
+        titleContainer.spacing = 9
+        titleContainer.translatesAutoresizingMaskIntoConstraints = false
+
+        let iconView = NSImageView(image: NSApp.applicationIconImage)
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.setContentHuggingPriority(.required, for: .horizontal)
+        iconView.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let titleLabel = NSTextField(labelWithString: KnowYouMainWindowLaunchPolicy.title)
+        titleLabel.font = .systemFont(
+            ofSize: KnowYouMainWindowLaunchPolicy.titlebarTitleFontSize,
+            weight: .bold
+        )
+        titleLabel.textColor = .labelColor
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.maximumNumberOfLines = 1
+        titleLabel.setContentHuggingPriority(.required, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let privacyLabel = NSTextField(labelWithString: MainWindowWorkspacePolicy.privacyMessage)
+        privacyLabel.font = .systemFont(
+            ofSize: MainWindowWorkspacePolicy.privacyMessageFontSize,
+            weight: .semibold
+        )
+        privacyLabel.textColor = NSColor.labelColor.withAlphaComponent(0.7)
+        privacyLabel.lineBreakMode = .byTruncatingTail
+        privacyLabel.maximumNumberOfLines = 1
+        privacyLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        privacyLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        titleContainer.addArrangedSubview(iconView)
+        titleContainer.addArrangedSubview(titleLabel)
+        if MainWindowWorkspacePolicy.showsPrivacyMessageOutsideEngineSelector {
+            titleContainer.setCustomSpacing(16, after: titleLabel)
+            titleContainer.addArrangedSubview(privacyLabel)
+        }
+
+        titlebarView.addSubview(titleContainer)
+
+        let centerX = titleContainer.centerXAnchor.constraint(equalTo: titlebarView.centerXAnchor)
+        centerX.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            iconView.widthAnchor.constraint(equalToConstant: KnowYouMainWindowLaunchPolicy.titlebarIconSize),
+            iconView.heightAnchor.constraint(equalToConstant: KnowYouMainWindowLaunchPolicy.titlebarIconSize),
+            titleContainer.centerYAnchor.constraint(equalTo: titlebarView.centerYAnchor, constant: 1),
+            centerX,
+            titleContainer.leadingAnchor.constraint(greaterThanOrEqualTo: titlebarView.leadingAnchor, constant: 168),
+            titleContainer.trailingAnchor.constraint(lessThanOrEqualTo: titlebarView.trailingAnchor, constant: -168),
+        ])
     }
 }
 

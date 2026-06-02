@@ -2816,6 +2816,57 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertTrue(markdown.contains("- [ ] Prepare the provider config UI copy"), markdown)
     }
 
+    func testTopLevelTodoCanBeEditedCompletedRestoredAndDeleted() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let environment = try makeTodoEnvironment(
+            writer: writer,
+            summarizer: HandlerSummarizer { _, _, _ in #"{"completed":[]}"# }
+        )
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            currentDate: {
+                DateComponents(
+                    calendar: Calendar(identifier: .gregorian),
+                    year: 2026,
+                    month: 5,
+                    day: 28,
+                    hour: 9
+                ).date!
+            }
+        )
+
+        appState.addTodo(title: "Send the investor recap")
+        let todoID = try XCTUnwrap(appState.todoItems.first?.id)
+
+        appState.updateTodoItemTitle(id: todoID, title: "  Send the updated investor recap  ")
+        appState.toggleTodoItemCompletion(id: todoID)
+        appState.toggleTodoItemCompletion(id: todoID)
+
+        let item = try XCTUnwrap(appState.todoItems.first)
+        let markdown = try String(
+            contentsOf: environment.vaultURL.appending(path: "Todo.md"),
+            encoding: .utf8
+        )
+
+        XCTAssertEqual(item.title, "Send the updated investor recap")
+        XCTAssertEqual(item.status, .open)
+        XCTAssertNil(item.completedAt)
+        XCTAssertNil(item.completionKind)
+        XCTAssertTrue(item.completionEvidenceEventIDs.isEmpty)
+        XCTAssertTrue(markdown.contains("- [ ] Send the updated investor recap"), markdown)
+        XCTAssertFalse(markdown.contains("- [x] Send the updated investor recap"), markdown)
+
+        appState.deleteTodoItem(id: todoID)
+
+        let deletedMarkdown = try String(
+            contentsOf: environment.vaultURL.appending(path: "Todo.md"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(appState.todoItems.isEmpty)
+        XCTAssertFalse(deletedMarkdown.contains("Send the updated investor recap"), deletedMarkdown)
+    }
+
     func testRefreshSelectedDayCompletesOpenTodoFromEvidenceSweep() async throws {
         let dayKey = "2026-05-27"
         let evidenceID = UUID()

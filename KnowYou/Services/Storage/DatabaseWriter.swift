@@ -9,6 +9,20 @@ private enum DatabaseWriterRowError: Error {
     case invalidValue(field: String, value: String)
 }
 
+enum TodoMutationError: LocalizedError {
+    case emptyTitle
+    case duplicateTitle
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyTitle:
+            return "Todo title cannot be empty."
+        case .duplicateTitle:
+            return "A todo with that title already exists."
+        }
+    }
+}
+
 final class DatabaseWriter: EventWriting {
     private let dbQueue: DatabaseQueue
 
@@ -180,6 +194,58 @@ final class DatabaseWriter: EventWriting {
                     try Self.uuidJSON(Self.uniqueUUIDs(evidenceEventIDs)),
                     id,
                 ]
+            )
+        }
+    }
+
+    func updateTodoTitle(id: String, title: String) throws {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty else {
+            throw TodoMutationError.emptyTitle
+        }
+        let normalizedTitle = UnifiedTodoItem.normalizeTitle(cleanTitle)
+        guard !normalizedTitle.isEmpty else {
+            throw TodoMutationError.emptyTitle
+        }
+
+        try dbQueue.write { db in
+            if let duplicate = try Self.fetchTodo(normalizedTitle: normalizedTitle, from: db),
+               duplicate.id != id {
+                throw TodoMutationError.duplicateTitle
+            }
+            try db.execute(
+                sql: """
+                UPDATE todo_items
+                SET title = ?, normalizedTitle = ?
+                WHERE id = ?
+                """,
+                arguments: [cleanTitle, normalizedTitle, id]
+            )
+        }
+    }
+
+    func reopenTodo(id: String) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                UPDATE todo_items
+                SET status = ?, completedAt = NULL, completionKind = NULL, completionEvidenceEventIDsJSON = ?
+                WHERE id = ?
+                """,
+                arguments: [
+                    UnifiedTodoItem.Status.open.rawValue,
+                    try Self.uuidJSON([]),
+                    id,
+                ]
+            )
+        }
+    }
+
+    func deleteTodo(id: String) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "DELETE FROM todo_items WHERE id = ?",
+                arguments: [id]
             )
         }
     }

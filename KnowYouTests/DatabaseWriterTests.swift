@@ -292,6 +292,107 @@ final class DatabaseWriterTests: XCTestCase {
         XCTAssertEqual(item.completionEvidenceEventIDs, [evidenceEventID])
     }
 
+    func testTodoTitleUpdateRewritesTitleAndNormalizedTitle() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let todo = try writer.createTodo(
+            title: "Send the investor recap",
+            sourceDayKey: "2026-05-28",
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_000),
+            promotionKind: .manual
+        )
+
+        try writer.updateTodoTitle(id: todo.id, title: "  Send the updated investor recap.  ")
+
+        let item = try XCTUnwrap(writer.fetchTodoItems().first)
+
+        XCTAssertEqual(item.title, "Send the updated investor recap.")
+        XCTAssertEqual(item.normalizedTitle, "send the updated investor recap")
+    }
+
+    func testTodoTitleUpdateRejectsEmptyAndDuplicateNormalizedTitle() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let first = try writer.createTodo(
+            title: "Send the investor recap",
+            sourceDayKey: "2026-05-28",
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_000),
+            promotionKind: .manual
+        )
+        _ = try writer.createTodo(
+            title: "Confirm Friday meeting time",
+            sourceDayKey: "2026-05-28",
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_100),
+            promotionKind: .manual
+        )
+
+        XCTAssertThrowsError(try writer.updateTodoTitle(id: first.id, title: " "))
+        XCTAssertThrowsError(try writer.updateTodoTitle(id: first.id, title: "confirm friday meeting time."))
+
+        XCTAssertEqual(try writer.fetchTodoItems().map(\.title), [
+            "Send the investor recap",
+            "Confirm Friday meeting time",
+        ])
+    }
+
+    func testTodoReopenClearsCompletionMetadataAndSortsWithOpenItems() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let evidenceEventID = UUID()
+        let todo = try writer.createTodo(
+            title: "Send the investor recap",
+            sourceDayKey: "2026-05-28",
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_000),
+            promotionKind: .manual
+        )
+        let laterOpen = try writer.createTodo(
+            title: "Confirm Friday meeting time",
+            sourceDayKey: "2026-05-28",
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_100),
+            promotionKind: .manual
+        )
+        try writer.completeTodo(
+            id: todo.id,
+            completedAt: Date(timeIntervalSince1970: 1_778_000_500),
+            completionKind: .evidenceSweep,
+            evidenceEventIDs: [evidenceEventID]
+        )
+
+        try writer.reopenTodo(id: todo.id)
+
+        let items = try writer.fetchTodoItems()
+
+        XCTAssertEqual(items.map(\.id), [todo.id, laterOpen.id])
+        XCTAssertEqual(items.first?.status, .open)
+        XCTAssertNil(items.first?.completedAt)
+        XCTAssertNil(items.first?.completionKind)
+        XCTAssertEqual(items.first?.completionEvidenceEventIDs, [])
+    }
+
+    func testTodoDeleteRemovesOnlyMatchingItem() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let first = try writer.createTodo(
+            title: "Send the investor recap",
+            sourceDayKey: "2026-05-28",
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_000),
+            promotionKind: .manual
+        )
+        _ = try writer.createTodo(
+            title: "Confirm Friday meeting time",
+            sourceDayKey: "2026-05-28",
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_100),
+            promotionKind: .manual
+        )
+
+        try writer.deleteTodo(id: first.id)
+
+        XCTAssertEqual(try writer.fetchTodoItems().map(\.title), ["Confirm Friday meeting time"])
+    }
+
     func testNotificationCollectorIngestsSnapshot() throws {
         let writer = try DatabaseWriter.inMemory()
         let filter = PrivacyFilter()

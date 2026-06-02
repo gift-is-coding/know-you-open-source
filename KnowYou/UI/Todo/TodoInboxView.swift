@@ -61,7 +61,9 @@ struct TodoInboxView: View {
     let onAdd: (String) -> Void
     let onAddCandidate: (String) -> Void
     let onDismissCandidate: (String) -> Void
-    let onComplete: (String) -> Void
+    let onToggleCompletion: (String) -> Void
+    let onUpdateTitle: (String, String) -> Void
+    let onDelete: (String) -> Void
     let onCloseRecommendation: (String) -> Void
     let onKeepRecommendation: (String) -> Void
     let onUpdateNow: () -> Void
@@ -119,7 +121,12 @@ struct TodoInboxView: View {
                 } else {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(openItems) { item in
-                            TodoInboxRow(item: item, onComplete: onComplete)
+                            TodoInboxRow(
+                                item: item,
+                                onToggleCompletion: onToggleCompletion,
+                                onUpdateTitle: onUpdateTitle,
+                                onDelete: onDelete
+                            )
                         }
                     }
                 }
@@ -128,7 +135,12 @@ struct TodoInboxView: View {
                     DisclosureGroup(isExpanded: $showCompleted) {
                         VStack(alignment: .leading, spacing: 0) {
                             ForEach(completedItems) { item in
-                                TodoInboxRow(item: item, onComplete: onComplete)
+                                TodoInboxRow(
+                                    item: item,
+                                    onToggleCompletion: onToggleCompletion,
+                                    onUpdateTitle: onUpdateTitle,
+                                    onDelete: onDelete
+                                )
                             }
                         }
                         .padding(.top, 4)
@@ -261,44 +273,115 @@ private struct TodoSectionHeader: View {
 
 private struct TodoInboxRow: View {
     let item: UnifiedTodoItem
-    let onComplete: (String) -> Void
+    let onToggleCompletion: (String) -> Void
+    let onUpdateTitle: (String, String) -> Void
+    let onDelete: (String) -> Void
+    @State private var isEditing = false
+    @State private var draftTitle = ""
+    @FocusState private var isTitleFocused: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Button {
-                if item.status == .open {
-                    onComplete(item.id)
-                }
+                onToggleCompletion(item.id)
             } label: {
                 Image(systemName: item.status == .completed ? "checkmark.square.fill" : "square")
                     .foregroundStyle(item.status == .completed ? .secondary : Color.accentColor)
                     .frame(width: 18, height: 18)
             }
             .buttonStyle(.plain)
-            .disabled(item.status == .completed)
-            .help(item.status == .completed ? "Completed" : "Complete")
+            .help(item.status == .completed ? "Move back to Open" : "Complete")
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.title)
-                    .font(.body)
-                    .strikethrough(item.status == .completed, color: .secondary)
-                    .foregroundStyle(item.status == .completed ? .secondary : .primary)
-                    .lineLimit(3)
-                HStack(spacing: 8) {
-                    Text(item.sourceDayKey)
-                    Text(item.promotionKind.rawValue)
-                    if let completionKind = item.completionKind {
-                        Text(completionKind.rawValue)
+                if isEditing {
+                    HStack(spacing: 6) {
+                        TextField("Todo title", text: $draftTitle)
+                            .textFieldStyle(.roundedBorder)
+                            .focused($isTitleFocused)
+                            .onSubmit(saveDraft)
+                            .onKeyPress(.return) {
+                                saveDraft()
+                                return .handled
+                            }
+                            .onKeyPress(.escape) {
+                                cancelEditing()
+                                return .handled
+                            }
+                            .onExitCommand(perform: cancelEditing)
+                        Button(action: saveDraft) {
+                            Image(systemName: "checkmark")
+                                .frame(width: 14, height: 14)
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(draftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .help("Save")
+                        Button(action: cancelEditing) {
+                            Image(systemName: "xmark")
+                                .frame(width: 14, height: 14)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Cancel")
                     }
+                } else {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(item.title)
+                            .font(.body)
+                            .strikethrough(item.status == .completed, color: .secondary)
+                            .foregroundStyle(item.status == .completed ? .secondary : .primary)
+                            .lineLimit(3)
+                        metadata
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2, perform: beginEditing)
+                    .help("Double-click to edit")
                 }
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
             }
+
+            Button(role: .destructive) {
+                onDelete(item.id)
+            } label: {
+                Image(systemName: "trash")
+                    .frame(width: 15, height: 15)
+            }
+            .buttonStyle(.borderless)
+            .help("Delete")
         }
         .padding(.vertical, 8)
         .overlay(alignment: .bottom) {
             Divider().opacity(0.7)
         }
+    }
+
+    private var metadata: some View {
+        HStack(spacing: 8) {
+            Text(item.sourceDayKey)
+            Text(item.promotionKind.rawValue)
+            if let completionKind = item.completionKind {
+                Text(completionKind.rawValue)
+            }
+        }
+        .font(.caption.monospaced())
+        .foregroundStyle(.secondary)
+    }
+
+    private func beginEditing() {
+        draftTitle = item.title
+        isEditing = true
+        Task { @MainActor in
+            isTitleFocused = true
+        }
+    }
+
+    private func saveDraft() {
+        let title = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+        onUpdateTitle(item.id, title)
+        isEditing = false
+    }
+
+    private func cancelEditing() {
+        draftTitle = item.title
+        isEditing = false
     }
 }
 

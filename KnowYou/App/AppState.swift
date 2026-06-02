@@ -1157,6 +1157,60 @@ final class AppState {
         }
     }
 
+    func updateTodoItemTitle(id: String, title: String) {
+        guard let environment else { return }
+
+        do {
+            try environment.todoStore.updateTodoTitle(id: id, title: title)
+            refreshTodoItems(using: environment)
+            updateTrackedTodoCandidateIDs()
+            todoAutomationStatusMessage = nil
+        } catch {
+            todoAutomationStatusMessage = "Todo could not be updated: \(error.localizedDescription)"
+        }
+    }
+
+    func toggleTodoItemCompletion(id: String) {
+        guard let environment,
+              let item = todoItems.first(where: { $0.id == id })
+        else {
+            return
+        }
+
+        do {
+            switch item.status {
+            case .open:
+                try environment.todoStore.completeTodo(
+                    id: id,
+                    completedAt: currentDate(),
+                    completionKind: .manual,
+                    evidenceEventIDs: []
+                )
+            case .completed:
+                try environment.todoStore.reopenTodo(id: id)
+            }
+            refreshTodoItems(using: environment)
+            updateTrackedTodoCandidateIDs()
+            todoAutomationStatusMessage = nil
+        } catch {
+            todoAutomationStatusMessage = "Todo could not be updated: \(error.localizedDescription)"
+        }
+    }
+
+    func deleteTodoItem(id: String) {
+        guard let environment else { return }
+
+        do {
+            try environment.todoStore.deleteTodo(id: id)
+            todoCloseRecommendations.removeAll { $0.todoID == id }
+            refreshTodoItems(using: environment)
+            updateTrackedTodoCandidateIDs()
+            todoAutomationStatusMessage = nil
+        } catch {
+            todoAutomationStatusMessage = "Todo could not be deleted: \(error.localizedDescription)"
+        }
+    }
+
     func selectKnowledgeConnector(instanceID: String) {
         mainContentSelection = .knowledgeConnector(instanceID: instanceID)
         readerFocus = .dateList

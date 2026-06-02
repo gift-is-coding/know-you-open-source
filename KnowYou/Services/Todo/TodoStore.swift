@@ -97,6 +97,61 @@ struct TodoStore {
         )
     }
 
+    func updateTodoTitle(id: String, title: String) throws {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty else {
+            throw TodoMutationError.emptyTitle
+        }
+        let normalizedTitle = UnifiedTodoItem.normalizeTitle(cleanTitle)
+        guard !normalizedTitle.isEmpty else {
+            throw TodoMutationError.emptyTitle
+        }
+
+        if let documentStore {
+            var items = try fetchMarkdownBackedItems(using: documentStore)
+            guard let index = items.firstIndex(where: { $0.id == id }) else {
+                return
+            }
+            if items.contains(where: { $0.id != id && $0.normalizedTitle == normalizedTitle }) {
+                throw TodoMutationError.duplicateTitle
+            }
+            items[index].title = cleanTitle
+            items[index].normalizedTitle = normalizedTitle
+            try documentStore.writeItems(items)
+            return
+        }
+
+        try databaseWriter.updateTodoTitle(id: id, title: title)
+    }
+
+    func reopenTodo(id: String) throws {
+        if let documentStore {
+            var items = try fetchMarkdownBackedItems(using: documentStore)
+            guard let index = items.firstIndex(where: { $0.id == id }) else {
+                return
+            }
+            items[index].status = .open
+            items[index].completedAt = nil
+            items[index].completionKind = nil
+            items[index].completionEvidenceEventIDs = []
+            try documentStore.writeItems(items)
+            return
+        }
+
+        try databaseWriter.reopenTodo(id: id)
+    }
+
+    func deleteTodo(id: String) throws {
+        if let documentStore {
+            var items = try fetchMarkdownBackedItems(using: documentStore)
+            items.removeAll { $0.id == id }
+            try documentStore.writeItems(items)
+            return
+        }
+
+        try databaseWriter.deleteTodo(id: id)
+    }
+
     func mergeTodoEvidence(id: String, sourceEventIDs: [UUID]) throws {
         if let documentStore {
             var items = try fetchMarkdownBackedItems(using: documentStore)

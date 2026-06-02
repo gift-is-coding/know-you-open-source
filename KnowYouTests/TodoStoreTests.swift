@@ -105,4 +105,103 @@ final class TodoStoreTests: XCTestCase {
         XCTAssertEqual(items.last?.completionKind, .evidenceSweep)
         XCTAssertEqual(items.last?.completionEvidenceEventIDs, [evidenceEventID])
     }
+
+    func testTodoStoreUpdatesMarkdownBackedTitleAndReopensCompletedItem() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let todoDocumentURL = URL.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+            .appending(path: "Todo.md")
+        let store = TodoStore(databaseWriter: writer, documentURL: todoDocumentURL)
+        let evidenceEventID = UUID()
+        let todo = try store.createTodo(
+            title: "Send the investor recap",
+            sourceDayKey: "2026-05-28",
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_000),
+            promotionKind: .manual
+        )
+
+        try store.updateTodoTitle(id: todo.id, title: "  Send the updated investor recap  ")
+        try store.completeTodo(
+            id: todo.id,
+            completedAt: Date(timeIntervalSince1970: 1_778_000_500),
+            completionKind: .manual,
+            evidenceEventIDs: [evidenceEventID]
+        )
+        try store.reopenTodo(id: todo.id)
+
+        let item = try XCTUnwrap(store.fetchTodoItems().first)
+        let markdown = try String(contentsOf: todoDocumentURL, encoding: .utf8)
+
+        XCTAssertEqual(item.id, todo.id)
+        XCTAssertEqual(item.title, "Send the updated investor recap")
+        XCTAssertEqual(item.normalizedTitle, "send the updated investor recap")
+        XCTAssertEqual(item.status, .open)
+        XCTAssertNil(item.completedAt)
+        XCTAssertNil(item.completionKind)
+        XCTAssertTrue(item.completionEvidenceEventIDs.isEmpty)
+        XCTAssertTrue(markdown.contains("## Open"), markdown)
+        XCTAssertTrue(markdown.contains("- [ ] Send the updated investor recap"), markdown)
+        XCTAssertFalse(markdown.contains("- [x] Send the updated investor recap"), markdown)
+    }
+
+    func testTodoStoreRejectsEmptyAndDuplicateMarkdownBackedTitleEdits() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let todoDocumentURL = URL.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+            .appending(path: "Todo.md")
+        let store = TodoStore(databaseWriter: writer, documentURL: todoDocumentURL)
+        let first = try store.createTodo(
+            title: "Send the investor recap",
+            sourceDayKey: "2026-05-28",
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_000),
+            promotionKind: .manual
+        )
+        _ = try store.createTodo(
+            title: "Confirm Friday meeting time",
+            sourceDayKey: "2026-05-28",
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_100),
+            promotionKind: .manual
+        )
+
+        XCTAssertThrowsError(try store.updateTodoTitle(id: first.id, title: " "))
+        XCTAssertThrowsError(try store.updateTodoTitle(id: first.id, title: "confirm friday meeting time."))
+
+        let items = try store.fetchTodoItems()
+
+        XCTAssertEqual(items.map(\.title), ["Send the investor recap", "Confirm Friday meeting time"])
+    }
+
+    func testTodoStoreDeletesMarkdownBackedTodo() throws {
+        let writer = try DatabaseWriter.inMemory()
+        let todoDocumentURL = URL.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+            .appending(path: "Todo.md")
+        let store = TodoStore(databaseWriter: writer, documentURL: todoDocumentURL)
+        let first = try store.createTodo(
+            title: "Send the investor recap",
+            sourceDayKey: "2026-05-28",
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_000),
+            promotionKind: .manual
+        )
+        _ = try store.createTodo(
+            title: "Confirm Friday meeting time",
+            sourceDayKey: "2026-05-28",
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_778_000_100),
+            promotionKind: .manual
+        )
+
+        try store.deleteTodo(id: first.id)
+
+        let items = try store.fetchTodoItems()
+        let markdown = try String(contentsOf: todoDocumentURL, encoding: .utf8)
+
+        XCTAssertEqual(items.map(\.title), ["Confirm Friday meeting time"])
+        XCTAssertFalse(markdown.contains("Send the investor recap"), markdown)
+        XCTAssertTrue(markdown.contains("- [ ] Confirm Friday meeting time"), markdown)
+    }
 }

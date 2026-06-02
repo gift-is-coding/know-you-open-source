@@ -259,8 +259,14 @@ struct MainWindowView: View {
                     onDismissCandidate: { id in
                         appState.dismissTodoReviewCandidate(id: id)
                     },
-                    onComplete: { id in
-                        appState.completeTodoItem(id: id)
+                    onToggleCompletion: { id in
+                        appState.toggleTodoItemCompletion(id: id)
+                    },
+                    onUpdateTitle: { id, title in
+                        appState.updateTodoItemTitle(id: id, title: title)
+                    },
+                    onDelete: { id in
+                        appState.deleteTodoItem(id: id)
                     },
                     onCloseRecommendation: { id in
                         appState.closeTodoRecommendation(id: id)

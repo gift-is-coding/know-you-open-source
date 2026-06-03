@@ -89,7 +89,10 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
             )
         )
 
-        try MyWikiPipelineBridge(processRunner: runner).runIngest(target: .developmentSource(dev), projectRoot: root)
+        try MyWikiPipelineBridge(
+            processRunner: runner,
+            npmInvocation: .environmentNPM
+        ).runIngest(target: .developmentSource(dev), projectRoot: root)
 
         XCTAssertEqual(runner.calls.count, 1)
         XCTAssertEqual(runner.calls[0].executable, "/usr/bin/env")
@@ -117,6 +120,151 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
         XCTAssertTrue(statusText.contains(#""status":"succeeded""#), statusText)
     }
 
+    func testNPMResolverFindsNVMInstallWhenPathDoesNotContainNPM() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let npmURL = root.appending(path: ".nvm/versions/node/v22.22.0/bin/npm")
+        try FileManager.default.createDirectory(
+            at: npmURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try "#!/usr/bin/env bash\n".write(to: npmURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: npmURL.path)
+
+        let resolver = MyWikiNPMResolver(
+            environment: ["PATH": "/usr/bin:/bin"],
+            homeDirectory: root
+        )
+
+        XCTAssertEqual(
+            URL(fileURLWithPath: resolver.resolve().executable).standardizedFileURL.path,
+            npmURL.standardizedFileURL.path
+        )
+        XCTAssertEqual(resolver.resolve().argumentPrefix, [])
+    }
+
+    func testRunIngestUsesResolvedAbsoluteNPMExecutable() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let dev = root.appending(path: "ThirdParty/llm_wiki", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: dev, withIntermediateDirectories: true)
+        try #"{"scripts":{"knowyou:ingest":"node scripts/knowyou-ingest-runner.mjs"}}"#.write(
+            to: dev.appending(path: "package.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try FileManager.default.createDirectory(
+            at: dev.appending(path: "node_modules/vite", directoryHint: .isDirectory),
+            withIntermediateDirectories: true
+        )
+
+        let runner = RecordingMyWikiPipelineRunner(
+            result: MyWikiPipelineProcessResult(
+                stdout: #"{"status":"succeeded","sourcesProcessed":1}"#,
+                stderr: "",
+                terminationStatus: 0
+            )
+        )
+        let npmPath = root.appending(path: ".nvm/versions/node/v22.22.0/bin/npm").path
+
+        try MyWikiPipelineBridge(
+            processRunner: runner,
+            npmInvocation: MyWikiProcessInvocation(executable: npmPath, argumentPrefix: [])
+        ).runIngest(target: .developmentSource(dev), projectRoot: root)
+
+        XCTAssertEqual(runner.calls.count, 1)
+        XCTAssertEqual(runner.calls[0].executable, npmPath)
+        XCTAssertEqual(Array(runner.calls[0].arguments.prefix(3)), ["run", "knowyou:ingest", "--"])
+    }
+
+    func testLLMInvocationUsesConfiguredOpenAICompatibleProviderWithoutCommandLineSecret() throws {
+        var config = SummarizerConfig.default
+        config.defaultEngine = .llmAPI
+        config.activeLLMAPIProviderID = .deepSeek
+        config.setLLMAPIProviderConfig(
+            LLMAPIProviderConfig(
+                id: .deepSeek,
+                baseURL: "https://api.deepseek.com",
+                model: "deepseek-v4-pro",
+                wireFormat: .openAIChat,
+                apiToken: "sk-secret"
+            )
+        )
+
+        let invocation = try MyWikiLLMInvocation.resolve(from: config, environment: [:])
+
+        XCTAssertEqual(
+            invocation.arguments,
+            [
+                "--provider",
+                "custom",
+                "--model",
+                "deepseek-v4-pro",
+                "--custom-endpoint",
+                "https://api.deepseek.com",
+                "--api-mode",
+                "chat_completions"
+            ]
+        )
+        XCTAssertEqual(invocation.environment["KNOWYOU_MYWIKI_LLM_API_KEY"], "sk-secret")
+        XCTAssertFalse(invocation.arguments.contains("sk-secret"))
+    }
+
+    func testRunIngestPassesConfiguredLLMInvocationToDevelopmentRunner() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let dev = root.appending(path: "ThirdParty/llm_wiki", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: dev, withIntermediateDirectories: true)
+        try #"{"scripts":{"knowyou:ingest":"node scripts/knowyou-ingest-runner.mjs"}}"#.write(
+            to: dev.appending(path: "package.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try FileManager.default.createDirectory(
+            at: dev.appending(path: "node_modules/vite", directoryHint: .isDirectory),
+            withIntermediateDirectories: true
+        )
+
+        let runner = RecordingMyWikiPipelineRunner(
+            result: MyWikiPipelineProcessResult(
+                stdout: #"{"status":"succeeded","sourcesProcessed":1}"#,
+                stderr: "",
+                terminationStatus: 0
+            )
+        )
+        let invocation = MyWikiLLMInvocation(
+            arguments: [
+                "--provider",
+                "custom",
+                "--model",
+                "deepseek-v4-pro",
+                "--custom-endpoint",
+                "https://api.deepseek.com",
+                "--api-mode",
+                "chat_completions"
+            ],
+            environment: ["KNOWYOU_MYWIKI_LLM_API_KEY": "sk-secret"]
+        )
+
+        try MyWikiPipelineBridge(
+            processRunner: runner,
+            npmInvocation: .environmentNPM,
+            llmInvocation: invocation
+        ).runIngest(target: .developmentSource(dev), projectRoot: root)
+
+        XCTAssertEqual(runner.calls.count, 1)
+        XCTAssertTrue(runner.calls[0].arguments.contains("--custom-endpoint"))
+        XCTAssertTrue(runner.calls[0].arguments.contains("https://api.deepseek.com"))
+        XCTAssertEqual(runner.calls[0].environment["KNOWYOU_MYWIKI_LLM_API_KEY"], "sk-secret")
+        XCTAssertFalse(runner.calls[0].arguments.contains("sk-secret"))
+    }
+
     func testRunIngestInstallsDevelopmentDependenciesWhenViteIsMissing() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
@@ -138,7 +286,10 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
             )
         )
 
-        try MyWikiPipelineBridge(processRunner: runner).runIngest(target: .developmentSource(dev), projectRoot: root)
+        try MyWikiPipelineBridge(
+            processRunner: runner,
+            npmInvocation: .environmentNPM
+        ).runIngest(target: .developmentSource(dev), projectRoot: root)
 
         XCTAssertEqual(runner.calls.count, 2)
         XCTAssertEqual(runner.calls[0].arguments, ["npm", "install"])
@@ -172,7 +323,10 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
             )
         )
 
-        try MyWikiPipelineBridge(processRunner: runner).runIngest(
+        try MyWikiPipelineBridge(
+            processRunner: runner,
+            npmInvocation: .environmentNPM
+        ).runIngest(
             target: .developmentSource(dev),
             projectRoot: root,
             manifestURL: manifestURL
@@ -225,7 +379,10 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
             )
         )
 
-        XCTAssertThrowsError(try MyWikiPipelineBridge(processRunner: runner).runIngest(target: .developmentSource(dev), projectRoot: root)) { error in
+        XCTAssertThrowsError(try MyWikiPipelineBridge(
+            processRunner: runner,
+            npmInvocation: .environmentNPM
+        ).runIngest(target: .developmentSource(dev), projectRoot: root)) { error in
             guard case MyWikiPipelineBridgeError.pipelineExecutionFailed(let message) = error else {
                 XCTFail("Expected pipelineExecutionFailed, got \(error)")
                 return
@@ -277,6 +434,7 @@ private final class RecordingMyWikiPipelineRunner: MyWikiPipelineProcessRunning 
         let executable: String
         let arguments: [String]
         let workingDirectory: URL
+        let environment: [String: String]
         let timeoutSeconds: TimeInterval
     }
 
@@ -291,6 +449,7 @@ private final class RecordingMyWikiPipelineRunner: MyWikiPipelineProcessRunning 
         executable: String,
         arguments: [String],
         workingDirectory: URL,
+        environment: [String: String],
         timeoutSeconds: TimeInterval
     ) throws -> MyWikiPipelineProcessResult {
         calls.append(
@@ -298,6 +457,7 @@ private final class RecordingMyWikiPipelineRunner: MyWikiPipelineProcessRunning 
                 executable: executable,
                 arguments: arguments,
                 workingDirectory: workingDirectory,
+                environment: environment,
                 timeoutSeconds: timeoutSeconds
             )
         )

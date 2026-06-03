@@ -485,11 +485,12 @@ onboarding 的配置约束为：
 - 默认 My Wiki 生成必须保留 LLM Wiki 原生 generation targets 和两阶段 `autoIngest` prompt；KnowYou 不得用动态 My Wiki generation target、单独页面正文 prompt、schema/purpose 层提示或旧分类映射替换或补充原生 prompt
 - LLM Wiki `auto` 输出语言模式必须跟随 source 主语言，但保留人名、产品名、工具名、缩写和英文术语原文；翻译或中文解释只能进入 aliases、tags 或正文说明。显式用户语言设置仍可强制输出语言
 - My Wiki 的正式本体抽取、关系发现、去重、总结和 agent context 必须使用 LLM 语义能力，不得用 keyword/regex/starter extractor 伪造可信本体页
-- bundled helper、`ThirdParty/llm_wiki` 开发源码或 Codex CLI pipeline 不可用时，系统必须写入失败/降级状态并保留已有页面，不得生成 keyword fallback 正式页面
+- bundled helper、`ThirdParty/llm_wiki` 开发源码或已配置的 LLM pipeline 不可用时，系统必须写入失败/降级状态并保留已有页面，不得生成 keyword fallback 正式页面
 - 仓库中的旧 starter extractor 不得再作为产品代码或测试入口保留；读取层不得为了兼容旧 starter 输出而过滤或重分类原生 `entities` / `concepts` 页面
 - My Wiki 生成页的 frontmatter type 由 llm_wiki 原生 pipeline 决定；KnowYou 展示层只读取 `wiki/sources`、`wiki/entities`、`wiki/concepts` 内的 Markdown 和 frontmatter，不再兼容旧 `person`、`organization`、`project`、`event`、`topic`、`decision`、`preference`、`follow-up`、`summary` 页面
 - KnowYou 必须优先连接 bundled llm_wiki helper；没有 bundled helper 时，允许回退到 `ThirdParty/llm_wiki` 开发源码目录
 - 回退到 `ThirdParty/llm_wiki` 开发源码目录时，如果 `node_modules/vite` 缺失，系统必须先尝试在该目录执行 `npm install`，安装失败时写入明确 failed 状态，不得只向用户暴露 Node 的 `ERR_MODULE_NOT_FOUND` 堆栈
+- My Wiki ingest 必须复用 KnowYou 已配置的 LLM engine；不能默认把所有用户硬编码到 Codex CLI。API key 等 secret 必须通过环境变量或等价安全通道传给 runner，不得出现在命令行参数中
 - 第一版只能导出 KnowYou 已生成的每日 Markdown，不得直接导出未经额外授权的 SQLite 原始事件
 - 系统必须提供本地服务层能力，让 Codex、Claude、Cowork 等 agent 能读取 My Wiki 的最小必要背景摘要
 - My Wiki 必须提供 `Use My Wiki in Agents` 用户入口，并且该入口必须接入新版 My Wiki 页面，不得回退到旧 KnowledgeOntology 控制面板

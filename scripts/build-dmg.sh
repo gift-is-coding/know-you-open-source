@@ -36,11 +36,16 @@ import AppKit
 let outputURL = URL(fileURLWithPath: CommandLine.arguments[1])
 let width: CGFloat = 560
 let height: CGFloat = 300
+let scale: CGFloat = 2
+let appIconCenterX: CGFloat = 150
+let applicationsIconCenterX: CGFloat = 430
+let iconCenterY: CGFloat = 148
+let iconSize: CGFloat = 96
 
 guard let bitmap = NSBitmapImageRep(
     bitmapDataPlanes: nil,
-    pixelsWide: Int(width),
-    pixelsHigh: Int(height),
+    pixelsWide: Int(width * scale),
+    pixelsHigh: Int(height * scale),
     bitsPerSample: 8,
     samplesPerPixel: 4,
     hasAlpha: true,
@@ -51,6 +56,7 @@ guard let bitmap = NSBitmapImageRep(
 ) else {
     fatalError("Unable to create DMG background bitmap")
 }
+bitmap.size = NSSize(width: width, height: height)
 
 NSGraphicsContext.saveGraphicsState()
 NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
@@ -93,17 +99,23 @@ let arrowColor = NSColor(calibratedRed: 0.33, green: 0.55, blue: 0.86, alpha: 1)
 arrowColor.setStroke()
 arrowColor.setFill()
 
+let arrowY = iconCenterY
+let arrowStartX = appIconCenterX + iconSize / 2 + 32
+let arrowEndX = applicationsIconCenterX - iconSize / 2 - 18
+let arrowHeadInset: CGFloat = 24
+let arrowHeadHeight: CGFloat = 20
+
 let shaft = NSBezierPath()
 shaft.lineWidth = 6
 shaft.lineCapStyle = .round
-shaft.move(to: NSPoint(x: 235, y: 148))
-shaft.line(to: NSPoint(x: 325, y: 148))
+shaft.move(to: NSPoint(x: arrowStartX, y: arrowY))
+shaft.line(to: NSPoint(x: arrowEndX, y: arrowY))
 shaft.stroke()
 
 let head = NSBezierPath()
-head.move(to: NSPoint(x: 325, y: 148))
-head.line(to: NSPoint(x: 300, y: 168))
-head.line(to: NSPoint(x: 300, y: 128))
+head.move(to: NSPoint(x: arrowEndX, y: arrowY))
+head.line(to: NSPoint(x: arrowEndX - arrowHeadInset, y: arrowY + arrowHeadHeight))
+head.line(to: NSPoint(x: arrowEndX - arrowHeadInset, y: arrowY - arrowHeadHeight))
 head.close()
 head.fill()
 

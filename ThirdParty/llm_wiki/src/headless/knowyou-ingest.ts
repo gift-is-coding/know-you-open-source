@@ -10,6 +10,10 @@ interface IngestOptions {
   projectPath: string
   provider?: LlmConfig["provider"]
   model?: string
+  apiKey?: string
+  customEndpoint?: string
+  ollamaUrl?: string
+  apiMode?: LlmConfig["apiMode"]
   maxSources?: number
   manifestPath?: string
   skipIndexed?: boolean
@@ -68,6 +72,21 @@ function parseArgs(argv: string[]): IngestOptions {
       index += 1
     } else if (arg === "--model" && next) {
       options.model = next
+      index += 1
+    } else if (arg === "--api-key" && next) {
+      options.apiKey = next
+      index += 1
+    } else if (arg === "--custom-endpoint" && next) {
+      options.customEndpoint = next
+      index += 1
+    } else if (arg === "--ollama-url" && next) {
+      options.ollamaUrl = next
+      index += 1
+    } else if (arg === "--api-mode" && next) {
+      if (next !== "chat_completions" && next !== "anthropic_messages") {
+        throw new Error(`Unsupported --api-mode value: ${next}`)
+      }
+      options.apiMode = next
       index += 1
     } else if (arg === "--max-sources" && next) {
       options.maxSources = Number(next)
@@ -276,13 +295,15 @@ function resetStores(projectPath: string, llmConfig: LlmConfig): void {
 }
 
 function llmConfigFor(options: IngestOptions): LlmConfig {
+  const provider = options.provider ?? "codex-cli"
   return {
-    provider: options.provider ?? "codex-cli",
-    apiKey: "",
+    provider,
+    apiKey: options.apiKey ?? process.env.KNOWYOU_MYWIKI_LLM_API_KEY ?? "",
     model: options.model ?? "gpt-5.5",
-    ollamaUrl: "",
-    customEndpoint: "",
+    ollamaUrl: options.ollamaUrl ?? "http://localhost:11434",
+    customEndpoint: options.customEndpoint ?? "",
     maxContextSize: 128000,
+    apiMode: options.apiMode,
   }
 }
 

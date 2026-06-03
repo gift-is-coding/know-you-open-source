@@ -37,14 +37,17 @@ enum MyWikiPipelineBridgeError: LocalizedError {
 
 struct MyWikiPipelineBridge {
     private let processRunner: MyWikiPipelineProcessRunning
-    private let npmExecutable: String
+    private let npmInvocation: MyWikiProcessInvocation
+    private let llmInvocation: MyWikiLLMInvocation
 
     init(
         processRunner: MyWikiPipelineProcessRunning = DefaultMyWikiPipelineProcessRunner(),
-        npmExecutable: String = "/usr/bin/env"
+        npmInvocation: MyWikiProcessInvocation = MyWikiNPMResolver().resolve(),
+        llmInvocation: MyWikiLLMInvocation = .codexCLIDefault
     ) {
         self.processRunner = processRunner
-        self.npmExecutable = npmExecutable
+        self.npmInvocation = npmInvocation
+        self.llmInvocation = llmInvocation
     }
 
     static func resolveTarget(
@@ -142,27 +145,26 @@ struct MyWikiPipelineBridge {
         try ensureDevelopmentDependencies(sourceURL: sourceURL, projectRoot: projectRoot)
 
         var arguments = [
-            "npm",
             "run",
             "knowyou:ingest",
             "--",
             "--project",
-            projectRoot.path,
-            "--provider",
-            "codex-cli",
-            "--model",
-            "gpt-5.5",
+            projectRoot.path
+        ]
+        arguments.append(contentsOf: llmInvocation.arguments)
+        arguments.append(contentsOf: [
             "--max-sources",
             "\(MyWikiIngestBatchPolicy.maxSourcesPerRun)"
-        ]
+        ])
         if let manifestURL {
             arguments.append(contentsOf: ["--manifest", manifestURL.path])
         }
 
         let result = try processRunner.run(
-            executable: npmExecutable,
-            arguments: arguments,
+            executable: npmInvocation.executable,
+            arguments: npmInvocation.argumentPrefix + arguments,
             workingDirectory: sourceURL,
+            environment: llmInvocation.environment,
             timeoutSeconds: 30 * 60
         )
 
@@ -188,9 +190,10 @@ struct MyWikiPipelineBridge {
         }
 
         let result = try processRunner.run(
-            executable: npmExecutable,
-            arguments: ["npm", "install"],
+            executable: npmInvocation.executable,
+            arguments: npmInvocation.argumentPrefix + ["install"],
             workingDirectory: sourceURL,
+            environment: [:],
             timeoutSeconds: 10 * 60
         )
         guard result.terminationStatus == 0 else {
@@ -207,6 +210,184 @@ struct MyWikiPipelineBridge {
     }
 }
 
+struct MyWikiLLMInvocation: Equatable {
+    let arguments: [String]
+    let environment: [String: String]
+
+    static let codexCLIDefault = MyWikiLLMInvocation(
+        arguments: ["--provider", "codex-cli", "--model", "gpt-5.5"],
+        environment: [:]
+    )
+
+    static func resolve(
+        from config: SummarizerConfig,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) throws -> MyWikiLLMInvocation {
+        switch config.defaultEngine {
+        case .llmAPI:
+            return try llmAPIInvocation(from: config.activeLLMAPIProviderConfig)
+        case .claudeCLI:
+            return MyWikiLLMInvocation(
+                arguments: ["--provider", "claude-code", "--model", "claude-sonnet-4-5"],
+                environment: cliEnvironment(
+                    executablePath: config.claudeCLIPath,
+                    commandName: "claude",
+                    environment: environment
+                )
+            )
+        case .codexCLI:
+            return MyWikiLLMInvocation(
+                arguments: ["--provider", "codex-cli", "--model", "gpt-5.5"],
+                environment: cliEnvironment(
+                    executablePath: config.codexCLIPath,
+                    commandName: "codex",
+                    environment: environment
+                )
+            )
+        case .none, .codexAuth, .geminiCLI, .openclawCLI:
+            let message = "My Wiki LLM needs a configured LLM API, Claude CLI, or Codex CLI engine."
+            throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
+        }
+    }
+
+    private static func llmAPIInvocation(from providerConfig: LLMAPIProviderConfig) throws -> MyWikiLLMInvocation {
+        let token = providerConfig.apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let model = providerConfig.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty, !model.isEmpty, providerConfig.validatedBaseURL() != nil else {
+            throw MyWikiPipelineBridgeError.pipelineExecutionFailed("My Wiki LLM API configuration is incomplete.")
+        }
+
+        let provider: String
+        let extraArguments: [String]
+        switch providerConfig.id {
+        case .openAI:
+            provider = "openai"
+            extraArguments = []
+        case .anthropic:
+            provider = "anthropic"
+            extraArguments = []
+        case .gemini:
+            provider = "google"
+            extraArguments = []
+        case .deepSeek, .openRouter, .qwen, .kimi, .zhipu, .customOpenAICompatible:
+            provider = "custom"
+            extraArguments = [
+                "--custom-endpoint",
+                providerConfig.baseURL,
+                "--api-mode",
+                apiMode(for: providerConfig.wireFormat)
+            ]
+        }
+
+        return MyWikiLLMInvocation(
+            arguments: ["--provider", provider, "--model", model] + extraArguments,
+            environment: ["KNOWYOU_MYWIKI_LLM_API_KEY": token]
+        )
+    }
+
+    private static func apiMode(for wireFormat: LLMAPIWireFormat) -> String {
+        switch wireFormat {
+        case .anthropicMessages:
+            return "anthropic_messages"
+        case .openAIResponses, .openAIChat, .geminiGenerateContent:
+            return "chat_completions"
+        }
+    }
+
+    private static func cliEnvironment(
+        executablePath: String,
+        commandName: String,
+        environment: [String: String]
+    ) -> [String: String] {
+        guard
+            let resolvedPath = SummarizerConfig.resolvedExecutablePath(
+                configuredPath: executablePath,
+                commandName: commandName,
+                environment: environment
+            )
+        else {
+            return [:]
+        }
+        let directory = URL(fileURLWithPath: resolvedPath).deletingLastPathComponent().path
+        let currentPath = environment["PATH"] ?? ""
+        return [
+            "PATH": currentPath.isEmpty ? directory : "\(directory):\(currentPath)"
+        ]
+    }
+}
+
+struct MyWikiProcessInvocation: Equatable {
+    let executable: String
+    let argumentPrefix: [String]
+
+    static let environmentNPM = MyWikiProcessInvocation(
+        executable: "/usr/bin/env",
+        argumentPrefix: ["npm"]
+    )
+}
+
+struct MyWikiNPMResolver {
+    private let environment: [String: String]
+    private let homeDirectory: URL
+    private let fileManager: FileManager
+
+    init(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        fileManager: FileManager = .default
+    ) {
+        self.environment = environment
+        self.homeDirectory = homeDirectory
+        self.fileManager = fileManager
+    }
+
+    func resolve() -> MyWikiProcessInvocation {
+        if let npm = npmFromPATH() {
+            return MyWikiProcessInvocation(executable: npm.path, argumentPrefix: [])
+        }
+        for candidate in nvmCandidates() + fixedCandidates() where fileManager.isExecutableFile(atPath: candidate.path) {
+            return MyWikiProcessInvocation(executable: candidate.path, argumentPrefix: [])
+        }
+        return .environmentNPM
+    }
+
+    private func npmFromPATH() -> URL? {
+        guard let path = environment["PATH"] else { return nil }
+        for directory in path.split(separator: ":").map(String.init) where directory.isEmpty == false {
+            let candidate = URL(fileURLWithPath: directory).appending(path: "npm")
+            if fileManager.isExecutableFile(atPath: candidate.path) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    private func fixedCandidates() -> [URL] {
+        [
+            URL(fileURLWithPath: "/opt/homebrew/bin/npm"),
+            URL(fileURLWithPath: "/usr/local/bin/npm")
+        ]
+    }
+
+    private func nvmCandidates() -> [URL] {
+        let nodeVersionsDirectory = homeDirectory
+            .appending(path: ".nvm/versions/node", directoryHint: .isDirectory)
+        guard let entries = try? fileManager.contentsOfDirectory(
+            at: nodeVersionsDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+        return entries
+            .filter { url in
+                (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            }
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedDescending }
+            .map { $0.appending(path: "bin/npm") }
+    }
+}
+
 struct MyWikiDigestRunResult: Equatable {
     let message: String
     let didSucceed: Bool
@@ -217,10 +398,14 @@ struct MyWikiDigestRunner {
         projectRoot: URL,
         sourceVault: URL?,
         importedDocuments: [ImportedKnowledgeDocument],
-        target: MyWikiPipelineTarget
+        target: MyWikiPipelineTarget,
+        llmInvocation: MyWikiLLMInvocation? = nil
     ) async -> MyWikiDigestRunResult {
         await Task.detached(priority: .userInitiated) {
             do {
+                let resolvedLLMInvocation = try llmInvocation ?? MyWikiLLMInvocation.resolve(
+                    from: SummarizerConfig.load()
+                )
                 try MyWikiProjectExporter().ensureProject(at: projectRoot)
 
                 let builder = MyWikiSourceCatalogBuilder()
@@ -248,7 +433,7 @@ struct MyWikiDigestRunner {
                 )
 
                 do {
-                    try MyWikiPipelineBridge().runIngest(
+                    try MyWikiPipelineBridge(llmInvocation: resolvedLLMInvocation).runIngest(
                         target: target,
                         projectRoot: projectRoot,
                         manifestURL: materialized.manifestURL
@@ -296,6 +481,7 @@ protocol MyWikiPipelineProcessRunning {
         executable: String,
         arguments: [String],
         workingDirectory: URL,
+        environment: [String: String],
         timeoutSeconds: TimeInterval
     ) throws -> MyWikiPipelineProcessResult
 }
@@ -305,12 +491,16 @@ struct DefaultMyWikiPipelineProcessRunner: MyWikiPipelineProcessRunning {
         executable: String,
         arguments: [String],
         workingDirectory: URL,
+        environment: [String: String],
         timeoutSeconds: TimeInterval
     ) throws -> MyWikiPipelineProcessResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         process.currentDirectoryURL = workingDirectory
+        if environment.isEmpty == false {
+            process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+        }
 
         let stdout = Pipe()
         let stderr = Pipe()

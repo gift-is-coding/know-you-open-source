@@ -106,6 +106,40 @@ final class CloudSummarizerTests: XCTestCase {
         XCTAssertEqual(body["input"] as? String, "Reply with OK.")
     }
 
+    func testOpenAIResponsesMyWikiCompletionIncludesSystemInstructionsAndTranscript() async throws {
+        CloudStubURLProtocol.behavior = .success(statusCode: 200, body: Data(#"{"output_text":"Wiki OK"}"#.utf8))
+        let providerConfig = LLMAPIProviderConfig(
+            id: .openAI,
+            baseURL: "https://api.openai.com/v1/responses",
+            model: "gpt-5",
+            wireFormat: .openAIResponses,
+            apiToken: "sk-openai-test"
+        )
+        let summarizer = CloudSummarizer(
+            providerConfig: providerConfig,
+            session: CloudStubURLProtocol.makeSession()
+        )
+
+        let output = try await summarizer.complete(
+            messages: [
+                MyWikiLLMMessage(role: "system", content: "Extract My Wiki ontology."),
+                MyWikiLLMMessage(role: "user", content: "Alice helped Bob prepare release notes."),
+                MyWikiLLMMessage(role: "assistant", content: "Prior ontology context.")
+            ],
+            temperature: nil
+        )
+
+        XCTAssertEqual(output, "Wiki OK")
+        let request = try XCTUnwrap(CloudStubURLProtocol.lastRequest)
+        let body = try requestBodyJSON(request)
+        XCTAssertEqual(body["model"] as? String, "gpt-5")
+        XCTAssertEqual(body["instructions"] as? String, "Extract My Wiki ontology.")
+        let input = try XCTUnwrap(body["input"] as? String)
+        XCTAssertTrue(input.contains("user:\nAlice helped Bob prepare release notes."), input)
+        XCTAssertTrue(input.contains("assistant:\nPrior ontology context."), input)
+        XCTAssertFalse(input.contains("Extract My Wiki ontology."), input)
+    }
+
     func testLLMAPIClientSendsOpenAIChatRequestAndParsesChoiceText() async throws {
         CloudStubURLProtocol.behavior = .success(
             statusCode: 200,

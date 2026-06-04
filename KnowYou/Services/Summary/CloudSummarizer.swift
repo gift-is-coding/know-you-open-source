@@ -161,10 +161,12 @@ struct LLMAPIClient: Sendable {
         switch providerConfig.wireFormat {
         case .openAIResponses:
             request.addValue("Bearer \(providerConfig.apiToken)", forHTTPHeaderField: "Authorization")
+            let trimmedSystemPrompt = systemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
             request.httpBody = try JSONEncoder().encode(
                 ResponsesRequest(
                     model: providerConfig.model,
-                    input: input
+                    input: input,
+                    instructions: trimmedSystemPrompt?.isEmpty == false ? trimmedSystemPrompt : nil
                 )
             )
         case .openAIChat:
@@ -275,6 +277,7 @@ extension CLISummarizer: IncrementalSummaryGenerating {}
 private struct ResponsesRequest: Encodable {
     let model: String
     let input: String
+    let instructions: String?
 }
 
 private struct OpenAIChatRequest: Encodable {

@@ -91,6 +91,57 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertFalse(MyWikiPanelLifecyclePolicy.onAppearActions.contains(.syncDiaries))
     }
 
+    func testMyWikiPanelInitialStatusShowsInvalidBundledRunnerFailure() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let developmentSource = root.appending(path: "ThirdParty/llm_wiki", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: developmentSource, withIntermediateDirectories: true)
+        let error = MyWikiPipelineBridgeError.pipelineExecutionFailed(
+            "Bundled MyWiki runner script is missing."
+        )
+
+        let status = MyWikiPanelStatusPresentationPolicy.initialStatusMessage(
+            bundledRunner: .failure(error),
+            developmentSourceURL: developmentSource
+        )
+
+        XCTAssertEqual(status, "Bundled MyWiki runner script is missing.")
+        XCTAssertNotEqual(status, MyWikiPanelStatusPresentationPolicy.readyMessage)
+    }
+
+    func testMyWikiPanelInitialStatusShowsMissingRunnerMessage() {
+        let status = MyWikiPanelStatusPresentationPolicy.initialStatusMessage(for: .missing)
+
+        XCTAssertEqual(status, "MyWiki runner is not available.")
+    }
+
+    func testMyWikiPanelInitialStatusKeepsReadyForRunnableTargets() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let runner = root.appending(path: "MyWikiRunner", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: runner, withIntermediateDirectories: true)
+        let node = runner.appending(path: "node")
+        try "#!/usr/bin/env bash\n".write(to: node, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: node.path)
+        try "console.log('ok')\n".write(
+            to: runner.appending(path: "mywiki-runner.js"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let bundle = try MyWikiRunnerBundle(rootURL: runner)
+
+        XCTAssertEqual(
+            MyWikiPanelStatusPresentationPolicy.initialStatusMessage(for: .bundledRunner(bundle)),
+            MyWikiPanelStatusPresentationPolicy.readyMessage
+        )
+        XCTAssertEqual(
+            MyWikiPanelStatusPresentationPolicy.initialStatusMessage(for: .developmentSource(root)),
+            MyWikiPanelStatusPresentationPolicy.readyMessage
+        )
+    }
+
     func testMainWindowLaunchPolicyUsesPresentedSingleWindow() {
         XCTAssertEqual(KnowYouMainWindowLaunchPolicy.title, "KnowYou")
         XCTAssertFalse(KnowYouMainWindowLaunchPolicy.usesSwiftUIWindowScene)

@@ -1,6 +1,43 @@
 import SwiftUI
 import AppKit
 
+enum MyWikiPanelStatusPresentationPolicy {
+    static let readyMessage = "Ready"
+
+    static func initialStatusMessage(
+        bundledRunner: Result<MyWikiRunnerBundle?, Error>,
+        developmentSourceURL: URL,
+        fileManager: FileManager = .default
+    ) -> String {
+        initialStatusMessage(
+            for: MyWikiPipelineBridge.resolveTarget(
+                bundledRunner: bundledRunner,
+                developmentSourceURL: developmentSourceURL,
+                fileManager: fileManager
+            )
+        )
+    }
+
+    static func initialStatusMessage(for target: MyWikiPipelineTarget) -> String {
+        switch target {
+        case .bundledRunner, .developmentSource:
+            return readyMessage
+        case .invalidBundledRunner(let message):
+            return message
+        case .missing:
+            return "MyWiki runner is not available."
+        }
+    }
+
+    static func statusMessageOnAppear(
+        currentMessage: String,
+        pipelineTarget: MyWikiPipelineTarget
+    ) -> String {
+        guard currentMessage == readyMessage else { return currentMessage }
+        return initialStatusMessage(for: pipelineTarget)
+    }
+}
+
 struct MyWikiPanel: View {
     let sourceVault: URL?
     let projectRoot: URL?
@@ -13,7 +50,7 @@ struct MyWikiPanel: View {
     @State private var query = ""
     @State private var snapshot = MyWikiDashboardSnapshot.empty
     @State private var duplicateSuggestions: [MyWikiDuplicateSuggestion] = []
-    @State private var statusMessage = "Ready"
+    @State private var statusMessage = MyWikiPanelStatusPresentationPolicy.readyMessage
     @State private var ingestProgress: MyWikiIngestProgress?
     @State private var isSyncing = false
     @State private var expandedCategoryIDs: Set<String> = []
@@ -41,6 +78,10 @@ struct MyWikiPanel: View {
         .background(MyWikiTheme.contentBackground)
         .foregroundStyle(.primary)
         .onAppear {
+            statusMessage = MyWikiPanelStatusPresentationPolicy.statusMessageOnAppear(
+                currentMessage: statusMessage,
+                pipelineTarget: pipelineTarget
+            )
             for action in MyWikiPanelLifecyclePolicy.onAppearActions {
                 switch action {
                 case .loadDashboard:

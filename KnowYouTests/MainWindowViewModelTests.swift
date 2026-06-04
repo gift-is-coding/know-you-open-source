@@ -4993,6 +4993,47 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(appState.automationJobSnapshots.map(\.status), [.scheduled, .scheduled, .scheduled])
     }
 
+    func testRunMyWikiDigestPreservesBundledRunnerValidationError() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let vault = root.appending(path: "Vault", directoryHint: .isDirectory)
+        let projectRoot = root.appending(path: "KnowledgeOntology/KnowYouContext", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        let environment = AppEnvironment(
+            databaseURL: root.appending(path: "events.sqlite"),
+            vaultURL: vault,
+            databaseWriter: try DatabaseWriter.inMemory(),
+            summarizer: nil,
+            notificationReader: RecordingNotificationReader(),
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: Calendar(identifier: .gregorian))
+            )
+        )
+        let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 6, day: 1, hour: 10).date!
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            currentDate: { now },
+            myWikiRunnerResolver: {
+                throw MyWikiPipelineBridgeError.pipelineExecutionFailed(
+                    "Bundled MyWiki runner script is missing."
+                )
+            },
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        await appState.runMyWikiDigest(trigger: .manual)
+
+        let wikiJob = try XCTUnwrap(appState.automationJobSnapshots.first { $0.kind == .wiki })
+        XCTAssertEqual(wikiJob.status, .failed)
+        XCTAssertEqual(wikiJob.detail, "Bundled MyWiki runner script is missing.")
+        XCTAssertEqual(wikiJob.nextRunAt, now.addingTimeInterval(86_400))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: projectRoot.appending(path: ".llm-wiki").path))
+    }
+
     func testCompletingOnboardingSkipsBootstrapDaysThatAlreadyExist() async throws {
         let (environment, gate) = try makeBlockingRefreshEnvironment()
         let now = DateComponents(calendar: Calendar(identifier: .gregorian), year: 2026, month: 4, day: 11, hour: 15, minute: 30).date!

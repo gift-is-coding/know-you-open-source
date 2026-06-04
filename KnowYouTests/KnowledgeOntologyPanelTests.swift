@@ -116,6 +116,25 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertEqual(status, "MyWiki runner is not available.")
     }
 
+    func testMyWikiPanelOnAppearStatusReplacesReadyWithDegradedRunnerState() {
+        let invalidStatus = MyWikiPanelStatusPresentationPolicy.statusMessageOnAppear(
+            currentMessage: MyWikiPanelStatusPresentationPolicy.readyMessage,
+            pipelineTarget: .invalidBundledRunner("Bundled MyWiki runner script is missing.")
+        )
+        let missingStatus = MyWikiPanelStatusPresentationPolicy.statusMessageOnAppear(
+            currentMessage: MyWikiPanelStatusPresentationPolicy.readyMessage,
+            pipelineTarget: .missing
+        )
+        let activeStatus = MyWikiPanelStatusPresentationPolicy.statusMessageOnAppear(
+            currentMessage: "Updating My Wiki sources...",
+            pipelineTarget: .invalidBundledRunner("Bundled MyWiki runner script is missing.")
+        )
+
+        XCTAssertEqual(invalidStatus, "Bundled MyWiki runner script is missing.")
+        XCTAssertEqual(missingStatus, "MyWiki runner is not available.")
+        XCTAssertEqual(activeStatus, "Updating My Wiki sources...")
+    }
+
     func testMyWikiPanelInitialStatusKeepsReadyForRunnableTargets() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)

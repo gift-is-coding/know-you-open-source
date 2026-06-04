@@ -1,19 +1,15 @@
-import AppKit
 import Foundation
 
 enum KnowledgeOntologyLaunchTarget: Equatable {
-    case bundledHelperApp(URL)
     case developmentSource(URL)
     case missing
 
     var statusDescription: String {
         switch self {
-        case .bundledHelperApp(let url):
-            return "Using bundled llm_wiki helper: \(url.path)"
         case .developmentSource(let url):
             return "Using development llm_wiki source: \(url.path)"
         case .missing:
-            return "llm_wiki helper is not available."
+            return "llm_wiki source is not available."
         }
     }
 }
@@ -24,16 +20,12 @@ enum KnowledgeOntologyLauncherError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingReusableSubsystem:
-            return "Could not find the bundled llm_wiki helper or ThirdParty/llm_wiki source."
+            return "Could not find ThirdParty/llm_wiki source."
         }
     }
 }
 
 struct KnowledgeOntologyLauncher {
-    static func defaultBundledHelperAppURL(bundle: Bundle = .main) -> URL? {
-        bundle.resourceURL?.appending(path: "KnowledgeOntology/LLM Wiki.app", directoryHint: .isDirectory)
-    }
-
     static func defaultDevelopmentSourceURL(
         processEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         sourceFilePath: String = #filePath,
@@ -57,15 +49,9 @@ struct KnowledgeOntologyLauncher {
     }
 
     static func resolveLaunchTarget(
-        bundledHelperAppURL: URL?,
         developmentSourceURL: URL,
         fileManager: FileManager = .default
     ) -> KnowledgeOntologyLaunchTarget {
-        if let bundledHelperAppURL,
-           fileManager.fileExists(atPath: bundledHelperAppURL.path) {
-            return .bundledHelperApp(bundledHelperAppURL)
-        }
-
         if fileManager.fileExists(atPath: developmentSourceURL.path) {
             return .developmentSource(developmentSourceURL)
         }
@@ -76,13 +62,6 @@ struct KnowledgeOntologyLauncher {
     @MainActor
     func launch(target: KnowledgeOntologyLaunchTarget, projectRoot: URL) throws {
         switch target {
-        case .bundledHelperApp(let appURL):
-            let configuration = NSWorkspace.OpenConfiguration()
-            configuration.activates = true
-            configuration.environment = [
-                "KNOWYOU_KNOWLEDGE_PROJECT_PATH": projectRoot.path
-            ]
-            NSWorkspace.shared.openApplication(at: appURL, configuration: configuration)
         case .developmentSource(let sourceURL):
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")

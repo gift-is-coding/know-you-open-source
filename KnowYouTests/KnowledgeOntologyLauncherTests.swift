@@ -37,7 +37,7 @@ final class KnowledgeOntologyLauncherTests: XCTestCase {
         XCTAssertEqual(uiURL.path, devSource.path)
     }
 
-    func testResolveLaunchTargetPrefersBundledHelper() throws {
+    func testResolveLaunchTargetIgnoresBundledLLMWikiApp() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -47,12 +47,11 @@ final class KnowledgeOntologyLauncherTests: XCTestCase {
         try FileManager.default.createDirectory(at: devSource, withIntermediateDirectories: true)
 
         let target = KnowledgeOntologyLauncher.resolveLaunchTarget(
-            bundledHelperAppURL: bundledApp,
             developmentSourceURL: devSource,
             fileManager: .default
         )
 
-        XCTAssertEqual(target, .bundledHelperApp(bundledApp))
+        XCTAssertEqual(target, .developmentSource(devSource))
     }
 
     func testResolveLaunchTargetFallsBackToDevelopmentSource() throws {
@@ -64,7 +63,6 @@ final class KnowledgeOntologyLauncherTests: XCTestCase {
         try FileManager.default.createDirectory(at: devSource, withIntermediateDirectories: true)
 
         let target = KnowledgeOntologyLauncher.resolveLaunchTarget(
-            bundledHelperAppURL: bundledApp,
             developmentSourceURL: devSource,
             fileManager: .default
         )
@@ -72,10 +70,24 @@ final class KnowledgeOntologyLauncherTests: XCTestCase {
         XCTAssertEqual(target, .developmentSource(devSource))
     }
 
+    func testResolveLaunchTargetReportsMissingWhenOnlyLLMWikiAppExists() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let bundledApp = root.appending(path: "Resources/KnowledgeOntology/LLM Wiki.app", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: bundledApp, withIntermediateDirectories: true)
+
+        let target = KnowledgeOntologyLauncher.resolveLaunchTarget(
+            developmentSourceURL: root.appending(path: "missing-source", directoryHint: .isDirectory),
+            fileManager: .default
+        )
+
+        XCTAssertEqual(target, .missing)
+    }
+
     func testResolveLaunchTargetReportsMissingWhenNoReusableSubsystemExists() {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         let target = KnowledgeOntologyLauncher.resolveLaunchTarget(
-            bundledHelperAppURL: root.appending(path: "Missing.app", directoryHint: .isDirectory),
             developmentSourceURL: root.appending(path: "missing-source", directoryHint: .isDirectory),
             fileManager: .default
         )

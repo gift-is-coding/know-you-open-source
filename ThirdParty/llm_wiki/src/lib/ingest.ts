@@ -30,7 +30,10 @@ function resolveCaptionConfig(
   mainLlm: LlmConfig,
 ): LlmConfig | null {
   if (!mm.enabled) return null
-  if (mm.useMainLlm) return mainLlm
+  if (mm.useMainLlm) {
+    return mainLlm.provider === "knowyou-bridge" ? null : mainLlm
+  }
+  if (mm.provider === "knowyou-bridge") return null
   return {
     provider: mm.provider,
     apiKey: mm.apiKey,
@@ -45,6 +48,8 @@ function resolveCaptionConfig(
     maxContextSize: mainLlm.maxContextSize,
   }
 }
+
+export const __test = { resolveCaptionConfig }
 import { buildLanguageDirective } from "@/lib/output-language"
 import { detectLanguage } from "@/lib/detect-language"
 import { sameScriptFamily } from "@/lib/language-metadata"

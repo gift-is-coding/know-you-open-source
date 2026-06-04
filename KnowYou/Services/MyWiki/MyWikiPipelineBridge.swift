@@ -40,17 +40,23 @@ enum MyWikiPipelineBridgeError: LocalizedError {
 
 struct MyWikiPipelineBridge {
     private let processRunner: MyWikiPipelineProcessRunning
+    private let runnerProcess: MyWikiRunnerProcessRunning
     private let npmInvocation: MyWikiProcessInvocation
     private let llmInvocation: MyWikiLLMInvocation
+    private let llmBridge: MyWikiLLMBridge?
 
     init(
         processRunner: MyWikiPipelineProcessRunning = DefaultMyWikiPipelineProcessRunner(),
+        runnerProcess: MyWikiRunnerProcessRunning = DefaultMyWikiRunnerProcess(),
         npmInvocation: MyWikiProcessInvocation = MyWikiNPMResolver().resolve(),
-        llmInvocation: MyWikiLLMInvocation = .codexCLIDefault
+        llmInvocation: MyWikiLLMInvocation = .codexCLIDefault,
+        llmBridge: MyWikiLLMBridge? = nil
     ) {
         self.processRunner = processRunner
+        self.runnerProcess = runnerProcess
         self.npmInvocation = npmInvocation
         self.llmInvocation = llmInvocation
+        self.llmBridge = llmBridge
     }
 
     static func resolveTarget(
@@ -85,17 +91,15 @@ struct MyWikiPipelineBridge {
         }
     }
 
-    func runIngest(target: MyWikiPipelineTarget, projectRoot: URL, manifestURL: URL? = nil) throws {
+    func runIngest(target: MyWikiPipelineTarget, projectRoot: URL, manifestURL: URL? = nil) async throws {
         try FileManager.default.createDirectory(
             at: projectRoot.appending(path: ".llm-wiki", directoryHint: .isDirectory),
             withIntermediateDirectories: true
         )
 
         switch target {
-        case .bundledRunner:
-            let message = "headless MyWiki runner execution is not available for bundled runner builds yet."
-            try writeFailureStatus(message: message, projectRoot: projectRoot)
-            throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
+        case .bundledRunner(let bundle):
+            try await runBundledRunner(bundle: bundle, projectRoot: projectRoot, manifestURL: manifestURL)
         case .invalidBundledRunner(let message):
             try writeFailureStatus(message: message, projectRoot: projectRoot)
             throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
@@ -159,6 +163,83 @@ struct MyWikiPipelineBridge {
         )
         let data = try JSONEncoder().encode(status)
         try data.write(to: projectRoot.appending(path: ".llm-wiki/last-ingest-status.json"))
+    }
+
+    private func runBundledRunner(bundle: MyWikiRunnerBundle, projectRoot: URL, manifestURL: URL?) async throws {
+        guard let llmBridge else {
+            let message = "My Wiki Diary Engine bridge is not configured."
+            try writeFailureStatus(message: message, projectRoot: projectRoot)
+            throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
+        }
+
+        var arguments = [
+            bundle.scriptURL.path,
+            "--project",
+            projectRoot.path,
+            "--provider",
+            "knowyou-bridge",
+            "--max-sources",
+            "\(MyWikiIngestBatchPolicy.maxSourcesPerRun)"
+        ]
+        if let manifestURL {
+            arguments.append(contentsOf: ["--manifest", manifestURL.path])
+        }
+
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        let result: MyWikiPipelineProcessResult
+        do {
+            result = try await runnerProcess.run(
+                executable: bundle.nodeURL.path,
+                arguments: arguments,
+                workingDirectory: bundle.rootURL,
+                environment: [:],
+                timeoutSeconds: 30 * 60
+            ) { line in
+                try await Self.bridgeResponseJSONL(
+                    for: line,
+                    decoder: decoder,
+                    encoder: encoder,
+                    llmBridge: llmBridge
+                )
+            }
+        } catch {
+            try writeFailureStatus(message: error.localizedDescription, projectRoot: projectRoot)
+            throw error
+        }
+
+        guard result.terminationStatus == 0 else {
+            let detail = [result.stderr, result.stdout]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { $0.isEmpty == false }
+                .joined(separator: "\n")
+            let message = detail.isEmpty
+                ? "MyWiki bundled runner exited with status \(result.terminationStatus)."
+                : detail
+            try writeFailureStatus(message: message, projectRoot: projectRoot)
+            throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
+        }
+
+        try writeSuccessStatus(message: "My Wiki pipeline completed.", projectRoot: projectRoot)
+    }
+
+    private static func bridgeResponseJSONL(
+        for line: String,
+        decoder: JSONDecoder,
+        encoder: JSONEncoder,
+        llmBridge: MyWikiLLMBridge
+    ) async throws -> String? {
+        guard let data = line.data(using: .utf8),
+              let header = try? decoder.decode(MyWikiBridgeEventHeader.self, from: data),
+              header.type.hasPrefix("llm.")
+        else {
+            return nil
+        }
+
+        let envelope = try decoder.decode(MyWikiBridgeEnvelope.self, from: data)
+        let response = try await llmBridge.handle(envelope)
+        let responseData = try encoder.encode(response)
+        return String(data: responseData, encoding: .utf8)
     }
 
     private func runDevelopmentPipeline(sourceURL: URL, projectRoot: URL, manifestURL: URL?) throws {
@@ -426,13 +507,20 @@ struct MyWikiDigestRunner {
         sourceVault: URL?,
         importedDocuments: [ImportedKnowledgeDocument],
         target: MyWikiPipelineTarget,
+        summarizer: SummaryGenerating? = nil,
         llmInvocation: MyWikiLLMInvocation? = nil
     ) async -> MyWikiDigestRunResult {
         await Task.detached(priority: .userInitiated) {
             do {
-                let resolvedLLMInvocation = try llmInvocation ?? MyWikiLLMInvocation.resolve(
-                    from: SummarizerConfig.load()
-                )
+                let resolvedLLMBridge = (summarizer as? any MyWikiLLMCompleting).map(MyWikiLLMBridge.init(engine:))
+                let resolvedLLMInvocation: MyWikiLLMInvocation?
+                if case .developmentSource = target {
+                    resolvedLLMInvocation = try llmInvocation ?? MyWikiLLMInvocation.resolve(
+                        from: SummarizerConfig.load()
+                    )
+                } else {
+                    resolvedLLMInvocation = llmInvocation
+                }
                 try MyWikiProjectExporter().ensureProject(at: projectRoot)
 
                 let builder = MyWikiSourceCatalogBuilder()
@@ -460,7 +548,11 @@ struct MyWikiDigestRunner {
                 )
 
                 do {
-                    try MyWikiPipelineBridge(llmInvocation: resolvedLLMInvocation).runIngest(
+                    let pipelineBridge = MyWikiPipelineBridge(
+                        llmInvocation: resolvedLLMInvocation ?? .codexCLIDefault,
+                        llmBridge: resolvedLLMBridge
+                    )
+                    try await pipelineBridge.runIngest(
                         target: target,
                         projectRoot: projectRoot,
                         manifestURL: materialized.manifestURL
@@ -497,13 +589,17 @@ private struct MyWikiIngestStatus: Encodable {
     let filesWritten: [String]?
 }
 
+private struct MyWikiBridgeEventHeader: Decodable {
+    let type: String
+}
+
 struct MyWikiPipelineProcessResult: Equatable {
     let stdout: String
     let stderr: String
     let terminationStatus: Int32
 }
 
-protocol MyWikiPipelineProcessRunning {
+protocol MyWikiPipelineProcessRunning: Sendable {
     func run(
         executable: String,
         arguments: [String],
@@ -511,6 +607,17 @@ protocol MyWikiPipelineProcessRunning {
         environment: [String: String],
         timeoutSeconds: TimeInterval
     ) throws -> MyWikiPipelineProcessResult
+}
+
+protocol MyWikiRunnerProcessRunning: Sendable {
+    func run(
+        executable: String,
+        arguments: [String],
+        workingDirectory: URL,
+        environment: [String: String],
+        timeoutSeconds: TimeInterval,
+        onEvent: @escaping @Sendable (String) async throws -> String?
+    ) async throws -> MyWikiPipelineProcessResult
 }
 
 struct DefaultMyWikiPipelineProcessRunner: MyWikiPipelineProcessRunning {
@@ -552,5 +659,235 @@ struct DefaultMyWikiPipelineProcessRunner: MyWikiPipelineProcessRunning {
             stderr: String(data: stderrData, encoding: .utf8) ?? "",
             terminationStatus: process.terminationStatus
         )
+    }
+}
+
+struct DefaultMyWikiRunnerProcess: MyWikiRunnerProcessRunning {
+    func run(
+        executable: String,
+        arguments: [String],
+        workingDirectory: URL,
+        environment: [String: String],
+        timeoutSeconds: TimeInterval,
+        onEvent: @escaping @Sendable (String) async throws -> String?
+    ) async throws -> MyWikiPipelineProcessResult {
+        let controller = MyWikiRunnerProcessController()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global().async {
+                    let gate = ContinuationGate<MyWikiPipelineProcessResult>()
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: executable)
+                    process.arguments = arguments
+                    process.currentDirectoryURL = workingDirectory
+                    process.environment = environment
+
+                    let stdin = Pipe()
+                    let stdout = Pipe()
+                    let stderr = Pipe()
+                    let inputWriter = MyWikiRunnerInputWriter(handle: stdin.fileHandleForWriting)
+                    let outputState = MyWikiRunnerProcessOutputState()
+                    let eventGroup = DispatchGroup()
+
+                    process.standardInput = stdin
+                    process.standardOutput = stdout
+                    process.standardError = stderr
+                    controller.attach(process)
+
+                    let processLine: @Sendable (String) -> Void = { line in
+                        eventGroup.enter()
+                        Task {
+                            do {
+                                if let response = try await onEvent(line) {
+                                    inputWriter.write(line: response)
+                                }
+                            } catch {
+                                outputState.record(error: error)
+                                controller.terminate()
+                            }
+                            eventGroup.leave()
+                        }
+                    }
+
+                    stdout.fileHandleForReading.readabilityHandler = { handle in
+                        let data = handle.availableData
+                        guard data.isEmpty == false else { return }
+                        for line in outputState.appendStdout(data) {
+                            processLine(line)
+                        }
+                    }
+                    stderr.fileHandleForReading.readabilityHandler = { handle in
+                        let data = handle.availableData
+                        guard data.isEmpty == false else { return }
+                        outputState.appendStderr(data)
+                    }
+
+                    let timeoutItem = DispatchWorkItem {
+                        controller.terminate()
+                        let error = MyWikiPipelineBridgeError.pipelineExecutionFailed("MyWiki bundled runner timed out.")
+                        guard gate.resume(throwing: error) else { return }
+                        continuation.resume(throwing: error)
+                    }
+                    DispatchQueue.global().asyncAfter(deadline: .now() + timeoutSeconds, execute: timeoutItem)
+
+                    do {
+                        try process.run()
+                        process.waitUntilExit()
+                        timeoutItem.cancel()
+
+                        stdout.fileHandleForReading.readabilityHandler = nil
+                        stderr.fileHandleForReading.readabilityHandler = nil
+
+                        let remainingStdout = stdout.fileHandleForReading.readDataToEndOfFile()
+                        if remainingStdout.isEmpty == false {
+                            for line in outputState.appendStdout(remainingStdout) {
+                                processLine(line)
+                            }
+                        }
+                        let remainingStderr = stderr.fileHandleForReading.readDataToEndOfFile()
+                        if remainingStderr.isEmpty == false {
+                            outputState.appendStderr(remainingStderr)
+                        }
+                        for line in outputState.flushStdoutLineBuffer() {
+                            processLine(line)
+                        }
+
+                        eventGroup.wait()
+                        inputWriter.close()
+
+                        if let error = outputState.recordedError() {
+                            guard gate.resume(throwing: error) else { return }
+                            continuation.resume(throwing: error)
+                            return
+                        }
+
+                        let result = outputState.result(terminationStatus: process.terminationStatus)
+                        guard gate.resume(returning: result) else { return }
+                        continuation.resume(returning: result)
+                    } catch {
+                        timeoutItem.cancel()
+                        inputWriter.close()
+                        guard gate.resume(throwing: error) else { return }
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
+        } onCancel: {
+            controller.terminate()
+        }
+    }
+}
+
+private final class MyWikiRunnerProcessController: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+
+    func attach(_ process: Process) {
+        lock.withLock {
+            self.process = process
+        }
+    }
+
+    func terminate() {
+        lock.withLock {
+            process?.terminate()
+        }
+    }
+}
+
+private final class MyWikiRunnerInputWriter: @unchecked Sendable {
+    private let handle: FileHandle
+    private let lock = NSLock()
+
+    init(handle: FileHandle) {
+        self.handle = handle
+    }
+
+    func write(line: String) {
+        lock.withLock {
+            handle.write(Data((line + "\n").utf8))
+        }
+    }
+
+    func close() {
+        lock.withLock {
+            try? handle.close()
+        }
+    }
+}
+
+private final class MyWikiRunnerProcessOutputState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stdoutData = Data()
+    private var stderrData = Data()
+    private var stdoutLineBuffer = Data()
+    private var firstError: Error?
+
+    func appendStdout(_ data: Data) -> [String] {
+        lock.withLock {
+            stdoutData.append(data)
+            stdoutLineBuffer.append(data)
+            return drainStdoutLinesLocked()
+        }
+    }
+
+    func flushStdoutLineBuffer() -> [String] {
+        lock.withLock {
+            guard stdoutLineBuffer.isEmpty == false else { return [] }
+            let line = Self.lineString(from: stdoutLineBuffer)
+            stdoutLineBuffer.removeAll(keepingCapacity: true)
+            return line.map { [$0] } ?? []
+        }
+    }
+
+    func appendStderr(_ data: Data) {
+        lock.withLock {
+            stderrData.append(data)
+        }
+    }
+
+    func record(error: Error) {
+        lock.withLock {
+            if firstError == nil {
+                firstError = error
+            }
+        }
+    }
+
+    func recordedError() -> Error? {
+        lock.withLock { firstError }
+    }
+
+    func result(terminationStatus: Int32) -> MyWikiPipelineProcessResult {
+        lock.withLock {
+            MyWikiPipelineProcessResult(
+                stdout: String(decoding: stdoutData, as: UTF8.self),
+                stderr: String(decoding: stderrData, as: UTF8.self),
+                terminationStatus: terminationStatus
+            )
+        }
+    }
+
+    private func drainStdoutLinesLocked() -> [String] {
+        var lines: [String] = []
+        while let newlineIndex = stdoutLineBuffer.firstIndex(of: 0x0A) {
+            let lineData = stdoutLineBuffer[..<newlineIndex]
+            stdoutLineBuffer.removeSubrange(...newlineIndex)
+            if let line = Self.lineString(from: Data(lineData)) {
+                lines.append(line)
+            }
+        }
+        return lines
+    }
+
+    private static func lineString(from data: Data) -> String? {
+        var lineData = data
+        if lineData.last == 0x0D {
+            lineData.removeLast()
+        }
+        guard lineData.isEmpty == false else {
+            return nil
+        }
+        return String(data: lineData, encoding: .utf8)
     }
 }

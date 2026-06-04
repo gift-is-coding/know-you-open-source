@@ -6,6 +6,7 @@ struct KnowledgeOntologyPanel: View {
     let developmentSourceURL: URL
     let bundledRunner: Result<MyWikiRunnerBundle?, Error>
     let importedDocuments: [ImportedKnowledgeDocument]
+    let summarizer: SummaryGenerating?
     let nextDigestUpdateDate: Date?
     @Binding var selectedEntry: MyWikiEntry?
 
@@ -16,6 +17,7 @@ struct KnowledgeOntologyPanel: View {
             developmentSourceURL: developmentSourceURL,
             bundledRunner: bundledRunner,
             importedDocuments: importedDocuments,
+            summarizer: summarizer,
             nextDigestUpdateDate: nextDigestUpdateDate,
             selectedEntry: $selectedEntry
         )

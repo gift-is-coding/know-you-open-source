@@ -1613,7 +1613,8 @@ final class AppState {
             projectRoot: projectRoot,
             sourceVault: environment.vaultURL,
             importedDocuments: importedDocuments,
-            target: target
+            target: target,
+            summarizer: environment.summarizer
         )
 
         let nextRun = startedAt.addingTimeInterval(86_400)

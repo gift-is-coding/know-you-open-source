@@ -44,6 +44,7 @@ struct MyWikiPanel: View {
     let developmentSourceURL: URL
     let bundledRunner: Result<MyWikiRunnerBundle?, Error>
     let importedDocuments: [ImportedKnowledgeDocument]
+    let summarizer: SummaryGenerating?
     let nextDigestUpdateDate: Date?
     @Binding var selectedEntry: MyWikiEntry?
 
@@ -595,12 +596,14 @@ struct MyWikiPanel: View {
         let target = pipelineTarget
         let sourceVault = sourceVault
         let importedDocuments = importedDocuments
+        let summarizer = summarizer
         Task {
             let outcome = await MyWikiDigestRunner().run(
                 projectRoot: projectRoot,
                 sourceVault: sourceVault,
                 importedDocuments: importedDocuments,
-                target: target
+                target: target,
+                summarizer: summarizer
             )
 
             await MainActor.run {

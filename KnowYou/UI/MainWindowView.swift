@@ -355,6 +355,7 @@ struct MainWindowView: View {
                 developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL(),
                 bundledRunner: bundledMyWikiRunner,
                 importedDocuments: appState.knowledgeDocumentsByConnector.values.flatMap { $0 },
+                summarizer: appState.environment?.summarizer,
                 nextDigestUpdateDate: appState.nextMyWikiAutomationCheckDate,
                 selectedEntry: $selectedMyWikiEntry
             )

@@ -74,10 +74,19 @@ assert_contains "$release_common_script" 'Sparkle.framework' "release helper tar
 assert_contains "$release_common_script" 'XPCServices/Downloader.xpc' "release helper targets Sparkle downloader"
 assert_contains "$release_common_script" 'XPCServices/Installer.xpc' "release helper targets Sparkle installer"
 assert_contains "$release_common_script" 'Updater.app' "release helper targets Sparkle updater"
+assert_contains "$release_common_script" 'sign_mywiki_runner_nested_code()' "release helper signs MyWikiRunner"
+assert_contains "$release_common_script" 'Contents/Resources/MyWikiRunner/node' "release helper targets bundled MyWiki node"
 assert_contains "$release_common_script" '--preserve-metadata=identifier,entitlements,requirements' "release helper preserves signing metadata"
 
 build_release_script="$(cat "$repo_root/scripts/build-release.sh")"
+assert_contains "$build_release_script" 'scripts/build-mywiki-runner.sh' "build release builds MyWikiRunner"
+assert_contains "$build_release_script" 'Contents/Resources/MyWikiRunner' "build release copies MyWikiRunner"
+assert_contains "$build_release_script" 'sign_mywiki_runner_nested_code "$app_path"' "build release signs MyWikiRunner"
 assert_contains "$build_release_script" 'sign_release_app_nested_code "$app_path"' "build release signs app before zip"
+
+verify_release_script="$(cat "$repo_root/scripts/verify-release.sh")"
+assert_contains "$verify_release_script" 'Contents/Resources/MyWikiRunner/node' "verify release requires bundled MyWiki node"
+assert_contains "$verify_release_script" 'KnowledgeOntology/LLM Wiki.app' "verify release rejects LLM Wiki app"
 
 mkdir -p "$KNOWYOU_RELEASE_DIR"
 touch "$KNOWYOU_RELEASE_DIR/smoke.txt"

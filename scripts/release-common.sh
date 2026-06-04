@@ -115,10 +115,41 @@ sparkle_signature_attributes() {
   "$signer" "$(release_dmg_path)" | tr -d '\n'
 }
 
+sign_mywiki_runner_nested_code() {
+  local target_app="${1:-$app_path}"
+  local runner_dir="$target_app/Contents/Resources/MyWikiRunner"
+  local runner_node="$target_app/Contents/Resources/MyWikiRunner/node"
+  ensure_file_exists "$runner_dir"
+  ensure_file_exists "$runner_node"
+  require_command codesign
+
+  local signing_target
+  while IFS= read -r signing_target; do
+    codesign \
+      --force \
+      --options runtime \
+      --timestamp \
+      --sign "$developer_id_identity" \
+      "$signing_target"
+  done < <(find "$runner_dir" -type f -name '*.dylib' | sort)
+
+  codesign \
+    --force \
+    --options runtime \
+    --timestamp \
+    --sign "$developer_id_identity" \
+    "$runner_node"
+}
+
 sign_release_app_nested_code() {
   local target_app="${1:-$app_path}"
+  local mywiki_runner_already_signed="${2:-false}"
   ensure_file_exists "$target_app"
   require_command codesign
+
+  if [[ "$mywiki_runner_already_signed" != "true" ]]; then
+    sign_mywiki_runner_nested_code "$target_app"
+  fi
 
   local sparkle_framework="$target_app/Contents/Frameworks/Sparkle.framework"
   if [[ ! -d "$sparkle_framework" ]]; then

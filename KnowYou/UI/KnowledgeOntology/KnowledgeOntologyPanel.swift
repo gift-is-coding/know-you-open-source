@@ -4,7 +4,7 @@ struct KnowledgeOntologyPanel: View {
     let sourceVault: URL?
     let projectRoot: URL?
     let developmentSourceURL: URL
-    let bundledRunner: MyWikiRunnerBundle?
+    let bundledRunner: Result<MyWikiRunnerBundle?, Error>
     let importedDocuments: [ImportedKnowledgeDocument]
     let nextDigestUpdateDate: Date?
     @Binding var selectedEntry: MyWikiEntry?

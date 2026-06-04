@@ -2,6 +2,7 @@ import Foundation
 
 enum MyWikiPipelineTarget: Equatable {
     case bundledRunner(MyWikiRunnerBundle)
+    case invalidBundledRunner(String)
     case developmentSource(URL)
     case missing
 
@@ -9,6 +10,8 @@ enum MyWikiPipelineTarget: Equatable {
         switch self {
         case .bundledRunner(let bundle):
             return "Using bundled MyWiki runner: \(bundle.rootURL.path)"
+        case .invalidBundledRunner(let message):
+            return message
         case .developmentSource(let url):
             return "Using development llm_wiki pipeline: \(url.path)"
         case .missing:
@@ -65,6 +68,23 @@ struct MyWikiPipelineBridge {
         return .missing
     }
 
+    static func resolveTarget(
+        bundledRunner: Result<MyWikiRunnerBundle?, Error>,
+        developmentSourceURL: URL?,
+        fileManager: FileManager = .default
+    ) -> MyWikiPipelineTarget {
+        switch bundledRunner {
+        case .success(let bundle):
+            return resolveTarget(
+                bundledRunner: bundle,
+                developmentSourceURL: developmentSourceURL,
+                fileManager: fileManager
+            )
+        case .failure(let error):
+            return .invalidBundledRunner(error.localizedDescription)
+        }
+    }
+
     func runIngest(target: MyWikiPipelineTarget, projectRoot: URL, manifestURL: URL? = nil) throws {
         try FileManager.default.createDirectory(
             at: projectRoot.appending(path: ".llm-wiki", directoryHint: .isDirectory),
@@ -74,6 +94,9 @@ struct MyWikiPipelineBridge {
         switch target {
         case .bundledRunner:
             let message = "headless MyWiki runner execution is not available for bundled runner builds yet."
+            try writeFailureStatus(message: message, projectRoot: projectRoot)
+            throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
+        case .invalidBundledRunner(let message):
             try writeFailureStatus(message: message, projectRoot: projectRoot)
             throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
         case .developmentSource(let sourceURL):
@@ -92,6 +115,9 @@ struct MyWikiPipelineBridge {
                 "Advanced My Wiki workspace is not available for bundled runner builds yet."
             )
         }
+        if case .invalidBundledRunner(let message) = target {
+            throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
+        }
         try KnowledgeOntologyLauncher().launch(
             target: knowledgeOntologyTarget(from: target),
             projectRoot: projectRoot
@@ -101,6 +127,8 @@ struct MyWikiPipelineBridge {
     private func knowledgeOntologyTarget(from target: MyWikiPipelineTarget) -> KnowledgeOntologyLaunchTarget {
         switch target {
         case .bundledRunner:
+            return .missing
+        case .invalidBundledRunner:
             return .missing
         case .developmentSource(let url):
             return .developmentSource(url)

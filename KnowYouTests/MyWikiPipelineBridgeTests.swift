@@ -109,6 +109,20 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
         }
     }
 
+    func testResolvePipelineDoesNotFallBackToDevelopmentSourceWhenBundledRunnerIsInvalid() {
+        let error = MyWikiPipelineBridgeError.pipelineExecutionFailed(
+            "Bundled MyWiki runner script is missing."
+        )
+
+        let target = MyWikiPipelineBridge.resolveTarget(
+            bundledRunner: .failure(error),
+            developmentSourceURL: URL(fileURLWithPath: "/tmp/ThirdParty/llm_wiki")
+        )
+
+        XCTAssertEqual(target, .invalidBundledRunner("Bundled MyWiki runner script is missing."))
+        XCTAssertEqual(target.statusDescription, "Bundled MyWiki runner script is missing.")
+    }
+
     func testRunIngestDoesNotMaterializeLocalFallbackWhenHeadlessRunnerIsUnavailable() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)

@@ -40,13 +40,9 @@ struct MainWindowView: View {
         self.onStoryParagraphTap = onStoryParagraphTap
     }
 
-    private var bundledMyWikiRunner: MyWikiRunnerBundle? {
-        do {
-            return try MyWikiRunnerBundle.resolveDefault()
-        } catch {
-            NSLog("Invalid bundled MyWiki runner: %@", error.localizedDescription)
-            assertionFailure("Invalid bundled MyWiki runner: \(error.localizedDescription)")
-            return nil
+    private var bundledMyWikiRunner: Result<MyWikiRunnerBundle?, Error> {
+        Result {
+            try MyWikiRunnerBundle.resolveDefault()
         }
     }
 

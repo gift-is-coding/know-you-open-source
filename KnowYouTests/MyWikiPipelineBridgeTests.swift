@@ -25,17 +25,14 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
 
         let resources = root.appending(path: "Resources", directoryHint: .isDirectory)
         let runner = resources.appending(path: "MyWikiRunner", directoryHint: .isDirectory)
-        let node = runner.appending(path: "node")
-        let script = runner.appending(path: "mywiki-runner.js")
         let llmWikiApp = resources.appending(path: "KnowledgeOntology/LLM Wiki.app", directoryHint: .isDirectory)
 
         try FileManager.default.createDirectory(at: llmWikiApp, withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: runner, withIntermediateDirectories: true)
-        try "#!/usr/bin/env bash\n".write(to: node, atomically: true, encoding: .utf8)
-        try "console.log('ok')\n".write(to: script, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: node.path)
+        try makeValidBundledRunner(at: runner)
 
-        let bundle = try MyWikiRunnerBundle(rootURL: runner)
+        let bundle = try XCTUnwrap(
+            MyWikiRunnerBundle.resolveDefault(resourceURL: resources)
+        )
         let target = MyWikiPipelineBridge.resolveTarget(
             bundledRunner: bundle,
             developmentSourceURL: nil
@@ -49,8 +46,11 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let llmWikiApp = root.appending(path: "KnowledgeOntology/LLM Wiki.app", directoryHint: .isDirectory)
+        let resources = root.appending(path: "Resources", directoryHint: .isDirectory)
+        let llmWikiApp = resources.appending(path: "KnowledgeOntology/LLM Wiki.app", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: llmWikiApp, withIntermediateDirectories: true)
+
+        XCTAssertNil(try MyWikiRunnerBundle.resolveDefault(resourceURL: resources))
 
         let target = MyWikiPipelineBridge.resolveTarget(
             bundledRunner: nil,
@@ -58,6 +58,55 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
         )
 
         XCTAssertEqual(target, .missing)
+    }
+
+    func testResolveDefaultThrowsWhenBundledRunnerNodeIsNotExecutable() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let resources = root.appending(path: "Resources", directoryHint: .isDirectory)
+        let runner = resources.appending(path: "MyWikiRunner", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: runner, withIntermediateDirectories: true)
+        try "#!/usr/bin/env bash\n".write(
+            to: runner.appending(path: "node"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "console.log('ok')\n".write(
+            to: runner.appending(path: "mywiki-runner.js"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        XCTAssertThrowsError(try MyWikiRunnerBundle.resolveDefault(resourceURL: resources)) { error in
+            guard case MyWikiPipelineBridgeError.pipelineExecutionFailed(let message) = error else {
+                XCTFail("Expected pipelineExecutionFailed, got \(error)")
+                return
+            }
+            XCTAssertEqual(message, "Bundled MyWiki runner node is missing or not executable.")
+        }
+    }
+
+    func testResolveDefaultThrowsWhenBundledRunnerScriptIsMissing() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let resources = root.appending(path: "Resources", directoryHint: .isDirectory)
+        let runner = resources.appending(path: "MyWikiRunner", directoryHint: .isDirectory)
+        let node = runner.appending(path: "node")
+        try FileManager.default.createDirectory(at: runner, withIntermediateDirectories: true)
+        try "#!/usr/bin/env bash\n".write(to: node, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: node.path)
+
+        XCTAssertThrowsError(try MyWikiRunnerBundle.resolveDefault(resourceURL: resources)) { error in
+            guard case MyWikiPipelineBridgeError.pipelineExecutionFailed(let message) = error else {
+                XCTFail("Expected pipelineExecutionFailed, got \(error)")
+                return
+            }
+            XCTAssertEqual(message, "Bundled MyWiki runner script is missing.")
+        }
     }
 
     func testRunIngestDoesNotMaterializeLocalFallbackWhenHeadlessRunnerIsUnavailable() throws {
@@ -469,6 +518,15 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
         XCTAssertTrue(statusText.contains(#""status":"failed""#), statusText)
         XCTAssertTrue(statusText.contains("MyWiki runner is not available"), statusText)
     }
+}
+
+private func makeValidBundledRunner(at runner: URL) throws {
+    let node = runner.appending(path: "node")
+    let script = runner.appending(path: "mywiki-runner.js")
+    try FileManager.default.createDirectory(at: runner, withIntermediateDirectories: true)
+    try "#!/usr/bin/env bash\n".write(to: node, atomically: true, encoding: .utf8)
+    try "console.log('ok')\n".write(to: script, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: node.path)
 }
 
 private final class RecordingMyWikiPipelineRunner: MyWikiPipelineProcessRunning {

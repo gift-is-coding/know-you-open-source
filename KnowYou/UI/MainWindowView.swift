@@ -40,6 +40,16 @@ struct MainWindowView: View {
         self.onStoryParagraphTap = onStoryParagraphTap
     }
 
+    private var bundledMyWikiRunner: MyWikiRunnerBundle? {
+        do {
+            return try MyWikiRunnerBundle.resolveDefault()
+        } catch {
+            NSLog("Invalid bundled MyWiki runner: %@", error.localizedDescription)
+            assertionFailure("Invalid bundled MyWiki runner: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     var body: some View {
         NavigationSplitView {
             sidebar
@@ -347,7 +357,7 @@ struct MainWindowView: View {
                 sourceVault: appState.environment?.vaultURL,
                 projectRoot: knowledgeOntologyProjectRoot,
                 developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL(),
-                bundledRunner: MyWikiRunnerBundle.resolveDefault(),
+                bundledRunner: bundledMyWikiRunner,
                 importedDocuments: appState.knowledgeDocumentsByConnector.values.flatMap { $0 },
                 nextDigestUpdateDate: appState.nextMyWikiAutomationCheckDate,
                 selectedEntry: $selectedMyWikiEntry

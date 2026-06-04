@@ -1576,10 +1576,25 @@ final class AppState {
             .deletingLastPathComponent()
             .appending(path: "KnowledgeOntology/KnowYouContext", directoryHint: .isDirectory)
         let importedDocuments = (try? environment.databaseWriter.fetchImportedKnowledgeDocuments()) ?? []
-        let target = MyWikiPipelineBridge.resolveTarget(
-            bundledRunner: MyWikiRunnerBundle.resolveDefault(),
-            developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL()
-        )
+        let target: MyWikiPipelineTarget
+        do {
+            target = MyWikiPipelineBridge.resolveTarget(
+                bundledRunner: try MyWikiRunnerBundle.resolveDefault(),
+                developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL()
+            )
+        } catch {
+            let nextRun = currentDate().addingTimeInterval(86_400)
+            nextMyWikiAutomationCheckDate = nextRun
+            setAutomationJob(
+                kind: .wiki,
+                status: .failed,
+                detail: error.localizedDescription,
+                progress: 1,
+                lastRunAt: currentDate(),
+                nextRunAt: nextRun
+            )
+            return
+        }
         let startedAt = currentDate()
         setAutomationJob(
             kind: .wiki,

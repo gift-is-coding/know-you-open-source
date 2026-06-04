@@ -1,5 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 import { autoIngest } from "@/lib/ingest"
 import { useActivityStore } from "@/stores/activity-store"
 import { useChatStore } from "@/stores/chat-store"
@@ -407,4 +408,20 @@ export async function runKnowYouIngestCli(argv: string[]): Promise<void> {
     process.stderr.write(`${message}\n`)
     process.exitCode = 1
   }
+}
+
+function isMainModule(): boolean {
+  const invokedPath = process.argv[1]
+  if (!invokedPath) {
+    return false
+  }
+  return path.resolve(invokedPath) === fileURLToPath(import.meta.url)
+}
+
+if (isMainModule()) {
+  void runKnowYouIngestCli(process.argv.slice(2)).catch((err) => {
+    const message = err instanceof Error ? err.message : String(err)
+    process.stderr.write(`${message}\n`)
+    process.exitCode = 1
+  })
 }

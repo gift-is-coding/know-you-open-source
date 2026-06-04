@@ -102,7 +102,7 @@ const JSON_CONTENT_TYPE = "application/json"
  * also relies on.
  *
  * Why this overrides at all: plugin-http's JS shim respects user-
- * set headers (see `node_modules/@tauri-apps/plugin-http/dist-js/
+ * set headers (see the Tauri HTTP plugin implementation's
  * index.js` — the loop after `new Request(input, init)` only fills
  * browser-default headers when the user did NOT already set them).
  * Rust-side, the `unsafe-headers` feature flag in

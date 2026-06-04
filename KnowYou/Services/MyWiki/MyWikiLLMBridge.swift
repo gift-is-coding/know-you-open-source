@@ -92,6 +92,10 @@ struct MyWikiLLMBridge: Sendable {
     }
 
     private static func isAuthenticationError(_ error: Error) -> Bool {
+        if let clientError = error as? LLMAPIClientError {
+            return clientError.isAuthenticationFailure
+        }
+
         guard let code = urlErrorCode(for: error) else {
             return false
         }

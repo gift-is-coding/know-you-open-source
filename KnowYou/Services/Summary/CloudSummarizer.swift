@@ -106,6 +106,27 @@ extension CloudSummarizer: MyWikiLLMCompleting {
     }
 }
 
+enum LLMAPIClientError: Error, LocalizedError, Equatable, Sendable {
+    case nonSuccessStatus(statusCode: Int, responseBody: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .nonSuccessStatus(let statusCode, let responseBody):
+            let body = responseBody.trimmingCharacters(in: .whitespacesAndNewlines)
+            return body.isEmpty
+                ? "LLM API request failed with HTTP \(statusCode)."
+                : "LLM API request failed with HTTP \(statusCode): \(body)"
+        }
+    }
+
+    var isAuthenticationFailure: Bool {
+        switch self {
+        case .nonSuccessStatus(let statusCode, _):
+            return statusCode == 401 || statusCode == 403
+        }
+    }
+}
+
 struct LLMAPIClient: Sendable {
     let providerConfig: LLMAPIProviderConfig
     let session: URLSession
@@ -118,11 +139,14 @@ struct LLMAPIClient: Sendable {
     func complete(input: String, systemPrompt: String? = nil) async throws -> String {
         let request = try makeRequest(input: input, systemPrompt: systemPrompt)
         let (data, response) = try await session.data(for: request)
-        guard
-            let httpResponse = response as? HTTPURLResponse,
-            (200..<300).contains(httpResponse.statusCode)
-        else {
+        guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw LLMAPIClientError.nonSuccessStatus(
+                statusCode: httpResponse.statusCode,
+                responseBody: String(decoding: data, as: UTF8.self)
+            )
         }
 
         return try decodeText(from: data)

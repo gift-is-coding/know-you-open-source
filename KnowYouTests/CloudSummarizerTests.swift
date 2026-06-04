@@ -202,6 +202,46 @@ final class CloudSummarizerTests: XCTestCase {
         XCTAssertEqual(systemParts.first?["text"] as? String, "Be brief.")
     }
 
+    func testMyWikiBridgeMapsCloudUnauthorizedResponsesToAuthFailed() async throws {
+        for statusCode in [401, 403] {
+            CloudStubURLProtocol.reset()
+            CloudStubURLProtocol.behavior = .success(statusCode: statusCode, body: Data(#"{"error":"invalid token"}"#.utf8))
+            let providerConfig = LLMAPIProviderConfig(
+                id: .openAI,
+                baseURL: "https://api.openai.com/v1/responses",
+                model: "gpt-5",
+                wireFormat: .openAIResponses,
+                apiToken: "sk-invalid"
+            )
+            let summarizer = CloudSummarizer(
+                providerConfig: providerConfig,
+                session: CloudStubURLProtocol.makeSession()
+            )
+            let bridge = MyWikiLLMBridge(engine: summarizer)
+
+            let response = try await bridge.handle(
+                .llmRequest(
+                    MyWikiLLMRequest(
+                        id: "req-\(statusCode)",
+                        messages: [MyWikiLLMMessage(role: "user", content: "Build My Wiki context.")],
+                        temperature: nil
+                    )
+                )
+            )
+
+            XCTAssertEqual(
+                response,
+                .llmError(
+                    MyWikiLLMErrorResponse(
+                        id: "req-\(statusCode)",
+                        code: "auth_failed",
+                        message: "Diary Engine authentication failed."
+                    )
+                )
+            )
+        }
+    }
+
     private func requestBodyJSON(_ request: URLRequest) throws -> [String: Any] {
         let bodyData = try XCTUnwrap(request.httpBody ?? data(from: request.httpBodyStream))
         return try XCTUnwrap(

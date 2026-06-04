@@ -99,6 +99,13 @@ struct CloudSummarizer: IncrementalSummaryGenerating {
     }
 }
 
+extension CloudSummarizer: MyWikiLLMCompleting {
+    func complete(messages: [MyWikiLLMMessage], temperature: Double?) async throws -> String {
+        try await LLMAPIClient(providerConfig: providerConfig, session: session)
+            .complete(input: messages.myWikiNonSystemTranscript, systemPrompt: messages.myWikiSystemPrompt)
+    }
+}
+
 struct LLMAPIClient: Sendable {
     let providerConfig: LLMAPIProviderConfig
     let session: URLSession

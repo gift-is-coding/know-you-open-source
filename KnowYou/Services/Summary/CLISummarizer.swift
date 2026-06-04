@@ -909,3 +909,13 @@ struct CLISummarizer: JSONSummaryGenerating {
         }
     }
 }
+
+extension CLISummarizer: MyWikiLLMCompleting {
+    func complete(messages: [MyWikiLLMMessage], temperature: Double?) async throws -> String {
+        try await summarize(
+            dayKey: "mywiki",
+            markdown: messages.myWikiFullTranscript,
+            context: .automationRefresh
+        )
+    }
+}

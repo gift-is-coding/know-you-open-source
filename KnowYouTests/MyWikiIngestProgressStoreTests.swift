@@ -70,6 +70,20 @@ final class MyWikiIngestProgressStoreTests: XCTestCase {
         XCTAssertEqual(progress.fraction, 0.5, accuracy: 0.001)
     }
 
+    func testRunningProgressWithoutCountsShowsImmediateGeneratingFeedback() {
+        let progress = MyWikiIngestProgress(
+            state: .running,
+            message: "Starting My Wiki update...",
+            updatedAt: nil,
+            sourcesProcessed: 0,
+            totalSources: 0
+        )
+
+        XCTAssertEqual(progress.title, "Generating My Wiki")
+        XCTAssertEqual(progress.detail, "Starting My Wiki update...")
+        XCTAssertEqual(progress.fraction, 0)
+    }
+
     func testMissingStatusReturnsNil() throws {
         let root = try makeProjectRoot()
 

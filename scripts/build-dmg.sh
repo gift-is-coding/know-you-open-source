@@ -14,6 +14,21 @@ require_command swift
 prepare_release_dir
 ensure_file_exists "$app_path"
 
+dmg_volume_name="${KNOWYOU_DMG_VOLUME_NAME:-KnowYou}"
+dmg_app_name="${KNOWYOU_DMG_APP_NAME:-KnowYou.app}"
+dmg_title="${KNOWYOU_DMG_TITLE:-Drag KnowYou to Applications}"
+dmg_subtitle="${KNOWYOU_DMG_SUBTITLE:-Move the app first, then grant Full Disk Access.}"
+
+if [[ -z "$dmg_volume_name" || "$dmg_volume_name" == */* ]]; then
+  echo "Invalid KNOWYOU_DMG_VOLUME_NAME: $dmg_volume_name" >&2
+  exit 1
+fi
+
+if [[ -z "$dmg_app_name" || "$dmg_app_name" == */* || "$dmg_app_name" != *.app ]]; then
+  echo "Invalid KNOWYOU_DMG_APP_NAME: $dmg_app_name" >&2
+  exit 1
+fi
+
 generator_dir="$(mktemp -d)"
 rw_dmg_path="$release_dir/$(artifact_basename)-rw.dmg"
 cleanup() {
@@ -32,6 +47,10 @@ generate_background() {
 
   cat >"$swift_path" <<'SWIFT'
 import AppKit
+
+guard CommandLine.arguments.count == 4 else {
+    fatalError("Usage: generate-dmg-background <output-path> <title> <subtitle>")
+}
 
 let outputURL = URL(fileURLWithPath: CommandLine.arguments[1])
 let width: CGFloat = 560
@@ -73,7 +92,7 @@ let topWash = NSGradient(
 )
 topWash?.draw(in: bounds, angle: -90)
 
-let title = "Drag KnowYou to Applications"
+let title = CommandLine.arguments[2]
 let titleAttributes: [NSAttributedString.Key: Any] = [
     .font: NSFont.systemFont(ofSize: 20, weight: .semibold),
     .foregroundColor: NSColor(calibratedWhite: 0.16, alpha: 1)
@@ -84,7 +103,7 @@ title.draw(
     withAttributes: titleAttributes
 )
 
-let subtitle = "Move the app first, then grant Full Disk Access."
+let subtitle = CommandLine.arguments[3]
 let subtitleAttributes: [NSAttributedString.Key: Any] = [
     .font: NSFont.systemFont(ofSize: 13, weight: .regular),
     .foregroundColor: NSColor(calibratedWhite: 0.42, alpha: 1)
@@ -127,7 +146,7 @@ guard let data = bitmap.representation(using: .png, properties: [:]) else {
 try data.write(to: outputURL)
 SWIFT
 
-  swift "$swift_path" "$output_path"
+  swift "$swift_path" "$output_path" "$dmg_title" "$dmg_subtitle"
 }
 
 generate_background "$background_path"
@@ -136,13 +155,14 @@ rm -f "$(release_dmg_path)" "$rw_dmg_path"
 hdiutil create \
   -size 64m \
   -fs HFS+ \
-  -volname "KnowYou" \
+  -volname "$dmg_volume_name" \
   -ov \
   "$rw_dmg_path"
 
 mount_output="$(hdiutil attach "$rw_dmg_path" -readwrite -noverify -noautoopen)"
-device="$(printf '%s\n' "$mount_output" | awk 'index($0, "/Volumes/KnowYou") { print $1; exit }')"
-mount_point="$(printf '%s\n' "$mount_output" | awk -F '\t' 'index($0, "/Volumes/KnowYou") { print $NF; exit }')"
+expected_mount_point="/Volumes/$dmg_volume_name"
+device="$(printf '%s\n' "$mount_output" | awk -v mount="$expected_mount_point" 'index($0, mount) { print $1; exit }')"
+mount_point="$(printf '%s\n' "$mount_output" | awk -F '\t' -v mount="$expected_mount_point" 'index($0, mount) { print $NF; exit }')"
 
 if [[ -z "$device" || -z "$mount_point" ]]; then
   echo "Unable to mount DMG for layout customization." >&2
@@ -150,14 +170,15 @@ if [[ -z "$device" || -z "$mount_point" ]]; then
   exit 1
 fi
 
-ditto "$app_path" "$mount_point/KnowYou.app"
+ditto "$app_path" "$mount_point/$dmg_app_name"
 ln -s /Applications "$mount_point/Applications"
 mkdir -p "$mount_point/.background"
 ditto "$background_path" "$mount_point/.background/background.png"
 SetFile -a V "$mount_point/.background"
 
-if ! DMG_MOUNT_POINT="$mount_point" osascript <<'APPLESCRIPT'
+if ! DMG_APP_NAME="$dmg_app_name" DMG_MOUNT_POINT="$mount_point" osascript <<'APPLESCRIPT'
 set mountPoint to system attribute "DMG_MOUNT_POINT"
+set appName to system attribute "DMG_APP_NAME"
 set backgroundPath to mountPoint & "/.background/background.png"
 
 with timeout of 300 seconds
@@ -176,7 +197,7 @@ with timeout of 300 seconds
     set arrangement of theViewOptions to not arranged
     set icon size of theViewOptions to 96
     set background picture of theViewOptions to POSIX file backgroundPath
-    set position of item "KnowYou.app" of installerFolder to {150, 148}
+    set position of item appName of installerFolder to {150, 148}
     set position of item "Applications" of installerFolder to {430, 148}
     delay 2
     close installerWindow

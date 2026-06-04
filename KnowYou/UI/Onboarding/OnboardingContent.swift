@@ -51,6 +51,10 @@ enum OnboardingRequirement: String, Equatable, Hashable {
 struct OnboardingApplicationInstallPolicy {
     static let productionTargetBundleURL = URL(fileURLWithPath: "/Applications/KnowYou.app", isDirectory: true)
     static let newUserTargetBundleURL = URL(fileURLWithPath: "/Applications/KnowYou New User.app", isDirectory: true)
+    private static let acceptedApplicationsDirectories: Set<String> = [
+        "/Applications",
+        "/System/Volumes/Data/Applications",
+    ]
 
     static var targetBundleURL: URL {
         targetBundleURL(bundleIdentifier: Bundle.main.bundleIdentifier)
@@ -68,7 +72,10 @@ struct OnboardingApplicationInstallPolicy {
     }
 
     static func isInstalledInApplications(bundleURL: URL, bundleIdentifier: String?) -> Bool {
-        bundleURL.standardizedFileURL.path == targetBundleURL(bundleIdentifier: bundleIdentifier).standardizedFileURL.path
+        let expectedBundleURL = targetBundleURL(bundleIdentifier: bundleIdentifier).standardizedFileURL
+        let candidateURL = bundleURL.standardizedFileURL
+        return candidateURL.lastPathComponent == expectedBundleURL.lastPathComponent
+            && acceptedApplicationsDirectories.contains(candidateURL.deletingLastPathComponent().path)
     }
 }
 

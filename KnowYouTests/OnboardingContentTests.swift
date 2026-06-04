@@ -155,6 +155,10 @@ final class OnboardingContentTests: XCTestCase {
     func testApplicationInstallPolicyRequiresApplicationsKnowYouBundle() {
         let installedAppURL = URL(fileURLWithPath: "/Applications/KnowYou.app")
         let installedNewUserURL = URL(fileURLWithPath: "/Applications/KnowYou New User.app")
+        let dataVolumeInstalledAppURL = URL(fileURLWithPath: "/System/Volumes/Data/Applications/KnowYou.app")
+        let dataVolumeInstalledNewUserURL = URL(
+            fileURLWithPath: "/System/Volumes/Data/Applications/KnowYou New User.app"
+        )
         let mountedDMGURL = URL(fileURLWithPath: "/Volumes/KnowYou/KnowYou.app")
         let downloadsURL = URL(fileURLWithPath: "/Users/me/Downloads/KnowYou.app")
         let developmentBuildURL = URL(
@@ -162,9 +166,16 @@ final class OnboardingContentTests: XCTestCase {
         )
 
         XCTAssertTrue(OnboardingApplicationInstallPolicy.isInstalledInApplications(bundleURL: installedAppURL))
+        XCTAssertTrue(OnboardingApplicationInstallPolicy.isInstalledInApplications(bundleURL: dataVolumeInstalledAppURL))
         XCTAssertTrue(
             OnboardingApplicationInstallPolicy.isInstalledInApplications(
                 bundleURL: installedNewUserURL,
+                bundleIdentifier: AppRuntimeProfile.newUserBundleIdentifier
+            )
+        )
+        XCTAssertTrue(
+            OnboardingApplicationInstallPolicy.isInstalledInApplications(
+                bundleURL: dataVolumeInstalledNewUserURL,
                 bundleIdentifier: AppRuntimeProfile.newUserBundleIdentifier
             )
         )

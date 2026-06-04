@@ -21,6 +21,8 @@ script="$(cat "$script_path")"
 
 assert_contains "$script" "Drag KnowYou to Applications" "background install instruction"
 assert_contains "$script" "prepare_release_dir" "standalone release directory setup"
+assert_contains "$script" 'dmg_app_name="${KNOWYOU_DMG_APP_NAME:-KnowYou.app}"' "default dmg app name"
+assert_contains "$script" 'dmg_volume_name="${KNOWYOU_DMG_VOLUME_NAME:-KnowYou}"' "default dmg volume name"
 assert_contains "$script" "let width: CGFloat = 560" "compact background width"
 assert_contains "$script" "let height: CGFloat = 300" "compact background height"
 assert_contains "$script" "let appIconCenterX: CGFloat = 150" "background app icon center constant"
@@ -31,13 +33,15 @@ assert_contains "$script" "let arrowEndX = applicationsIconCenterX - iconSize / 
 assert_contains "$script" "shaft.move(to: NSPoint(x: arrowStartX, y: arrowY))" "arrow start uses layout constant"
 assert_contains "$script" "shaft.line(to: NSPoint(x: arrowEndX, y: arrowY))" "arrow end uses layout constant"
 assert_contains "$script" "-fs HFS+" "Finder-layout-friendly image format"
-assert_contains "$script" 'ditto "$app_path" "$mount_point/KnowYou.app"' "copy app into mounted image"
+assert_contains "$script" 'ditto "$app_path" "$mount_point/$dmg_app_name"' "copy app into mounted image"
 assert_contains "$script" 'ln -s /Applications "$mount_point/Applications"' "copy Applications symlink into mounted image"
 assert_contains "$script" "set bounds to {100, 100, 660, 400}" "compact installer window"
-assert_contains "$script" "set position of item \"KnowYou.app\" of installerFolder to {150, 148}" "app icon on the left"
+assert_contains "$script" "set position of item appName of installerFolder to {150, 148}" "app icon on the left"
 assert_contains "$script" "set position of item \"Applications\" of installerFolder to {430, 148}" "Applications icon on the right"
 assert_contains "$script" 'DMG_MOUNT_POINT="$mount_point" osascript' "Finder targets actual mounted path"
+assert_contains "$script" 'DMG_APP_NAME="$dmg_app_name"' "Finder receives custom app name"
 assert_contains "$script" 'set mountPoint to system attribute "DMG_MOUNT_POINT"' "AppleScript reads mounted path"
+assert_contains "$script" 'set appName to system attribute "DMG_APP_NAME"' "AppleScript reads custom app name"
 assert_contains "$script" 'set installerFolder to POSIX file mountPoint as alias' "AppleScript opens mounted path"
 assert_contains "$script" "set installerWindow to front Finder window" "AppleScript uses concrete Finder window"
 assert_contains "$script" "set icon size of theViewOptions to 96" "large icon size"
@@ -64,7 +68,7 @@ if [[ ! -s "$swift_generator" ]]; then
   exit 1
 fi
 
-swift "$swift_generator" "$background_path"
+swift "$swift_generator" "$background_path" "Drag KnowYou to Applications" "Move the app first, then grant Full Disk Access."
 pixel_width="$(sips -g pixelWidth "$background_path" 2>/dev/null | awk '/pixelWidth/ { print $2; exit }')"
 pixel_height="$(sips -g pixelHeight "$background_path" 2>/dev/null | awk '/pixelHeight/ { print $2; exit }')"
 

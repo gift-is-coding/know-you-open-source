@@ -321,6 +321,38 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertEqual(presentation.nextRunTitle, "Next update")
         XCTAssertEqual(presentation.nextRunValue, "3:30 PM")
         XCTAssertEqual(presentation.updateNowTitle, "Update Now")
+        XCTAssertFalse(presentation.isUpdateNowDisabled)
+        XCTAssertNil(presentation.statusMessage)
+    }
+
+    func testDigestSchedulePresentationShowsGeneratingState() {
+        let presentation = MyWikiDigestSchedulePresentation(
+            ingestProgress: nil,
+            nextRunDate: nil,
+            statusMessage: nil,
+            isUpdating: true,
+            isProjectAvailable: true,
+            displayTimeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        XCTAssertEqual(presentation.updateNowTitle, "Generating...")
+        XCTAssertTrue(presentation.isUpdateNowDisabled)
+        XCTAssertEqual(presentation.statusMessage, "Generating My Wiki...")
+    }
+
+    func testDigestSchedulePresentationDisablesUpdateWhenProjectIsUnavailable() {
+        let presentation = MyWikiDigestSchedulePresentation(
+            ingestProgress: nil,
+            nextRunDate: nil,
+            statusMessage: nil,
+            isUpdating: false,
+            isProjectAvailable: false,
+            displayTimeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        XCTAssertEqual(presentation.updateNowTitle, "Unavailable")
+        XCTAssertTrue(presentation.isUpdateNowDisabled)
+        XCTAssertEqual(presentation.statusMessage, "My Wiki folder is not available yet.")
     }
 
     func testDetailMoreMenuIncludesAgentContextAction() {

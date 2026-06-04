@@ -255,7 +255,10 @@ struct MyWikiPanel: View {
     private var digestScheduleView: some View {
         let presentation = MyWikiDigestSchedulePresentation(
             ingestProgress: ingestProgress,
-            nextRunDate: nextDigestUpdateDate
+            nextRunDate: nextDigestUpdateDate,
+            statusMessage: statusMessage,
+            isUpdating: isSyncing,
+            isProjectAvailable: projectRoot != nil
         )
         return HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
@@ -265,6 +268,12 @@ struct MyWikiPanel: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                if let statusMessage = presentation.statusMessage {
+                    Text(statusMessage)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
             }
 
             Spacer(minLength: 10)
@@ -277,12 +286,12 @@ struct MyWikiPanel: View {
             Button {
                 syncDiaries()
             } label: {
-                Text(isSyncing ? "Updating..." : presentation.updateNowTitle)
+                Text(presentation.updateNowTitle)
                     .font(.system(size: 13, weight: .semibold))
                     .frame(minWidth: 92, minHeight: 32)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(isSyncing)
+            .disabled(presentation.isUpdateNowDisabled)
         }
         .padding(12)
         .background(
@@ -587,11 +596,21 @@ struct MyWikiPanel: View {
     }
 
     private func syncDiaries() {
-        guard let projectRoot else { return }
+        guard let projectRoot else {
+            statusMessage = "My Wiki folder is not available yet."
+            isShowingStatus = true
+            return
+        }
         guard !isSyncing else { return }
         isSyncing = true
-        statusMessage = "Updating My Wiki sources..."
-        loadIngestProgress()
+        statusMessage = "Generating My Wiki..."
+        ingestProgress = MyWikiIngestProgress(
+            state: .running,
+            message: "Starting My Wiki update...",
+            updatedAt: ISO8601DateFormatter().string(from: Date()),
+            sourcesProcessed: 0,
+            totalSources: 0
+        )
 
         let target = pipelineTarget
         let sourceVault = sourceVault

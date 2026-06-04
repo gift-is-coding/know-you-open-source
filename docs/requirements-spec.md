@@ -252,7 +252,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 点击 `generate` 通知时，系统必须唤起 KnowYou、定位到今天，并立即开始生成今天的 diary
 - 通知点击路由必须优先复用现有主窗口；仅在没有主窗口时才允许新开窗口
 - 设置页必须显示晚间提醒开关、通知权限状态、测试入口和简短规则说明
-- onboarding 的 `installApp` 步骤必须在 `permissions` 之前确认生产用户正在从 `/Applications/KnowYou.app` 运行；New User 权限回归必须从 `/Applications/KnowYou New User.app` 运行；未满足对应安装路径时不得进入 Full Disk Access 引导
+- onboarding 的 `installApp` 步骤必须在 `permissions` 之前确认生产用户正在从 `/Applications/KnowYou.app` 运行；New User 权限回归必须从 `/Applications/KnowYou New User.app` 运行；macOS 数据卷真实路径 `/System/Volumes/Data/Applications/<target app>` 必须视为对应 Applications 安装；未满足对应安装路径时不得进入 Full Disk Access 引导
 - onboarding 的 `permissions` 步骤必须同时解释 Full Disk Access 与 Notifications，其中通知说明必须明确它用于 `8:30 PM` 晚间回顾提醒
 - 通知权限不得阻塞 onboarding 完成；Full Disk Access 仍是权限步骤唯一硬阻塞条件
 - onboarding 的 Full Disk Access 引导必须把 `Open Full Disk Access -> 点击 + -> 从 Applications 选择当前 app` 作为主路径，并提供 `Show App to Add` 定位当前 app bundle 的 Finder 入口与 `FullDiskAccessAddGuide` bitmap 示意图
@@ -464,7 +464,7 @@ onboarding 的配置约束为：
 - `Source Library` 必须使用宽面板和左右布局：左侧主要展示 source tree，右侧展示状态统计、筛选、批量操作、`Manual Uploads` 导入区、`Update My Wiki` 和 `Close`
 - 手动 drop/import 的文件必须复制到底层 `raw/sources/Manual Imports`，但 UI root 必须显示为 `Manual Uploads`；导入后默认 included 且 `Pending`，但不得自动进入 ingest
 - Source 选择变更必须立即保存到 `.knowyou/source-catalog.json`；`Close` 只关闭窗口，只有点击 `Update My Wiki` 才能触发 My Wiki ingest
-- My Wiki 主页面必须明确展示 digest 的触发方式：当前 digest 只在用户点击 `Update Now` / `Update My Wiki` 时运行，不因进入页面或选择 source 自动运行；页面必须显示上次更新时间，未运行过时显示 `Not updated yet`
+- My Wiki 主页面必须明确展示 digest 的触发方式：当前 digest 只在用户点击 `Update Now` / `Update My Wiki` 时运行，不因进入页面或选择 source 自动运行；页面必须显示上次更新时间，未运行过时显示 `Not updated yet`；点击 `Update Now` 后必须立即显示 `Generating...` 并禁用重复点击，同时显示可见状态或进度，不得静默等待后台 runner
 - My Diary source 首次出现时必须默认 included，但用户可以取消选择；external connector source 首次出现时必须默认 not included，只有用户主动 include 后才允许进入 My Wiki ingest
 - 已经 indexed 的 source 被取消选择时，系统不得删除旧 `wiki/sources`、entity 或 concept 输出；该 source 应显示为 `Excluded, indexed` 并从后续 ingest plan 排除
 - 已经 indexed 且内容未变的 source 再次 included 时不得重复处理；内容 hash 变化后应显示为 `Changed` 并进入下一次 Update My Wiki
@@ -589,7 +589,7 @@ Markdown 导出也应服务于这个目标：
 - 用户启动应用后，系统还能在后台持续补同步今天的新通知，而不要求手动刷新
 - Home 必须维护 `Diary`、`Todo`、`My Wiki` 三类后台任务的最新状态；每类只保留最新状态，不堆积历史，并且只把 active/attention 状态显示到 compact 更新区
 - Todo 页面必须显示 `Next update` 与 `Update Now`；点击 `Update Now` 后必须显示 `Updating...` 并禁用重复点击；没有 today story 时必须提示先生成今天的 diary，LLM 不可用时必须显示 degraded 而不能伪造任务
-- My Wiki digest 必须同时显示 `Last update` 与 `Next update`，并说明它会在 Diary 和 Todo 就绪后每日更新，也可手动更新
+- My Wiki digest 必须同时显示 `Last update` 与 `Next update`，并说明它会在 Diary 和 Todo 就绪后每日更新，也可手动更新；项目目录不可用时手动更新入口必须显示不可用状态，不得允许点击后静默返回
 - 启动后如果当前默认 diary engine 已配置但处于 yellow，系统必须后台自动 retest 一次；用户不应必须先打开 engine popover 才刷新状态
 - 用户能在日期列表里看到已有日期
 - 用户选中某天后，能看到可阅读的 story

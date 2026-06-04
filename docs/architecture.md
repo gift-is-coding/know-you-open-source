@@ -206,7 +206,7 @@ CLI 引擎的 Todo 语义判断必须使用 Todo 专用 JSON schema：`TodoRecon
 通知权限入口目前分布在两个 UI 表面：
 
 - `OnboardingView` 的 `permissions` 步骤会并列展示 Full Disk Access 与 Notifications，并把通知用途明确说明为 `8:30 PM daily review reminder`
-- Full Disk Access 没有应用内授权 API。onboarding 会先确认当前进程来自 `/Applications/KnowYou.app`；New User 权限回归则来自 `/Applications/KnowYou New User.app`。权限页打开系统设置后，明确提示如果列表里没有 KnowYou，就点击 `+`，从 Applications 选择当前 app；`Show App to Add` 只负责在 Finder 中定位正确 bundle，并配有 `FullDiskAccessAddGuide` 示意图
+- Full Disk Access 没有应用内授权 API。onboarding 会先确认当前进程来自 `/Applications/KnowYou.app`；New User 权限回归则来自 `/Applications/KnowYou New User.app`。由于 macOS 可能把已安装 app 的真实路径呈现为 `/System/Volumes/Data/Applications/...`，安装判断接受这两个 Applications 根路径下的目标 bundle，但仍拒绝 DMG、Downloads 和 DerivedData。权限页打开系统设置后，明确提示如果列表里没有 KnowYou，就点击 `+`，从 Applications 选择当前 app；`Show App to Add` 只负责在 Finder 中定位正确 bundle，并配有 `FullDiskAccessAddGuide` 示意图
 - `SettingsView` 继续显示 reminder 开关、通知权限状态和测试入口；用户拒绝通知权限后，也通过这里跳转到 Notification Settings
 
 当前 `AppState` 还负责应用更新提醒编排：
@@ -529,7 +529,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - `demoClick` 要求用户点击正文段落，右侧 sources 随阅读位置联动
 - `demoReference` 解释段落与 reference 的追溯关系
 - `privacy` 用居中 coachmark 强调 `.md` 纯本地与“没有服务端”
-- `installApp` 要求生产用户先从 `/Applications/KnowYou.app` 运行；主按钮会尝试复制当前 bundle 到 `/Applications/KnowYou.app` 并重启，失败时提供 Finder reveal 供用户手动拖动
+- `installApp` 要求生产用户先从 `/Applications/KnowYou.app` 运行；New User QA 则要求 `/Applications/KnowYou New User.app`。判断层同时接受 `/System/Volumes/Data/Applications/<target app>` 作为 macOS 数据卷上的等价安装路径。主按钮会尝试复制当前 bundle 到目标 Applications bundle 并重启，失败时提供 Finder reveal 供用户手动拖动
 - `permissions` 只 gate `Full Disk Access`，并在同位置 coachmark 里解释通知与剪贴板上下文价值；如果系统列表里没有 KnowYou，主路径是点击 `+` 后从 Applications 选择当前 app，`Show App to Add` 用于在 Finder 中定位正确 bundle，页面同时展示 `FullDiskAccessAddGuide` bitmap 示意图
 - `enginePrompt` 只负责高亮真实产品里的引擎按钮，`engineSetup` 则在现有引擎配置组件里完成默认引擎设置
 - `generating` 在权限与引擎都 ready 后先展示首次历史生成确认弹窗，明确 **KnowYou** 只在当前 Mac 本地生成，包含 `All local. No backend server.` 隐私承诺
@@ -745,7 +745,7 @@ My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责
 - `Tools/MyWikiMCP` 只保留为开发期/兼容性 wrapper，不是用户默认配置路径；`.agents/skills/my-wiki-context` 是给支持 Skill 的 agent 的使用说明
 - [MyWikiAgentConnectionSheet.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/UI/MyWiki/MyWikiAgentConnectionSheet.swift) 提供 `Use My Wiki in Agents` 入口。默认 UX 是选择内置 agent 后点击 `Add My Wiki`：Codex 写入带 `# BEGIN/END KnowYou My Wiki MCP` 标记的 `~/.codex/config.toml` 受控配置块；Claude Code、Claude Desktop、Cursor、Gemini CLI 和 OpenClaw 合并写入各自 JSON MCP 配置；Codex、Claude Code、Cursor、Gemini CLI 和 OpenClaw 同步安装 `my-wiki-context` Skill；generic MCP 配置保留在 `Advanced MCP Config`
 - [MyWikiSourceLibrary.swift](../KnowYou/Services/MyWiki/MyWikiSourceLibrary.swift) 与 [MyWikiSourceLibraryView.swift](../KnowYou/UI/MyWiki/MyWikiSourceLibraryView.swift) 提供分层 Source Library 管理入口。UI 从 Source Catalog snapshot 渲染 diary、external documents 和 manual imports，支持 title/path 搜索、status filter、目录三态选择、include/exclude/invert visible 批量操作和 summary 链接；手动导入支持选择文件夹、多文件导入和拖拽，新文件仍放入 `raw/sources/Manual Imports`，但展示 root 是 `Manual Uploads`。导入只刷新 catalog，不触发 ingest；选择变更自动保存，`Update My Wiki` 才运行处理
-- [MyWikiPanel.swift](../KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底 My Wiki 工作区：左侧是高密度可折叠索引，分类顺序为 `Entities`、`Concepts`、`Sources`，每个分类默认显示 10 个 name-only 条目；超过 10 个时用当前分类底部的 `Show more (N)` 原地展开，并用 `Show less` 收回，不再进入分类全量列表页。左侧顶部显示 `My Wiki digest` 状态条，明确说明 digest 会在 Diary 和 Todo 就绪后每日自动更新，也可点击 `Update Now` 手动触发，并同时显示上次与下次更新时间；source/progress 区域把进度卡作为纯状态展示，旁边提供 `Manage Sources` 按钮；每个分类的 tag 筛选从当前条目 frontmatter `tags` 动态统计，按频次降序、同频按名称排序，`other` 排在具体 tag 后；默认只显示前 6 个 tag，剩余可展开；无 tags 时不显示筛选。Header 和详情页 `More` 菜单都提供 `Use My Wiki in Agents`
+- [MyWikiPanel.swift](../KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底 My Wiki 工作区：左侧是高密度可折叠索引，分类顺序为 `Entities`、`Concepts`、`Sources`，每个分类默认显示 10 个 name-only 条目；超过 10 个时用当前分类底部的 `Show more (N)` 原地展开，并用 `Show less` 收回，不再进入分类全量列表页。左侧顶部显示 `My Wiki digest` 状态条，明确说明 digest 会在 Diary 和 Todo 就绪后每日自动更新，也可点击 `Update Now` 手动触发，并同时显示上次与下次更新时间；点击后按钮立即进入 `Generating...` 禁用状态，并在 status/progress 区域先显示本地 running placeholder，随后轮询 `.llm-wiki/last-ingest-status.json` 替换为真实进度；My Wiki folder 尚不可用时按钮显示 `Unavailable` 并给出可见状态。source/progress 区域把进度卡作为纯状态展示，旁边提供 `Manage Sources` 按钮；每个分类的 tag 筛选从当前条目 frontmatter `tags` 动态统计，按频次降序、同频按名称排序，`other` 排在具体 tag 后；默认只显示前 6 个 tag，剩余可展开；无 tags 时不显示筛选。Header 和详情页 `More` 菜单都提供 `Use My Wiki in Agents`
 - [MyWikiDetailView.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiDetailView.swift) 提供 LLM Wiki 风格详情页，顶部 header 展示 summary，正文区域默认展示完整 `markdownBody`，并保留 Recent Mentions、Related、Duplicate Suggestions 等 metadata 区；不再重复渲染独立 Summary 卡片；`Sources` 放在详情最后，仍可点击打开原 source
 
 数据流如下：
@@ -773,7 +773,7 @@ My Wiki 只处理用户授权进入 catalog 的 source。KnowYou diary 默认可
 
 AppState 维护覆盖式 `AutomationJobSnapshot`，按 `Diary`、`Todo`、`My Wiki` 三类保存最新任务状态，而不是追加历史日志。Home 只把 `running`、`degraded`、`failed`、`blocked` 这些 active/attention 状态显示成 hero 右下角的 compact 更新区；`scheduled` 和 `completed` 不在 Home 占空间。每行展示任务、状态、短说明和小进度条，并允许用户点击跳转到对应页面。
 
-Diary 仍是主节拍，每 3 小时自动检查和刷新一次。Todo 默认排在 Diary 之后 10 分钟，也会在手动或 onboarding diary 完成后处理对应 story；如果没有 today story，Todo 状态显示 blocked，并提示先生成今天的 diary。Todo 页面的 `Update Now` 点击后立即进入 `Updating...` 状态，避免用户误以为没有反应。My Wiki 默认排在 Diary 和 Todo 就绪后运行，每天一次；页面内的 `Update Now` 与后台调度复用同一个 digest runner。
+Diary 仍是主节拍，每 3 小时自动检查和刷新一次。Todo 默认排在 Diary 之后 10 分钟，也会在手动或 onboarding diary 完成后处理对应 story；如果没有 today story，Todo 状态显示 blocked，并提示先生成今天的 diary。Todo 页面的 `Update Now` 点击后立即进入 `Updating...` 状态，避免用户误以为没有反应。My Wiki 默认排在 Diary 和 Todo 就绪后运行，每天一次；页面内的 `Update Now` 与后台调度复用同一个 digest runner，并在任务启动时立即显示 `Generating...` 和本地 running 进度，避免长时间 pipeline 没写状态文件时看起来无响应。
 
 ## 13. 当前架构约束
 

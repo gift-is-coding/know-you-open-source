@@ -312,11 +312,16 @@ struct MyWikiDigestSchedulePresentation: Equatable {
     let lastRunValue: String
     let nextRunTitle = "Next update"
     let nextRunValue: String
-    let updateNowTitle = "Update Now"
+    let updateNowTitle: String
+    let isUpdateNowDisabled: Bool
+    let statusMessage: String?
 
     init(
         ingestProgress: MyWikiIngestProgress?,
         nextRunDate: Date? = nil,
+        statusMessage: String? = nil,
+        isUpdating: Bool = false,
+        isProjectAvailable: Bool = true,
         displayTimeZone: TimeZone = .current
     ) {
         if let updatedAt = ingestProgress?.updatedAt,
@@ -326,6 +331,20 @@ struct MyWikiDigestSchedulePresentation: Equatable {
             lastRunValue = "Not updated yet"
         }
         nextRunValue = nextRunDate.map { Self.timeText(for: $0, timeZone: displayTimeZone) } ?? "After Diary and Todo"
+
+        if isUpdating {
+            updateNowTitle = "Generating..."
+            isUpdateNowDisabled = true
+            self.statusMessage = "Generating My Wiki..."
+        } else if isProjectAvailable == false {
+            updateNowTitle = "Unavailable"
+            isUpdateNowDisabled = true
+            self.statusMessage = "My Wiki folder is not available yet."
+        } else {
+            updateNowTitle = "Update Now"
+            isUpdateNowDisabled = false
+            self.statusMessage = Self.visibleStatusMessage(statusMessage)
+        }
     }
 
     private static func timeText(for date: Date, timeZone: TimeZone) -> String {
@@ -337,6 +356,15 @@ struct MyWikiDigestSchedulePresentation: Equatable {
         return formatter.string(from: date)
             .replacingOccurrences(of: "\u{202F}", with: " ")
             .replacingOccurrences(of: "\u{00A0}", with: " ")
+    }
+
+    private static func visibleStatusMessage(_ message: String?) -> String? {
+        guard let trimmed = message?.trimmingCharacters(in: .whitespacesAndNewlines),
+              trimmed.isEmpty == false,
+              trimmed != "Ready" else {
+            return nil
+        }
+        return trimmed
     }
 }
 

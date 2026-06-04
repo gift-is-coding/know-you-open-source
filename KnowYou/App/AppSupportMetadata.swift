@@ -17,20 +17,48 @@ struct AppSupportMetadata {
 
 struct AppRuntimeProfile {
     static let newUserBundleIdentifier = "dev.knowyou.newuser"
+    static let profileRootEnvironmentKey = "KNOWYOU_PROFILE_ROOT"
+    static let userDefaultsSuiteEnvironmentKey = "KNOWYOU_USER_DEFAULTS_SUITE"
+    static let keychainServiceEnvironmentKey = "KNOWYOU_KEYCHAIN_SERVICE"
 
     let displayName: String
     let supportDirectoryName: String
     let keychainService: String
+    let profileRootURL: URL?
+    let userDefaultsSuiteName: String?
 
-    init(bundleIdentifier: String?) {
+    init(
+        bundleIdentifier: String?,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
+        let defaultKeychainService: String
         if bundleIdentifier == Self.newUserBundleIdentifier {
             displayName = "KnowYou New User"
             supportDirectoryName = "KnowYou New User"
-            keychainService = Self.newUserBundleIdentifier
+            defaultKeychainService = Self.newUserBundleIdentifier
         } else {
             displayName = "KnowYou"
             supportDirectoryName = "KnowYou"
-            keychainService = "com.knowyou.app"
+            defaultKeychainService = "com.knowyou.app"
+        }
+
+        let rawKeychainService = Self.normalizedEnvironmentValue(
+            environment[Self.keychainServiceEnvironmentKey]
+        )
+        keychainService = rawKeychainService ?? defaultKeychainService
+
+        userDefaultsSuiteName = Self.normalizedEnvironmentValue(
+            environment[Self.userDefaultsSuiteEnvironmentKey]
+        )
+
+        let rawProfileRoot = Self.normalizedEnvironmentValue(environment[Self.profileRootEnvironmentKey])
+        if let rawProfileRoot, rawProfileRoot.isEmpty == false {
+            profileRootURL = URL(
+                fileURLWithPath: NSString(string: rawProfileRoot).expandingTildeInPath,
+                isDirectory: true
+            ).standardizedFileURL
+        } else {
+            profileRootURL = nil
         }
     }
 
@@ -42,21 +70,52 @@ struct AppRuntimeProfile {
         AppRuntimeProfile()
     }
 
-    static func applicationSupportDirectoryURL(create: Bool = true) throws -> URL {
-        let applicationSupportURL = try FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: create
-        )
+    static func applicationSupportDirectoryURL(
+        create: Bool = true,
+        profile: AppRuntimeProfile = .current
+    ) throws -> URL {
+        let applicationSupportURL: URL
+        if let profileRootURL = profile.profileRootURL {
+            applicationSupportURL = profileRootURL.appending(
+                path: "Application Support",
+                directoryHint: .isDirectory
+            )
+            if create {
+                try FileManager.default.createDirectory(
+                    at: applicationSupportURL,
+                    withIntermediateDirectories: true
+                )
+            }
+        } else {
+            applicationSupportURL = try FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: create
+            )
+        }
         let appDirectoryURL = applicationSupportURL.appending(
-            path: current.supportDirectoryName,
+            path: profile.supportDirectoryName,
             directoryHint: .isDirectory
         )
         if create {
             try FileManager.default.createDirectory(at: appDirectoryURL, withIntermediateDirectories: true)
         }
         return appDirectoryURL
+    }
+
+    static func userDefaults(profile: AppRuntimeProfile = .current) -> UserDefaults {
+        guard let suiteName = profile.userDefaultsSuiteName,
+              let defaults = UserDefaults(suiteName: suiteName) else {
+            return .standard
+        }
+        return defaults
+    }
+
+    private static func normalizedEnvironmentValue(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let trimmed, trimmed.isEmpty == false else { return nil }
+        return trimmed
     }
 }
 

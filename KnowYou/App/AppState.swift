@@ -805,7 +805,7 @@ final class AppState {
     }
 
     private static func defaultUserDefaults() -> UserDefaults {
-        defaultUserDefaultsOverrideForTesting ?? .standard
+        defaultUserDefaultsOverrideForTesting ?? AppRuntimeProfile.userDefaults()
     }
 
     var summarizerStatus: SummarizerRuntimeStatus {
@@ -2561,7 +2561,7 @@ final class AppState {
     }
 
     private static func makeVaultURL() throws -> URL {
-        if let saved = UserDefaults.standard.string(forKey: UserDefaultsKeys.vaultPath), !saved.isEmpty {
+        if let saved = defaultUserDefaults().string(forKey: UserDefaultsKeys.vaultPath), !saved.isEmpty {
             return URL(fileURLWithPath: saved, isDirectory: true)
         }
         return try defaultVaultURL()

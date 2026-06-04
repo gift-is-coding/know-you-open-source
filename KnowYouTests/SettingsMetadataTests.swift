@@ -82,6 +82,54 @@ final class SettingsMetadataTests: XCTestCase {
         XCTAssertEqual(profile.keychainService, "dev.knowyou.newuser")
     }
 
+    func testRuntimeProfileCanUseRegressionProfileRootForApplicationSupport() throws {
+        let profileRoot = FileManager.default.temporaryDirectory
+            .appending(path: "knowyou-profile-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: profileRoot) }
+
+        let profile = AppRuntimeProfile(
+            bundleIdentifier: "dev.knowyou.app",
+            environment: ["KNOWYOU_PROFILE_ROOT": profileRoot.path]
+        )
+
+        let appSupportURL = try AppRuntimeProfile.applicationSupportDirectoryURL(profile: profile)
+
+        XCTAssertEqual(
+            appSupportURL.standardizedFileURL.path,
+            profileRoot
+                .appending(path: "Application Support", directoryHint: .isDirectory)
+                .appending(path: "KnowYou", directoryHint: .isDirectory)
+                .standardizedFileURL
+                .path
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: appSupportURL.path))
+    }
+
+    func testRuntimeProfileCanUseRegressionDefaultsSuiteAndKeychainService() {
+        let suiteName = "dev.knowyou.tests.\(UUID().uuidString)"
+        let keychainService = "dev.knowyou.tests.keychain.\(UUID().uuidString)"
+        defer {
+            UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+        }
+
+        let profile = AppRuntimeProfile(
+            bundleIdentifier: "dev.knowyou.app",
+            environment: [
+                "KNOWYOU_USER_DEFAULTS_SUITE": suiteName,
+                "KNOWYOU_KEYCHAIN_SERVICE": keychainService,
+            ]
+        )
+        let defaults = AppRuntimeProfile.userDefaults(profile: profile)
+        let key = "profile-isolation-\(UUID().uuidString)"
+
+        defaults.set("isolated", forKey: key)
+
+        XCTAssertEqual(profile.userDefaultsSuiteName, suiteName)
+        XCTAssertEqual(profile.keychainService, keychainService)
+        XCTAssertEqual(UserDefaults(suiteName: suiteName)?.string(forKey: key), "isolated")
+        XCTAssertNil(UserDefaults.standard.string(forKey: key))
+    }
+
     func testInAppDocumentsExposeReadableContentWithoutRepositoryLinks() {
         let privacy = AppSupportDocument.privacy
         XCTAssertEqual(privacy.buttonTitle, "Privacy Policy")

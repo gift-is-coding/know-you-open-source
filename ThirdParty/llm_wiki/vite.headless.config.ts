@@ -6,13 +6,13 @@ export default defineConfig({
     noExternal: true,
   },
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-      "@/commands/fs": path.resolve(__dirname, "src/headless/node-fs.ts"),
-      "@tauri-apps/api/core": path.resolve(__dirname, "src/headless/tauri-core.ts"),
-      "@tauri-apps/api/event": path.resolve(__dirname, "src/headless/tauri-event.ts"),
-      "@tauri-apps/plugin-store": path.resolve(__dirname, "src/headless/tauri-store.ts"),
-    },
+    alias: [
+      { find: "@/commands/fs", replacement: path.resolve(__dirname, "src/headless/node-fs.ts") },
+      { find: "@tauri-apps/api/core", replacement: path.resolve(__dirname, "src/headless/tauri-core.ts") },
+      { find: "@tauri-apps/api/event", replacement: path.resolve(__dirname, "src/headless/tauri-event.ts") },
+      { find: "@tauri-apps/plugin-store", replacement: path.resolve(__dirname, "src/headless/tauri-store.ts") },
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
+    ],
   },
   build: {
     ssr: "src/headless/knowyou-ingest.ts",

@@ -88,6 +88,13 @@ struct CodexDirectSummarizer: IncrementalSummaryGenerating {
     }
 
     private func sendRequest(input: String) async throws -> String {
+        try await sendRequest(
+            input: [CodexResponsesInputMessage(role: "user", content: input)],
+            instructions: instructions
+        )
+    }
+
+    private func sendRequest(input: [CodexResponsesInputMessage], instructions: String) async throws -> String {
         let credential = try await credentialProvider.validCredential()
         var request = URLRequest(url: Self.apiURL)
         request.httpMethod = "POST"
@@ -101,9 +108,7 @@ struct CodexDirectSummarizer: IncrementalSummaryGenerating {
             CodexResponsesRequest(
                 model: model,
                 instructions: instructions,
-                input: [
-                    CodexResponsesInputMessage(role: "user", content: input),
-                ]
+                input: input
             )
         )
 
@@ -196,6 +201,16 @@ struct CodexDirectSummarizer: IncrementalSummaryGenerating {
     }
 }
 
+extension CodexDirectSummarizer: MyWikiLLMCompleting {
+    func complete(messages: [MyWikiLLMMessage], temperature: Double?) async throws -> String {
+        let input = messages.codexNonSystemInputMessages
+        return try await sendRequest(
+            input: input.isEmpty ? [CodexResponsesInputMessage(role: "user", content: "")] : input,
+            instructions: messages.myWikiSystemPrompt ?? instructions
+        )
+    }
+}
+
 private struct ParsedCodexResponseEvent {
     let text: String
     let isFinal: Bool
@@ -230,6 +245,24 @@ private struct CodexResponsesRequest: Encodable {
 private struct CodexResponsesInputMessage: Encodable {
     let role: String
     let content: String
+}
+
+private extension Array where Element == MyWikiLLMMessage {
+    var codexNonSystemInputMessages: [CodexResponsesInputMessage] {
+        filter { !$0.codexIsSystemMessage }
+            .map { CodexResponsesInputMessage(role: $0.codexInputRole, content: $0.content) }
+    }
+}
+
+private extension MyWikiLLMMessage {
+    var codexIsSystemMessage: Bool {
+        role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "system"
+    }
+
+    var codexInputRole: String {
+        let normalized = role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized == "assistant" ? "assistant" : "user"
+    }
 }
 
 private struct CodexResponsesTextOptions: Encodable {

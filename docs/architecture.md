@@ -31,7 +31,7 @@ KnowYou 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 5. 提醒层：晚间回顾 planner、本地通知权限与调度
 6. 界面层：真实三栏阅读器上的 onboarding coachmarks、设置页、菜单栏状态入口、About & Community 对外入口
 
-分发链路包括 Developer ID release archive、notarytool notarization、stapled app 验证与 drag-to-Applications DMG 发布。
+分发链路包括 Developer ID release archive、notarytool notarization、stapled app 验证、兼容用 DMG 发布，以及用于避免 Finder 拖拽布局不稳定的双击 `.pkg` 安装包。
 
 ```mermaid
 flowchart LR
@@ -68,7 +68,7 @@ flowchart LR
     W --> X[KnowYou.app zip]
     X --> Y[notarytool submit]
     Y --> Z[stapler / spctl verify]
-    Z --> ZA[KnowYou DMG]
+    Z --> ZA[KnowYou DMG / PKG]
 ```
 
 ## 2.1 发布与分发
@@ -77,10 +77,10 @@ flowchart LR
 
 - Release 构建使用 `Developer ID Application`
 - Release 启用 hardened runtime
-- 分发脚本通过 `scripts/build-release.sh`、`scripts/notarize-release.sh`、`scripts/build-dmg.sh`、`scripts/verify-release.sh` 串起 archive、压缩、notarize、staple、Gatekeeper 验证与 DMG 打包
+- 分发脚本通过 `scripts/build-release.sh`、`scripts/notarize-release.sh`、`scripts/build-dmg.sh`、`scripts/build-pkg.sh`、`scripts/verify-release.sh` 串起 archive、压缩、notarize、staple、Gatekeeper 验证、DMG 打包与双击 `.pkg` 安装包产出
 - Apple notarization 凭据通过本机 keychain 中的 `notarytool` profile 管理，而不是保存在仓库里
 
-这条链路的目标是让仓库能稳定产出可上传到下载页的 macOS DMG，同时不影响 Debug/测试阶段的日常签名配置。
+这条链路的目标是让仓库能稳定产出可上传到下载页的 macOS 分发物，同时不影响 Debug/测试阶段的日常签名配置。DMG 流程保留用于现有发布兼容；`.pkg` 流程用于双击安装，默认把 app 安装到 `/Applications`，避免依赖 Finder 的 `.DS_Store` 图标布局。
 
 ## 3. 运行时入口
 

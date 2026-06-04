@@ -118,6 +118,8 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 
 当前版本的对外分发方式是 Developer ID + notarization，不是 Mac App Store。
 
+安装包体验必须支持不依赖 Finder 拖拽布局的双击安装路径。`.pkg` 安装包默认把 app 安装到 `/Applications`，用于规避 DMG 背景图、Applications alias 和 app icon 在 Finder 中偶发错位的问题；DMG 可以保留为兼容发布物，但不能是唯一的安装体验。
+
 ## 6. 功能需求
 
 ## 6.1 采集需求

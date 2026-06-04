@@ -43,6 +43,7 @@ assert_eq "KnowYou-1.2.3-145" "$(artifact_basename)" "artifact_basename"
 assert_eq "$repo_root/build/test-release/KnowYou-1.2.3-145.zip" "$(release_zip_path)" "release_zip_path"
 assert_eq "$repo_root/build/test-release/KnowYou-1.2.3-145-notarized.zip" "$(notarized_zip_path)" "notarized_zip_path"
 assert_eq "$repo_root/build/test-release/KnowYou-1.2.3-145.dmg" "$(release_dmg_path)" "release_dmg_path"
+assert_eq "$repo_root/build/test-release/KnowYou-1.2.3-145.pkg" "$(release_pkg_path)" "release_pkg_path"
 
 project_text="$(cat "$repo_root/KnowYou.xcodeproj/project.pbxproj")"
 assert_contains "$project_text" 'INFOPLIST_FILE = KnowYou/Config/Info.plist;' "explicit app Info.plist"

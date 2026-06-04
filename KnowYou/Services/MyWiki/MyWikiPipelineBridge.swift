@@ -112,35 +112,6 @@ struct MyWikiPipelineBridge {
         }
     }
 
-    @MainActor
-    func openAdvancedWorkspace(target: MyWikiPipelineTarget, projectRoot: URL) throws {
-        if case .bundledRunner = target {
-            throw MyWikiPipelineBridgeError.pipelineExecutionFailed(
-                "Advanced My Wiki workspace is not available for bundled runner builds yet."
-            )
-        }
-        if case .invalidBundledRunner(let message) = target {
-            throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
-        }
-        try KnowledgeOntologyLauncher().launch(
-            target: knowledgeOntologyTarget(from: target),
-            projectRoot: projectRoot
-        )
-    }
-
-    private func knowledgeOntologyTarget(from target: MyWikiPipelineTarget) -> KnowledgeOntologyLaunchTarget {
-        switch target {
-        case .bundledRunner:
-            return .missing
-        case .invalidBundledRunner:
-            return .missing
-        case .developmentSource(let url):
-            return .developmentSource(url)
-        case .missing:
-            return .missing
-        }
-    }
-
     private func writeFailureStatus(message: String, projectRoot: URL) throws {
         let status = MyWikiIngestStatus(
             status: "failed",

@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		5CD500F8D621611083D406AD /* KnowledgeOntologyPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7177E38EFF3DA333280EFBA /* KnowledgeOntologyPanel.swift */; };
-		724AA179C88234088E499A5B /* KnowledgeOntologyLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC41767E0E95299BB3007A33 /* KnowledgeOntologyLauncher.swift */; };
 		830000010000000000000001 /* MyWikiProjectExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830001010000000000000001 /* MyWikiProjectExporter.swift */; };
 		830000010000000000000002 /* MyWikiMarkdownStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830001010000000000000002 /* MyWikiMarkdownStoreTests.swift */; };
 		830000010000000000000003 /* MyWikiModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830001010000000000000003 /* MyWikiModels.swift */; };
@@ -158,7 +157,6 @@
 		B20000010000000000000009 /* CloudSummarizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20001010000000000000009 /* CloudSummarizerTests.swift */; };
 		C9F400816BDCE324EFF86EE3 /* KnowledgeOntologyProjectExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB20595053D3ED4A85FD3189 /* KnowledgeOntologyProjectExporter.swift */; };
 		D5F96550EFC82930419E3280 /* KnowledgeOntologyProjectExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9739E290450DEDA64E9F9F51 /* KnowledgeOntologyProjectExporterTests.swift */; };
-		D733ABE377D5CF118A7A64BE /* KnowledgeOntologyLauncherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4952115E094229FBA28670BF /* KnowledgeOntologyLauncherTests.swift */; };
 		DB2772FFED33760F5D742D9B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */; };
 		E10000010000000000000001 /* KnowledgeOntologyPanelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E10001010000000000000001 /* KnowledgeOntologyPanelTests.swift */; };
 		E60000010000000000000001 /* MyWikiContextPackServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E60001010000000000000001 /* MyWikiContextPackServiceTests.swift */; };
@@ -185,7 +183,6 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		4952115E094229FBA28670BF /* KnowledgeOntologyLauncherTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyLauncherTests.swift; sourceTree = "<group>"; };
 		F30001010000000000000001 /* MyWikiProjectExporterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiProjectExporterTests.swift; sourceTree = "<group>"; };
 		9739E290450DEDA64E9F9F51 /* KnowledgeOntologyProjectExporterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyProjectExporterTests.swift; sourceTree = "<group>"; };
 		E10001010000000000000001 /* KnowledgeOntologyPanelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyPanelTests.swift; sourceTree = "<group>"; };
@@ -318,7 +315,6 @@
 		A10001010000000000000060 /* EndOfDayReminderRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndOfDayReminderRunner.swift; sourceTree = "<group>"; };
 		A10001010000000000000061 /* EndOfDayReminderRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndOfDayReminderRunnerTests.swift; sourceTree = "<group>"; };
 		AB20595053D3ED4A85FD3189 /* KnowledgeOntologyProjectExporter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyProjectExporter.swift; sourceTree = "<group>"; };
-		AC41767E0E95299BB3007A33 /* KnowledgeOntologyLauncher.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyLauncher.swift; sourceTree = "<group>"; };
 		A10001010000000000000062 /* KnowledgeImportModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportModelTests.swift; sourceTree = "<group>"; };
 		A10001010000000000000063 /* KnowledgeImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImport.swift; sourceTree = "<group>"; };
 		A10001010000000000000064 /* KnowledgeImportConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnowledgeImportConfig.swift; sourceTree = "<group>"; };
@@ -376,7 +372,6 @@
 			isa = PBXGroup;
 			children = (
 				AB20595053D3ED4A85FD3189 /* KnowledgeOntologyProjectExporter.swift */,
-				AC41767E0E95299BB3007A33 /* KnowledgeOntologyLauncher.swift */,
 			);
 			path = KnowledgeOntology;
 			sourceTree = "<group>";
@@ -580,7 +575,6 @@
 				E60001010000000000000002 /* MyWikiContextPackCommandTests.swift */,
 				E60001010000000000000003 /* MyWikiAgentConfigurationTests.swift */,
 				9739E290450DEDA64E9F9F51 /* KnowledgeOntologyProjectExporterTests.swift */,
-				4952115E094229FBA28670BF /* KnowledgeOntologyLauncherTests.swift */,
 				E10001010000000000000001 /* KnowledgeOntologyPanelTests.swift */,
 			);
 			path = KnowYouTests;
@@ -1033,7 +1027,6 @@
 				E60000010000000000000008 /* MyWikiAgentConnectionSheet.swift in Sources */,
 				E60000010000000000000009 /* MyWikiAgentInstructionLauncher.swift in Sources */,
 				C9F400816BDCE324EFF86EE3 /* KnowledgeOntologyProjectExporter.swift in Sources */,
-				724AA179C88234088E499A5B /* KnowledgeOntologyLauncher.swift in Sources */,
 				5CD500F8D621611083D406AD /* KnowledgeOntologyPanel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1105,7 +1098,6 @@
 				E60000010000000000000002 /* MyWikiContextPackCommandTests.swift in Sources */,
 				E60000010000000000000003 /* MyWikiAgentConfigurationTests.swift in Sources */,
 				D5F96550EFC82930419E3280 /* KnowledgeOntologyProjectExporterTests.swift in Sources */,
-				D733ABE377D5CF118A7A64BE /* KnowledgeOntologyLauncherTests.swift in Sources */,
 				E10000010000000000000001 /* KnowledgeOntologyPanelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -345,6 +345,53 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
         )
     }
 
+    func testRunnerProcessControllerDoesNotTerminateUnlaunchedProcess() {
+        let controller = MyWikiRunnerProcessController()
+        let process = Process()
+
+        controller.attach(process)
+        controller.terminate()
+
+        XCTAssertFalse(controller.shouldLaunch)
+    }
+
+    func testDefaultRunnerProcessIncludesRunnerOutputWhenBridgeEventFails() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+        let script = """
+        printf 'runner stdout diagnostic\\n'
+        printf 'runner stderr diagnostic\\n' >&2
+        printf '{"type":"llm.request","id":123}\\n'
+        """
+
+        do {
+            _ = try await DefaultMyWikiRunnerProcess().run(
+                executable: "/bin/sh",
+                arguments: ["-c", script],
+                workingDirectory: root,
+                environment: [:],
+                timeoutSeconds: 5
+            ) { line in
+                if line.contains(#""type":"llm.request""#) {
+                    throw MyWikiPipelineBridgeError.pipelineExecutionFailed("Bridge decode failed.")
+                }
+                return nil
+            }
+            XCTFail("Expected bridge failure.")
+        } catch {
+            guard case MyWikiPipelineBridgeError.pipelineExecutionFailed(let message) = error else {
+                XCTFail("Expected pipelineExecutionFailed, got \(error)")
+                return
+            }
+            XCTAssertTrue(message.contains("Bridge decode failed."), message)
+            XCTAssertTrue(message.contains("runner stdout diagnostic"), message)
+            XCTAssertTrue(message.contains("runner stderr diagnostic"), message)
+        }
+    }
+
     func testNPMResolverFindsNVMInstallWhenPathDoesNotContainNPM() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)

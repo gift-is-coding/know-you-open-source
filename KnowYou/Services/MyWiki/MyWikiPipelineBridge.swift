@@ -731,7 +731,11 @@ struct DefaultMyWikiRunnerProcess: MyWikiRunnerProcessRunning {
                     DispatchQueue.global().asyncAfter(deadline: .now() + timeoutSeconds, execute: timeoutItem)
 
                     do {
+                        guard controller.shouldLaunch else {
+                            throw CancellationError()
+                        }
                         try process.run()
+                        controller.didLaunch()
                         process.waitUntilExit()
                         timeoutItem.cancel()
 
@@ -756,8 +760,10 @@ struct DefaultMyWikiRunnerProcess: MyWikiRunnerProcessRunning {
                         inputWriter.close()
 
                         if let error = outputState.recordedError() {
-                            guard gate.resume(throwing: error) else { return }
-                            continuation.resume(throwing: error)
+                            let result = outputState.result(terminationStatus: process.terminationStatus)
+                            let enrichedError = Self.bridgeFailureError(error: error, result: result)
+                            guard gate.resume(throwing: enrichedError) else { return }
+                            continuation.resume(throwing: enrichedError)
                             return
                         }
 
@@ -776,11 +782,36 @@ struct DefaultMyWikiRunnerProcess: MyWikiRunnerProcessRunning {
             controller.terminate()
         }
     }
+
+    private static func bridgeFailureError(
+        error: Error,
+        result: MyWikiPipelineProcessResult
+    ) -> MyWikiPipelineBridgeError {
+        let parts = [
+            error.localizedDescription,
+            result.stderr,
+            result.stdout
+        ]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+        let message = parts.isEmpty
+            ? "MyWiki bundled runner bridge failed."
+            : parts.joined(separator: "\n")
+        return .pipelineExecutionFailed(message)
+    }
 }
 
-private final class MyWikiRunnerProcessController: @unchecked Sendable {
+final class MyWikiRunnerProcessController: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
+    private var terminateRequested = false
+    private var hasLaunched = false
+
+    var shouldLaunch: Bool {
+        lock.withLock {
+            terminateRequested == false
+        }
+    }
 
     func attach(_ process: Process) {
         lock.withLock {
@@ -788,10 +819,26 @@ private final class MyWikiRunnerProcessController: @unchecked Sendable {
         }
     }
 
-    func terminate() {
-        lock.withLock {
-            process?.terminate()
+    func didLaunch() {
+        let processToTerminate = lock.withLock {
+            hasLaunched = true
+            guard terminateRequested, let process, process.isRunning else {
+                return nil as Process?
+            }
+            return process
         }
+        processToTerminate?.terminate()
+    }
+
+    func terminate() {
+        let processToTerminate = lock.withLock {
+            terminateRequested = true
+            guard hasLaunched, let process, process.isRunning else {
+                return nil as Process?
+            }
+            return process
+        }
+        processToTerminate?.terminate()
     }
 }
 

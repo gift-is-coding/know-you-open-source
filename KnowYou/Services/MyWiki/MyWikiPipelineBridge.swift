@@ -1,18 +1,18 @@
 import Foundation
 
 enum MyWikiPipelineTarget: Equatable {
-    case bundledHelperApp(URL)
+    case bundledRunner(MyWikiRunnerBundle)
     case developmentSource(URL)
     case missing
 
     var statusDescription: String {
         switch self {
-        case .bundledHelperApp(let url):
-            return "Using bundled llm_wiki pipeline: \(url.path)"
+        case .bundledRunner(let bundle):
+            return "Using bundled MyWiki runner: \(bundle.rootURL.path)"
         case .developmentSource(let url):
             return "Using development llm_wiki pipeline: \(url.path)"
         case .missing:
-            return "llm_wiki pipeline is not available."
+            return "MyWiki runner is not available."
         }
     }
 }
@@ -28,7 +28,7 @@ enum MyWikiPipelineBridgeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingPipeline:
-            return "Could not find the bundled llm_wiki helper or ThirdParty/llm_wiki source."
+            return "Could not find the bundled MyWiki runner or ThirdParty/llm_wiki source."
         case .pipelineExecutionFailed(let detail):
             return detail
         }
@@ -51,24 +51,18 @@ struct MyWikiPipelineBridge {
     }
 
     static func resolveTarget(
-        bundledHelperAppURL: URL?,
-        developmentSourceURL: URL,
+        bundledRunner: MyWikiRunnerBundle?,
+        developmentSourceURL: URL?,
         fileManager: FileManager = .default
     ) -> MyWikiPipelineTarget {
-        let legacyTarget = KnowledgeOntologyLauncher.resolveLaunchTarget(
-            bundledHelperAppURL: bundledHelperAppURL,
-            developmentSourceURL: developmentSourceURL,
-            fileManager: fileManager
-        )
-
-        switch legacyTarget {
-        case .bundledHelperApp(let url):
-            return .bundledHelperApp(url)
-        case .developmentSource(let url):
-            return .developmentSource(url)
-        case .missing:
-            return .missing
+        if let bundledRunner {
+            return .bundledRunner(bundledRunner)
         }
+        if let developmentSourceURL,
+           fileManager.fileExists(atPath: developmentSourceURL.path) {
+            return .developmentSource(developmentSourceURL)
+        }
+        return .missing
     }
 
     func runIngest(target: MyWikiPipelineTarget, projectRoot: URL, manifestURL: URL? = nil) throws {
@@ -78,14 +72,14 @@ struct MyWikiPipelineBridge {
         )
 
         switch target {
-        case .bundledHelperApp:
-            let message = "headless llm_wiki runner is not available for bundled helper apps yet."
+        case .bundledRunner:
+            let message = "headless MyWiki runner execution is not available for bundled runner builds yet."
             try writeFailureStatus(message: message, projectRoot: projectRoot)
             throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
         case .developmentSource(let sourceURL):
             try runDevelopmentPipeline(sourceURL: sourceURL, projectRoot: projectRoot, manifestURL: manifestURL)
         case .missing:
-            let message = "llm_wiki pipeline is not available."
+            let message = "MyWiki runner is not available."
             try writeFailureStatus(message: message, projectRoot: projectRoot)
             throw MyWikiPipelineBridgeError.missingPipeline
         }
@@ -93,6 +87,11 @@ struct MyWikiPipelineBridge {
 
     @MainActor
     func openAdvancedWorkspace(target: MyWikiPipelineTarget, projectRoot: URL) throws {
+        if case .bundledRunner = target {
+            throw MyWikiPipelineBridgeError.pipelineExecutionFailed(
+                "Advanced My Wiki workspace is not available for bundled runner builds yet."
+            )
+        }
         try KnowledgeOntologyLauncher().launch(
             target: knowledgeOntologyTarget(from: target),
             projectRoot: projectRoot
@@ -101,8 +100,8 @@ struct MyWikiPipelineBridge {
 
     private func knowledgeOntologyTarget(from target: MyWikiPipelineTarget) -> KnowledgeOntologyLaunchTarget {
         switch target {
-        case .bundledHelperApp(let url):
-            return .bundledHelperApp(url)
+        case .bundledRunner:
+            return .missing
         case .developmentSource(let url):
             return .developmentSource(url)
         case .missing:

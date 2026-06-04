@@ -5,7 +5,7 @@ struct MyWikiPanel: View {
     let sourceVault: URL?
     let projectRoot: URL?
     let developmentSourceURL: URL
-    let bundledHelperAppURL: URL?
+    let bundledRunner: MyWikiRunnerBundle?
     let importedDocuments: [ImportedKnowledgeDocument]
     let nextDigestUpdateDate: Date?
     @Binding var selectedEntry: MyWikiEntry?
@@ -502,7 +502,7 @@ struct MyWikiPanel: View {
 
     private var pipelineTarget: MyWikiPipelineTarget {
         MyWikiPipelineBridge.resolveTarget(
-            bundledHelperAppURL: bundledHelperAppURL,
+            bundledRunner: bundledRunner,
             developmentSourceURL: developmentSourceURL
         )
     }

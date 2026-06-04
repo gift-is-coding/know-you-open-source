@@ -19,6 +19,7 @@
 		830000010000000000000008 /* MyWikiPipelineBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830001010000000000000008 /* MyWikiPipelineBridge.swift */; };
 		830000010000000000000009 /* MyWikiAgentContextProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830001010000000000000009 /* MyWikiAgentContextProviderTests.swift */; };
 		83000001000000000000000A /* MyWikiAgentContextProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83000101000000000000000A /* MyWikiAgentContextProvider.swift */; };
+		83000001000000000000000B /* MyWikiRunnerBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83000101000000000000000B /* MyWikiRunnerBundle.swift */; };
 		850000010000000000000001 /* MyWikiNavigationResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 850001010000000000000001 /* MyWikiNavigationResolverTests.swift */; };
 		850000010000000000000002 /* MyWikiNavigationResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 850001010000000000000002 /* MyWikiNavigationResolver.swift */; };
 		860000010000000000000001 /* MyWikiIngestProgressStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 860001010000000000000001 /* MyWikiIngestProgressStore.swift */; };
@@ -196,6 +197,7 @@
 		830001010000000000000008 /* MyWikiPipelineBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiPipelineBridge.swift; sourceTree = "<group>"; };
 		830001010000000000000009 /* MyWikiAgentContextProviderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiAgentContextProviderTests.swift; sourceTree = "<group>"; };
 		83000101000000000000000A /* MyWikiAgentContextProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiAgentContextProvider.swift; sourceTree = "<group>"; };
+		83000101000000000000000B /* MyWikiRunnerBundle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiRunnerBundle.swift; sourceTree = "<group>"; };
 		850001010000000000000001 /* MyWikiNavigationResolverTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiNavigationResolverTests.swift; sourceTree = "<group>"; };
 		850001010000000000000002 /* MyWikiNavigationResolver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiNavigationResolver.swift; sourceTree = "<group>"; };
 		860001010000000000000001 /* MyWikiIngestProgressStore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiIngestProgressStore.swift; sourceTree = "<group>"; };
@@ -380,6 +382,7 @@
 			children = (
 				830001010000000000000001 /* MyWikiProjectExporter.swift */,
 				830001010000000000000004 /* MyWikiMarkdownStore.swift */,
+				83000101000000000000000B /* MyWikiRunnerBundle.swift */,
 				830001010000000000000008 /* MyWikiPipelineBridge.swift */,
 				83000101000000000000000A /* MyWikiAgentContextProvider.swift */,
 				E60001010000000000000004 /* MyWikiContextPackService.swift */,
@@ -1003,6 +1006,7 @@
 				A10000010000000000000027 /* OnboardingContent.swift in Sources */,
 				830000010000000000000001 /* MyWikiProjectExporter.swift in Sources */,
 				830000010000000000000004 /* MyWikiMarkdownStore.swift in Sources */,
+				83000001000000000000000B /* MyWikiRunnerBundle.swift in Sources */,
 				830000010000000000000008 /* MyWikiPipelineBridge.swift in Sources */,
 				83000001000000000000000A /* MyWikiAgentContextProvider.swift in Sources */,
 				E60000010000000000000004 /* MyWikiContextPackService.swift in Sources */,

@@ -1577,7 +1577,7 @@ final class AppState {
             .appending(path: "KnowledgeOntology/KnowYouContext", directoryHint: .isDirectory)
         let importedDocuments = (try? environment.databaseWriter.fetchImportedKnowledgeDocuments()) ?? []
         let target = MyWikiPipelineBridge.resolveTarget(
-            bundledHelperAppURL: KnowledgeOntologyLauncher.defaultBundledHelperAppURL(),
+            bundledRunner: MyWikiRunnerBundle.resolveDefault(),
             developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL()
         )
         let startedAt = currentDate()

@@ -11,11 +11,53 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
         try FileManager.default.createDirectory(at: dev, withIntermediateDirectories: true)
 
         let target = MyWikiPipelineBridge.resolveTarget(
-            bundledHelperAppURL: nil,
+            bundledRunner: nil,
             developmentSourceURL: dev
         )
 
         XCTAssertEqual(target.statusDescription, "Using development llm_wiki pipeline: \(dev.path)")
+    }
+
+    func testResolvePipelineUsesBundledMyWikiRunnerAndIgnoresLLMWikiApp() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let resources = root.appending(path: "Resources", directoryHint: .isDirectory)
+        let runner = resources.appending(path: "MyWikiRunner", directoryHint: .isDirectory)
+        let node = runner.appending(path: "node")
+        let script = runner.appending(path: "mywiki-runner.js")
+        let llmWikiApp = resources.appending(path: "KnowledgeOntology/LLM Wiki.app", directoryHint: .isDirectory)
+
+        try FileManager.default.createDirectory(at: llmWikiApp, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: runner, withIntermediateDirectories: true)
+        try "#!/usr/bin/env bash\n".write(to: node, atomically: true, encoding: .utf8)
+        try "console.log('ok')\n".write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: node.path)
+
+        let bundle = try MyWikiRunnerBundle(rootURL: runner)
+        let target = MyWikiPipelineBridge.resolveTarget(
+            bundledRunner: bundle,
+            developmentSourceURL: nil
+        )
+
+        XCTAssertEqual(target.statusDescription, "Using bundled MyWiki runner: \(runner.path)")
+    }
+
+    func testResolvePipelineDoesNotTreatLLMWikiAppAsValidRunner() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let llmWikiApp = root.appending(path: "KnowledgeOntology/LLM Wiki.app", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: llmWikiApp, withIntermediateDirectories: true)
+
+        let target = MyWikiPipelineBridge.resolveTarget(
+            bundledRunner: nil,
+            developmentSourceURL: nil
+        )
+
+        XCTAssertEqual(target, .missing)
     }
 
     func testRunIngestDoesNotMaterializeLocalFallbackWhenHeadlessRunnerIsUnavailable() throws {
@@ -425,7 +467,7 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
         let statusURL = root.appending(path: ".llm-wiki/last-ingest-status.json")
         let statusText = try String(contentsOf: statusURL, encoding: .utf8)
         XCTAssertTrue(statusText.contains(#""status":"failed""#), statusText)
-        XCTAssertTrue(statusText.contains("llm_wiki pipeline is not available"), statusText)
+        XCTAssertTrue(statusText.contains("MyWiki runner is not available"), statusText)
     }
 }
 

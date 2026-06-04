@@ -347,7 +347,7 @@ struct MainWindowView: View {
                 sourceVault: appState.environment?.vaultURL,
                 projectRoot: knowledgeOntologyProjectRoot,
                 developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL(),
-                bundledHelperAppURL: KnowledgeOntologyLauncher.defaultBundledHelperAppURL(),
+                bundledRunner: MyWikiRunnerBundle.resolveDefault(),
                 importedDocuments: appState.knowledgeDocumentsByConnector.values.flatMap { $0 },
                 nextDigestUpdateDate: appState.nextMyWikiAutomationCheckDate,
                 selectedEntry: $selectedMyWikiEntry

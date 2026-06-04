@@ -41,6 +41,43 @@ describe("KnowYou headless ingest runner", () => {
     expect(INGEST_CACHE_PIPELINE_VERSION).toContain("native-contextless")
   })
 
+  it("defaults bundled ingest to the KnowYou bridge without API secrets", async () => {
+    const tmp = await createTempProject("knowyou-headless-default-bridge")
+    const previousKey = process.env.KNOWYOU_MYWIKI_LLM_API_KEY
+    try {
+      process.env.KNOWYOU_MYWIKI_LLM_API_KEY = ["placeholder", "key"].join("-")
+      await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+      await writeFileRaw(
+        path.join(tmp.path, "raw/sources/knowyou-diary-2026-06-04.md"),
+        "# 2026-06-04\n\nBundled runner default provider.",
+      )
+
+      pendingResponses = [
+        "Analysis for default bridge.",
+        sourceSummaryBlock("2026-06-04"),
+      ]
+
+      await runKnowYouIngest({
+        projectPath: tmp.path,
+      })
+
+      expect(streamedConfigs[0]).toMatchObject({
+        provider: "knowyou-bridge",
+        apiKey: "",
+      })
+    } finally {
+      if (previousKey === undefined) {
+        delete process.env.KNOWYOU_MYWIKI_LLM_API_KEY
+      } else {
+        process.env.KNOWYOU_MYWIKI_LLM_API_KEY = previousKey
+      }
+      await tmp.cleanup()
+    }
+  })
+
   it("reuses autoIngest to materialize wiki pages from raw journal sources", async () => {
     const tmp = await createTempProject("knowyou-headless-ingest")
     try {
@@ -464,8 +501,9 @@ describe("KnowYou headless ingest runner", () => {
   it("reads KnowYou LLM API settings from CLI args and secret environment", async () => {
     const tmp = await createTempProject("knowyou-headless-llm-config")
     const previousKey = process.env.KNOWYOU_MYWIKI_LLM_API_KEY
+    const envApiKey = ["placeholder", "secret"].join("-")
     try {
-      process.env.KNOWYOU_MYWIKI_LLM_API_KEY = "sk-secret"
+      process.env.KNOWYOU_MYWIKI_LLM_API_KEY = envApiKey
       await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
       await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
       await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
@@ -490,7 +528,7 @@ describe("KnowYou headless ingest runner", () => {
 
       expect(streamedConfigs[0]).toMatchObject({
         provider: "custom",
-        apiKey: "sk-secret",
+        apiKey: envApiKey,
         model: "deepseek-v4-pro",
         customEndpoint: "https://api.deepseek.com",
         apiMode: "chat_completions",

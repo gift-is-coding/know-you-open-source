@@ -631,6 +631,14 @@ export function getProviderConfig(config: LlmConfig): ProviderConfig {
         "codex-cli provider uses subprocess transport; getProviderConfig should not be called for it",
       )
 
+    case "knowyou-bridge":
+      // The bundled KnowYou runner writes llm.request JSONL to stdout
+      // and receives Swift Diary Engine responses on stdin. It has no
+      // URL, headers, or API key at this layer.
+      throw new Error(
+        "knowyou-bridge provider uses bridge transport; getProviderConfig should not be called for it",
+      )
+
     case "custom": {
       // Custom endpoints can speak either OpenAI's /chat/completions
       // wire or Anthropic's /v1/messages wire. The field `apiMode` on

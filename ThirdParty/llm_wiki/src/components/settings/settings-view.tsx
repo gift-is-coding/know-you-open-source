@@ -19,7 +19,7 @@ import { useWikiStore } from "@/stores/wiki-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useUpdateStore, hasAvailableUpdate } from "@/stores/update-store"
 import { saveLanguage } from "@/lib/project-store"
-import type { SettingsDraft, DraftSetter } from "./settings-types"
+import type { SettingsDraft, DraftSetter, SettingsLlmProvider } from "./settings-types"
 import { LlmProviderSection } from "./sections/llm-provider-section"
 import { EmbeddingSection } from "./sections/embedding-section"
 import { MultimodalSection } from "./sections/multimodal-section"
@@ -65,6 +65,10 @@ const CATEGORIES: Category[] = [
   { id: "about", labelKey: "settings.categories.about", icon: Info },
 ]
 
+function settingsLlmProvider(provider: SettingsLlmProvider | "knowyou-bridge"): SettingsLlmProvider {
+  return provider === "knowyou-bridge" ? "custom" : provider
+}
+
 function initialDraft(
   llm: ReturnType<typeof useWikiStore.getState>["llmConfig"],
   embed: ReturnType<typeof useWikiStore.getState>["embeddingConfig"],
@@ -75,7 +79,7 @@ function initialDraft(
   uiLanguage: string,
 ): SettingsDraft {
   return {
-    provider: llm.provider,
+    provider: settingsLlmProvider(llm.provider),
     apiKey: llm.apiKey,
     model: llm.model,
     ollamaUrl: llm.ollamaUrl,
@@ -91,7 +95,7 @@ function initialDraft(
     embeddingOverlapChunkChars: embed.overlapChunkChars,
     multimodalEnabled: multimodal.enabled,
     multimodalUseMainLlm: multimodal.useMainLlm,
-    multimodalProvider: multimodal.provider,
+    multimodalProvider: settingsLlmProvider(multimodal.provider),
     multimodalApiKey: multimodal.apiKey,
     multimodalModel: multimodal.model,
     multimodalOllamaUrl: multimodal.ollamaUrl,

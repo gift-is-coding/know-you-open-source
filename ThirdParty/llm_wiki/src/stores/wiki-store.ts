@@ -16,7 +16,16 @@ export interface ReasoningConfig {
 }
 
 interface LlmConfig {
-  provider: "openai" | "anthropic" | "google" | "ollama" | "custom" | "minimax" | "claude-code" | "codex-cli"
+  provider:
+    | "openai"
+    | "anthropic"
+    | "google"
+    | "ollama"
+    | "custom"
+    | "minimax"
+    | "claude-code"
+    | "codex-cli"
+    | "knowyou-bridge"
   apiKey: string
   model: string
   ollamaUrl: string

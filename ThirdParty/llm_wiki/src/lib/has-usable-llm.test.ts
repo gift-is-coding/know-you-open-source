@@ -43,6 +43,12 @@ describe("hasUsableLlm", () => {
     ).toBe(true)
   })
 
+  it("returns true for knowyou-bridge with no API key", () => {
+    expect(
+      hasUsableLlm({ provider: "knowyou-bridge", apiKey: "" }),
+    ).toBe(true)
+  })
+
   it("returns false for openai with no API key", () => {
     expect(
       hasUsableLlm({ provider: "openai", apiKey: "" }),
@@ -81,6 +87,7 @@ describe("hasUsableLlm", () => {
     expect(PROVIDERS_WITHOUT_KEY.has("custom")).toBe(true)
     expect(PROVIDERS_WITHOUT_KEY.has("claude-code")).toBe(true)
     expect(PROVIDERS_WITHOUT_KEY.has("codex-cli")).toBe(true)
+    expect(PROVIDERS_WITHOUT_KEY.has("knowyou-bridge")).toBe(true)
   })
 
   it("PROVIDERS_WITHOUT_KEY does not include hosted-API providers", () => {
@@ -104,6 +111,7 @@ describe("hasUsableLlm", () => {
       "minimax",
       "claude-code",
       "codex-cli",
+      "knowyou-bridge",
     ]
     for (const p of allProviders) {
       const inNoKey = PROVIDERS_WITHOUT_KEY.has(p)

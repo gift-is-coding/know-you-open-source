@@ -295,11 +295,13 @@ function resetStores(projectPath: string, llmConfig: LlmConfig): void {
 }
 
 function llmConfigFor(options: IngestOptions): LlmConfig {
-  const provider = options.provider ?? "codex-cli"
+  const provider = options.provider ?? "knowyou-bridge"
   return {
     provider,
-    apiKey: options.apiKey ?? process.env.KNOWYOU_MYWIKI_LLM_API_KEY ?? "",
-    model: options.model ?? "gpt-5.5",
+    apiKey: provider === "knowyou-bridge"
+      ? ""
+      : options.apiKey ?? process.env.KNOWYOU_MYWIKI_LLM_API_KEY ?? "",
+    model: options.model ?? (provider === "knowyou-bridge" ? "diary-engine" : "gpt-5.5"),
     ollamaUrl: options.ollamaUrl ?? "http://localhost:11434",
     customEndpoint: options.customEndpoint ?? "",
     maxContextSize: 128000,

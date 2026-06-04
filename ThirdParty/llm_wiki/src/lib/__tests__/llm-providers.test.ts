@@ -227,6 +227,21 @@ describe("Codex CLI provider — not reachable via getProviderConfig", () => {
   })
 })
 
+describe("KnowYou bridge provider — not reachable via getProviderConfig", () => {
+  it("throws, because the bundled-runner transport dispatches one layer up in streamChat", () => {
+    expect(() =>
+      getProviderConfig({
+        provider: "knowyou-bridge",
+        apiKey: "",
+        model: "diary-engine",
+        ollamaUrl: "",
+        customEndpoint: "",
+        maxContextSize: 200000,
+      } as RealLlmConfig),
+    ).toThrow(/bridge transport/)
+  })
+})
+
 describe("Google provider URL — model path encoding", () => {
   const makeGoogleConfig = (model: string): RealLlmConfig => ({
     provider: "google",

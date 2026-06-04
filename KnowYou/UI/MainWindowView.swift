@@ -352,7 +352,7 @@ struct MainWindowView: View {
             KnowledgeOntologyPanel(
                 sourceVault: appState.environment?.vaultURL,
                 projectRoot: knowledgeOntologyProjectRoot,
-                developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL(),
+                developmentSourceURL: nil,
                 bundledRunner: bundledMyWikiRunner,
                 importedDocuments: appState.knowledgeDocumentsByConnector.values.flatMap { $0 },
                 summarizer: appState.environment?.summarizer,

@@ -6,7 +6,7 @@ enum MyWikiPanelStatusPresentationPolicy {
 
     static func initialStatusMessage(
         bundledRunner: Result<MyWikiRunnerBundle?, Error>,
-        developmentSourceURL: URL,
+        developmentSourceURL: URL?,
         fileManager: FileManager = .default
     ) -> String {
         initialStatusMessage(
@@ -41,7 +41,7 @@ enum MyWikiPanelStatusPresentationPolicy {
 struct MyWikiPanel: View {
     let sourceVault: URL?
     let projectRoot: URL?
-    let developmentSourceURL: URL
+    let developmentSourceURL: URL?
     let bundledRunner: Result<MyWikiRunnerBundle?, Error>
     let importedDocuments: [ImportedKnowledgeDocument]
     let summarizer: SummaryGenerating?

@@ -31,7 +31,7 @@ enum MyWikiPipelineBridgeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingPipeline:
-            return "Could not find the bundled MyWiki runner or ThirdParty/llm_wiki source."
+            return "MyWiki runner is not available."
         case .pipelineExecutionFailed(let detail):
             return detail
         }

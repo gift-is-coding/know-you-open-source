@@ -1584,7 +1584,7 @@ final class AppState {
         do {
             target = MyWikiPipelineBridge.resolveTarget(
                 bundledRunner: try myWikiRunnerResolver(),
-                developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL()
+                developmentSourceURL: nil
             )
         } catch {
             let nextRun = currentDate().addingTimeInterval(86_400)

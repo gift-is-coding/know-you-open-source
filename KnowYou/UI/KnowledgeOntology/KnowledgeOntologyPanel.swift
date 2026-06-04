@@ -3,7 +3,7 @@ import SwiftUI
 struct KnowledgeOntologyPanel: View {
     let sourceVault: URL?
     let projectRoot: URL?
-    let developmentSourceURL: URL
+    let developmentSourceURL: URL?
     let bundledRunner: Result<MyWikiRunnerBundle?, Error>
     let importedDocuments: [ImportedKnowledgeDocument]
     let summarizer: SummaryGenerating?

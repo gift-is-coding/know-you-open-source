@@ -23,6 +23,11 @@ if [[ -d "$target_app/Contents/Resources/KnowledgeOntology/LLM Wiki.app" ]]; the
   exit 1
 fi
 
+if ! codesign -d --entitlements :- "$mywiki_node" 2>/dev/null | grep -q 'com.apple.security.cs.allow-jit'; then
+  echo "Release MyWikiRunner node is missing allow-jit entitlement required by V8 under hardened runtime" >&2
+  exit 1
+fi
+
 codesign --verify --deep --strict --verbose=2 "$target_app"
 codesign -dvv "$target_app"
 xcrun stapler validate "$target_app"

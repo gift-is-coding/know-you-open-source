@@ -119,8 +119,10 @@ sign_mywiki_runner_nested_code() {
   local target_app="${1:-$app_path}"
   local runner_dir="$target_app/Contents/Resources/MyWikiRunner"
   local runner_node="$target_app/Contents/Resources/MyWikiRunner/node"
+  local runner_node_entitlements="$repo_root/scripts/mywiki-runner-node.entitlements"
   ensure_file_exists "$runner_dir"
   ensure_file_exists "$runner_node"
+  ensure_file_exists "$runner_node_entitlements"
   require_command codesign
 
   local signing_target
@@ -137,6 +139,7 @@ sign_mywiki_runner_nested_code() {
     --force \
     --options runtime \
     --timestamp \
+    --entitlements "$runner_node_entitlements" \
     --sign "$developer_id_identity" \
     "$runner_node"
 }

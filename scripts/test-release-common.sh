@@ -76,7 +76,12 @@ assert_contains "$release_common_script" 'XPCServices/Installer.xpc' "release he
 assert_contains "$release_common_script" 'Updater.app' "release helper targets Sparkle updater"
 assert_contains "$release_common_script" 'sign_mywiki_runner_nested_code()' "release helper signs MyWikiRunner"
 assert_contains "$release_common_script" 'Contents/Resources/MyWikiRunner/node' "release helper targets bundled MyWiki node"
+assert_contains "$release_common_script" 'mywiki-runner-node.entitlements' "release helper applies MyWiki node entitlements"
+assert_contains "$release_common_script" '--entitlements "$runner_node_entitlements"' "release helper signs MyWiki node with entitlements"
 assert_contains "$release_common_script" '--preserve-metadata=identifier,entitlements,requirements' "release helper preserves signing metadata"
+
+runner_node_entitlements="$(cat "$repo_root/scripts/mywiki-runner-node.entitlements")"
+assert_contains "$runner_node_entitlements" 'com.apple.security.cs.allow-jit' "MyWiki node allows V8 JIT under hardened runtime"
 
 build_release_script="$(cat "$repo_root/scripts/build-release.sh")"
 assert_contains "$build_release_script" 'scripts/build-mywiki-runner.sh' "build release builds MyWikiRunner"

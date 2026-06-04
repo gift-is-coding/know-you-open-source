@@ -19,6 +19,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 当前项目包含五类用户可见产物：
 
 - 应用内三栏阅读器
+- 应用内全局 Search
 - 每日 Markdown 文件
 - 每日结构化 `.story.json` 文件
 - 应用内统一 Todo inbox
@@ -88,6 +89,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - story-first 三栏阅读器
 - 段落级 source link
 - Markdown-backed 统一 Todo inbox、自由输入、每日候选待办手动转入、证据驱动自动完成标记
+- 主窗口一级 Search，使用本地关键词匹配搜索日记、My Wiki 实体/概念、source 和 Todo
 - 真实阅读器上的 onboarding coachmarks 与 settings 配置
 - 左下角 `...` 二级菜单中的 `Connectors`
 - Daily Memory Export 到 Obsidian / OpenClaw
@@ -109,7 +111,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 多设备同步
 - 云端账户系统
 - 团队协作与共享
-- 通用全文检索、完整标签管理系统、知识图谱界面
+- 高级语义全文检索、完整标签管理系统、知识图谱界面
 - 浏览器历史、邮件、日历等更多信号源
 - 主界面中的原始 Markdown 编辑模式
 - 自动发送消息、创建日程、修改外部文件或替用户执行外部任务
@@ -213,7 +215,11 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 单个 source 扫描失败不得阻塞其他 source。
 - 用户必须能手动触发 `Refresh`，它只重新扫描本地目录。
 - 当启用每日 source scan 时，系统必须安装独立于 Daily Memory Export 的用户级 `LaunchAgent`。
-- 侧边栏必须始终显示 `Home`、`Networking (Coming soon)`、`Todo`、`My Wiki`、`My Diary`、`Other Source` 这些同级一级入口，并且 Feishu/Lark、Notion、Google Drive 等已添加来源必须排在 `Other Source` 后面。
+- 侧边栏必须始终显示 `Home`、`Search`、`Networking (Coming soon)`、`Todo`、`My Wiki`、`My Diary`、`Other Source` 这些同级一级入口，并且 Feishu/Lark、Notion、Google Drive 等已添加来源必须排在 `Other Source` 后面。
+- `Search` 必须位于 `Home` 下方，并作为外层 workspace 搜索入口，而不是放在 My Wiki、Todo 或 Diary 子页面内部。
+- `Search` V1 必须使用本地关键词/短语匹配搜索 `AppState.noteIndex` 中的日记 Markdown、My Wiki dashboard 中的 Entities/Concepts、已扫描 source 文档的 `localContentPath` 正文，以及统一 Todo 标题/状态；结果必须按 `Todo`、`Diary`、`My Wiki`、`Sources` 分组，并能点击打开对应 Todo inbox、日期日记、My Wiki entity/concept 或 source 文档。搜索结果 title/snippet 必须高亮命中关键词；点击结果后，目标页面必须提供轻量定位反馈：Todo row 滚动并高亮 row/title 关键词、Diary 滚动到第一个命中段落并高亮关键词、My Wiki 选中对应 entity/concept、Source 文档对命中 Markdown block 和其中关键词做高亮。
+- `Search` V1 必须按 Enter 后才执行检索；输入过程不得实时扫描日记、source、Todo 或 My Wiki，以免大 workspace 中每个 key stroke 触发昂贵 I/O。
+- `Search` V1 不得要求 embedding、BM25、模型下载、服务端索引或 SQLite FTS。
 - Diary 左侧日期列表必须只显示 today 加 last 3 days；三天补生成必须只检查 yesterday、2 days ago、3 days ago，不得把 today 混进 `Generate Last 3 Days`。
 - `Home` 必须作为默认理解入口，使用英文短句和视觉资产提醒用户保持 KnowYou 在后台运行，展示 `Automatic Diary update` 和下一次自动更新本地时间，提供 `Generate Now` 刷新今天，并且只在过去三天缺少 model diary 时显示 `Generate Last 3 Days`。
 - `Home` 的更新区必须保持 compact：只在 `running`、`degraded`、`failed`、`blocked` 时显示在 hero 右下角，`scheduled` 和 `completed` 不得占用页面空间。
@@ -491,6 +497,7 @@ onboarding 的配置约束为：
 - KnowYou 必须优先连接 bundled llm_wiki helper；没有 bundled helper 时，允许回退到 `ThirdParty/llm_wiki` 开发源码目录
 - 回退到 `ThirdParty/llm_wiki` 开发源码目录时，如果 `node_modules/vite` 缺失，系统必须先尝试在该目录执行 `npm install`，安装失败时写入明确 failed 状态，不得只向用户暴露 Node 的 `ERR_MODULE_NOT_FOUND` 堆栈
 - 第一版只能导出 KnowYou 已生成的每日 Markdown，不得直接导出未经额外授权的 SQLite 原始事件
+- My Wiki 面板必须提供 V1 本地关键词搜索：当搜索框非空时，系统必须同时检索 `wiki/` 和 `raw/sources/` 下的 Markdown / text 文件，返回按日期、My Wiki 或 source root 分组的 snippet 结果；V1 不要求 embedding、BM25、模型下载或服务端索引
 - 系统必须提供本地服务层能力，让 Codex、Claude、Cowork 等 agent 能读取 My Wiki 的最小必要背景摘要
 - My Wiki 必须提供 `Use My Wiki in Agents` 用户入口，并且该入口必须接入新版 My Wiki 页面，不得回退到旧 KnowledgeOntology 控制面板
 - 用户默认路径必须是对内置 agent 执行 `Add My Wiki` 自动配置；第一版内置 agent 包括 Codex、Claude Code、Claude Desktop、Cursor、Gemini CLI 和 OpenClaw

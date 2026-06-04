@@ -103,9 +103,26 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
     func testMainWindowWorkspacePolicyKeepsToolbarStableAcrossSidebarModes() {
         XCTAssertTrue(MainWindowWorkspacePolicy.usesUnifiedNavigationSplitViewAcrossModes)
         XCTAssertTrue(MainWindowWorkspacePolicy.keepsEngineSelectorInGlobalToolbar)
+        XCTAssertTrue(MainWindowWorkspacePolicy.keepsEngineSelectorInTrailingToolbarAction)
         XCTAssertTrue(MainWindowWorkspacePolicy.showsPrivacyMessageOutsideEngineSelector)
         XCTAssertEqual(MainWindowWorkspacePolicy.privacyMessage, "Your data stays local. No backend server.")
         XCTAssertEqual(MainWindowWorkspacePolicy.privacyMessageFontSize, 14)
+    }
+
+    func testGlobalSearchCommandUsesStandardFindShortcutAndMainSearchRoute() {
+        XCTAssertEqual(GlobalSearchCommandPolicy.menuTitle, "Search")
+        XCTAssertEqual(GlobalSearchCommandPolicy.keyboardEquivalent, "f")
+        XCTAssertEqual(GlobalSearchCommandPolicy.notificationName, .globalSearchRequested)
+    }
+
+    func testGlobalSearchExecutesOnlyAfterExplicitSubmit() {
+        XCTAssertTrue(GlobalSearchExecutionPolicy.requiresExplicitSubmit)
+        XCTAssertEqual(GlobalSearchExecutionPolicy.submitLabel, "Search")
+        XCTAssertNil(GlobalSearchExecutionPolicy.queryForExecution(draftQuery: "entity", submittedQuery: ""))
+        XCTAssertEqual(
+            GlobalSearchExecutionPolicy.queryForExecution(draftQuery: "entity", submittedQuery: " concept "),
+            "concept"
+        )
     }
 
     func testDetailPresentationShowsMarkdownPageByDefault() {

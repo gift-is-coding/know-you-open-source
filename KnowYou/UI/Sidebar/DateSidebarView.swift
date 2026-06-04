@@ -10,6 +10,7 @@ struct DateSidebarView: View {
     let isKnowledgeOntologySelected: Bool
     let todoOpenCount: Int
     let onOpenHome: () -> Void
+    let onOpenSearch: () -> Void
     let onSelectDiaryDate: (String) -> Void
     let onOpenTodo: () -> Void
     let onSelectOtherSource: (_ focusAddConnector: Bool) -> Void
@@ -29,6 +30,7 @@ struct DateSidebarView: View {
         VStack(spacing: 0) {
             List(selection: activeBinding) {
                 rootRow(presentation.homeRootItem)
+                rootRow(presentation.searchRootItem)
                 rootRow(presentation.networkingRootItem)
                 rootRow(presentation.todoRootItem)
                 rootRow(presentation.myWikiRootItem)
@@ -304,6 +306,8 @@ struct DateSidebarView: View {
         switch action {
         case .home:
             onOpenHome()
+        case .search:
+            onOpenSearch()
         case .todo:
             onOpenTodo()
         case .diaryDate(let dayKey):
@@ -328,6 +332,8 @@ struct DateSidebarView: View {
             return .diaryDate(dayKey)
         } else if itemID == "home" {
             return .home
+        } else if itemID == "search" {
+            return .search
         } else if itemID == "todo-root" {
             return .todo
         } else if itemID == "my-wiki" {
@@ -434,6 +440,7 @@ struct SidebarIconMetrics: Equatable {
 
 enum SidebarSelectionAction: Equatable {
     case home
+    case search
     case todo
     case diaryDate(String)
     case otherSource(focusAddConnector: Bool)
@@ -486,6 +493,7 @@ struct SidebarRootItem: Identifiable, Equatable {
 
 struct DateSidebarPresentation {
     let homeRootItem: SidebarRootItem
+    let searchRootItem: SidebarRootItem
     let todoRootItem: SidebarRootItem
     let myWikiRootItem: SidebarRootItem
     let sourceRootItem: SidebarRootItem
@@ -522,6 +530,15 @@ struct DateSidebarPresentation {
             isEnabled: true,
             showsAddButton: false,
             selectionAction: .home
+        )
+        searchRootItem = SidebarRootItem(
+            id: "search",
+            title: "Search",
+            systemImage: "magnifyingglass",
+            isSelected: selectedItemID == "search",
+            isEnabled: true,
+            showsAddButton: false,
+            selectionAction: .search
         )
         todoRootItem = SidebarRootItem(
             id: "todo-root",
@@ -626,7 +643,7 @@ struct DateSidebarPresentation {
                 )
             ]
         }
-        rootItems = [homeRootItem, networkingRootItem, todoRootItem, myWikiRootItem, diaryRootItem, sourceRootItem] + sourceItems
+        rootItems = [homeRootItem, searchRootItem, networkingRootItem, todoRootItem, myWikiRootItem, diaryRootItem, sourceRootItem] + sourceItems
         sections = diarySections
     }
 

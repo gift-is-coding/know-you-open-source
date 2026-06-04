@@ -9,6 +9,7 @@ struct DailyMarkdownView: View {
     let refreshLogNotice: String?
     let isGenerating: Bool
     let isActive: Bool
+    let searchQuery: String?
     let todoCandidates: [DailyTodoCandidatePresentation]
     let onSelectParagraph: (String) -> Void
     let onFocusStory: () -> Void
@@ -24,7 +25,8 @@ struct DailyMarkdownView: View {
         let presentation = DailyMarkdownPresentation(
             story: story,
             selectedParagraphID: selectedParagraphID,
-            isGenerating: isGenerating
+            isGenerating: isGenerating,
+            searchQuery: searchQuery
         )
         let refreshPresentation = DayRefreshProgressPresentation(refreshJob: refreshJob)
 
@@ -157,7 +159,7 @@ struct DailyMarkdownView: View {
                     }
                     .background(Color(nsColor: .textBackgroundColor))
                     .task(id: presentation.scrollRequest) {
-                        scrollToParagraphIfNeeded(
+                        await scrollToParagraphIfNeeded(
                             presentation.scrollTargetParagraphID,
                             using: proxy
                         )
@@ -177,6 +179,10 @@ struct DailyMarkdownView: View {
     @ViewBuilder
     private func paragraphRow(_ paragraph: DailyStoryParagraph) -> some View {
         let isSelected = isActive && paragraph.id == selectedParagraphID
+        let isSearchHighlighted = MarkdownSearchHighlightPresentation.textContainsQuery(
+            paragraph.text,
+            query: searchQuery
+        )
         let isHovered = hoveredParagraphID == paragraph.id
         let paragraphTodoCandidates = todoCandidates.filter { $0.paragraphID == paragraph.id }
 
@@ -186,22 +192,21 @@ struct DailyMarkdownView: View {
                 onSelectParagraph(paragraph.id)
             } label: {
                 HStack(alignment: .top, spacing: 0) {
-                    // Left accent bar (only when selected)
                     Rectangle()
-                        .fill(isSelected ? Color.accentColor : Color.clear)
+                        .fill(paragraphAccentColor(isSelected: isSelected, isSearchHighlighted: isSearchHighlighted))
                         .frame(width: 2)
                         .padding(.vertical, 4)
 
-                    MarkdownPreviewContent(markdown: paragraph.text)
+                    MarkdownPreviewContent(markdown: paragraph.text, highlightQuery: searchQuery)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                 }
-                .background(
-                    isSelected
-                        ? Color.accentColor.opacity(0.07)
-                        : (isHovered ? Color.primary.opacity(0.04) : Color.clear)
-                )
+                .background(paragraphBackgroundColor(
+                    isSelected: isSelected,
+                    isSearchHighlighted: isSearchHighlighted,
+                    isHovered: isHovered
+                ))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -219,6 +224,26 @@ struct DailyMarkdownView: View {
         .onHover { hovering in
             hoveredParagraphID = hovering ? paragraph.id : nil
         }
+    }
+
+    private func paragraphAccentColor(
+        isSelected: Bool,
+        isSearchHighlighted: Bool
+    ) -> Color {
+        if isSelected { return .accentColor }
+        if isSearchHighlighted { return .yellow }
+        return .clear
+    }
+
+    private func paragraphBackgroundColor(
+        isSelected: Bool,
+        isSearchHighlighted: Bool,
+        isHovered: Bool
+    ) -> Color {
+        if isSelected { return Color.accentColor.opacity(0.07) }
+        if isSearchHighlighted { return Color.yellow.opacity(0.16) }
+        if isHovered { return Color.primary.opacity(0.04) }
+        return .clear
     }
 
     private var formattedDayKey: String {
@@ -242,11 +267,18 @@ struct DailyMarkdownView: View {
     private func scrollToParagraphIfNeeded(
         _ paragraphID: String?,
         using proxy: ScrollViewProxy
-    ) {
+    ) async {
         guard let paragraphID else { return }
 
-        withAnimation(.easeInOut(duration: 0.2)) {
+        await MainActor.run {
             proxy.scrollTo(paragraphID, anchor: .center)
+        }
+
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        await MainActor.run {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                proxy.scrollTo(paragraphID, anchor: .center)
+            }
         }
     }
 
@@ -387,6 +419,7 @@ struct DailyMarkdownPresentation: Equatable {
 
     let paragraphs: [DailyStoryParagraph]
     let selectedParagraphID: String?
+    let searchHighlightedParagraphID: String?
     let scrollTargetParagraphID: String?
     let scrollRequest: ScrollRequest
     let storyHeading: String
@@ -394,10 +427,21 @@ struct DailyMarkdownPresentation: Equatable {
     let emptyStateMessage: String?
     let emptyStateSymbol: String
 
-    init(story: DailyStory?, selectedParagraphID: String? = nil, isGenerating: Bool = false) {
+    init(
+        story: DailyStory?,
+        selectedParagraphID: String? = nil,
+        isGenerating: Bool = false,
+        searchQuery: String? = nil
+    ) {
         paragraphs = story?.sections.flatMap(\.paragraphs) ?? []
         self.selectedParagraphID = selectedParagraphID
-        if let selectedParagraphID,
+        searchHighlightedParagraphID = Self.searchHighlightedParagraphID(
+            paragraphs: paragraphs,
+            searchQuery: searchQuery
+        )
+        if let searchHighlightedParagraphID {
+            scrollTargetParagraphID = searchHighlightedParagraphID
+        } else if let selectedParagraphID,
            paragraphs.contains(where: { $0.id == selectedParagraphID }) {
             scrollTargetParagraphID = selectedParagraphID
         } else {
@@ -442,6 +486,17 @@ struct DailyMarkdownPresentation: Equatable {
         }
 
         return "Story"
+    }
+
+    private static func searchHighlightedParagraphID(
+        paragraphs: [DailyStoryParagraph],
+        searchQuery: String?
+    ) -> String? {
+        let query = searchQuery?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard query.isEmpty == false else { return nil }
+        return paragraphs.first { paragraph in
+            MarkdownSearchHighlightPresentation.textContainsQuery(paragraph.text, query: query)
+        }?.id
     }
 }
 
@@ -1294,13 +1349,115 @@ enum DailyMarkdownRenderer {
     }
 }
 
+struct MarkdownSearchHighlightPresentation: Equatable {
+    static func blockContainsQuery(
+        _ block: DailyMarkdownRenderer.Block,
+        query: String?
+    ) -> Bool {
+        textContainsQuery(blockPlainText(block), query: query)
+    }
+
+    static func textContainsQuery(
+        _ text: String,
+        query: String?
+    ) -> Bool {
+        let normalizedText = text.lowercased()
+        return SearchHighlightedTextPresentation.highlightTerms(for: query).contains { term in
+            normalizedText.contains(term.lowercased())
+        }
+    }
+
+    private static func blockPlainText(_ block: DailyMarkdownRenderer.Block) -> String {
+        switch block {
+        case .heading(_, let content):
+            return content.plainText
+        case .paragraph(let content):
+            return content.plainText
+        case .bulletList(let items):
+            return items.map(\.plainText).joined(separator: "\n")
+        case .orderedList(let items):
+            return items.map(\.content.plainText).joined(separator: "\n")
+        case .taskList(let items):
+            return items.map(\.content.plainText).joined(separator: "\n")
+        case .quote(let items):
+            return items.map(\.plainText).joined(separator: "\n")
+        case .codeBlock(let code):
+            return code
+        case .table(let table):
+            return (table.headers + table.rows.flatMap { $0 })
+                .map(\.plainText)
+                .joined(separator: "\n")
+        }
+    }
+}
+
+struct SearchHighlightedTextPresentation: Equatable {
+    static func highlightedAttributedString(
+        _ text: String,
+        query: String?
+    ) -> AttributedString {
+        highlightedAttributedString(AttributedString(text), query: query)
+    }
+
+    static func highlightedAttributedString(
+        _ attributed: AttributedString,
+        query: String?
+    ) -> AttributedString {
+        var highlighted = attributed
+        for term in highlightTerms(for: query) {
+            applyHighlight(term: term, to: &highlighted)
+        }
+        return highlighted
+    }
+
+    private static func applyHighlight(
+        term: String,
+        to attributed: inout AttributedString
+    ) {
+        var searchRange = attributed.startIndex..<attributed.endIndex
+        while let match = attributed[searchRange].range(
+            of: term,
+            options: [.caseInsensitive, .diacriticInsensitive]
+        ) {
+            attributed[match].backgroundColor = Color.yellow.opacity(0.55)
+            attributed[match].foregroundColor = .primary
+            searchRange = match.upperBound..<attributed.endIndex
+        }
+    }
+
+    static func highlightTerms(for query: String?) -> [String] {
+        let normalized = query?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard normalized.isEmpty == false else { return [] }
+
+        let tokens = normalized
+            .components(separatedBy: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+
+        return ([normalized] + tokens).reduce(into: []) { terms, term in
+            guard terms.contains(where: { $0.caseInsensitiveCompare(term) == .orderedSame }) == false else {
+                return
+            }
+            terms.append(term)
+        }
+    }
+}
+
 struct MarkdownPreviewContent: View {
     let markdown: String
+    var highlightQuery: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(DailyMarkdownRenderer.blocks(from: markdown).enumerated()), id: \.offset) { _, block in
-                MarkdownBlockView(block: block)
+                MarkdownBlockView(
+                    block: block,
+                    isSearchHighlighted: MarkdownSearchHighlightPresentation.blockContainsQuery(
+                        block,
+                        query: highlightQuery
+                    ),
+                    highlightQuery: highlightQuery
+                )
             }
         }
         .multilineTextAlignment(.leading)
@@ -1311,8 +1468,22 @@ struct MarkdownPreviewContent: View {
 
 private struct MarkdownBlockView: View {
     let block: DailyMarkdownRenderer.Block
+    var isSearchHighlighted = false
+    var highlightQuery: String? = nil
 
     var body: some View {
+        blockBody
+            .padding(isSearchHighlighted ? 8 : 0)
+            .background(
+                isSearchHighlighted
+                    ? Color.yellow.opacity(0.16)
+                    : Color.clear
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var blockBody: some View {
         switch block {
         case .heading(let level, let content):
             inlineText(content)
@@ -1387,16 +1558,22 @@ private struct MarkdownBlockView: View {
             .background(Color.primary.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         case .table(let table):
-            DailyMarkdownTableView(table: table)
+            DailyMarkdownTableView(table: table, highlightQuery: highlightQuery)
         }
     }
 
     @ViewBuilder
     private func inlineText(_ content: DailyMarkdownRenderer.InlineContent) -> some View {
         if let attributed = content.attributed {
-            Text(attributed)
+            Text(SearchHighlightedTextPresentation.highlightedAttributedString(
+                attributed,
+                query: highlightQuery
+            ))
         } else {
-            Text(verbatim: content.plainText)
+            Text(SearchHighlightedTextPresentation.highlightedAttributedString(
+                content.plainText,
+                query: highlightQuery
+            ))
         }
     }
 
@@ -1416,6 +1593,7 @@ private struct MarkdownBlockView: View {
 
 private struct DailyMarkdownTableView: View {
     let table: DailyMarkdownRenderer.Table
+    let highlightQuery: String?
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: true) {
@@ -1428,7 +1606,10 @@ private struct DailyMarkdownTableView: View {
                 ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
                     GridRow {
                         ForEach(0..<table.headers.count, id: \.self) { index in
-                            cell(row.indices.contains(index) ? row[index] : DailyMarkdownRenderer.InlineContent(markdown: ""), isHeader: false)
+                            cell(
+                                row.indices.contains(index) ? row[index] : DailyMarkdownRenderer.InlineContent(markdown: ""),
+                                isHeader: false
+                            )
                         }
                     }
                 }
@@ -1441,7 +1622,14 @@ private struct DailyMarkdownTableView: View {
     }
 
     private func cell(_ content: DailyMarkdownRenderer.InlineContent, isHeader: Bool) -> some View {
-        MarkdownBlockView(block: .paragraph(content))
+        MarkdownBlockView(
+            block: .paragraph(content),
+            isSearchHighlighted: MarkdownSearchHighlightPresentation.textContainsQuery(
+                content.plainText,
+                query: highlightQuery
+            ),
+            highlightQuery: highlightQuery
+        )
             .font(isHeader ? .body.weight(.semibold) : .body)
             .frame(minWidth: 140, maxWidth: 260, alignment: .topLeading)
             .padding(.horizontal, 10)

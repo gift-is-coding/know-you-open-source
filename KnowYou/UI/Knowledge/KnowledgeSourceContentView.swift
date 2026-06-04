@@ -16,19 +16,24 @@ struct KnowledgeSourceContentPresentation: Equatable {
     let showsConfigureAction: Bool
     let markdown: String?
     let statusMessage: String?
+    let searchQuery: String?
 
     init(
         connector: KnowledgeConnectorInstanceConfig,
         documents: [ImportedKnowledgeDocument],
         selectedDocumentID: String?,
         selectedMarkdown: String?,
-        statusMessage: String?
+        statusMessage: String?,
+        searchQuery: String? = nil
     ) {
         title = connector.displayName
         let selectedDocumentExists = selectedDocumentID.map { selectedID in
             documents.contains { $0.id == selectedID }
         } ?? false
         markdown = selectedDocumentExists ? Self.markdownBodyWithoutFrontmatter(selectedMarkdown) : nil
+        self.searchQuery = selectedDocumentExists
+            ? Self.normalizedSearchQuery(searchQuery)
+            : nil
         self.statusMessage = nil
         showsDocumentList = false
         showsRefreshAction = false
@@ -47,6 +52,11 @@ struct KnowledgeSourceContentPresentation: Equatable {
             emptyTitle = ""
             emptyMessage = ""
         }
+    }
+
+    private static func normalizedSearchQuery(_ searchQuery: String?) -> String? {
+        let normalized = searchQuery?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return normalized.isEmpty ? nil : normalized
     }
 
     private static func markdownBodyWithoutFrontmatter(_ markdown: String?) -> String? {
@@ -125,7 +135,7 @@ struct KnowledgeSourceContentView: View {
     private var markdownPreview: some View {
         ScrollView {
             if let markdown = presentation.markdown {
-                MarkdownPreviewContent(markdown: markdown)
+                MarkdownPreviewContent(markdown: markdown, highlightQuery: presentation.searchQuery)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             } else {
                 Text("Select a document to preview its markdown.")

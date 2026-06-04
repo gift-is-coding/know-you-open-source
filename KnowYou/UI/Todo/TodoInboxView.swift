@@ -50,8 +50,18 @@ struct TodoAutomationPresentation: Equatable {
     }
 }
 
+struct TodoInboxHighlightPresentation: Equatable {
+    let highlightedItemID: String?
+
+    func isHighlighted(itemID: String) -> Bool {
+        highlightedItemID == itemID
+    }
+}
+
 struct TodoInboxView: View {
     let items: [UnifiedTodoItem]
+    let highlightedItemID: String?
+    let searchQuery: String?
     let reviewCandidates: [TodoReviewCandidatePresentation]
     let closeRecommendations: [TodoCloseRecommendationPresentation]
     let automationStatusMessage: String?
@@ -82,76 +92,89 @@ struct TodoInboxView: View {
     }
 
     private var mainList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Todo")
-                        .font(.title2.weight(.semibold))
-                    Spacer()
-                    Text("Vault/Todo.md")
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                }
-
-                if let automationStatusMessage {
-                    Text(automationStatusMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                automationSchedule
-
-                HStack(spacing: 8) {
-                    TextField(TodoInboxCopy.draftPlaceholder, text: $draftTitle)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit(addDraft)
-                    Button("Add", action: addDraft)
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .disabled(draftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-
-                TodoSectionHeader(title: "Open", detail: "\(openItems.count) items")
-
-                if openItems.isEmpty {
-                    Text("No open todo items.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 12)
-                } else {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(openItems) { item in
-                            TodoInboxRow(
-                                item: item,
-                                onToggleCompletion: onToggleCompletion,
-                                onUpdateTitle: onUpdateTitle,
-                                onDelete: onDelete
-                            )
-                        }
+        let highlightPresentation = TodoInboxHighlightPresentation(highlightedItemID: highlightedItemID)
+        return ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Todo")
+                            .font(.title2.weight(.semibold))
+                        Spacer()
+                        Text("Vault/Todo.md")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
                     }
-                }
 
-                if !completedItems.isEmpty {
-                    DisclosureGroup(isExpanded: $showCompleted) {
+                    if let automationStatusMessage {
+                        Text(automationStatusMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    automationSchedule
+
+                    HStack(spacing: 8) {
+                        TextField(TodoInboxCopy.draftPlaceholder, text: $draftTitle)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit(addDraft)
+                        Button("Add", action: addDraft)
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .disabled(draftTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+
+                    TodoSectionHeader(title: "Open", detail: "\(openItems.count) items")
+
+                    if openItems.isEmpty {
+                        Text("No open todo items.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 12)
+                    } else {
                         VStack(alignment: .leading, spacing: 0) {
-                            ForEach(completedItems) { item in
+                            ForEach(openItems) { item in
                                 TodoInboxRow(
                                     item: item,
+                                    isHighlighted: highlightPresentation.isHighlighted(itemID: item.id),
+                                    searchQuery: searchQuery,
                                     onToggleCompletion: onToggleCompletion,
                                     onUpdateTitle: onUpdateTitle,
                                     onDelete: onDelete
                                 )
+                                .id(item.id)
                             }
                         }
-                        .padding(.top, 4)
-                    } label: {
-                        TodoSectionHeader(title: "Completed", detail: "\(completedItems.count) items")
                     }
-                    .buttonStyle(.plain)
+
+                    if !completedItems.isEmpty {
+                        DisclosureGroup(isExpanded: $showCompleted) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(completedItems) { item in
+                                    TodoInboxRow(
+                                        item: item,
+                                        isHighlighted: highlightPresentation.isHighlighted(itemID: item.id),
+                                        searchQuery: searchQuery,
+                                        onToggleCompletion: onToggleCompletion,
+                                        onUpdateTitle: onUpdateTitle,
+                                        onDelete: onDelete
+                                    )
+                                    .id(item.id)
+                                }
+                            }
+                            .padding(.top, 4)
+                        } label: {
+                            TodoSectionHeader(title: "Completed", detail: "\(completedItems.count) items")
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
+                .padding(28)
+                .frame(maxWidth: 760, alignment: .topLeading)
             }
-            .padding(28)
-            .frame(maxWidth: 760, alignment: .topLeading)
+            .task(id: highlightedItemID) {
+                guard let highlightedItemID else { return }
+                proxy.scrollTo(highlightedItemID, anchor: .center)
+            }
         }
     }
 
@@ -273,6 +296,8 @@ private struct TodoSectionHeader: View {
 
 private struct TodoInboxRow: View {
     let item: UnifiedTodoItem
+    let isHighlighted: Bool
+    let searchQuery: String?
     let onToggleCompletion: (String) -> Void
     let onUpdateTitle: (String, String) -> Void
     let onDelete: (String) -> Void
@@ -324,7 +349,10 @@ private struct TodoInboxRow: View {
                     }
                 } else {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(item.title)
+                        Text(SearchHighlightedTextPresentation.highlightedAttributedString(
+                            item.title,
+                            query: isHighlighted ? searchQuery : nil
+                        ))
                             .font(.body)
                             .strikethrough(item.status == .completed, color: .secondary)
                             .foregroundStyle(item.status == .completed ? .secondary : .primary)
@@ -347,6 +375,13 @@ private struct TodoInboxRow: View {
             .help("Delete")
         }
         .padding(.vertical, 8)
+        .padding(.horizontal, isHighlighted ? 8 : 0)
+        .background(
+            isHighlighted
+                ? Color.yellow.opacity(0.16)
+                : Color.clear
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .overlay(alignment: .bottom) {
             Divider().opacity(0.7)
         }

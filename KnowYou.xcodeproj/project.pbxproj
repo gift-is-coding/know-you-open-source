@@ -32,6 +32,11 @@
 		880000010000000000000004 /* MyWikiSourceCatalogBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 880001010000000000000004 /* MyWikiSourceCatalogBuilderTests.swift */; };
 		880000010000000000000005 /* MyWikiSourceLibraryPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 880001010000000000000005 /* MyWikiSourceLibraryPresentationTests.swift */; };
 		890000010000000000000001 /* MyWikiWikilinkTextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 890001010000000000000001 /* MyWikiWikilinkTextTests.swift */; };
+		8A0000010000000000000001 /* MyWikiSearchServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A0001010000000000000001 /* MyWikiSearchServiceTests.swift */; };
+		8A0000010000000000000002 /* MyWikiSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A0001010000000000000002 /* MyWikiSearchService.swift */; };
+		8A0000010000000000000003 /* MyWikiSearchPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A0001010000000000000003 /* MyWikiSearchPresentationTests.swift */; };
+		8B0000010000000000000001 /* GlobalSearchServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B0001010000000000000001 /* GlobalSearchServiceTests.swift */; };
+		8B0000010000000000000002 /* GlobalSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B0001010000000000000002 /* GlobalSearchService.swift */; };
 		910000010000000000000001 /* AppIconAssetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 910001010000000000000001 /* AppIconAssetTests.swift */; };
 		A10000010000000000000001 /* KnowYouApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000001 /* KnowYouApp.swift */; };
 		A10000010000000000000002 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10001010000000000000002 /* AppEnvironment.swift */; };
@@ -209,6 +214,11 @@
 		880001010000000000000004 /* MyWikiSourceCatalogBuilderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiSourceCatalogBuilderTests.swift; sourceTree = "<group>"; };
 		880001010000000000000005 /* MyWikiSourceLibraryPresentationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiSourceLibraryPresentationTests.swift; sourceTree = "<group>"; };
 		890001010000000000000001 /* MyWikiWikilinkTextTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiWikilinkTextTests.swift; sourceTree = "<group>"; };
+		8A0001010000000000000001 /* MyWikiSearchServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiSearchServiceTests.swift; sourceTree = "<group>"; };
+		8A0001010000000000000002 /* MyWikiSearchService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiSearchService.swift; sourceTree = "<group>"; };
+		8A0001010000000000000003 /* MyWikiSearchPresentationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiSearchPresentationTests.swift; sourceTree = "<group>"; };
+		8B0001010000000000000001 /* GlobalSearchServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GlobalSearchServiceTests.swift; sourceTree = "<group>"; };
+		8B0001010000000000000002 /* GlobalSearchService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GlobalSearchService.swift; sourceTree = "<group>"; };
 		E60001010000000000000001 /* MyWikiContextPackServiceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiContextPackServiceTests.swift; sourceTree = "<group>"; };
 		E60001010000000000000002 /* MyWikiContextPackCommandTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiContextPackCommandTests.swift; sourceTree = "<group>"; };
 		E60001010000000000000003 /* MyWikiAgentConfigurationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MyWikiAgentConfigurationTests.swift; sourceTree = "<group>"; };
@@ -383,6 +393,7 @@
 				830001010000000000000008 /* MyWikiPipelineBridge.swift */,
 				83000101000000000000000A /* MyWikiAgentContextProvider.swift */,
 				E60001010000000000000004 /* MyWikiContextPackService.swift */,
+				8A0001010000000000000002 /* MyWikiSearchService.swift */,
 				E60001010000000000000005 /* MyWikiContextPackCommand.swift */,
 				E6000101000000000000000A /* MyWikiMCPCommand.swift */,
 				850001010000000000000002 /* MyWikiNavigationResolver.swift */,
@@ -565,6 +576,9 @@
 				880001010000000000000002 /* MyWikiSourceCatalogTests.swift */,
 				880001010000000000000004 /* MyWikiSourceCatalogBuilderTests.swift */,
 				880001010000000000000005 /* MyWikiSourceLibraryPresentationTests.swift */,
+				8A0001010000000000000001 /* MyWikiSearchServiceTests.swift */,
+				8A0001010000000000000003 /* MyWikiSearchPresentationTests.swift */,
+				8B0001010000000000000001 /* GlobalSearchServiceTests.swift */,
 				830001010000000000000007 /* MyWikiPipelineBridgeTests.swift */,
 				830001010000000000000009 /* MyWikiAgentContextProviderTests.swift */,
 				E60001010000000000000001 /* MyWikiContextPackServiceTests.swift */,
@@ -614,6 +628,7 @@
 				A1000006000000000000001C /* Scheduling */,
 				A1000006000000000000001E /* SyncMemory */,
 				AA0006010000000000000001 /* Todo */,
+				8B0006010000000000000001 /* Search */,
 				A10000060000000000000015 /* Storage */,
 				A1000006000000000000001B /* Summary */,
 				A1000006000000000000001F /* Updates */,
@@ -664,6 +679,14 @@
 				AA0001010000000000000005 /* TodoStore.swift */,
 			);
 			path = Todo;
+			sourceTree = "<group>";
+		};
+		8B0006010000000000000001 /* Search */ = {
+			isa = PBXGroup;
+			children = (
+				8B0001010000000000000002 /* GlobalSearchService.swift */,
+			);
+			path = Search;
 			sourceTree = "<group>";
 		};
 		AA0006010000000000000002 /* Todo */ = {
@@ -1006,6 +1029,8 @@
 				830000010000000000000008 /* MyWikiPipelineBridge.swift in Sources */,
 				83000001000000000000000A /* MyWikiAgentContextProvider.swift in Sources */,
 				E60000010000000000000004 /* MyWikiContextPackService.swift in Sources */,
+				8A0000010000000000000002 /* MyWikiSearchService.swift in Sources */,
+				8B0000010000000000000002 /* GlobalSearchService.swift in Sources */,
 				E60000010000000000000005 /* MyWikiContextPackCommand.swift in Sources */,
 				E6000001000000000000000A /* MyWikiMCPCommand.swift in Sources */,
 				850000010000000000000002 /* MyWikiNavigationResolver.swift in Sources */,
@@ -1087,6 +1112,9 @@
 				880000010000000000000002 /* MyWikiSourceCatalogTests.swift in Sources */,
 				880000010000000000000004 /* MyWikiSourceCatalogBuilderTests.swift in Sources */,
 				880000010000000000000005 /* MyWikiSourceLibraryPresentationTests.swift in Sources */,
+				8A0000010000000000000001 /* MyWikiSearchServiceTests.swift in Sources */,
+				8A0000010000000000000003 /* MyWikiSearchPresentationTests.swift in Sources */,
+				8B0000010000000000000001 /* GlobalSearchServiceTests.swift in Sources */,
 				830000010000000000000007 /* MyWikiPipelineBridgeTests.swift in Sources */,
 				830000010000000000000009 /* MyWikiAgentContextProviderTests.swift in Sources */,
 				E60000010000000000000001 /* MyWikiContextPackServiceTests.swift in Sources */,

@@ -99,10 +99,6 @@ release_dmg_path() {
   printf '%s/%s.dmg\n' "$release_dir" "$(artifact_basename)"
 }
 
-release_pkg_path() {
-  printf '%s/%s.pkg\n' "$release_dir" "$(artifact_basename)"
-}
-
 checksum_asset_name() {
   printf '%s.sha256\n' "$(basename "$(release_dmg_path)")"
 }

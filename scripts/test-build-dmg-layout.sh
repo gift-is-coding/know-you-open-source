@@ -19,25 +19,17 @@ assert_contains() {
 
 script="$(cat "$script_path")"
 
-assert_contains "$script" "Drag KnowYou to Applications" "background install instruction"
+assert_contains "$script" "Double-click KnowYou to install" "background install instruction"
 assert_contains "$script" "prepare_release_dir" "standalone release directory setup"
 assert_contains "$script" 'dmg_app_name="${KNOWYOU_DMG_APP_NAME:-KnowYou.app}"' "default dmg app name"
 assert_contains "$script" 'dmg_volume_name="${KNOWYOU_DMG_VOLUME_NAME:-KnowYou}"' "default dmg volume name"
 assert_contains "$script" "let width: CGFloat = 560" "compact background width"
 assert_contains "$script" "let height: CGFloat = 300" "compact background height"
-assert_contains "$script" "let appIconCenterX: CGFloat = 150" "background app icon center constant"
-assert_contains "$script" "let applicationsIconCenterX: CGFloat = 430" "background Applications icon center constant"
 assert_contains "$script" "let iconSize: CGFloat = 96" "background icon size constant"
-assert_contains "$script" "let arrowStartX = appIconCenterX + iconSize / 2 + 32" "arrow starts after app icon bounds"
-assert_contains "$script" "let arrowEndX = applicationsIconCenterX - iconSize / 2 - 18" "arrow ends before Applications icon bounds"
-assert_contains "$script" "shaft.move(to: NSPoint(x: arrowStartX, y: arrowY))" "arrow start uses layout constant"
-assert_contains "$script" "shaft.line(to: NSPoint(x: arrowEndX, y: arrowY))" "arrow end uses layout constant"
 assert_contains "$script" "-fs HFS+" "Finder-layout-friendly image format"
 assert_contains "$script" 'ditto "$app_path" "$mount_point/$dmg_app_name"' "copy app into mounted image"
-assert_contains "$script" 'ln -s /Applications "$mount_point/Applications"' "copy Applications symlink into mounted image"
 assert_contains "$script" "set bounds to {100, 100, 660, 400}" "compact installer window"
-assert_contains "$script" "set position of item appName of installerFolder to {150, 148}" "app icon on the left"
-assert_contains "$script" "set position of item \"Applications\" of installerFolder to {430, 148}" "Applications icon on the right"
+assert_contains "$script" "set position of item appName of installerFolder to {280, 148}" "app icon centered"
 assert_contains "$script" 'DMG_MOUNT_POINT="$mount_point" osascript' "Finder targets actual mounted path"
 assert_contains "$script" 'DMG_APP_NAME="$dmg_app_name"' "Finder receives custom app name"
 assert_contains "$script" 'set mountPoint to system attribute "DMG_MOUNT_POINT"' "AppleScript reads mounted path"
@@ -48,6 +40,16 @@ assert_contains "$script" "set icon size of theViewOptions to 96" "large icon si
 assert_contains "$script" "background.png" "custom background image"
 assert_contains "$script" '$mount_point/.DS_Store' "Finder layout metadata verification"
 assert_contains "$script" "Finder did not persist DMG layout metadata" "layout persistence failure message"
+
+if [[ "$script" == *'ln -s /Applications'* ]]; then
+  echo "Assertion failed: DMG should not depend on an Applications symlink" >&2
+  exit 1
+fi
+
+if [[ "$script" == *'set position of item "Applications"'* ]]; then
+  echo "Assertion failed: DMG should not position an Applications icon" >&2
+  exit 1
+fi
 
 tmp_dir="$(mktemp -d)"
 cleanup() {
@@ -68,7 +70,7 @@ if [[ ! -s "$swift_generator" ]]; then
   exit 1
 fi
 
-swift "$swift_generator" "$background_path" "Drag KnowYou to Applications" "Move the app first, then grant Full Disk Access."
+swift "$swift_generator" "$background_path" "Double-click KnowYou to install" "KnowYou will move itself to Applications and relaunch."
 pixel_width="$(sips -g pixelWidth "$background_path" 2>/dev/null | awk '/pixelWidth/ { print $2; exit }')"
 pixel_height="$(sips -g pixelHeight "$background_path" 2>/dev/null | awk '/pixelHeight/ { print $2; exit }')"
 

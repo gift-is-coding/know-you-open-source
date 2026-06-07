@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 enum OnboardingStep: Int, CaseIterable {
@@ -76,6 +77,87 @@ struct OnboardingApplicationInstallPolicy {
         let candidateURL = bundleURL.standardizedFileURL
         return candidateURL.lastPathComponent == expectedBundleURL.lastPathComponent
             && acceptedApplicationsDirectories.contains(candidateURL.deletingLastPathComponent().path)
+    }
+}
+
+struct ApplicationInstallMoveRequest: Equatable {
+    let sourceURL: URL
+    let targetURL: URL
+}
+
+enum ApplicationInstallMoveResult: Equatable {
+    case alreadyInstalled
+    case movedAndOpened(targetURL: URL)
+    case failed
+}
+
+struct ApplicationInstallAutoMovePolicy {
+    static func request(
+        bundleURL: URL,
+        bundleIdentifier: String?,
+        launchMode: LaunchMode,
+        isRunningUnderXCTest: Bool = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    ) -> ApplicationInstallMoveRequest? {
+        guard launchMode == .interactive,
+              isRunningUnderXCTest == false,
+              OnboardingPermissionBypassPolicy.allowsFullDiskAccessBypass(bundleURL: bundleURL) == false,
+              OnboardingApplicationInstallPolicy.isInstalledInApplications(
+                  bundleURL: bundleURL,
+                  bundleIdentifier: bundleIdentifier
+              ) == false
+        else {
+            return nil
+        }
+
+        return ApplicationInstallMoveRequest(
+            sourceURL: bundleURL.standardizedFileURL,
+            targetURL: OnboardingApplicationInstallPolicy
+                .targetBundleURL(bundleIdentifier: bundleIdentifier)
+                .standardizedFileURL
+        )
+    }
+}
+
+struct ApplicationInstallMover {
+    var fileExists: (URL) -> Bool
+    var removeItem: (URL) throws -> Void
+    var copyItem: (URL, URL) throws -> Void
+    var open: (URL) -> Bool
+
+    init(
+        fileExists: @escaping (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) },
+        removeItem: @escaping (URL) throws -> Void = { try FileManager.default.removeItem(at: $0) },
+        copyItem: @escaping (URL, URL) throws -> Void = { try FileManager.default.copyItem(at: $0, to: $1) },
+        open: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) }
+    ) {
+        self.fileExists = fileExists
+        self.removeItem = removeItem
+        self.copyItem = copyItem
+        self.open = open
+    }
+
+    func moveToApplicationsAndOpen(request: ApplicationInstallMoveRequest) -> ApplicationInstallMoveResult {
+        let sourceURL = request.sourceURL.standardizedFileURL
+        let targetURL = request.targetURL.standardizedFileURL
+
+        guard sourceURL != targetURL else {
+            return .alreadyInstalled
+        }
+
+        do {
+            if fileExists(targetURL) {
+                try removeItem(targetURL)
+            }
+            try copyItem(sourceURL, targetURL)
+
+            guard open(targetURL) else {
+                return .failed
+            }
+
+            return .movedAndOpened(targetURL: targetURL)
+        } catch {
+            return .failed
+        }
     }
 }
 

@@ -26,6 +26,8 @@ assert_contains "$script" 'dmg_volume_name="${KNOWYOU_DMG_VOLUME_NAME:-KnowYou}"
 assert_contains "$script" "let width: CGFloat = 560" "compact background width"
 assert_contains "$script" "let height: CGFloat = 300" "compact background height"
 assert_contains "$script" "let iconSize: CGFloat = 96" "background icon size constant"
+assert_contains "$script" 'app_size_mb="$(du -sm "$app_path" | awk' "dynamic dmg sizing source"
+assert_contains "$script" '-size "${dmg_size_mb}m"' "dynamic dmg size"
 assert_contains "$script" "-fs HFS+" "Finder-layout-friendly image format"
 assert_contains "$script" 'ditto "$app_path" "$mount_point/$dmg_app_name"' "copy app into mounted image"
 assert_contains "$script" "set bounds to {100, 100, 660, 400}" "compact installer window"
@@ -48,6 +50,11 @@ fi
 
 if [[ "$script" == *'set position of item "Applications"'* ]]; then
   echo "Assertion failed: DMG should not position an Applications icon" >&2
+  exit 1
+fi
+
+if [[ "$script" == *'-size 64m'* ]]; then
+  echo "Assertion failed: DMG should not use the old fixed 64m image size" >&2
   exit 1
 fi
 

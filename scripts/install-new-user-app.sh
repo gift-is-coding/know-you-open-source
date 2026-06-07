@@ -88,6 +88,7 @@ fi
 
 rm -rf "$installed_app"
 ditto "$built_app" "$installed_app"
+"$repo_root/scripts/embed-mywiki-runner.sh" "$installed_app"
 
 old_executable="$installed_app/Contents/MacOS/$original_executable_name"
 new_executable="$installed_app/Contents/MacOS/$executable_name"
@@ -127,7 +128,9 @@ if [[ "$actual_bundle_id" != "$bundle_id" ||
       "$actual_display_name" != "$app_name" ||
       "$actual_name" != "$app_name" ||
       "$actual_executable" != "$executable_name" ||
-      ! -f "$new_executable" ]]; then
+      ! -f "$new_executable" ||
+      ! -x "$installed_app/Contents/Resources/MyWikiRunner/node" ||
+      ! -f "$installed_app/Contents/Resources/MyWikiRunner/mywiki-runner.js" ]]; then
   echo "Installed app identity check failed." >&2
   echo "CFBundleIdentifier: $actual_bundle_id" >&2
   echo "CFBundleDisplayName: $actual_display_name" >&2
@@ -145,4 +148,5 @@ echo "CFBundleIdentifier: $actual_bundle_id"
 echo "CFBundleDisplayName: $actual_display_name"
 echo "CFBundleName: $actual_name"
 echo "CFBundleExecutable: $actual_executable"
+echo "MyWikiRunner: $installed_app/Contents/Resources/MyWikiRunner"
 echo "Signing identity: $signing_identity"

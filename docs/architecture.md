@@ -31,7 +31,7 @@ KnowYou 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 5. 提醒层：晚间回顾 planner、本地通知权限与调度
 6. 界面层：真实三栏阅读器上的 onboarding coachmarks、设置页、菜单栏状态入口、About & Community 对外入口
 
-分发链路包括 Developer ID release archive、notarytool notarization、stapled app 验证与 drag-to-Applications DMG 发布。
+分发链路包括 Developer ID release archive、notarytool notarization、stapled app 验证与双击自移动安装 DMG 发布。
 
 ```mermaid
 flowchart LR
@@ -77,10 +77,10 @@ flowchart LR
 
 - Release 构建使用 `Developer ID Application`
 - Release 启用 hardened runtime
-- 分发脚本通过 `scripts/build-release.sh`、`scripts/notarize-release.sh`、`scripts/build-dmg.sh`、`scripts/verify-release.sh` 串起 archive、压缩、notarize、staple、Gatekeeper 验证与 DMG 打包
+- 分发脚本通过 `scripts/build-release.sh`、`scripts/embed-mywiki-runner.sh`、`scripts/notarize-release.sh`、`scripts/build-dmg.sh`、`scripts/verify-release.sh` 串起 archive、内置 MyWikiRunner、压缩、notarize、staple、Gatekeeper 验证与 DMG 打包
 - Apple notarization 凭据通过本机 keychain 中的 `notarytool` profile 管理，而不是保存在仓库里
 
-这条链路的目标是让仓库能稳定产出可上传到下载页的 macOS DMG，同时不影响 Debug/测试阶段的日常签名配置。
+这条链路的目标是让仓库能稳定产出可上传到下载页的 macOS DMG，同时不影响 Debug/测试阶段的日常签名配置。DMG 内只放真实 `.app` 和最小 Finder metadata；用户双击 DMG 内 app 时，交互式启动会复制到 `/Applications/KnowYou.app` 或 `/Applications/KnowYou New User.app`、打开目标 app，并退出临时实例。复制失败时不阻塞启动，仍回到 onboarding 的手动安装兜底。
 
 ## 3. 运行时入口
 
@@ -529,7 +529,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - `demoClick` 要求用户点击正文段落，右侧 sources 随阅读位置联动
 - `demoReference` 解释段落与 reference 的追溯关系
 - `privacy` 用居中 coachmark 强调 `.md` 纯本地与“没有服务端”
-- `installApp` 要求生产用户先从 `/Applications/KnowYou.app` 运行；New User QA 则要求 `/Applications/KnowYou New User.app`。判断层同时接受 `/System/Volumes/Data/Applications/<target app>` 作为 macOS 数据卷上的等价安装路径。主按钮会尝试复制当前 bundle 到目标 Applications bundle 并重启，失败时提供 Finder reveal 供用户手动拖动
+- `installApp` 要求生产用户先从 `/Applications/KnowYou.app` 运行；New User QA 则要求 `/Applications/KnowYou New User.app`。判断层同时接受 `/System/Volumes/Data/Applications/<target app>` 作为 macOS 数据卷上的等价安装路径。DMG 内双击 app 会优先自动复制当前 bundle 到目标 Applications bundle 并重启；如果自动移动失败，onboarding 主按钮会使用同一套 mover 重试，最后提供 Finder reveal 供用户手动拖动
 - `permissions` 只 gate `Full Disk Access`，并在同位置 coachmark 里解释通知与剪贴板上下文价值；如果系统列表里没有 KnowYou，主路径是点击 `+` 后从 Applications 选择当前 app，`Show App to Add` 用于在 Finder 中定位正确 bundle，页面同时展示 `FullDiskAccessAddGuide` bitmap 示意图
 - `enginePrompt` 只负责高亮真实产品里的引擎按钮，`engineSetup` 则在现有引擎配置组件里完成默认引擎设置
 - `generating` 在权限与引擎都 ready 后先展示首次历史生成确认弹窗，明确 **KnowYou** 只在当前 Mac 本地生成，包含 `All local. No backend server.` 隐私承诺
@@ -714,7 +714,7 @@ sequenceDiagram
 1. 用户首次进入真实主阅读器，默认选中 `Demo Day`
 2. `demoRead` / `demoClick` / `demoReference` 依次引导用户先读正文、再点段落、再理解右侧 reference
 3. `privacy` 先建立 “`.md` 纯本地、无服务端” 的信任边界
-4. `installApp` 确认用户正在从 `/Applications/KnowYou.app` 运行；如果不是，则要求移动到 Applications 后重启
+4. `installApp` 确认用户正在从 `/Applications/KnowYou.app` 运行；DMG 或 Downloads 中的交互式启动会先自移动到 Applications 并重启，失败时才要求用户手动移动
 5. `permissions` 只要求用户完成 `Full Disk Access`
 6. `enginePrompt` 高亮右上角真实引擎按钮，用户在 `engineSetup` 中完成默认引擎设置
 7. `generating` 步骤展示首次历史生成确认弹窗；弹窗说明 **KnowYou** 只在当前 Mac 本地生成近期日记，并包含 `All local. No backend server.` 隐私承诺
@@ -736,7 +736,7 @@ My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责
 - [MyWikiMarkdownStore.swift](../KnowYou/Services/MyWiki/MyWikiMarkdownStore.swift) 固定读取 LLM Wiki 原生三个目录，解析 frontmatter、正文、mentions、sources、aliases、related、tags 和 confidence，转成 SwiftUI 索引与详情模型。读取层不再兼容旧 `wiki/people`、`wiki/projects`、`wiki/topics`、`wiki/preferences`、`wiki/follow-ups` 等目录或旧 type
 - `MyWikiRenameService` 负责 display name、aliases 与 summary 的保存；保存前会检查同分类内的标题或 slug 冲突，冲突时交给 UI 引导用户保留现名、另选名称或进入合并审核
 - `MyWikiDuplicateService` 负责主动发现疑似重复项，并在用户确认后合并 sources、aliases、related 与正文；合并前写入 `.llm-wiki/page-history/` 备份，合并后重写 wiki 内部引用并刷新 dashboard snapshot
-- [MyWikiPipelineBridge.swift](../KnowYou/Services/MyWiki/MyWikiPipelineBridge.swift) 启动 app bundle 内置的 `Contents/Resources/MyWikiRunner`。runner 托管 llm_wiki 原生 `autoIngest`，并把 Source Catalog manifest 作为 `--manifest` 传入；所有 LLM 调用通过 My Wiki Diary Engine bridge 回到 KnowYou 已保存的 engine 配置。产品构建不包含额外 GUI 工作台、`node_modules` 或 `ThirdParty/llm_wiki` 源码作为运行依赖。仅测试和本地开发可以显式注入开发源码 fallback；普通用户 UI 不会走该路径。默认每次只处理 3 个 source，方便用户逐步重跑和检查质量。pipeline 不可用或失败时只写入 `.llm-wiki/last-ingest-status.json` 的 failed 状态，不生成 keyword/regex fallback 本体页，也不把降级结果标记为成功
+- [MyWikiPipelineBridge.swift](../KnowYou/Services/MyWiki/MyWikiPipelineBridge.swift) 启动 app bundle 内置的 `Contents/Resources/MyWikiRunner`。runner 托管 llm_wiki 原生 `autoIngest`，并把 Source Catalog manifest 作为 `--manifest` 传入；所有 LLM 调用通过 My Wiki Diary Engine bridge 回到 KnowYou 已保存的 engine 配置。`scripts/embed-mywiki-runner.sh` 会把 bundled Node 与 `mywiki-runner.js` 放入 release、New User QA 和 dev-launch app；`scripts/build-dmg.sh` 会拒绝缺少 runner 的 app。产品构建不包含额外 GUI 工作台、`node_modules` 或 `ThirdParty/llm_wiki` 源码作为运行依赖。仅测试和本地开发可以显式注入开发源码 fallback；普通用户 UI 不会走该路径，也不需要安装 Node/npm。默认每次只处理 3 个 source，方便用户逐步重跑和检查质量。pipeline 不可用或失败时只写入 `.llm-wiki/last-ingest-status.json` 的 failed 状态，不生成 keyword/regex fallback 本体页，也不把降级结果标记为成功
 - [ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts](../ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts) 只做运行壳：解析 `--manifest`、`--max-sources`、`--skip-indexed`、`--continue-on-error` 和 `knowyou-bridge` provider 参数，选择 source，重置运行状态，删除旧 KnowYou prompt context 文件，然后直接调用 llm_wiki 原生 `autoIngest`。提供 manifest 时，headless runner 只处理 manifest 内列出的 project-relative `raw/sources` 路径，并把 `folderContext` 通过原生 `autoIngest` 参数传入；没有 manifest 且限定 `--max-sources` 时，优先选择尚未生成 `wiki/sources/<source>.md` 的最新 raw source，再回退到已索引 source。[ingest.ts](../ThirdParty/llm_wiki/src/lib/ingest.ts) 的生成目标保持 LLM Wiki 原生 `wiki/sources`、`wiki/entities`、`wiki/concepts`，cache key 使用 native-contextless pipeline version，避免复用旧 schema-injected 输出
 - [MyWikiAgentContextProvider.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/Services/MyWiki/MyWikiAgentContextProvider.swift) 输出给 Codex、Claude、Cowork 等 agent 使用的最小必要背景摘要
 - [MyWikiContextPackService.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/Services/MyWiki/MyWikiContextPackService.swift) 根据第三方 agent 提供的一段背景信息生成 compact context pack。它读取 `wiki/` 和 `raw/sources/` 下的 Markdown，构建 query plan，优先排序已整理的 wiki 页面，并为每个 item 返回 excerpt、matched terms 和 citation

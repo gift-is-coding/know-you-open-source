@@ -6,16 +6,16 @@
 
 ## 已确认问题
 
-1. DMG 拖拽安装页的主要问题是错位，不是单纯模糊。背景箭头原来写死在 `x=235...325`，但 Finder icon center 是 KnowYou `{150,148}`、Applications `{430,148}`，icon size 是 `96`。箭头终点离 Applications icon 左边界还有明显距离，视觉上像没有指向目标。
-2. 背景 PNG 还存在 Retina 像素密度不足风险：Finder window 是 `560x300` points，原背景只有 `560x300` pixels。
-3. MyWiki LLM 对普通用户不可用的根因不是“用户 PATH 没 npm”这么小，而是当前自动 ingest 路径仍是开发者形态：Swift bridge 回退到 `ThirdParty/llm_wiki` 后执行 `npm run knowyou:ingest`，普通用户没有源码、node_modules、Node/npm。
-4. MyWiki headless runner 还硬编码 `--provider codex-cli --model gpt-5.5`，没有复用 KnowYou 已配置的 Diary Engine / LLM API。普通用户即使配置了 OpenAI、Anthropic、Gemini 或 OpenAI-compatible API，MyWiki 也不会使用。
+1. DMG 拖拽安装页的主要问题是错位，不是单纯模糊。继续依赖 Applications alias、箭头和两个 Finder icon 坐标会让安装页反复不稳定。
+2. MyWiki LLM 对普通用户不可用的根因不是“用户 PATH 没 npm”这么小，而是用户可点击的 app 产物里没有稳定内置 MyWikiRunner 时，Swift bridge 只能失败或回退到开发者形态；普通用户没有源码、node_modules、Node/npm。
+3. MyWiki 必须复用 KnowYou 已配置的 Diary Engine。内置 runner 只承载 llm_wiki 原生 ingest；LLM request 通过 `knowyou-bridge` 回到 Swift summarizer，而不是让用户重新配置 API。
 
 ## 目标
 
-- DMG 背景箭头用同一套 layout constants 从 Finder icon center 与 icon size 派生，避免再手写错位坐标。
+- DMG 不再依赖 Applications alias 和箭头坐标；背景只提示双击 app 安装，app 自己复制到 Applications 并重启。
 - DMG 背景输出 `1120x600` pixels，同时保持 `560x300` point 布局。
-- MyWiki ingest 使用 KnowYou 已保存的 LLM 配置生成 runner 参数；API key 通过环境变量传递，不放进命令行参数。
+- MyWiki ingest 使用 app 内置 `Contents/Resources/MyWikiRunner`，并通过 My Wiki Diary Engine bridge 复用 KnowYou 已保存的 LLM engine。
+- Release、New User QA、dev launch 和 DMG 打包链路都必须保证 MyWikiRunner 被 embed；缺失时打包失败。
 - 保留失败状态写入，不把 LLM pipeline 失败伪装成本地 fallback 成功。
 
 ## 非目标
@@ -23,13 +23,13 @@
 - 不重写 MyWiki 的 LLM 语义 pipeline。
 - 不清空用户的 MyWiki、UserDefaults、Keychain、TCC 或 app container。
 - 本分支不发布远端 release、不 push。
-- 不在这次小修里完成完整的 headless runner 产品化打包；这仍是普通用户完全摆脱 Node/npm 的后续发布工程项。
+- 不发布远端 release、不 push。
 
 ## 实现设计
 
 ### DMG
 
-`scripts/build-dmg.sh` 的 Swift 背景生成器使用 `appIconCenterX`、`applicationsIconCenterX`、`iconCenterY`、`iconSize` 定义布局。箭头从 `appIconCenterX + iconSize / 2 + 32` 指向 `applicationsIconCenterX - iconSize / 2 - 18`，确保它位于两个 icon 框之间并接近 Applications 目标。
+`scripts/build-dmg.sh` 的 Swift 背景生成器只保留居中的 app icon 位置和 “Double-click KnowYou to install” 文案。DMG 内不再创建 Applications alias，也不再设置 Applications icon 坐标。脚本在打包前验证 app 内存在 `Contents/Resources/MyWikiRunner/node` 和 `mywiki-runner.js`。
 
 同时保留 Retina-safe bitmap：`pixelsWide = width * 2`、`pixelsHigh = height * 2`，并设置 `bitmap.size` 为 point 尺寸。
 
@@ -37,20 +37,16 @@
 
 ### MyWiki
 
-`MyWikiLLMInvocation` 从 `SummarizerConfig` 解析 MyWiki runner 参数：
-
-- `llmAPI`：映射到 llm_wiki 支持的 provider。OpenAI/Anthropic/Gemini 走对应 provider；DeepSeek/OpenRouter/Qwen/Kimi/Zhipu/custom 走 `custom` + endpoint + api mode。
-- API token 写入 `KNOWYOU_MYWIKI_LLM_API_KEY` 环境变量。
-- Claude CLI / Codex CLI 只在用户明确选用对应 engine 时使用，并把已解析 CLI 所在目录 prepend 到 PATH。
-- 不支持的 engine 写入明确失败状态。
-
-`ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts` 接受 `--custom-endpoint`、`--ollama-url`、`--api-mode`，并从 `KNOWYOU_MYWIKI_LLM_API_KEY` 读取 API key。
+`MyWikiPipelineBridge` 在 `.bundledRunner` 目标下启动 `Contents/Resources/MyWikiRunner/node mywiki-runner.js --provider knowyou-bridge`。runner 输出 JSONL `llm.request` 时，Swift 侧 `MyWikiLLMBridge` 交给当前 diary summarizer 完成，并把 response/error 写回 runner stdin。API key 不出现在 runner 命令行。
 
 保留 `MyWikiNPMResolver` 只作为 development-source fallback 的开发者兼容层；它不是普通用户的最终运行时方案。
 
 ## 测试
 
 - `scripts/test-build-dmg-layout.sh`
+- `scripts/test-release-common.sh`
+- `scripts/test-mywiki-runner-package.sh`
 - `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/MyWikiPipelineBridgeTests`
 - `npx vitest run src/headless/knowyou-ingest.test.ts`
+- `scripts/verify-mywiki-real-diary.sh`
 - 完整验证按仓库标准执行：`xcodebuild test -scheme KnowYou -destination 'platform=macOS'`、`xcodebuild build -scheme KnowYou -destination 'platform=macOS'`、`git diff --check`

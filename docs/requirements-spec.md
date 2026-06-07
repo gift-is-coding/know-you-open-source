@@ -353,7 +353,7 @@ onboarding 的配置约束为：
 - `demoClick` 必须要求用户点击正文段落，右侧 source detail 才进入下一步解释
 - `demoReference` 必须说明右侧 reference 会跟随阅读位置变化，而不是重复展示另一份正文
 - `privacy` 必须直接说明“内容以本地 `.md` 文件保存在当前 Mac 上、没有服务端”
-- `installApp` 必须把 `/Applications/KnowYou.app` 作为生产推荐安装路径；自动移动失败时必须提供 Finder 入口，让用户手动拖到 Applications
+- `installApp` 必须把 `/Applications/KnowYou.app` 作为生产推荐安装路径；DMG 或 Downloads 中的交互式启动应先自动复制到目标 Applications app 并重启；自动移动失败时必须提供 Finder 入口，让用户手动拖到 Applications
 - `permissions` 只允许把 `Full Disk Access` 作为唯一权限硬 gate，并且必须解释通知与剪贴板上下文如何帮助 story 生成
 - `permissions` 必须把 Full Disk Access 拆成可执行步骤：打开系统设置、如果列表没有 KnowYou 则点击 `+`、从 Applications 选择当前 app、返回后重新检查；页面必须解释 `Show App to Add` 是用来定位当前 app bundle
 - `enginePrompt` 必须高亮真实产品里的引擎按钮，`engineSetup` 必须复用现有引擎配置模块，而不是造一套 onboarding 专用配置页
@@ -411,7 +411,7 @@ onboarding 的配置约束为：
 - 项目必须提供可复用脚本来完成 archive、压缩、notarize、staple、verify、DMG 打包
 - Apple ID app-specific password 不得保存在仓库文件中，必须通过 keychain `notarytool` profile 管理
 - 发布验证必须至少包含 `codesign --verify --deep --strict --verbose=2`、`stapler validate`、`spctl --assess --type execute -vv`
-- 对外下载主 artifact 必须是包含 `KnowYou.app` 与 `Applications` 链接的 DMG，以引导用户把 app 安装到 `/Applications`
+- 对外下载主 artifact 必须是包含真实 `KnowYou.app` 的 DMG；DMG 不依赖 `Applications` alias 或箭头坐标，背景文案引导用户双击 app，app 自己复制到 `/Applications` 后重启
 - Release 构建必须配置 Sparkle EdDSA public key；该公钥可以作为安全默认值进入项目配置，私钥必须留在发版用户 Keychain；发布脚本必须使用 Sparkle `sign_update` 为 DMG enclosure 生成签名属性
 - `fullRecovery` 成功写盘前必须执行一次规范化，以保证新生成 `Details` 保持 paragraph-level workstream 结构
 
@@ -489,6 +489,7 @@ onboarding 的配置约束为：
 - 仓库中的旧 starter extractor 不得再作为产品代码或测试入口保留；读取层不得为了兼容旧 starter 输出而过滤或重分类原生 `entities` / `concepts` 页面
 - My Wiki 生成页的 frontmatter type 由 llm_wiki 原生 pipeline 决定；KnowYou 展示层只读取 `wiki/sources`、`wiki/entities`、`wiki/concepts` 内的 Markdown 和 frontmatter，不再兼容旧 `person`、`organization`、`project`、`event`、`topic`、`decision`、`preference`、`follow-up`、`summary` 页面
 - 产品版 My Wiki 生成必须通过内置 MyWikiRunner 运行，不得依赖额外 GUI 工作台、npm、用户 PATH、系统 Node 或开发源码目录
+- Release、New User QA 和 dev launch 产物都必须 embed `Contents/Resources/MyWikiRunner/node` 与 `mywiki-runner.js`；DMG 打包脚本必须拒绝缺少 MyWikiRunner 的 app，防止普通用户安装后点击 `Update My Wiki` 静默失败
 - 开发源码 fallback 只能由测试或本地开发显式注入；普通用户 UI 不得自动回退到 `ThirdParty/llm_wiki`
 - My Wiki ingest 必须复用 KnowYou 已配置的 LLM engine；不能默认把所有用户硬编码到 Codex CLI。API key 等 secret 必须通过环境变量或等价安全通道传给 runner，不得出现在命令行参数中
 - 第一版只能导出 KnowYou 已生成的每日 Markdown，不得直接导出未经额外授权的 SQLite 原始事件
@@ -500,6 +501,7 @@ onboarding 的配置约束为：
 - Codex、Claude Code、Cursor、Gemini CLI 和 OpenClaw 必须同时安装 `.agents/skills/my-wiki-context` companion Skill；Claude Desktop 只安装 MCP 连接配置；generic MCP 的手动配置必须保留在高级配置区
 - My Wiki MCP 必须暴露 `my_wiki_context`，输入是一段背景信息或任务描述，而不要求调用方只能提供关键词
 - My Wiki MCP 必须由 KnowYou app 自身内置提供，默认配置必须直接启动 `KnowYou --my-wiki-mcp --project-root <path>`；用户不得被要求安装 Node、npm 或运行 `npm install`
+- My Wiki 验证必须包含一条真实 Diary fixture 到 ontology 输出的本地检查，至少证明 `wiki/entities`、`wiki/concepts`、`wiki/sources` 和 `.llm-wiki/last-ingest-status.json` 的成功状态能由 bundled runner 生成
 - `my_wiki_context` 返回必须包含 query、query plan、items 和 citations；items 必须包含 title、page type、excerpt、score、matched terms 和 citation
 - KnowYou 的 `--my-wiki-context` headless 模式必须只输出 JSON 并退出，不得启动主窗口、采集器或常驻后台服务
 - KnowYou 的 `--my-wiki-mcp` headless 模式必须逐行响应 stdio JSON-RPC 请求，不得等待 stdin 关闭后才输出结果

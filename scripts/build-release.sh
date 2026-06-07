@@ -28,10 +28,7 @@ xcodebuild archive \
 ensure_file_exists "$archive_path/Products/Applications/KnowYou.app"
 
 ditto "$archive_path/Products/Applications/KnowYou.app" "$app_path"
-"$repo_root/scripts/build-mywiki-runner.sh"
-rm -rf "$app_path/Contents/Resources/MyWikiRunner"
-mkdir -p "$app_path/Contents/Resources"
-ditto "$repo_root/build/MyWikiRunner" "$app_path/Contents/Resources/MyWikiRunner"
+"$repo_root/scripts/embed-mywiki-runner.sh" "$app_path"
 sign_mywiki_runner_nested_code "$app_path"
 sign_release_app_nested_code "$app_path" true
 ditto -c -k --sequesterRsrc --keepParent "$app_path" "$(release_zip_path)"

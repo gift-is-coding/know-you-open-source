@@ -55,6 +55,10 @@ final class KnowYouAppDelegate: NSObject, NSApplicationDelegate, UNUserNotificat
     }
 
     func applicationDidFinishLaunching(_: Notification) {
+        guard ApplicationInstallAutoMoveRuntime.didScheduleMove == false else {
+            return
+        }
+
         DispatchQueue.main.async {
             KnowYouMainWindowPresenter.shared.showConfiguredWindowIfNeeded()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -109,9 +113,13 @@ struct KnowYouApp: App {
         if launchMode == .myWikiMCP {
             Self.runMyWikiMCPCommandAndExit(arguments: CommandLine.arguments)
         }
+        let didScheduleApplicationMove = Self.scheduleApplicationInstallAutoMoveIfNeeded(launchMode: launchMode)
 
         self.launchMode = launchMode
-        let initialAppState = AppState(bootstrapServices: Self.shouldBootstrapServices(for: launchMode))
+        let initialAppState = AppState(
+            bootstrapServices: Self.shouldBootstrapServices(for: launchMode)
+                && didScheduleApplicationMove == false
+        )
         _appState = State(
             initialValue: initialAppState
         )
@@ -157,6 +165,28 @@ struct KnowYouApp: App {
             && isRunningUnderXCTest == false
     }
 
+    private static func scheduleApplicationInstallAutoMoveIfNeeded(launchMode: LaunchMode) -> Bool {
+        guard let request = ApplicationInstallAutoMovePolicy.request(
+            bundleURL: Bundle.main.bundleURL,
+            bundleIdentifier: Bundle.main.bundleIdentifier,
+            launchMode: launchMode,
+            isRunningUnderXCTest: isRunningUnderXCTest
+        ) else {
+            return false
+        }
+
+        switch ApplicationInstallMover().moveToApplicationsAndOpen(request: request) {
+        case .movedAndOpened:
+            ApplicationInstallAutoMoveRuntime.didScheduleMove = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                NSApp.terminate(nil)
+            }
+            return true
+        case .alreadyInstalled, .failed:
+            return false
+        }
+    }
+
     private static func runMyWikiContextCommandAndExit(arguments: [String]) -> Never {
         let result = MyWikiContextPackCommand.run(arguments: arguments)
         write(result.stdout, to: .standardOutput)
@@ -176,6 +206,11 @@ struct KnowYouApp: App {
         }
         fileHandle.write(data)
     }
+}
+
+@MainActor
+private enum ApplicationInstallAutoMoveRuntime {
+    static var didScheduleMove = false
 }
 
 enum KnowYouMainWindowLaunchPolicy {

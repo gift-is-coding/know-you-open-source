@@ -324,7 +324,7 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
         let statusURL = root.appending(path: ".llm-wiki/last-ingest-status.json")
         let statusText = try String(contentsOf: statusURL, encoding: .utf8)
         XCTAssertTrue(statusText.contains(#""status":"failed""#), statusText)
-        XCTAssertTrue(statusText.contains("MyWiki runner is not available"), statusText)
+        XCTAssertTrue(statusText.contains("This app is missing the built-in MyWiki runner"), statusText)
     }
 }
 

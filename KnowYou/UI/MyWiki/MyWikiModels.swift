@@ -312,7 +312,7 @@ enum MyWikiSourceLibraryEntryPolicy {
 struct MyWikiDigestSchedulePresentation: Equatable {
     let title = "My Wiki digest"
     let triggerText = "Updates daily after Diary and Todo are ready."
-    let lastRunTitle = "Last update"
+    let lastRunTitle: String
     let lastRunValue: String
     let nextRunTitle = "Next update"
     let nextRunValue: String
@@ -328,10 +328,15 @@ struct MyWikiDigestSchedulePresentation: Equatable {
         isProjectAvailable: Bool = true,
         displayTimeZone: TimeZone = .current
     ) {
-        if let updatedAt = ingestProgress?.updatedAt,
+        if ingestProgress?.state == .failed {
+            lastRunTitle = "Last successful update"
+            lastRunValue = "Not updated yet"
+        } else if let updatedAt = ingestProgress?.updatedAt,
            let date = ISO8601DateFormatter().date(from: updatedAt) {
+            lastRunTitle = "Last successful update"
             lastRunValue = Self.timeText(for: date, timeZone: displayTimeZone)
         } else {
+            lastRunTitle = "Last successful update"
             lastRunValue = "Not updated yet"
         }
         nextRunValue = nextRunDate.map { Self.timeText(for: $0, timeZone: displayTimeZone) } ?? "After Diary and Todo"
@@ -347,7 +352,10 @@ struct MyWikiDigestSchedulePresentation: Equatable {
         } else {
             updateNowTitle = "Update Now"
             isUpdateNowDisabled = false
-            self.statusMessage = Self.visibleStatusMessage(statusMessage)
+            self.statusMessage = Self.visibleStatusMessage(
+                statusMessage,
+                ingestProgress: ingestProgress
+            )
         }
     }
 
@@ -362,11 +370,18 @@ struct MyWikiDigestSchedulePresentation: Equatable {
             .replacingOccurrences(of: "\u{00A0}", with: " ")
     }
 
-    private static func visibleStatusMessage(_ message: String?) -> String? {
-        guard let trimmed = message?.trimmingCharacters(in: .whitespacesAndNewlines),
+    private static func visibleStatusMessage(
+        _ message: String?,
+        ingestProgress: MyWikiIngestProgress?
+    ) -> String? {
+        let rawMessage = message ?? (ingestProgress?.state == .failed ? ingestProgress?.message : nil)
+        guard let trimmed = rawMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
               trimmed.isEmpty == false,
               trimmed != "Ready" else {
             return nil
+        }
+        if ingestProgress?.state == .failed {
+            return "Last attempt failed: \(trimmed)"
         }
         return trimmed
     }

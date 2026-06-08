@@ -23,7 +23,7 @@ enum MyWikiPanelStatusPresentationPolicy {
         case .invalidBundledRunner(let message):
             return message
         case .missing:
-            return "MyWiki runner is not available."
+            return MyWikiPipelineTarget.missingRunnerMessage
         }
     }
 

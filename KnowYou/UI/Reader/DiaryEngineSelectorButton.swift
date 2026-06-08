@@ -159,6 +159,9 @@ struct DiaryEngineTitlebarSelector: View {
     }
 
     private func openEngineSelector() {
+        if appState.openOnboardingEngineSetupFromTitlebarIfNeeded() {
+            return
+        }
         isShowingEnginePanel = true
         if engineRecoveryNudge?.kind == .repairRequired {
             Task { @MainActor in

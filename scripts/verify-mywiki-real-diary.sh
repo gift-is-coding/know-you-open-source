@@ -2,13 +2,28 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-fixture_dir="$repo_root/ThirdParty/llm_wiki/src/headless/fixtures/knowyou-real-diary"
+source_dir="${KNOWYOU_REAL_DIARY_SOURCE_DIR:-$repo_root/ThirdParty/llm_wiki/src/headless/fixtures/knowyou-real-diary}"
 tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/knowyou-mywiki-real-diary.XXXXXX")"
 trap 'rm -rf "$tmp_root"' EXIT
 
 project="$tmp_root/KnowYouContext"
 mkdir -p "$project/raw/sources"
-cp "$fixture_dir"/*.md "$project/raw/sources/"
+
+source_files=()
+while IFS= read -r source_file; do
+  source_files+=("$source_file")
+done < <(find "$source_dir" -maxdepth 1 -type f -name '2026-*.md' | sort | tail -n 3)
+
+if [[ "${#source_files[@]}" -lt 3 ]]; then
+  echo "Expected at least 3 diary markdown files in: $source_dir" >&2
+  exit 1
+fi
+
+source_names=()
+for source_file in "${source_files[@]}"; do
+  cp "$source_file" "$project/raw/sources/"
+  source_names+=("$(basename "$source_file")")
+done
 
 "$repo_root/scripts/build-mywiki-runner.sh"
 runner="$repo_root/build/MyWikiRunner"
@@ -17,147 +32,76 @@ cat >"$tmp_root/diary-engine-harness.mjs" <<'JS'
 import { spawn } from "node:child_process"
 import readline from "node:readline"
 
-const [nodePath, runnerScript, projectPath] = process.argv.slice(2)
+const [nodePath, runnerScript, projectPath, ...sourceNames] = process.argv.slice(2)
 
 function sourceNameFrom(messages) {
   const transcript = messages.map((message) => message.content ?? "").join("\n")
-  for (const sourceName of ["2026-06-01.md", "2026-06-02.md", "2026-06-03.md"]) {
+  for (const sourceName of sourceNames) {
     if (transcript.includes(sourceName)) {
       return sourceName
     }
   }
-  return "2026-06-01.md"
+  return sourceNames[0] ?? "2026-06-01.md"
 }
 
 function analysisFor(sourceName) {
   return [
     `Analysis for ${sourceName}.`,
     "Key entities: KnowYou.",
-    "Key concepts: bundled MyWikiRunner, Diary Engine reuse, source library inclusion.",
+    "Key concepts: bundled MyWikiRunner, Diary Engine reuse, source library inclusion, real diary verification.",
     "Recommendations: create traceable source, entity, and concept pages.",
   ].join("\n")
 }
 
 function fileBlocksFor(sourceName) {
-  if (sourceName === "2026-06-02.md") {
-    return [
-      "---FILE: wiki/sources/2026-06-02.md---",
-      "---",
-      "type: source",
-      "title: 2026-06-02",
-      "created: 2026-06-04",
-      "updated: 2026-06-04",
-      "tags: [diary-engine, mywiki]",
-      "related: [diary-engine-reuse]",
-      "sources: [2026-06-02.md]",
-      "---",
-      "",
-      "# 2026-06-02",
-      "",
-      "This diary source records testing Diary Engine configuration and the product rule that MyWiki should reuse the same Diary Engine.",
-      "---END FILE---",
-      "",
-      "---FILE: wiki/concepts/diary-engine-reuse.md---",
-      "---",
-      "type: concept",
-      "title: Diary Engine Reuse",
-      "created: 2026-06-04",
-      "updated: 2026-06-04",
-      "tags: [diary-engine, product-architecture]",
-      "related: [knowyou]",
-      "sources: [2026-06-02.md]",
-      "---",
-      "",
-      "# Diary Engine Reuse",
-      "",
-      "MyWiki generation should use the same configured Diary Engine instead of asking users for a second API key.",
-      "---END FILE---",
-    ].join("\n")
-  }
-
-  if (sourceName === "2026-06-03.md") {
-    return [
-      "---FILE: wiki/sources/2026-06-03.md---",
-      "---",
-      "type: source",
-      "title: 2026-06-03",
-      "created: 2026-06-04",
-      "updated: 2026-06-04",
-      "tags: [release, packaging]",
-      "related: [bundled-mywiki-runner]",
-      "sources: [2026-06-03.md]",
-      "---",
-      "",
-      "# 2026-06-03",
-      "",
-      "This diary source connects DMG layout work with the bundled MyWikiRunner and the removal of the extra LLM Wiki app.",
-      "---END FILE---",
-      "",
-      "---FILE: wiki/concepts/bundled-mywiki-runner.md---",
-      "---",
-      "type: concept",
-      "title: Bundled MyWikiRunner",
-      "created: 2026-06-04",
-      "updated: 2026-06-04",
-      "tags: [packaging, local-first]",
-      "related: [knowyou]",
-      "sources: [2026-06-03.md]",
-      "---",
-      "",
-      "# Bundled MyWikiRunner",
-      "",
-      "A bundled runner keeps Node and the headless llm_wiki pipeline inside KnowYou.app so ordinary users do not need npm.",
-      "---END FILE---",
-    ].join("\n")
-  }
-
+  const title = sourceName.replace(/\.md$/, "")
   return [
-    "---FILE: wiki/sources/2026-06-01.md---",
+    `---FILE: wiki/sources/${sourceName}---`,
     "---",
     "type: source",
-    "title: 2026-06-01",
-    "created: 2026-06-04",
-    "updated: 2026-06-04",
-    "tags: [source-library, mywiki]",
-    "related: [knowyou, source-library-inclusion]",
-    "sources: [2026-06-01.md]",
+    `title: ${title}`,
+    "created: 2026-06-08",
+    "updated: 2026-06-08",
+    "tags: [real-diary, mywiki]",
+    "related: [knowyou, diary-engine-mywiki-verification]",
+    `sources: [${sourceName}]`,
     "---",
     "",
-    "# 2026-06-01",
+    `# ${title}`,
     "",
-    "This diary source describes KnowYou MyWiki source library work and the requirement that ordinary users should not need npm.",
+    "This real Diary source is processed through the bundled MyWiki runner and Diary Engine bridge.",
     "---END FILE---",
     "",
     "---FILE: wiki/entities/knowyou.md---",
     "---",
     "type: entity",
     "title: KnowYou",
-    "created: 2026-06-04",
-    "updated: 2026-06-04",
+    "created: 2026-06-08",
+    "updated: 2026-06-08",
     "tags: [app, local-first]",
-    "related: [bundled-mywiki-runner, diary-engine-reuse]",
-    "sources: [2026-06-01.md]",
+    "related: [diary-engine-mywiki-verification]",
+    `sources: [${sourceName}]`,
     "---",
     "",
     "# KnowYou",
     "",
-    "KnowYou is the app whose MyWiki feature is being simplified into an internal capability.",
+    "KnowYou owns the MyWiki feature and runs ontology generation through its bundled runner.",
     "---END FILE---",
     "",
-    "---FILE: wiki/concepts/source-library-inclusion.md---",
+    "---FILE: wiki/concepts/diary-engine-mywiki-verification.md---",
     "---",
     "type: concept",
-    "title: Source Library Inclusion",
-    "created: 2026-06-04",
-    "updated: 2026-06-04",
-    "tags: [source-library, ingestion]",
+    "title: Diary Engine MyWiki Verification",
+    "created: 2026-06-08",
+    "updated: 2026-06-08",
+    "tags: [diary-engine, mywiki, packaging]",
     "related: [knowyou]",
-    "sources: [2026-06-01.md]",
+    `sources: [${sourceName}]`,
     "---",
     "",
-    "# Source Library Inclusion",
+    "# Diary Engine MyWiki Verification",
     "",
-    "Update My Wiki should process only included sources from the source library catalog.",
+    "MyWiki generation should reuse KnowYou's configured Diary Engine bridge while the runtime runner remains bundled inside the app.",
     "---END FILE---",
   ].join("\n")
 }
@@ -218,12 +162,16 @@ const status = await new Promise((resolve) => {
 process.exitCode = status
 JS
 
-node "$tmp_root/diary-engine-harness.mjs" "$runner/node" "$runner/mywiki-runner.js" "$project"
+node "$tmp_root/diary-engine-harness.mjs" "$runner/node" "$runner/mywiki-runner.js" "$project" "${source_names[@]}"
 
-test -f "$project/wiki/sources/2026-06-01.md"
+for source_name in "${source_names[@]}"; do
+  test -f "$project/wiki/sources/$source_name"
+  rg -n "sources: \\[$source_name\\]" "$project/wiki/sources/$source_name"
+done
 test -f "$project/wiki/entities/knowyou.md"
-test -f "$project/wiki/concepts/bundled-mywiki-runner.md"
-rg -n "sources: \\[2026-06-01.md\\]" "$project/wiki/entities/knowyou.md"
-rg -n "sources: \\[2026-06-03.md\\]" "$project/wiki/concepts/bundled-mywiki-runner.md"
+test -f "$project/wiki/concepts/diary-engine-mywiki-verification.md"
+rg -n "KnowYou" "$project/wiki/entities/knowyou.md"
+rg -n "Diary Engine MyWiki Verification" "$project/wiki/concepts/diary-engine-mywiki-verification.md"
 rg -n '"status": "succeeded"' "$project/.llm-wiki/last-ingest-status.json"
-echo "real diary MyWiki ontology verification passed"
+rg -n '"sourcesProcessed": 3' "$project/.llm-wiki/last-ingest-status.json"
+echo "real diary MyWiki ontology verification passed for: ${source_names[*]}"

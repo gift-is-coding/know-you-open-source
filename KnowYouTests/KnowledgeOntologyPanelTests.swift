@@ -107,7 +107,7 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
     func testMyWikiPanelInitialStatusShowsMissingRunnerMessage() {
         let status = MyWikiPanelStatusPresentationPolicy.initialStatusMessage(for: .missing)
 
-        XCTAssertEqual(status, "MyWiki runner is not available.")
+        XCTAssertEqual(status, "This app is missing the built-in MyWiki runner. Reinstall KnowYou and try again.")
     }
 
     func testMyWikiPanelOnAppearStatusReplacesReadyWithDegradedRunnerState() {
@@ -125,7 +125,7 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         )
 
         XCTAssertEqual(invalidStatus, "Bundled MyWiki runner script is missing.")
-        XCTAssertEqual(missingStatus, "MyWiki runner is not available.")
+        XCTAssertEqual(missingStatus, "This app is missing the built-in MyWiki runner. Reinstall KnowYou and try again.")
         XCTAssertEqual(activeStatus, "Updating My Wiki sources...")
     }
 
@@ -307,13 +307,34 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
 
         XCTAssertEqual(presentation.title, "My Wiki digest")
         XCTAssertEqual(presentation.triggerText, "Updates daily after Diary and Todo are ready.")
-        XCTAssertEqual(presentation.lastRunTitle, "Last update")
+        XCTAssertEqual(presentation.lastRunTitle, "Last successful update")
         XCTAssertEqual(presentation.lastRunValue, "7:30 AM")
         XCTAssertEqual(presentation.nextRunTitle, "Next update")
         XCTAssertEqual(presentation.nextRunValue, "3:30 PM")
         XCTAssertEqual(presentation.updateNowTitle, "Update Now")
         XCTAssertFalse(presentation.isUpdateNowDisabled)
         XCTAssertNil(presentation.statusMessage)
+    }
+
+    func testDigestSchedulePresentationDoesNotTreatFailedAttemptAsLastSuccessfulUpdate() {
+        let progress = MyWikiIngestProgress(
+            state: .failed,
+            message: "MyWiki runner is not available.",
+            updatedAt: "2026-06-08T09:06:54Z",
+            sourcesProcessed: 0,
+            totalSources: 44
+        )
+
+        let presentation = MyWikiDigestSchedulePresentation(
+            ingestProgress: progress,
+            nextRunDate: DateComponents(calendar: Calendar(identifier: .gregorian), timeZone: TimeZone(secondsFromGMT: 0), year: 2026, month: 6, day: 9, hour: 1, minute: 5).date!,
+            statusMessage: "MyWiki runner is not available.",
+            displayTimeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        XCTAssertEqual(presentation.lastRunTitle, "Last successful update")
+        XCTAssertEqual(presentation.lastRunValue, "Not updated yet")
+        XCTAssertEqual(presentation.statusMessage, "Last attempt failed: MyWiki runner is not available.")
     }
 
     func testDigestSchedulePresentationShowsGeneratingState() {

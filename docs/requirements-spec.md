@@ -591,7 +591,7 @@ Markdown 导出也应服务于这个目标：
 - 用户启动应用后，系统还能在后台持续补同步今天的新通知，而不要求手动刷新
 - Home 必须维护 `Diary`、`Todo`、`My Wiki` 三类后台任务的最新状态；每类只保留最新状态，不堆积历史，并且只把 active/attention 状态显示到 compact 更新区
 - Todo 页面必须显示 `Next update` 与 `Update Now`；点击 `Update Now` 后必须显示 `Updating...` 并禁用重复点击；没有 today story 时必须提示先生成今天的 diary，LLM 不可用时必须显示 degraded 而不能伪造任务
-- My Wiki digest 必须同时显示 `Last update` 与 `Next update`，并说明它会在 Diary 和 Todo 就绪后每日更新，也可手动更新；项目目录不可用时手动更新入口必须显示不可用状态，不得允许点击后静默返回
+- My Wiki digest 必须同时显示 `Last successful update` 与 `Next update`，并说明它会在 Diary 和 Todo 就绪后每日更新，也可手动更新；失败尝试必须显示为 `Last attempt failed` 状态文案，不能把失败时间显示成成功更新时间；项目目录或内置 MyWiki runner 不可用时手动更新入口必须显示不可用/可行动状态，不得允许点击后静默返回
 - 启动后如果当前默认 diary engine 已配置但处于 yellow，系统必须后台自动 retest 一次；用户不应必须先打开 engine popover 才刷新状态
 - 用户能在日期列表里看到已有日期
 - 用户选中某天后，能看到可阅读的 story

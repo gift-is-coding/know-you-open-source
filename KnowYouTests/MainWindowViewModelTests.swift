@@ -5070,7 +5070,7 @@ final class MainWindowViewModelTests: XCTestCase {
 
         let wikiJob = try XCTUnwrap(appState.automationJobSnapshots.first { $0.kind == .wiki })
         XCTAssertEqual(wikiJob.status, .failed)
-        XCTAssertTrue(wikiJob.detail.contains("MyWiki runner is not available."))
+        XCTAssertTrue(wikiJob.detail.contains("This app is missing the built-in MyWiki runner."))
         XCTAssertFalse(wikiJob.detail.contains("LLM Wiki.app"))
         XCTAssertFalse(wikiJob.detail.localizedCaseInsensitiveContains("npm"))
     }

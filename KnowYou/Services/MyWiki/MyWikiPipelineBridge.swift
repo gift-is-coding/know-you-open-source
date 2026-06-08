@@ -5,6 +5,8 @@ enum MyWikiPipelineTarget: Equatable {
     case invalidBundledRunner(String)
     case missing
 
+    static let missingRunnerMessage = "This app is missing the built-in MyWiki runner. Reinstall KnowYou and try again."
+
     var statusDescription: String {
         switch self {
         case .bundledRunner(let bundle):
@@ -12,7 +14,7 @@ enum MyWikiPipelineTarget: Equatable {
         case .invalidBundledRunner(let message):
             return message
         case .missing:
-            return "MyWiki runner is not available."
+            return Self.missingRunnerMessage
         }
     }
 }
@@ -28,7 +30,7 @@ enum MyWikiPipelineBridgeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingPipeline:
-            return "MyWiki runner is not available."
+            return MyWikiPipelineTarget.missingRunnerMessage
         case .pipelineExecutionFailed(let detail):
             return detail
         }
@@ -85,7 +87,7 @@ struct MyWikiPipelineBridge {
             try writeFailureStatus(message: message, projectRoot: projectRoot)
             throw MyWikiPipelineBridgeError.pipelineExecutionFailed(message)
         case .missing:
-            let message = "MyWiki runner is not available."
+            let message = MyWikiPipelineTarget.missingRunnerMessage
             try writeFailureStatus(message: message, projectRoot: projectRoot)
             throw MyWikiPipelineBridgeError.missingPipeline
         }

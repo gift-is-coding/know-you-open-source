@@ -52,17 +52,28 @@ The skill must use Codex GUI / ComputerUser for the native macOS app. It may use
 ChromeUser or Browser only when a test step intentionally involves a browser
 surface. Shell commands are only for deterministic setup and evidence.
 
-## Expected Setup Modes
+## Runner Entrypoint
 
-Future setup helpers may expose these modes, but they must remain setup helpers
-for the Codex Skill rather than the UI automation mechanism itself:
+The maintained setup helper is:
 
 - `scripts/regression/run-user-journey.sh --app-clean`
-- `scripts/install-new-user-app.sh --no-launch`
 - `scripts/regression/run-user-journey.sh --permission-clean`
 - `scripts/regression/run-user-journey.sh --true-clean-checklist`
 
-The app-clean setup helper should set `KNOWYOU_PROFILE_ROOT`, `KNOWYOU_USER_DEFAULTS_SUITE`, `KNOWYOU_KEYCHAIN_SERVICE`, a fixed clock, a deterministic summarizer, and regression-safe flags that disable real LaunchAgent registration, update-network effects, and external agent config writes.
+Every run creates `build/regression/<run-id>/` with:
+
+- `env.sh`: isolated app-clean environment variables such as `KNOWYOU_PROFILE_ROOT`, `KNOWYOU_USER_DEFAULTS_SUITE`, and `KNOWYOU_KEYCHAIN_SERVICE`
+- `run-metadata.json`: app path, git SHA, run directory, evidence directory, and environment type
+- `computer-use-prompt.md`: the exact Codex GUI / Computer Use task prompt and case list
+- `assertions.md`: safety assertions and evidence requirements
+- `evidence/`: screenshots, SQLite output, Markdown checks, and final case status
+
+The script prepares and launches environments; it does not click the app. Native
+macOS interaction must still be performed by Codex GUI / Computer Use through
+the `knowyou-regression-runner` skill. This keeps the suite aligned with the
+product requirement to avoid XCUITest and third-party UI automation libraries.
+
+The app-clean setup sets `KNOWYOU_PROFILE_ROOT`, `KNOWYOU_USER_DEFAULTS_SUITE`, `KNOWYOU_KEYCHAIN_SERVICE`, debug update metadata, completed onboarding defaults, and seeded demo data. The app resolves Application Support, SQLite, Vault, UserDefaults, and Keychain service from those values, so the run does not read or write daily `dev.knowyou.app` state.
 
 The permission-clean setup helper installs the current worktree over `/Applications/KnowYou New User.app`. Multiple worktrees must not run this New User permission test in parallel because the last install intentionally wins. If `dev.knowyou.newuser` already has Full Disk Access and its TCC state is not reset, launching from `/Applications/KnowYou New User.app` should verify the authorized-through path. The Codex Skill verifies the product's no-permission guidance through GUI / ComputerUser. The helper and skill must never reset the daily app's `dev.knowyou.app` permissions.
 

@@ -82,6 +82,29 @@ final class SettingsMetadataTests: XCTestCase {
         XCTAssertEqual(profile.keychainService, "dev.knowyou.newuser")
     }
 
+    func testRuntimeProfileUsesRegressionProfileRootAndKeychainOverride() throws {
+        let profileRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "KnowYouRegression-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let profile = AppRuntimeProfile(
+            bundleIdentifier: "dev.knowyou.app",
+            processEnvironment: [
+                "KNOWYOU_PROFILE_ROOT": profileRoot.path,
+                "KNOWYOU_KEYCHAIN_SERVICE": "dev.knowyou.regression.test",
+            ]
+        )
+
+        XCTAssertEqual(profile.displayName, "KnowYou")
+        XCTAssertEqual(profile.supportDirectoryName, "KnowYou")
+        XCTAssertEqual(profile.keychainService, "dev.knowyou.regression.test")
+        XCTAssertEqual(
+            try profile.applicationSupportDirectoryURL(create: false).path,
+            profileRoot
+                .appending(path: "Application Support", directoryHint: .isDirectory)
+                .appending(path: "KnowYou", directoryHint: .isDirectory)
+                .path
+        )
+    }
+
     func testInAppDocumentsExposeReadableContentWithoutRepositoryLinks() {
         let privacy = AppSupportDocument.privacy
         XCTAssertEqual(privacy.buttonTitle, "Privacy Policy")

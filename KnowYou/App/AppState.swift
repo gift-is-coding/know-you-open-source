@@ -797,13 +797,27 @@ final class AppState {
     @ObservationIgnored private var dayReviewStates: [String: DayReviewState]
 
     private static var defaultUserDefaultsOverrideForTesting: UserDefaults?
+    private static var defaultUserDefaultsEnvironmentOverrideForTesting: [String: String]?
 
     static func setDefaultUserDefaultsForTesting(_ defaults: UserDefaults?) {
         defaultUserDefaultsOverrideForTesting = defaults
     }
 
+    static func setDefaultUserDefaultsEnvironmentForTesting(_ environment: [String: String]?) {
+        defaultUserDefaultsEnvironmentOverrideForTesting = environment
+    }
+
     private static func defaultUserDefaults() -> UserDefaults {
-        defaultUserDefaultsOverrideForTesting ?? .standard
+        if let defaultUserDefaultsOverrideForTesting {
+            return defaultUserDefaultsOverrideForTesting
+        }
+        let environment = defaultUserDefaultsEnvironmentOverrideForTesting ?? ProcessInfo.processInfo.environment
+        if let suiteName = environment["KNOWYOU_USER_DEFAULTS_SUITE"],
+           suiteName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+           let defaults = UserDefaults(suiteName: suiteName) {
+            return defaults
+        }
+        return .standard
     }
 
     var summarizerStatus: SummarizerRuntimeStatus {
@@ -2541,7 +2555,7 @@ final class AppState {
     }
 
     private static func makeVaultURL() throws -> URL {
-        if let saved = UserDefaults.standard.string(forKey: UserDefaultsKeys.vaultPath), !saved.isEmpty {
+        if let saved = defaultUserDefaults().string(forKey: UserDefaultsKeys.vaultPath), !saved.isEmpty {
             return URL(fileURLWithPath: saved, isDirectory: true)
         }
         return try defaultVaultURL()

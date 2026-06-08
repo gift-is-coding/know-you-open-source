@@ -45,10 +45,14 @@ If the user gives no level, default to `app-clean` pre-push coverage plus the `p
 1. Confirm the requested level and environment from the user's prompt or `coverage-matrix.md`.
 2. Check `git status --short --branch` and note whether the workspace is already dirty.
 3. Build or launch the current app using the repo's existing macOS workflow. Prefer `./scripts/run-dev-app.sh` for a development launch when no regression runner script exists yet.
+   - If `scripts/regression/run-user-journey.sh` exists, prefer it for regression setup because it writes the run directory, isolated environment, Computer Use prompt, and evidence paths.
+   - Use `scripts/regression/run-user-journey.sh --app-clean` for My Diary, Todo, Other Source, My Wiki, and Settings pre-push coverage.
+   - Use `scripts/regression/run-user-journey.sh --permission-clean --reset-new-user-state` when explicitly validating the missing Full Disk Access first-run path for `dev.knowyou.newuser`.
 4. Prepare the selected environment without touching daily `dev.knowyou.app` state.
    - For `permission-clean`, do not run multiple worktrees in parallel because the last install intentionally overwrites `/Applications/KnowYou New User.app`.
    - For ordinary feature regression, use app-clean/dev-bypass or an already configured profile instead of stopping on the Full Disk Access gate.
 5. Use Codex GUI / ComputerUser to execute each test case step from the user's point of view. Click only visible, user-reachable controls.
+   - Do not claim shell execution alone completed native GUI regression. The script is setup/evidence plumbing; Codex GUI / ComputerUser is the execution mechanism for native clicks and visual assertions.
 6. Use shell evidence for persisted artifacts, such as files under the regression profile, SQLite rows, build logs, and release logs.
 7. Record each case as `pass`, `fail`, `blocked`, or `manual-only`, with the failing step and visible evidence.
 8. Before reporting success, verify that no forbidden automation path or real user state was touched.

@@ -17,12 +17,17 @@ struct AppSupportMetadata {
 
 struct AppRuntimeProfile {
     static let newUserBundleIdentifier = "dev.knowyou.newuser"
+    static let profileRootEnvironmentKey = "KNOWYOU_PROFILE_ROOT"
+    static let keychainServiceEnvironmentKey = "KNOWYOU_KEYCHAIN_SERVICE"
+
+    nonisolated(unsafe) private static var currentEnvironmentOverrideForTesting: [String: String]?
 
     let displayName: String
     let supportDirectoryName: String
     let keychainService: String
+    private let profileRootPath: String?
 
-    init(bundleIdentifier: String?) {
+    init(bundleIdentifier: String?, processEnvironment: [String: String] = ProcessInfo.processInfo.environment) {
         if bundleIdentifier == Self.newUserBundleIdentifier {
             displayName = "KnowYou New User"
             supportDirectoryName = "KnowYou New User"
@@ -30,33 +35,54 @@ struct AppRuntimeProfile {
         } else {
             displayName = "KnowYou"
             supportDirectoryName = "KnowYou"
-            keychainService = "com.knowyou.app"
+            keychainService = processEnvironment[Self.keychainServiceEnvironmentKey] ?? "com.knowyou.app"
         }
+        profileRootPath = processEnvironment[Self.profileRootEnvironmentKey]
     }
 
     init(bundle: Bundle = .main) {
-        self.init(bundleIdentifier: bundle.bundleIdentifier)
+        self.init(
+            bundleIdentifier: bundle.bundleIdentifier,
+            processEnvironment: Self.currentEnvironmentOverrideForTesting ?? ProcessInfo.processInfo.environment
+        )
     }
 
     static var current: AppRuntimeProfile {
         AppRuntimeProfile()
     }
 
-    static func applicationSupportDirectoryURL(create: Bool = true) throws -> URL {
-        let applicationSupportURL = try FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: create
-        )
+    static func setCurrentEnvironmentForTesting(_ environment: [String: String]?) {
+        currentEnvironmentOverrideForTesting = environment
+    }
+
+    func applicationSupportDirectoryURL(create: Bool = true) throws -> URL {
+        let applicationSupportURL: URL
+        if let profileRootPath, profileRootPath.isEmpty == false {
+            applicationSupportURL = URL(fileURLWithPath: profileRootPath, isDirectory: true)
+                .appending(path: "Application Support", directoryHint: .isDirectory)
+            if create {
+                try FileManager.default.createDirectory(at: applicationSupportURL, withIntermediateDirectories: true)
+            }
+        } else {
+            applicationSupportURL = try FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: create
+            )
+        }
         let appDirectoryURL = applicationSupportURL.appending(
-            path: current.supportDirectoryName,
+            path: supportDirectoryName,
             directoryHint: .isDirectory
         )
         if create {
             try FileManager.default.createDirectory(at: appDirectoryURL, withIntermediateDirectories: true)
         }
         return appDirectoryURL
+    }
+
+    static func applicationSupportDirectoryURL(create: Bool = true) throws -> URL {
+        try current.applicationSupportDirectoryURL(create: create)
     }
 }
 

@@ -35,12 +35,9 @@
 - Modify: `ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts`
 - Modify: `ThirdParty/llm_wiki/src/headless/knowyou-ingest.test.ts`
 
-- [x] 写失败测试：`SummarizerConfig` 为 LLM API 时，MyWiki 生成 custom provider/model/endpoint/api-mode 参数，API key 只进环境变量。
-- [x] 写桥接调用测试：`runIngest` 把 LLM invocation arguments 和 environment 传给 process runner。
-- [x] 运行 focused XCTest，确认新测试失败。
-- [x] 实现 `MyWikiLLMInvocation`，让 MyWikiDigestRunner 默认从 `SummarizerConfig.load()` 解析 LLM 配置。
-- [x] 扩展 process runner 支持环境变量传递。
-- [x] 扩展 llm_wiki headless runner，支持 `--custom-endpoint`、`--ollama-url`、`--api-mode` 与 `KNOWYOU_MYWIKI_LLM_API_KEY`。
+- [x] 写桥接调用测试：bundled runner 只通过 `knowyou-bridge` 调当前 Diary engine，不在运行时传 API key/npm/development source。
+- [x] 删除运行时 `developmentSource`/npm fallback 与 `MyWikiLLMInvocation`。
+- [x] 运行 focused XCTest，确认 bundled runner bridge 新链路通过。
 - [x] 写失败测试：Release、New User QA、dev launch 和 DMG 打包都必须 embed 或验证 MyWikiRunner。
 - [x] 新增 `scripts/embed-mywiki-runner.sh`，集中构建并复制 `build/MyWikiRunner` 到 app resources。
 - [x] 修改 release / New User / dev launch 脚本，确保用户可点击 app 内含 MyWikiRunner。

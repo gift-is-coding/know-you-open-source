@@ -92,18 +92,12 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
     }
 
     func testMyWikiPanelInitialStatusShowsInvalidBundledRunnerFailure() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let developmentSource = root.appending(path: "ThirdParty/llm_wiki", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: developmentSource, withIntermediateDirectories: true)
         let error = MyWikiPipelineBridgeError.pipelineExecutionFailed(
             "Bundled MyWiki runner script is missing."
         )
 
         let status = MyWikiPanelStatusPresentationPolicy.initialStatusMessage(
-            bundledRunner: .failure(error),
-            developmentSourceURL: developmentSource
+            bundledRunner: .failure(error)
         )
 
         XCTAssertEqual(status, "Bundled MyWiki runner script is missing.")
@@ -153,10 +147,6 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
 
         XCTAssertEqual(
             MyWikiPanelStatusPresentationPolicy.initialStatusMessage(for: .bundledRunner(bundle)),
-            MyWikiPanelStatusPresentationPolicy.readyMessage
-        )
-        XCTAssertEqual(
-            MyWikiPanelStatusPresentationPolicy.initialStatusMessage(for: .developmentSource(root)),
             MyWikiPanelStatusPresentationPolicy.readyMessage
         )
     }

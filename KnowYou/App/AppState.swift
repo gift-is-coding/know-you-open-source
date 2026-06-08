@@ -1583,8 +1583,7 @@ final class AppState {
         let target: MyWikiPipelineTarget
         do {
             target = MyWikiPipelineBridge.resolveTarget(
-                bundledRunner: try myWikiRunnerResolver(),
-                developmentSourceURL: nil
+                bundledRunner: try myWikiRunnerResolver()
             )
         } catch {
             let nextRun = currentDate().addingTimeInterval(86_400)

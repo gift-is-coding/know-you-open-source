@@ -39,7 +39,7 @@
 
 `MyWikiPipelineBridge` 在 `.bundledRunner` 目标下启动 `Contents/Resources/MyWikiRunner/node mywiki-runner.js --provider knowyou-bridge`。runner 输出 JSONL `llm.request` 时，Swift 侧 `MyWikiLLMBridge` 交给当前 diary summarizer 完成，并把 response/error 写回 runner stdin。API key 不出现在 runner 命令行。
 
-保留 `MyWikiNPMResolver` 只作为 development-source fallback 的开发者兼容层；它不是普通用户的最终运行时方案。
+删除运行时 `developmentSource`/npm fallback。MyWiki 产品路径只接受 bundled runner；开发和发布构建仍可在 build step 使用 npm 来生成 `MyWikiRunner`，但用户点击 Update/Generate 时不会调用 npm。
 
 ## 测试
 

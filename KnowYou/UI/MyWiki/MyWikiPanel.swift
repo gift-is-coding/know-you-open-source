@@ -6,13 +6,11 @@ enum MyWikiPanelStatusPresentationPolicy {
 
     static func initialStatusMessage(
         bundledRunner: Result<MyWikiRunnerBundle?, Error>,
-        developmentSourceURL: URL?,
         fileManager: FileManager = .default
     ) -> String {
         initialStatusMessage(
             for: MyWikiPipelineBridge.resolveTarget(
                 bundledRunner: bundledRunner,
-                developmentSourceURL: developmentSourceURL,
                 fileManager: fileManager
             )
         )
@@ -20,7 +18,7 @@ enum MyWikiPanelStatusPresentationPolicy {
 
     static func initialStatusMessage(for target: MyWikiPipelineTarget) -> String {
         switch target {
-        case .bundledRunner, .developmentSource:
+        case .bundledRunner:
             return readyMessage
         case .invalidBundledRunner(let message):
             return message
@@ -41,7 +39,6 @@ enum MyWikiPanelStatusPresentationPolicy {
 struct MyWikiPanel: View {
     let sourceVault: URL?
     let projectRoot: URL?
-    let developmentSourceURL: URL?
     let bundledRunner: Result<MyWikiRunnerBundle?, Error>
     let importedDocuments: [ImportedKnowledgeDocument]
     let summarizer: SummaryGenerating?
@@ -553,8 +550,7 @@ struct MyWikiPanel: View {
 
     private var pipelineTarget: MyWikiPipelineTarget {
         MyWikiPipelineBridge.resolveTarget(
-            bundledRunner: bundledRunner,
-            developmentSourceURL: developmentSourceURL
+            bundledRunner: bundledRunner
         )
     }
 

@@ -10,8 +10,8 @@ private enum MainWindowMode {
 
 enum MainWindowWorkspacePolicy {
     static let usesUnifiedNavigationSplitViewAcrossModes = true
-    static let keepsEngineSelectorInBottomTrailingChrome = true
-    static let keepsEngineSelectorAsRightmostBottomElement = true
+    static let keepsEngineSelectorInAppKitTitlebarTrailingChrome = true
+    static let keepsEngineSelectorAsRightmostTitlebarElement = true
     static let showsPrivacyMessageOutsideEngineSelector = true
     static let privacyMessage = "Your data stays local. No backend server."
     static let privacyMessageFontSize: CGFloat = 14
@@ -67,7 +67,8 @@ struct MainWindowView: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            bottomTrailingChrome
+            buildVersionBadge
+                .padding(12)
         }
         .toolbar {
             ToolbarItem(placement: .navigation) {
@@ -203,23 +204,18 @@ struct MainWindowView: View {
         )
     }
 
-    private var bottomTrailingChrome: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Text(AppBuildMetadata.current.badgeText)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(.ultraThinMaterial, in: Capsule())
-                .allowsHitTesting(false)
-                .accessibilityIdentifier("build-version-badge")
-
-            diaryEngineBottomSelector
-        }
-        .padding(12)
+    private var buildVersionBadge: some View {
+        Text(AppBuildMetadata.current.badgeText)
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: Capsule())
+            .allowsHitTesting(false)
+            .accessibilityIdentifier("build-version-badge")
     }
 
-    private var diaryEngineBottomSelector: some View {
+    private var diaryEngineToolbarSelector: some View {
         let presentation = engineToolbarPresentation
         return DiaryEngineSelectorButton(
             title: presentation.title,
@@ -229,8 +225,8 @@ struct MainWindowView: View {
             action: openEngineSelector
         )
         .onboardingCoachmarkTarget(.engineButton)
-        .accessibilityIdentifier("diary-engine-bottom-selector")
-        .popover(isPresented: $isShowingEnginePanel, arrowEdge: .bottom) {
+        .accessibilityIdentifier("diary-engine-toolbar-selector")
+        .popover(isPresented: $isShowingEnginePanel, arrowEdge: .top) {
             DiaryEnginePanel(
                 rows: engineRows,
                 recoveryNudge: engineRecoveryNudge,

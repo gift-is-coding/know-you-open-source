@@ -151,6 +151,10 @@ enum MyWikiWikilinkText {
         return result
     }
 
+    static func summaryAttributedString(from summary: String) -> AttributedString {
+        attributedString(from: summary)
+    }
+
     static func reference(from url: URL) -> String? {
         guard url.scheme == scheme, url.host == host else { return nil }
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)

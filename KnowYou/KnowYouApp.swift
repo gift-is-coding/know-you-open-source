@@ -274,19 +274,20 @@ private final class KnowYouMainWindowPresenter {
         window.setFrameAutosaveName("KnowYouMainWindow")
         window.isReleasedWhenClosed = false
         window.collectionBehavior = [.moveToActiveSpace]
-        installTitlebarTitleView(in: window)
+        installTitlebarTitleView(in: window, appState: appState)
         return NSWindowController(window: window)
     }
 
-    private func installTitlebarTitleView(in window: NSWindow) {
+    private func installTitlebarTitleView(in window: NSWindow, appState: AppState) {
         guard KnowYouMainWindowLaunchPolicy.showsAppIconInTitlebar,
               let titlebarView = window.standardWindowButton(.closeButton)?.superview else {
             return
         }
 
         let titlebarIdentifier = NSUserInterfaceItemIdentifier("KnowYouTitlebarTitleView")
+        let engineIdentifier = NSUserInterfaceItemIdentifier("KnowYouTitlebarEngineSelector")
         titlebarView.subviews
-            .filter { $0.identifier == titlebarIdentifier }
+            .filter { $0.identifier == titlebarIdentifier || $0.identifier == engineIdentifier }
             .forEach { $0.removeFromSuperview() }
 
         let titleContainer = NSStackView()
@@ -331,17 +332,28 @@ private final class KnowYouMainWindowPresenter {
             titleContainer.addArrangedSubview(privacyLabel)
         }
 
+        let engineHost = NSHostingView(rootView: DiaryEngineTitlebarSelector(appState: appState))
+        engineHost.identifier = engineIdentifier
+        engineHost.translatesAutoresizingMaskIntoConstraints = false
+        engineHost.setContentHuggingPriority(.required, for: .horizontal)
+        engineHost.setContentCompressionResistancePriority(.required, for: .horizontal)
+
         titlebarView.addSubview(titleContainer)
+        titlebarView.addSubview(engineHost)
 
         let centerX = titleContainer.centerXAnchor.constraint(equalTo: titlebarView.centerXAnchor)
         centerX.priority = .defaultHigh
+        let titleBeforeEngine = titleContainer.trailingAnchor.constraint(lessThanOrEqualTo: engineHost.leadingAnchor, constant: -14)
+        titleBeforeEngine.priority = .required
         NSLayoutConstraint.activate([
             iconView.widthAnchor.constraint(equalToConstant: KnowYouMainWindowLaunchPolicy.titlebarIconSize),
             iconView.heightAnchor.constraint(equalToConstant: KnowYouMainWindowLaunchPolicy.titlebarIconSize),
             titleContainer.centerYAnchor.constraint(equalTo: titlebarView.centerYAnchor, constant: 1),
             centerX,
             titleContainer.leadingAnchor.constraint(greaterThanOrEqualTo: titlebarView.leadingAnchor, constant: 168),
-            titleContainer.trailingAnchor.constraint(lessThanOrEqualTo: titlebarView.trailingAnchor, constant: -168),
+            titleBeforeEngine,
+            engineHost.centerYAnchor.constraint(equalTo: titlebarView.centerYAnchor, constant: 1),
+            engineHost.trailingAnchor.constraint(equalTo: titlebarView.trailingAnchor, constant: -18),
         ])
     }
 }

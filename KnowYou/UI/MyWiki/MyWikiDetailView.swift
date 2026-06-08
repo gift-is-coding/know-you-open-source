@@ -74,11 +74,7 @@ struct MyWikiDetailView: View {
             Text(entry.title)
                 .font(.system(size: 42, weight: .semibold))
 
-            Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
-                .font(.system(size: 18))
-                .foregroundStyle(.primary)
-                .lineSpacing(5)
-                .fixedSize(horizontal: false, vertical: true)
+            summaryText(entry.summary)
 
             if entry.aliases.isEmpty == false {
                 FlowLayout(spacing: 8) {
@@ -101,14 +97,24 @@ struct MyWikiDetailView: View {
         }
     }
 
+    private func summaryText(_ summary: String) -> some View {
+        Text(MyWikiWikilinkText.summaryAttributedString(from: summary.isEmpty ? "No summary yet." : summary))
+            .font(.system(size: 18))
+            .foregroundStyle(.primary)
+            .lineSpacing(5)
+            .fixedSize(horizontal: false, vertical: true)
+            .environment(\.openURL, myWikiOpenURLAction)
+    }
+
     private func contentGrid(_ entry: MyWikiEntry) -> some View {
         let presentation = MyWikiDetailPresentation(entry: entry)
 
         return VStack(alignment: .leading, spacing: 16) {
             if MyWikiDetailLayoutPolicy.showsStandaloneSummaryCard {
                 detailCard("Summary") {
-                    Text(entry.summary.isEmpty ? "No summary yet." : entry.summary)
+                    Text(MyWikiWikilinkText.summaryAttributedString(from: entry.summary.isEmpty ? "No summary yet." : entry.summary))
                         .detailBodyStyle()
+                        .environment(\.openURL, myWikiOpenURLAction)
                 }
             }
 
@@ -228,6 +234,16 @@ struct MyWikiDetailView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.top, 80)
+    }
+
+    private var myWikiOpenURLAction: OpenURLAction {
+        OpenURLAction { url in
+            guard let reference = MyWikiWikilinkText.reference(from: url) else {
+                return .systemAction
+            }
+            onOpenRelated(reference)
+            return .handled
+        }
     }
 }
 

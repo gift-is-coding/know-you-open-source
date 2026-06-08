@@ -160,10 +160,10 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertEqual(KnowYouMainWindowLaunchPolicy.titlebarTitleFontSize, 21)
     }
 
-    func testMainWindowWorkspacePolicyKeepsEngineSelectorInBottomTrailingChrome() {
+    func testMainWindowWorkspacePolicyKeepsEngineSelectorInAppKitTitlebarTrailingChrome() {
         XCTAssertTrue(MainWindowWorkspacePolicy.usesUnifiedNavigationSplitViewAcrossModes)
-        XCTAssertTrue(MainWindowWorkspacePolicy.keepsEngineSelectorInBottomTrailingChrome)
-        XCTAssertTrue(MainWindowWorkspacePolicy.keepsEngineSelectorAsRightmostBottomElement)
+        XCTAssertTrue(MainWindowWorkspacePolicy.keepsEngineSelectorInAppKitTitlebarTrailingChrome)
+        XCTAssertTrue(MainWindowWorkspacePolicy.keepsEngineSelectorAsRightmostTitlebarElement)
         XCTAssertTrue(MainWindowWorkspacePolicy.showsPrivacyMessageOutsideEngineSelector)
         XCTAssertEqual(MainWindowWorkspacePolicy.privacyMessage, "Your data stays local. No backend server.")
         XCTAssertEqual(MainWindowWorkspacePolicy.privacyMessageFontSize, 14)

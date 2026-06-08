@@ -66,6 +66,142 @@ struct DiaryEngineSelectorButton: View {
     }
 }
 
+struct DiaryEngineTitlebarSelector: View {
+    let appState: AppState
+
+    @State private var isShowingEnginePanel = false
+    @State private var isShowingAPIDetail = false
+    @State private var apiConfigDraft = SummarizerConfig.load()
+    @State private var apiProviderStatuses: [LLMAPIProviderID: EngineRuntimeStatus] = [:]
+    @State private var isTestingAPIConnection = false
+
+    var body: some View {
+        let presentation = engineToolbarPresentation
+
+        DiaryEngineSelectorButton(
+            title: presentation.title,
+            state: presentation.state,
+            emphasized: presentation.emphasized,
+            attentionSystemImage: presentation.attentionSystemImage,
+            action: openEngineSelector
+        )
+        .onboardingCoachmarkTarget(.engineButton)
+        .accessibilityIdentifier("diary-engine-titlebar-selector")
+        .popover(isPresented: $isShowingEnginePanel, arrowEdge: .top) {
+            DiaryEnginePanel(
+                rows: engineRows,
+                recoveryNudge: engineRecoveryNudge,
+                isRetestingAll: appState.isRetestingEngines,
+                onSelectDefault: { engine in
+                    appState.selectDefaultEngine(engine)
+                    isShowingEnginePanel = false
+                },
+                onRetestEngine: { engine in
+                    Task { @MainActor in
+                        await appState.retestEngine(engine)
+                    }
+                },
+                onRetestAll: {
+                    Task { @MainActor in
+                        await appState.retestAllEngines()
+                    }
+                },
+                onConfigureAPI: {
+                    openAPIDetail()
+                }
+            )
+        }
+        .sheet(isPresented: $isShowingAPIDetail) {
+            LLMAPIDetailSheet(
+                config: $apiConfigDraft,
+                activeStatus: appState.engineStatuses[.llmAPI] ?? EngineRuntimeStatus(),
+                providerStatuses: apiProviderStatuses,
+                isTesting: isTestingAPIConnection,
+                onClose: {
+                    isShowingAPIDetail = false
+                },
+                onSave: {
+                    saveAPIConfig()
+                    isShowingAPIDetail = false
+                },
+                onTestProvider: testAPIProvider,
+                onSetActive: setActiveAPIProvider
+            )
+        }
+    }
+
+    private var engineToolbarPresentation: DiaryEngineToolbarPresentation {
+        DiaryEngineToolbarPresentation.make(
+            defaultEngine: appState.defaultEngine,
+            engineStatuses: appState.engineStatuses,
+            retestingEngines: appState.retestingEngines
+        )
+    }
+
+    private var engineRecoveryNudge: DiaryEngineRecoveryNudgePresentation? {
+        DiaryEngineRecoveryNudgePresentation.make(
+            defaultEngine: appState.defaultEngine,
+            engineStatuses: appState.engineStatuses
+        )
+    }
+
+    private var engineRows: [DiaryEnginePanelRow] {
+        DiaryEngine.allCases
+            .filter { $0 != .none }
+            .map { engine in
+                DiaryEnginePanelRow(
+                    engine: engine,
+                    status: appState.engineStatuses[engine] ?? EngineRuntimeStatus(),
+                    isDefault: appState.defaultEngine == engine,
+                    isRetesting: appState.retestingEngines.contains(engine)
+                )
+            }
+    }
+
+    private func openEngineSelector() {
+        isShowingEnginePanel = true
+        if engineRecoveryNudge?.kind == .repairRequired {
+            Task { @MainActor in
+                _ = await appState.repairDefaultEngineIfNeeded()
+            }
+        }
+    }
+
+    private func openAPIDetail() {
+        apiConfigDraft = SummarizerConfig.load()
+        apiConfigDraft.defaultEngine = .llmAPI
+        apiProviderStatuses = [
+            apiConfigDraft.activeLLMAPIProviderID: appState.engineStatuses[.llmAPI] ?? EngineRuntimeStatus()
+        ]
+        isShowingEnginePanel = false
+        isShowingAPIDetail = true
+    }
+
+    private func saveAPIConfig() {
+        var config = apiConfigDraft
+        config.defaultEngine = .llmAPI
+        appState.applyEngineConfig(config)
+        apiConfigDraft = config
+        apiProviderStatuses[config.activeLLMAPIProviderID] = appState.engineStatuses[.llmAPI] ?? EngineRuntimeStatus()
+    }
+
+    private func setActiveAPIProvider(_ providerID: LLMAPIProviderID) {
+        apiConfigDraft.activeLLMAPIProviderID = providerID
+        saveAPIConfig()
+    }
+
+    private func testAPIProvider(_ providerID: LLMAPIProviderID) {
+        saveAPIConfig()
+        let draft = apiConfigDraft
+        isTestingAPIConnection = true
+        Task { @MainActor in
+            let status = await appState.testLLMAPIProvider(providerID, draftConfig: draft)
+            apiProviderStatuses[providerID] = status
+            isTestingAPIConnection = false
+        }
+    }
+}
+
 struct DiaryEngineToolbarPresentation: Equatable {
     let title: String
     let state: EngineIndicatorState

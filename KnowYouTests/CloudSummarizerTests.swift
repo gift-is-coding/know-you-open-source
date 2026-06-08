@@ -95,7 +95,10 @@ final class CloudSummarizerTests: XCTestCase {
         let output = try await LLMAPIClient(
             providerConfig: providerConfig,
             session: CloudStubURLProtocol.makeSession()
-        ).complete(input: "Reply with OK.")
+        ).complete(
+            input: "Reply with OK.",
+            options: LLMCompletionOptions(temperature: 0.1, maxTokens: 8192)
+        )
 
         XCTAssertEqual(output, "OpenAI OK")
         let request = try XCTUnwrap(CloudStubURLProtocol.lastRequest)
@@ -104,6 +107,8 @@ final class CloudSummarizerTests: XCTestCase {
         let body = try requestBodyJSON(request)
         XCTAssertEqual(body["model"] as? String, "gpt-5")
         XCTAssertEqual(body["input"] as? String, "Reply with OK.")
+        XCTAssertEqual(body["max_output_tokens"] as? Int, 8192)
+        XCTAssertEqual((body["temperature"] as? NSNumber)?.doubleValue, 0.1)
     }
 
     func testOpenAIResponsesMyWikiCompletionIncludesSystemInstructionsAndTranscript() async throws {
@@ -126,7 +131,7 @@ final class CloudSummarizerTests: XCTestCase {
                 MyWikiLLMMessage(role: "user", content: "Alice helped Bob prepare release notes."),
                 MyWikiLLMMessage(role: "assistant", content: "Prior ontology context.")
             ],
-            temperature: nil
+            options: LLMCompletionOptions(temperature: 0.1, maxTokens: 8192)
         )
 
         XCTAssertEqual(output, "Wiki OK")
@@ -134,8 +139,11 @@ final class CloudSummarizerTests: XCTestCase {
         let body = try requestBodyJSON(request)
         XCTAssertEqual(body["model"] as? String, "gpt-5")
         XCTAssertEqual(body["instructions"] as? String, "Extract My Wiki ontology.")
+        XCTAssertEqual(body["max_output_tokens"] as? Int, 8192)
+        XCTAssertEqual((body["temperature"] as? NSNumber)?.doubleValue, 0.1)
         let input = try XCTUnwrap(body["input"] as? String)
-        XCTAssertTrue(input.contains("user:\nAlice helped Bob prepare release notes."), input)
+        XCTAssertTrue(input.contains("Alice helped Bob prepare release notes."), input)
+        XCTAssertFalse(input.contains("user:\nAlice helped Bob prepare release notes."), input)
         XCTAssertTrue(input.contains("assistant:\nPrior ontology context."), input)
         XCTAssertFalse(input.contains("Extract My Wiki ontology."), input)
     }
@@ -156,7 +164,10 @@ final class CloudSummarizerTests: XCTestCase {
         let output = try await LLMAPIClient(
             providerConfig: providerConfig,
             session: CloudStubURLProtocol.makeSession()
-        ).complete(input: "Reply with OK.")
+        ).complete(
+            input: "Reply with OK.",
+            options: LLMCompletionOptions(temperature: 0.1, maxTokens: 8192)
+        )
 
         XCTAssertEqual(output, "DeepSeek OK")
         let request = try XCTUnwrap(CloudStubURLProtocol.lastRequest)
@@ -165,9 +176,43 @@ final class CloudSummarizerTests: XCTestCase {
         let body = try requestBodyJSON(request)
         XCTAssertEqual(body["model"] as? String, "deepseek-v4-pro")
         XCTAssertEqual(body["stream"] as? Bool, false)
+        XCTAssertEqual(body["max_tokens"] as? Int, 8192)
+        XCTAssertEqual((body["temperature"] as? NSNumber)?.doubleValue, 0.1)
         let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
         XCTAssertEqual(messages.first?["role"] as? String, "user")
         XCTAssertEqual(messages.first?["content"] as? String, "Reply with OK.")
+    }
+
+    func testOpenAIChatReasoningOffDisablesQwenThinkingTemplate() async throws {
+        CloudStubURLProtocol.behavior = .success(
+            statusCode: 200,
+            body: Data(#"{"choices":[{"message":{"content":"Qwen OK"}}]}"#.utf8)
+        )
+        let providerConfig = LLMAPIProviderConfig(
+            id: .qwen,
+            baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            model: "qwen3-plus",
+            wireFormat: .openAIChat,
+            apiToken: "sk-qwen-test"
+        )
+
+        let output = try await LLMAPIClient(
+            providerConfig: providerConfig,
+            session: CloudStubURLProtocol.makeSession()
+        ).complete(
+            input: "Reply with OK.",
+            options: LLMCompletionOptions(
+                temperature: 0.1,
+                maxTokens: 8192,
+                reasoning: LLMReasoningOptions(mode: "off")
+            )
+        )
+
+        XCTAssertEqual(output, "Qwen OK")
+        let request = try XCTUnwrap(CloudStubURLProtocol.lastRequest)
+        let body = try requestBodyJSON(request)
+        let kwargs = try XCTUnwrap(body["chat_template_kwargs"] as? [String: Any])
+        XCTAssertEqual(kwargs["enable_thinking"] as? Bool, false)
     }
 
     func testLLMAPIClientSendsAnthropicMessagesRequestAndParsesTextContent() async throws {
@@ -186,7 +231,11 @@ final class CloudSummarizerTests: XCTestCase {
         let output = try await LLMAPIClient(
             providerConfig: providerConfig,
             session: CloudStubURLProtocol.makeSession()
-        ).complete(input: "Reply with OK.", systemPrompt: "Be brief.")
+        ).complete(
+            input: "Reply with OK.",
+            systemPrompt: "Be brief.",
+            options: LLMCompletionOptions(temperature: 0.1, maxTokens: 8192)
+        )
 
         XCTAssertEqual(output, "Anthropic OK")
         let request = try XCTUnwrap(CloudStubURLProtocol.lastRequest)
@@ -195,7 +244,8 @@ final class CloudSummarizerTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "anthropic-version"), "2023-06-01")
         let body = try requestBodyJSON(request)
         XCTAssertEqual(body["model"] as? String, "claude-sonnet-4-5")
-        XCTAssertEqual(body["max_tokens"] as? Int, 4096)
+        XCTAssertEqual(body["max_tokens"] as? Int, 8192)
+        XCTAssertEqual((body["temperature"] as? NSNumber)?.doubleValue, 0.1)
         XCTAssertEqual(body["system"] as? String, "Be brief.")
         let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
         XCTAssertEqual(messages.first?["role"] as? String, "user")
@@ -218,7 +268,11 @@ final class CloudSummarizerTests: XCTestCase {
         let output = try await LLMAPIClient(
             providerConfig: providerConfig,
             session: CloudStubURLProtocol.makeSession()
-        ).complete(input: "Reply with OK.", systemPrompt: "Be brief.")
+        ).complete(
+            input: "Reply with OK.",
+            systemPrompt: "Be brief.",
+            options: LLMCompletionOptions(temperature: 0.1, maxTokens: 8192)
+        )
 
         XCTAssertEqual(output, "Gemini OK")
         let request = try XCTUnwrap(CloudStubURLProtocol.lastRequest)
@@ -228,12 +282,47 @@ final class CloudSummarizerTests: XCTestCase {
         )
         XCTAssertEqual(request.value(forHTTPHeaderField: "x-goog-api-key"), "sk-gemini-test")
         let body = try requestBodyJSON(request)
+        let generationConfig = try XCTUnwrap(body["generation_config"] as? [String: Any])
+        XCTAssertEqual(generationConfig["max_output_tokens"] as? Int, 8192)
+        XCTAssertEqual((generationConfig["temperature"] as? NSNumber)?.doubleValue, 0.1)
         let contents = try XCTUnwrap(body["contents"] as? [[String: Any]])
         let userParts = try XCTUnwrap(contents.first?["parts"] as? [[String: Any]])
         XCTAssertEqual(userParts.first?["text"] as? String, "Reply with OK.")
         let systemInstruction = try XCTUnwrap(body["system_instruction"] as? [String: Any])
         let systemParts = try XCTUnwrap(systemInstruction["parts"] as? [[String: Any]])
         XCTAssertEqual(systemParts.first?["text"] as? String, "Be brief.")
+    }
+
+    func testGeminiReasoningOffDisablesThinkingBudget() async throws {
+        CloudStubURLProtocol.behavior = .success(
+            statusCode: 200,
+            body: Data(#"{"candidates":[{"content":{"parts":[{"text":"Gemini OK"}]}}]}"#.utf8)
+        )
+        let providerConfig = LLMAPIProviderConfig(
+            id: .gemini,
+            baseURL: "https://generativelanguage.googleapis.com/v1beta",
+            model: "gemini-3.5-flash",
+            wireFormat: .geminiGenerateContent,
+            apiToken: "sk-gemini-test"
+        )
+
+        _ = try await LLMAPIClient(
+            providerConfig: providerConfig,
+            session: CloudStubURLProtocol.makeSession()
+        ).complete(
+            input: "Reply with OK.",
+            options: LLMCompletionOptions(
+                temperature: 0.1,
+                maxTokens: 8192,
+                reasoning: LLMReasoningOptions(mode: "off")
+            )
+        )
+
+        let request = try XCTUnwrap(CloudStubURLProtocol.lastRequest)
+        let body = try requestBodyJSON(request)
+        let generationConfig = try XCTUnwrap(body["generation_config"] as? [String: Any])
+        let thinkingConfig = try XCTUnwrap(generationConfig["thinking_config"] as? [String: Any])
+        XCTAssertEqual(thinkingConfig["thinking_budget"] as? Int, 0)
     }
 
     func testMyWikiBridgeMapsCloudUnauthorizedResponsesToAuthFailed() async throws {

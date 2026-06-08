@@ -1,4 +1,4 @@
-import { readFile, writeFile, listDirectory } from "@/commands/fs"
+import { readFile, writeFile, listDirectory, fileExists } from "@/commands/fs"
 import { streamChat } from "@/lib/llm-client"
 import type { LlmConfig } from "@/stores/wiki-store"
 import { useWikiStore } from "@/stores/wiki-store"
@@ -10,6 +10,7 @@ import { checkIngestCache, saveIngestCache } from "@/lib/ingest-cache"
 import { sanitizeIngestedFileContent } from "@/lib/ingest-sanitize"
 import { mergePageContent, type MergeFn } from "@/lib/page-merge"
 import { withProjectLock } from "@/lib/project-mutex"
+import { computeContextBudget } from "@/lib/context-budget"
 import {
   extractAndSaveSourceImages,
   buildImageMarkdownSection,
@@ -83,6 +84,8 @@ export interface ParseFileBlocksResult {
 // item (`- ---END FILE---`) won't register.
 const OPENER_LINE = /^---\s*FILE:\s*(.+?)\s*---\s*$/i
 const CLOSER_LINE = /^---\s*END\s+FILE\s*---\s*$/i
+const INGEST_FALLBACK_CONTEXT_SIZE = 100_000
+const INGEST_TRUNCATION_NOTICE = "\n\n[...truncated...]"
 
 /**
  * Reject FILE block paths that try to escape the project's `wiki/`
@@ -127,6 +130,39 @@ export function isSafeIngestPath(p: string): boolean {
 // indentation ≤ 3 spaces is still a fence; 4+ spaces is an indented code
 // block and doesn't use fence markers.
 const FENCE_LINE = /^\s{0,3}(```+|~~~+)/
+
+function hasMatchingFenceCloserAhead(
+  lines: string[],
+  startIndex: number,
+  fenceMarker: string,
+  fenceLen: number,
+): boolean {
+  for (let j = startIndex; j < lines.length; j++) {
+    if (OPENER_LINE.test(lines[j])) return false
+    const fenceMatch = FENCE_LINE.exec(lines[j])
+    if (!fenceMatch) continue
+    const run = fenceMatch[1]
+    if (run[0] === fenceMarker && run.length >= fenceLen) {
+      return true
+    }
+  }
+  return false
+}
+
+export function truncateSourceForIngest(
+  content: string,
+  maxContextSize: number | undefined,
+): string {
+  const contextSize =
+    typeof maxContextSize === "number" && Number.isFinite(maxContextSize) && maxContextSize > 0
+      ? maxContextSize
+      : INGEST_FALLBACK_CONTEXT_SIZE
+  const sourceBudget = computeContextBudget(contextSize).pageBudget
+  if (content.length <= sourceBudget) return content
+
+  const bodyBudget = Math.max(0, sourceBudget - INGEST_TRUNCATION_NOTICE.length)
+  return `${content.slice(0, bodyBudget)}${INGEST_TRUNCATION_NOTICE}`
+}
 
 /**
  * Parse an LLM stage-2 generation into FILE blocks.
@@ -207,6 +243,21 @@ export function parseFileBlocks(text: string): ParseFileBlocksResult {
       // code fence. Inside a fence, treat it as ordinary body text.
       if (fenceMarker === null && CLOSER_LINE.test(line)) {
         closed = true
+        i++
+        break
+      }
+
+      if (
+        fenceMarker !== null &&
+        CLOSER_LINE.test(line) &&
+        !hasMatchingFenceCloserAhead(lines, i + 1, fenceMarker, fenceLen)
+      ) {
+        const msg = `FILE block "${path || "(unnamed)"}" had an unclosed code fence; treated END FILE as the block closer to avoid dropping the page.`
+        console.warn(`[ingest] ${msg}`)
+        warnings.push(msg)
+        closed = true
+        fenceMarker = null
+        fenceLen = 0
         i++
         break
       }
@@ -518,9 +569,10 @@ async function autoIngestImpl(
     }
   }
 
-  const truncatedContent = enrichedSourceContent.length > 50000
-    ? enrichedSourceContent.slice(0, 50000) + "\n\n[...truncated...]"
-    : enrichedSourceContent
+  const truncatedContent = truncateSourceForIngest(
+    enrichedSourceContent,
+    llmConfig.maxContextSize,
+  )
 
   // ── Step 1: Analysis ──────────────────────────────────────────
   // LLM reads the source and produces a structured analysis:
@@ -638,7 +690,8 @@ async function autoIngestImpl(
   // old project's wiki would both be noise and mask the error.
   // Returning no files lets processNext's length-0 safety net mark the
   // task for retry rather than "success".
-  if (!hasSourceSummary && !signal?.aborted) {
+  const sourceSummaryAlreadyExists = await fileExists(sourceSummaryFullPath).catch(() => false)
+  if (!hasSourceSummary && !sourceSummaryAlreadyExists && !signal?.aborted) {
     const date = new Date().toISOString().slice(0, 10)
     const fallbackContent = [
       "---",
@@ -712,7 +765,9 @@ async function autoIngestImpl(
     try {
       const { embedPage } = await import("@/lib/embedding")
       for (const wpath of writtenPaths) {
-        const pageId = wpath.split("/").pop()?.replace(/\.md$/, "") ?? ""
+        const pageId = wpath
+          .replace(/^wiki\//, "")
+          .replace(/\.md$/, "")
         if (!pageId || ["index", "log", "overview"].includes(pageId)) continue
         try {
           const content = await readFile(`${pp}/${wpath}`)
@@ -897,12 +952,13 @@ async function writeFileBlocks(
 
 const REVIEW_BLOCK_REGEX = /---REVIEW:\s*(\w[\w-]*)\s*\|\s*(.+?)\s*---\n([\s\S]*?)---END REVIEW---/g
 
-function parseReviewBlocks(
+export function parseReviewBlocks(
   text: string,
   sourcePath: string,
 ): Omit<ReviewItem, "id" | "resolved" | "createdAt">[] {
   const items: Omit<ReviewItem, "id" | "resolved" | "createdAt">[] = []
-  const matches = text.matchAll(REVIEW_BLOCK_REGEX)
+  const normalized = text.replace(/\r\n/g, "\n")
+  const matches = normalized.matchAll(REVIEW_BLOCK_REGEX)
 
   for (const match of matches) {
     const rawType = match[1].trim().toLowerCase()

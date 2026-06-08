@@ -163,7 +163,7 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
         try makeValidBundledRunner(at: runnerRoot)
         let bundle = try MyWikiRunnerBundle(rootURL: runnerRoot)
         let requestJSONL = """
-        {"type":"llm.request","id":"req-bridge","messages":[{"role":"system","content":"Extract ontology."},{"role":"user","content":"Diary text"}],"temperature":0.2}
+        {"type":"llm.request","id":"req-bridge","messages":[{"role":"system","content":"Extract ontology."},{"role":"user","content":"Diary text"}],"temperature":0.2,"max_tokens":8192,"reasoning":{"mode":"off"}}
         """
         let process = RecordingMyWikiRunnerProcess(
             events: [
@@ -195,7 +195,11 @@ final class MyWikiPipelineBridgeTests: XCTestCase {
                         MyWikiLLMMessage(role: "system", content: "Extract ontology."),
                         MyWikiLLMMessage(role: "user", content: "Diary text")
                     ],
-                    temperature: 0.2
+                    options: LLMCompletionOptions(
+                        temperature: 0.2,
+                        maxTokens: 8192,
+                        reasoning: LLMReasoningOptions(mode: "off", budgetTokens: nil)
+                    )
                 )
             ]
         )
@@ -405,7 +409,7 @@ private final class RecordingMyWikiRunnerProcess: MyWikiRunnerProcessRunning, @u
 private actor PipelineStubMyWikiLLMEngine: MyWikiLLMCompleting {
     struct Request: Equatable {
         let messages: [MyWikiLLMMessage]
-        let temperature: Double?
+        let options: LLMCompletionOptions
     }
 
     private let result: String
@@ -415,8 +419,8 @@ private actor PipelineStubMyWikiLLMEngine: MyWikiLLMCompleting {
         self.result = result
     }
 
-    func complete(messages: [MyWikiLLMMessage], temperature: Double?) async throws -> String {
-        requests.append(Request(messages: messages, temperature: temperature))
+    func complete(messages: [MyWikiLLMMessage], options: LLMCompletionOptions) async throws -> String {
+        requests.append(Request(messages: messages, options: options))
         return result
     }
 

@@ -178,12 +178,17 @@ final class CLISummarizerTests: XCTestCase {
             MyWikiLLMMessage(role: "user", content: "Alice helped Bob prepare the release notes.")
         ]
 
-        let result = try await summarizer.complete(messages: messages, temperature: 0.2)
+        let result = try await summarizer.complete(
+            messages: messages,
+            options: LLMCompletionOptions(temperature: 0.2, maxTokens: 8192)
+        )
 
         XCTAssertEqual(result, raw)
         XCTAssertEqual(stub.invocations.count, 1)
         let arguments = try XCTUnwrap(stub.invocations.first?.arguments)
         XCTAssertFalse(arguments.contains("--output-schema"))
+        XCTAssertFalse(arguments.contains("--max-tokens"))
+        XCTAssertFalse(arguments.contains("8192"))
         XCTAssertTrue(arguments.contains("-o"))
         XCTAssertEqual(arguments.last, messages.myWikiFullTranscript)
     }

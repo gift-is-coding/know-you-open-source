@@ -963,7 +963,7 @@ struct CLISummarizer: JSONSummaryGenerating {
 }
 
 extension CLISummarizer: MyWikiLLMCompleting {
-    func complete(messages: [MyWikiLLMMessage], temperature: Double?) async throws -> String {
+    func complete(messages: [MyWikiLLMMessage], options: LLMCompletionOptions) async throws -> String {
         try await completeRaw(
             prompt: messages.myWikiFullTranscript,
             context: .automationRefresh

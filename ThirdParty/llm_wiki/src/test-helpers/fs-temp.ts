@@ -59,6 +59,14 @@ export const realFs = {
   listDirectory: async (p: string): Promise<FileNode[]> => {
     return buildTree(p)
   },
+  fileExists: async (p: string): Promise<boolean> => {
+    try {
+      await fs.access(p)
+      return true
+    } catch {
+      return false
+    }
+  },
   copyFile: async (source: string, destination: string): Promise<void> => {
     await fs.mkdir(path.dirname(destination), { recursive: true })
     await fs.copyFile(source, destination)

@@ -37,7 +37,7 @@ describe("KnowYou bridge transport", () => {
         },
       },
       undefined,
-      { temperature: 0.2 },
+      { temperature: 0.2, max_tokens: 8192, reasoning: { mode: "off" } },
       transport,
     )
 
@@ -46,6 +46,8 @@ describe("KnowYou bridge transport", () => {
       type: "llm.request",
       messages: [{ role: "user", content: "Diary text" }],
       temperature: 0.2,
+      max_tokens: 8192,
+      reasoning: { mode: "off" },
     })
     expect(typeof request.id).toBe("string")
     expect(request).not.toHaveProperty("apiKey")

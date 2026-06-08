@@ -97,7 +97,7 @@ describe("runSemanticLint — language directive", () => {
     await runSemanticLint("/project", fakeLlmConfig())
 
     const prompt = mockStreamChat.mock.calls[0][1][0].content
-    expect(prompt).toContain("MANDATORY OUTPUT LANGUAGE: Chinese")
+    expect(prompt).toContain("SOURCE LANGUAGE MODE: Chinese")
   })
 
   it("explicit setting wins over source language", async () => {

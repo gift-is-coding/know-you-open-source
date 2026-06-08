@@ -16,7 +16,9 @@ final class MyWikiLLMBridgeTests: XCTestCase {
                 MyWikiLLMRequest(
                     id: "req-1",
                     messages: messages,
-                    temperature: 0.2
+                    temperature: 0.2,
+                    maxTokens: 8192,
+                    reasoning: LLMReasoningOptions(mode: "off", budgetTokens: nil)
                 )
             )
         )
@@ -28,7 +30,16 @@ final class MyWikiLLMBridgeTests: XCTestCase {
         let recordedRequests = await engine.recordedRequests()
         XCTAssertEqual(
             recordedRequests,
-            [StubMyWikiLLMEngine.Request(messages: messages, temperature: 0.2)]
+            [
+                StubMyWikiLLMEngine.Request(
+                    messages: messages,
+                    options: LLMCompletionOptions(
+                        temperature: 0.2,
+                        maxTokens: 8192,
+                        reasoning: LLMReasoningOptions(mode: "off", budgetTokens: nil)
+                    )
+                )
+            ]
         )
     }
 
@@ -94,7 +105,9 @@ final class MyWikiLLMBridgeTests: XCTestCase {
                     MyWikiLLMMessage(role: "system", content: "Use wiki schema."),
                     MyWikiLLMMessage(role: "user", content: "Diary text")
                 ],
-                temperature: 0.7
+                temperature: 0.7,
+                maxTokens: 8192,
+                reasoning: LLMReasoningOptions(mode: "custom", budgetTokens: 1024)
             )
         )
 
@@ -104,6 +117,10 @@ final class MyWikiLLMBridgeTests: XCTestCase {
         XCTAssertEqual(object["id"] as? String, "req-json")
         XCTAssertNotNil(object["messages"])
         XCTAssertEqual((object["temperature"] as? NSNumber)?.doubleValue, 0.7)
+        XCTAssertEqual(object["max_tokens"] as? Int, 8192)
+        let reasoning = try XCTUnwrap(object["reasoning"] as? [String: Any])
+        XCTAssertEqual(reasoning["mode"] as? String, "custom")
+        XCTAssertEqual(reasoning["budgetTokens"] as? Int, 1024)
         XCTAssertNil(object["llmRequest"])
         XCTAssertNil(object["llmResponse"])
         XCTAssertNil(object["llmError"])
@@ -178,7 +195,7 @@ private struct StubEngineError: LocalizedError {
 private actor StubMyWikiLLMEngine: MyWikiLLMCompleting {
     struct Request: Equatable {
         let messages: [MyWikiLLMMessage]
-        let temperature: Double?
+        let options: LLMCompletionOptions
     }
 
     private let result: String?
@@ -195,8 +212,8 @@ private actor StubMyWikiLLMEngine: MyWikiLLMCompleting {
         self.error = error
     }
 
-    func complete(messages: [MyWikiLLMMessage], temperature: Double?) async throws -> String {
-        requests.append(Request(messages: messages, temperature: temperature))
+    func complete(messages: [MyWikiLLMMessage], options: LLMCompletionOptions) async throws -> String {
+        requests.append(Request(messages: messages, options: options))
         if let error {
             throw error
         }

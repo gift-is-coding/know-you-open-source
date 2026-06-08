@@ -18,7 +18,7 @@
  * to dropping pages without telling anyone.
  */
 import { describe, it, expect } from "vitest"
-import { parseFileBlocks, isSafeIngestPath } from "./ingest"
+import { parseFileBlocks, parseReviewBlocks, truncateSourceForIngest, isSafeIngestPath } from "./ingest"
 
 // ── Happy paths ─────────────────────────────────────────────────────
 
@@ -290,6 +290,47 @@ describe("parseFileBlocks — H5: code-fence awareness", () => {
     expect(blocks).toHaveLength(1)
     expect(blocks[0].content).toContain("real content")
   })
+
+  it("treats END FILE as the block closer when a code fence was never closed", () => {
+    const text = [
+      "---FILE: wiki/concepts/foo.md---",
+      "# Foo",
+      "",
+      "```markdown",
+      "A model can forget to close this fence.",
+      "---END FILE---",
+    ].join("\n")
+
+    const { blocks, warnings } = parseFileBlocks(text)
+
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].path).toBe("wiki/concepts/foo.md")
+    expect(blocks[0].content).toContain("A model can forget")
+    expect(blocks[0].content).not.toContain("---END FILE---")
+    expect(warnings.join("\n")).toMatch(/unclosed code fence/i)
+  })
+})
+
+describe("truncateSourceForIngest", () => {
+  it("uses maxContextSize-derived budget instead of a fixed 50,000 character cap", () => {
+    const source = "x".repeat(70_000)
+
+    const small = truncateSourceForIngest(source, 32_000)
+    const large = truncateSourceForIngest(source, 160_000)
+
+    expect(small.length).toBeLessThan(20_000)
+    expect(small).toContain("[...truncated...]")
+    expect(large.length).toBe(70_000)
+    expect(large).not.toContain("[...truncated...]")
+  })
+
+  it("keeps legacy 50,000 character behavior when maxContextSize is missing or invalid", () => {
+    const source = "x".repeat(60_000)
+    const truncated = truncateSourceForIngest(source, undefined)
+
+    expect(truncated.length).toBeLessThanOrEqual(50_000)
+    expect(truncated).toContain("[...truncated...]")
+  })
 })
 
 // ── H6: Empty path ──────────────────────────────────────────────────
@@ -304,6 +345,33 @@ describe("parseFileBlocks — H6: empty-path blocks", () => {
     // In either case, the block must NOT produce a silent write.
     expect(blocks).toHaveLength(0)
     expect(warnings.length).toBeGreaterThan(0)
+  })
+})
+
+describe("parseReviewBlocks — CRLF line endings", () => {
+  it("parses review blocks when the model emits Windows line endings", () => {
+    const text = [
+      "---REVIEW: duplicate | Merge Alice pages ---",
+      "PAGES: wiki/entities/alice.md, wiki/entities/alice-2.md",
+      "OPTIONS: Merge | Skip",
+      "These two pages describe the same person.",
+      "---END REVIEW---",
+    ].join("\r\n")
+
+    const items = parseReviewBlocks(text, "raw/sources/diary.md")
+
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({
+      type: "duplicate",
+      title: "Merge Alice pages",
+      sourcePath: "raw/sources/diary.md",
+      affectedPages: ["wiki/entities/alice.md", "wiki/entities/alice-2.md"],
+      options: [
+        { label: "Merge", action: "Merge" },
+        { label: "Skip", action: "Skip" },
+      ],
+    })
+    expect(items[0].description).toContain("same person")
   })
 })
 

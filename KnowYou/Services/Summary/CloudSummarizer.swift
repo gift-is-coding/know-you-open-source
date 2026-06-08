@@ -100,9 +100,13 @@ struct CloudSummarizer: IncrementalSummaryGenerating {
 }
 
 extension CloudSummarizer: MyWikiLLMCompleting {
-    func complete(messages: [MyWikiLLMMessage], temperature: Double?) async throws -> String {
+    func complete(messages: [MyWikiLLMMessage], options: LLMCompletionOptions) async throws -> String {
         try await LLMAPIClient(providerConfig: providerConfig, session: session)
-            .complete(input: messages.myWikiNonSystemTranscript, systemPrompt: messages.myWikiSystemPrompt)
+            .complete(
+                input: messages.myWikiNonSystemTranscript,
+                systemPrompt: messages.myWikiSystemPrompt,
+                options: options
+            )
     }
 }
 
@@ -136,8 +140,12 @@ struct LLMAPIClient: Sendable {
         self.session = session
     }
 
-    func complete(input: String, systemPrompt: String? = nil) async throws -> String {
-        let request = try makeRequest(input: input, systemPrompt: systemPrompt)
+    func complete(
+        input: String,
+        systemPrompt: String? = nil,
+        options: LLMCompletionOptions = LLMCompletionOptions()
+    ) async throws -> String {
+        let request = try makeRequest(input: input, systemPrompt: systemPrompt, options: options)
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
@@ -152,7 +160,11 @@ struct LLMAPIClient: Sendable {
         return try decodeText(from: data)
     }
 
-    private func makeRequest(input: String, systemPrompt: String?) throws -> URLRequest {
+    private func makeRequest(
+        input: String,
+        systemPrompt: String?,
+        options: LLMCompletionOptions
+    ) throws -> URLRequest {
         let endpointURL = try endpointURL()
         var request = URLRequest(url: endpointURL)
         request.httpMethod = "POST"
@@ -166,7 +178,9 @@ struct LLMAPIClient: Sendable {
                 ResponsesRequest(
                     model: providerConfig.model,
                     input: input,
-                    instructions: trimmedSystemPrompt?.isEmpty == false ? trimmedSystemPrompt : nil
+                    instructions: trimmedSystemPrompt?.isEmpty == false ? trimmedSystemPrompt : nil,
+                    temperature: options.temperature,
+                    maxOutputTokens: options.maxTokens
                 )
             )
         case .openAIChat:
@@ -180,7 +194,11 @@ struct LLMAPIClient: Sendable {
                 OpenAIChatRequest(
                     model: providerConfig.model,
                     messages: messages,
-                    stream: false
+                    stream: false,
+                    temperature: options.temperature,
+                    maxTokens: options.maxTokens,
+                    thinking: deepSeekThinkingOptions(for: options),
+                    chatTemplateKwargs: qwenChatTemplateKwargs(for: options)
                 )
             )
         case .anthropicMessages:
@@ -190,7 +208,8 @@ struct LLMAPIClient: Sendable {
             request.httpBody = try JSONEncoder().encode(
                 AnthropicMessagesRequest(
                     model: providerConfig.model,
-                    maxTokens: 4096,
+                    maxTokens: options.maxTokens ?? 4096,
+                    temperature: options.temperature,
                     system: trimmedSystemPrompt?.isEmpty == false ? trimmedSystemPrompt : nil,
                     messages: [
                         AnthropicMessage(role: "user", content: input)
@@ -210,7 +229,12 @@ struct LLMAPIClient: Sendable {
                     ],
                     systemInstruction: trimmedSystemPrompt?.isEmpty == false
                         ? GeminiSystemInstruction(parts: [GeminiPart(text: trimmedSystemPrompt ?? "")])
-                        : nil
+                        : nil,
+                    generationConfig: GeminiGenerationConfig(
+                        temperature: options.temperature,
+                        maxOutputTokens: options.maxTokens,
+                        thinkingConfig: geminiThinkingConfig(for: options)
+                    ).nonEmpty
                 )
             )
         }
@@ -270,6 +294,48 @@ struct LLMAPIClient: Sendable {
                 .joined(separator: "\n")
         }
     }
+
+    private func reasoningMode(for options: LLMCompletionOptions) -> String? {
+        options.reasoning?.mode
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+
+    private func reasoningIsOff(_ options: LLMCompletionOptions) -> Bool {
+        reasoningMode(for: options) == "off"
+    }
+
+    private func deepSeekThinkingOptions(for options: LLMCompletionOptions) -> OpenAIChatThinkingOptions? {
+        guard reasoningIsOff(options) else {
+            return nil
+        }
+        let baseURL = providerConfig.baseURL.lowercased()
+        let model = providerConfig.model.lowercased()
+        guard providerConfig.id == .deepSeek || model.contains("deepseek") || baseURL.contains("deepseek") else {
+            return nil
+        }
+        return OpenAIChatThinkingOptions(type: "disabled")
+    }
+
+    private func qwenChatTemplateKwargs(for options: LLMCompletionOptions) -> OpenAIChatTemplateKwargs? {
+        guard reasoningIsOff(options) else {
+            return nil
+        }
+        let normalizedModel = providerConfig.model
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+        guard normalizedModel.contains("qwen3") else {
+            return nil
+        }
+        return OpenAIChatTemplateKwargs(enableThinking: false)
+    }
+
+    private func geminiThinkingConfig(for options: LLMCompletionOptions) -> GeminiThinkingConfig? {
+        guard reasoningIsOff(options) else {
+            return nil
+        }
+        return GeminiThinkingConfig(thinkingBudget: 0)
+    }
 }
 
 extension CLISummarizer: IncrementalSummaryGenerating {}
@@ -278,12 +344,48 @@ private struct ResponsesRequest: Encodable {
     let model: String
     let input: String
     let instructions: String?
+    let temperature: Double?
+    let maxOutputTokens: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case input
+        case instructions
+        case temperature
+        case maxOutputTokens = "max_output_tokens"
+    }
 }
 
 private struct OpenAIChatRequest: Encodable {
     let model: String
     let messages: [OpenAIChatMessage]
     let stream: Bool
+    let temperature: Double?
+    let maxTokens: Int?
+    let thinking: OpenAIChatThinkingOptions?
+    let chatTemplateKwargs: OpenAIChatTemplateKwargs?
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case messages
+        case stream
+        case temperature
+        case maxTokens = "max_tokens"
+        case thinking
+        case chatTemplateKwargs = "chat_template_kwargs"
+    }
+}
+
+private struct OpenAIChatThinkingOptions: Encodable {
+    let type: String
+}
+
+private struct OpenAIChatTemplateKwargs: Encodable {
+    let enableThinking: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case enableThinking = "enable_thinking"
+    }
 }
 
 private struct OpenAIChatMessage: Encodable {
@@ -306,12 +408,14 @@ private struct OpenAIChatResponseMessage: Decodable {
 private struct AnthropicMessagesRequest: Encodable {
     let model: String
     let maxTokens: Int
+    let temperature: Double?
     let system: String?
     let messages: [AnthropicMessage]
 
     enum CodingKeys: String, CodingKey {
         case model
         case maxTokens = "max_tokens"
+        case temperature
         case system
         case messages
     }
@@ -334,10 +438,36 @@ private struct AnthropicContent: Decodable {
 private struct GeminiGenerateContentRequest: Encodable {
     let contents: [GeminiContent]
     let systemInstruction: GeminiSystemInstruction?
+    let generationConfig: GeminiGenerationConfig?
 
     enum CodingKeys: String, CodingKey {
         case contents
         case systemInstruction = "system_instruction"
+        case generationConfig = "generation_config"
+    }
+}
+
+private struct GeminiGenerationConfig: Encodable {
+    let temperature: Double?
+    let maxOutputTokens: Int?
+    let thinkingConfig: GeminiThinkingConfig?
+
+    var nonEmpty: GeminiGenerationConfig? {
+        temperature == nil && maxOutputTokens == nil && thinkingConfig == nil ? nil : self
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case temperature
+        case maxOutputTokens = "max_output_tokens"
+        case thinkingConfig = "thinking_config"
+    }
+}
+
+private struct GeminiThinkingConfig: Encodable {
+    let thinkingBudget: Int
+
+    enum CodingKeys: String, CodingKey {
+        case thinkingBudget = "thinking_budget"
     }
 }
 

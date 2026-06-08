@@ -90,11 +90,16 @@ struct CodexDirectSummarizer: IncrementalSummaryGenerating {
     private func sendRequest(input: String) async throws -> String {
         try await sendRequest(
             input: [CodexResponsesInputMessage(role: "user", content: input)],
-            instructions: instructions
+            instructions: instructions,
+            options: LLMCompletionOptions()
         )
     }
 
-    private func sendRequest(input: [CodexResponsesInputMessage], instructions: String) async throws -> String {
+    private func sendRequest(
+        input: [CodexResponsesInputMessage],
+        instructions: String,
+        options: LLMCompletionOptions
+    ) async throws -> String {
         let credential = try await credentialProvider.validCredential()
         var request = URLRequest(url: Self.apiURL)
         request.httpMethod = "POST"
@@ -108,7 +113,10 @@ struct CodexDirectSummarizer: IncrementalSummaryGenerating {
             CodexResponsesRequest(
                 model: model,
                 instructions: instructions,
-                input: input
+                input: input,
+                temperature: options.temperature,
+                maxOutputTokens: options.maxTokens,
+                reasoningOptions: options.reasoning
             )
         )
 
@@ -202,11 +210,12 @@ struct CodexDirectSummarizer: IncrementalSummaryGenerating {
 }
 
 extension CodexDirectSummarizer: MyWikiLLMCompleting {
-    func complete(messages: [MyWikiLLMMessage], temperature: Double?) async throws -> String {
+    func complete(messages: [MyWikiLLMMessage], options: LLMCompletionOptions) async throws -> String {
         let input = messages.codexNonSystemInputMessages
         return try await sendRequest(
             input: input.isEmpty ? [CodexResponsesInputMessage(role: "user", content: "")] : input,
-            instructions: messages.myWikiSystemPrompt ?? instructions
+            instructions: messages.myWikiSystemPrompt ?? instructions,
+            options: options
         )
     }
 }
@@ -220,18 +229,48 @@ private struct CodexResponsesRequest: Encodable {
     let model: String
     let instructions: String
     let input: [CodexResponsesInputMessage]
+    let temperature: Double?
+    let maxOutputTokens: Int?
     let store = false
     let stream = true
     let text = CodexResponsesTextOptions(verbosity: "medium")
-    let include = ["reasoning.encrypted_content"]
+    let include: [String]?
     let toolChoice = "auto"
     let parallelToolCalls = true
-    let reasoning = CodexResponsesReasoningOptions(summary: "auto")
+    let reasoning: CodexResponsesReasoningOptions?
+
+    init(
+        model: String,
+        instructions: String,
+        input: [CodexResponsesInputMessage],
+        temperature: Double?,
+        maxOutputTokens: Int?,
+        reasoningOptions: LLMReasoningOptions?
+    ) {
+        self.model = model
+        self.instructions = instructions
+        self.input = input
+        self.temperature = temperature
+        self.maxOutputTokens = maxOutputTokens
+
+        let mode = reasoningOptions?.mode
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if mode == "off" {
+            include = nil
+            reasoning = nil
+        } else {
+            include = ["reasoning.encrypted_content"]
+            reasoning = CodexResponsesReasoningOptions(summary: "auto")
+        }
+    }
 
     enum CodingKeys: String, CodingKey {
         case model
         case instructions
         case input
+        case temperature
+        case maxOutputTokens = "max_output_tokens"
         case store
         case stream
         case text

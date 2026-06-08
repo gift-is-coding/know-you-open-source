@@ -1,7 +1,33 @@
 import Foundation
 
+struct LLMReasoningOptions: Codable, Equatable, Sendable {
+    let mode: String
+    let budgetTokens: Int?
+
+    init(mode: String, budgetTokens: Int? = nil) {
+        self.mode = mode
+        self.budgetTokens = budgetTokens
+    }
+}
+
+struct LLMCompletionOptions: Equatable, Sendable {
+    let temperature: Double?
+    let maxTokens: Int?
+    let reasoning: LLMReasoningOptions?
+
+    init(
+        temperature: Double? = nil,
+        maxTokens: Int? = nil,
+        reasoning: LLMReasoningOptions? = nil
+    ) {
+        self.temperature = temperature
+        self.maxTokens = maxTokens
+        self.reasoning = reasoning
+    }
+}
+
 protocol MyWikiLLMCompleting: Sendable {
-    func complete(messages: [MyWikiLLMMessage], temperature: Double?) async throws -> String
+    func complete(messages: [MyWikiLLMMessage], options: LLMCompletionOptions) async throws -> String
 }
 
 struct MyWikiLLMMessage: Codable, Equatable, Sendable {
@@ -13,6 +39,30 @@ struct MyWikiLLMRequest: Codable, Equatable, Sendable {
     let id: String
     let messages: [MyWikiLLMMessage]
     let temperature: Double?
+    let maxTokens: Int?
+    let reasoning: LLMReasoningOptions?
+
+    init(
+        id: String,
+        messages: [MyWikiLLMMessage],
+        temperature: Double? = nil,
+        maxTokens: Int? = nil,
+        reasoning: LLMReasoningOptions? = nil
+    ) {
+        self.id = id
+        self.messages = messages
+        self.temperature = temperature
+        self.maxTokens = maxTokens
+        self.reasoning = reasoning
+    }
+
+    var options: LLMCompletionOptions {
+        LLMCompletionOptions(
+            temperature: temperature,
+            maxTokens: maxTokens,
+            reasoning: reasoning
+        )
+    }
 }
 
 struct MyWikiLLMResponse: Codable, Equatable, Sendable {
@@ -63,7 +113,7 @@ struct MyWikiLLMBridge: Sendable {
         do {
             let content = try await engine.complete(
                 messages: request.messages,
-                temperature: request.temperature
+                options: request.options
             )
             return .llmResponse(MyWikiLLMResponse(id: request.id, content: content))
         } catch {
@@ -121,6 +171,8 @@ extension MyWikiBridgeEnvelope {
         case id
         case messages
         case temperature
+        case maxTokens = "max_tokens"
+        case reasoning
         case content
         case code
         case message
@@ -136,7 +188,9 @@ extension MyWikiBridgeEnvelope {
                 MyWikiLLMRequest(
                     id: try container.decode(String.self, forKey: .id),
                     messages: try container.decode([MyWikiLLMMessage].self, forKey: .messages),
-                    temperature: try container.decodeIfPresent(Double.self, forKey: .temperature)
+                    temperature: try container.decodeIfPresent(Double.self, forKey: .temperature),
+                    maxTokens: try container.decodeIfPresent(Int.self, forKey: .maxTokens),
+                    reasoning: try container.decodeIfPresent(LLMReasoningOptions.self, forKey: .reasoning)
                 )
             )
         case "llm.response":
@@ -172,6 +226,8 @@ extension MyWikiBridgeEnvelope {
             try container.encode(request.id, forKey: .id)
             try container.encode(request.messages, forKey: .messages)
             try container.encodeIfPresent(request.temperature, forKey: .temperature)
+            try container.encodeIfPresent(request.maxTokens, forKey: .maxTokens)
+            try container.encodeIfPresent(request.reasoning, forKey: .reasoning)
         case .llmResponse(let response):
             try container.encode("llm.response", forKey: .type)
             try container.encode(response.id, forKey: .id)
@@ -196,7 +252,10 @@ extension Array where Element == MyWikiLLMMessage {
 
     var myWikiNonSystemTranscript: String {
         filter { !$0.isSystemMessage }
-            .map { "\($0.role):\n\($0.content)" }
+            .map { message in
+                let role = message.role.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                return role == "user" ? message.content : "\(message.role):\n\(message.content)"
+            }
             .joined(separator: "\n\n")
     }
 

@@ -211,6 +211,8 @@ export async function streamKnowYouBridge(
     id,
     messages: bridgeMessages(messages),
     temperature: requestOverrides?.temperature,
+    max_tokens: requestOverrides?.max_tokens,
+    reasoning: requestOverrides?.reasoning,
   }
 
   try {

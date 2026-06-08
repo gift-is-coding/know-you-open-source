@@ -49,16 +49,6 @@ final class OnboardingViewLayoutTests: XCTestCase {
         XCTAssertEqual(plan.coachmarkTitle, "2/2 Configure engine")
     }
 
-    func testEngineCoachmarkFallbackTracksTheTitlebarTrailingSelector() {
-        let rect = OnboardingEngineCoachmarkFallbackPolicy.rect(in: CGSize(width: 1280, height: 720))
-
-        XCTAssertTrue(OnboardingEngineCoachmarkFallbackPolicy.usesTitlebarFallbackWhenSwiftUIAnchorIsUnavailable)
-        XCTAssertGreaterThan(rect.minX, 1000)
-        XCTAssertEqual(rect.maxX, 1256, accuracy: 0.1)
-        XCTAssertEqual(rect.minY, 14, accuracy: 0.1)
-        XCTAssertEqual(rect.height, 42, accuracy: 0.1)
-    }
-
     func testGeneratingStepStillRendersInsideTheRealReader() {
         let plan = makeRenderPlan(for: .generating)
 

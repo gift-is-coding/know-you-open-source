@@ -45,23 +45,6 @@ struct OnboardingRenderPlan: Equatable {
     }
 }
 
-enum OnboardingEngineCoachmarkFallbackPolicy {
-    static let usesTitlebarFallbackWhenSwiftUIAnchorIsUnavailable = true
-
-    static func rect(in containerSize: CGSize) -> CGRect {
-        let width = min(230, max(170, containerSize.width * 0.22))
-        let height: CGFloat = 42
-        let trailingPadding: CGFloat = 24
-        let topPadding: CGFloat = 14
-        return CGRect(
-            x: max(24, containerSize.width - width - trailingPadding),
-            y: topPadding,
-            width: width,
-            height: height
-        )
-    }
-}
-
 private struct OnboardingCoachmarkCardStyle {
     let titlePointSize: CGFloat
     let iconPointSize: CGFloat
@@ -305,7 +288,7 @@ struct OnboardingView: View {
                 }
             }
         case .engineButton:
-            if let rect = engineButtonCoachmarkRect(preferences: preferences, proxy: proxy) {
+            if let rect = preferences[.engineButton].map({ proxy[$0] }) {
                 engineAnchoredCard(rect: rect, width: 300, proxy: proxy) {
                     coachmarkCard(style: .compact)
                 }
@@ -655,24 +638,10 @@ struct OnboardingView: View {
         case .sourcesPanel:
             return preferences[.sourcesPanel].map { proxy[$0] }
         case .engineButton:
-            return engineButtonCoachmarkRect(preferences: preferences, proxy: proxy)
+            return preferences[.engineButton].map { proxy[$0] }
         case .sharedCenterCard, .engineSheet:
             return nil
         }
-    }
-
-    private func engineButtonCoachmarkRect(
-        preferences: [OnboardingCoachmarkTargetID: Anchor<CGRect>],
-        proxy: GeometryProxy
-    ) -> CGRect? {
-        if let rect = preferences[.engineButton].map({ proxy[$0] }) {
-            return rect
-        }
-        guard OnboardingEngineCoachmarkFallbackPolicy.usesTitlebarFallbackWhenSwiftUIAnchorIsUnavailable,
-              MainWindowWorkspacePolicy.keepsEngineSelectorInAppKitTitlebarTrailingChrome else {
-            return nil
-        }
-        return OnboardingEngineCoachmarkFallbackPolicy.rect(in: proxy.size)
     }
 
     private func statusRow(title: String, detail: String, ok: Bool) -> some View {

@@ -55,30 +55,6 @@ final class OnboardingProgressTests: XCTestCase {
     }
 
     @MainActor
-    func testTitlebarEngineButtonOpensOnboardingEngineSetup() {
-        let appState = AppState(bootstrapServices: false, userDefaults: defaults)
-        appState.resumeOnboardingStep(.enginePrompt)
-
-        let handled = appState.openOnboardingEngineSetupFromTitlebarIfNeeded()
-
-        XCTAssertTrue(handled)
-        XCTAssertEqual(appState.onboardingProgress.state, .engineSetupPending)
-        XCTAssertEqual(appState.currentOnboardingStep, .engineSetup)
-    }
-
-    @MainActor
-    func testTitlebarEngineButtonUsesNormalPopoverAfterOnboarding() {
-        let appState = AppState(bootstrapServices: false, userDefaults: defaults)
-        appState.completeOnboarding()
-
-        let handled = appState.openOnboardingEngineSetupFromTitlebarIfNeeded()
-
-        XCTAssertFalse(handled)
-        XCTAssertEqual(appState.onboardingProgress.state, .complete)
-        XCTAssertNil(appState.currentOnboardingStep)
-    }
-
-    @MainActor
     func testEngineSetupPersistsAcrossRelaunchUntilTheUserFinishesConfiguringIt() {
         let appState = AppState(bootstrapServices: false, userDefaults: defaults)
 

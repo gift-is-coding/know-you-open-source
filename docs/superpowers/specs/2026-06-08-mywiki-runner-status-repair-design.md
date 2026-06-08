@@ -15,7 +15,7 @@
 - 缺 runner 时显示可行动诊断：当前 app 没有内置 MyWiki runner，需要重新安装或使用带 runner 的构建。
 - Update 按钮在运行时显示 `Generating...` 并禁用。
 - 下一次自动调度会重试 pending/changed/failed sources；如果 runner 仍不可用，会再次失败而不会后台继续处理。
-- 顶部 titlebar 的 Diary Engine 按钮移动后，onboarding 的 `enginePrompt` 不得消失或指向旧 toolbar；缺少 SwiftUI anchor 时必须使用右上角 fallback coachmark，点击真实 titlebar 按钮必须进入现有 engine setup。
+- Diary Engine 按钮必须只保留一套 SwiftUI toolbar 右上角入口；onboarding 的 `enginePrompt` 直接高亮同一个按钮，点击后进入现有 engine setup，不再维护 AppKit titlebar 专用入口。
 
 ## Runner Packaging
 
@@ -24,6 +24,6 @@
 ## Verification
 
 - Focused Swift tests cover success time, failed attempt messaging, and missing runner diagnostics.
-- Focused onboarding tests cover titlebar engine button handoff and right-top fallback coachmark.
+- Focused onboarding tests cover the shared toolbar engine button target.
 - Runner package test verifies bundled runner help path without runtime `npm`.
 - Real Diary verification runs three Diary fixture sources through bundled runner plus Diary Engine bridge harness and checks source/entity/concept outputs.

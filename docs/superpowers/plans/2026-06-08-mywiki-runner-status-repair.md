@@ -43,18 +43,18 @@
 - [x] Run three-Diary ontology verification.
 - [x] If verification fails, fix only the runner bridge/package path needed for the real diary run.
 
-### Task 4: Onboarding Titlebar Engine Verification
+### Task 4: Onboarding Shared Toolbar Engine Verification
 
 **Files:**
-- Modify: `KnowYou/App/AppState.swift`
+- Modify: `KnowYou/KnowYouApp.swift`
+- Modify: `KnowYou/UI/MainWindowView.swift`
 - Modify: `KnowYou/UI/Onboarding/OnboardingView.swift`
 - Modify: `KnowYou/UI/Reader/DiaryEngineSelectorButton.swift`
-- Modify: `KnowYouTests/OnboardingProgressTests.swift`
 - Modify: `KnowYouTests/OnboardingViewLayoutTests.swift`
 
-- [x] Add tests that the titlebar Diary Engine button advances onboarding from `enginePrompt` to `engineSetup`.
-- [x] Add tests that the engine coachmark falls back to the right side of the titlebar area when the AppKit-hosted selector cannot publish a SwiftUI anchor.
-- [x] Implement the titlebar handoff without adding a duplicate in-page or bottom toolbar engine selector.
+- [x] Remove the AppKit titlebar-specific Diary Engine selector path.
+- [x] Keep one shared SwiftUI toolbar Diary Engine selector at the top right for normal app use and onboarding.
+- [x] Keep onboarding `enginePrompt` anchored to the shared `.engineButton` target.
 - [x] Run `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/OnboardingProgressTests -only-testing:KnowYouTests/OnboardingViewLayoutTests`.
 
 ### Task 5: Full Verification

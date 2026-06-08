@@ -10,7 +10,7 @@ private enum MainWindowMode {
 
 enum MainWindowWorkspacePolicy {
     static let usesUnifiedNavigationSplitViewAcrossModes = true
-    static let keepsEngineSelectorInAppKitTitlebarTrailingChrome = true
+    static let keepsEngineSelectorInSwiftUIToolbarTrailingChrome = true
     static let keepsEngineSelectorAsRightmostTitlebarElement = true
     static let showsPrivacyMessageOutsideEngineSelector = true
     static let privacyMessage = "Your data stays local. No backend server."
@@ -77,6 +77,9 @@ struct MainWindowView: View {
                         appState.openUpdateSheet()
                     }
                 }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                diaryEngineToolbarSelector
             }
         }
         .sheet(

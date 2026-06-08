@@ -2577,15 +2577,6 @@ final class AppState {
         setOnboardingProgress(OnboardingProgress(step: step))
     }
 
-    @discardableResult
-    func openOnboardingEngineSetupFromTitlebarIfNeeded() -> Bool {
-        guard currentOnboardingStep == .enginePrompt || currentOnboardingStep == .engineSetup else {
-            return false
-        }
-        resumeOnboardingStep(.engineSetup)
-        return true
-    }
-
     func restoreOnboardingProgress(
         isFullDiskAccessReady: Bool,
         isEngineReady: Bool,

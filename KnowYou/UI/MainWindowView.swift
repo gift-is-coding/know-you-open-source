@@ -10,7 +10,8 @@ private enum MainWindowMode {
 
 enum MainWindowWorkspacePolicy {
     static let usesUnifiedNavigationSplitViewAcrossModes = true
-    static let keepsEngineSelectorInGlobalToolbar = true
+    static let keepsEngineSelectorInBottomTrailingChrome = true
+    static let keepsEngineSelectorAsRightmostBottomElement = true
     static let showsPrivacyMessageOutsideEngineSelector = true
     static let privacyMessage = "Your data stays local. No backend server."
     static let privacyMessageFontSize: CGFloat = 14
@@ -66,15 +67,7 @@ struct MainWindowView: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            Text(AppBuildMetadata.current.badgeText)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(.ultraThinMaterial, in: Capsule())
-                .padding(12)
-                .allowsHitTesting(false)
-                .accessibilityIdentifier("build-version-badge")
+            bottomTrailingChrome
         }
         .toolbar {
             ToolbarItem(placement: .navigation) {
@@ -82,41 +75,6 @@ struct MainWindowView: View {
                     UpdatePillView(title: offer.pillTitle) {
                         appState.openUpdateSheet()
                     }
-                }
-            }
-            ToolbarItemGroup(placement: .primaryAction) {
-                let engineToolbarPresentation = engineToolbarPresentation
-                DiaryEngineSelectorButton(
-                    title: engineToolbarPresentation.title,
-                    state: engineToolbarPresentation.state,
-                    emphasized: showsOnboardingEngineButton || engineToolbarPresentation.emphasized,
-                    attentionSystemImage: engineToolbarPresentation.attentionSystemImage,
-                    action: openEngineSelector
-                )
-                .onboardingCoachmarkTarget(.engineButton)
-                .popover(isPresented: $isShowingEnginePanel, arrowEdge: .top) {
-                    DiaryEnginePanel(
-                        rows: engineRows,
-                        recoveryNudge: engineRecoveryNudge,
-                        isRetestingAll: appState.isRetestingEngines,
-                        onSelectDefault: { engine in
-                            appState.selectDefaultEngine(engine)
-                            isShowingEnginePanel = false
-                        },
-                        onRetestEngine: { engine in
-                            Task { @MainActor in
-                                await appState.retestEngine(engine)
-                            }
-                        },
-                        onRetestAll: {
-                            Task { @MainActor in
-                                await appState.retestAllEngines()
-                            }
-                        },
-                        onConfigureAPI: {
-                            openAPIDetail()
-                        }
-                    )
                 }
             }
         }
@@ -243,6 +201,59 @@ struct MainWindowView: View {
             },
             onOpenSyncMemory: openSyncMemoryPanel
         )
+    }
+
+    private var bottomTrailingChrome: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Text(AppBuildMetadata.current.badgeText)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.ultraThinMaterial, in: Capsule())
+                .allowsHitTesting(false)
+                .accessibilityIdentifier("build-version-badge")
+
+            diaryEngineBottomSelector
+        }
+        .padding(12)
+    }
+
+    private var diaryEngineBottomSelector: some View {
+        let presentation = engineToolbarPresentation
+        return DiaryEngineSelectorButton(
+            title: presentation.title,
+            state: presentation.state,
+            emphasized: showsOnboardingEngineButton || presentation.emphasized,
+            attentionSystemImage: presentation.attentionSystemImage,
+            action: openEngineSelector
+        )
+        .onboardingCoachmarkTarget(.engineButton)
+        .accessibilityIdentifier("diary-engine-bottom-selector")
+        .popover(isPresented: $isShowingEnginePanel, arrowEdge: .bottom) {
+            DiaryEnginePanel(
+                rows: engineRows,
+                recoveryNudge: engineRecoveryNudge,
+                isRetestingAll: appState.isRetestingEngines,
+                onSelectDefault: { engine in
+                    appState.selectDefaultEngine(engine)
+                    isShowingEnginePanel = false
+                },
+                onRetestEngine: { engine in
+                    Task { @MainActor in
+                        await appState.retestEngine(engine)
+                    }
+                },
+                onRetestAll: {
+                    Task { @MainActor in
+                        await appState.retestAllEngines()
+                    }
+                },
+                onConfigureAPI: {
+                    openAPIDetail()
+                }
+            )
+        }
     }
 
     @ViewBuilder

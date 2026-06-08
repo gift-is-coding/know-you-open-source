@@ -155,6 +155,44 @@ final class CLISummarizerTests: XCTestCase {
         XCTAssertEqual(arguments.last, prompt)
     }
 
+    func testCodexMyWikiCompletionReturnsRawOutputWithoutSchemaOrRepair() async throws {
+        let raw = """
+        # Project Ontology
+
+        - Relationship: Alice mentors Bob.
+        - Follow-up: Ask Bob for source notes.
+        """
+        let stub = StubProcessRunner(
+            behaviors: [
+                .success(ProcessExecutionResult(stdout: "codex completed", stderr: "", terminationStatus: 0, duration: 0))
+            ],
+            onInvocation: { _, arguments, _, _ in
+                if let outputIndex = arguments.firstIndex(of: "-o"), arguments.indices.contains(outputIndex + 1) {
+                    try? raw.write(toFile: arguments[outputIndex + 1], atomically: true, encoding: .utf8)
+                }
+            }
+        )
+        let summarizer = CLISummarizer(tool: .codex, executablePath: "/usr/local/bin/codex", runner: stub)
+        let messages = [
+            MyWikiLLMMessage(role: "system", content: "Extract My Wiki ontology."),
+            MyWikiLLMMessage(role: "user", content: "Alice helped Bob prepare the release notes.")
+        ]
+
+        let result = try await summarizer.complete(
+            messages: messages,
+            options: LLMCompletionOptions(temperature: 0.2, maxTokens: 8192)
+        )
+
+        XCTAssertEqual(result, raw)
+        XCTAssertEqual(stub.invocations.count, 1)
+        let arguments = try XCTUnwrap(stub.invocations.first?.arguments)
+        XCTAssertFalse(arguments.contains("--output-schema"))
+        XCTAssertFalse(arguments.contains("--max-tokens"))
+        XCTAssertFalse(arguments.contains("8192"))
+        XCTAssertTrue(arguments.contains("-o"))
+        XCTAssertEqual(arguments.last, messages.myWikiFullTranscript)
+    }
+
     func testCodexSummarizeIgnoresStderrNoiseWhenOutputFileContainsValidJSON() async throws {
         let json = #"{"sections":[{"id":"daily-journal","paragraphs":[{"text":"Focused on shipping.","sourceEventIDs":["A3F2C1D4-E5B6-7890-ABCD-EF1234567890"]}]}]}"#
         let stub = StubProcessRunner(

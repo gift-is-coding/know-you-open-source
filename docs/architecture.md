@@ -31,7 +31,7 @@ KnowYou 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 5. 提醒层：晚间回顾 planner、本地通知权限与调度
 6. 界面层：真实三栏阅读器上的 onboarding coachmarks、设置页、菜单栏状态入口、About & Community 对外入口
 
-分发链路包括 Developer ID release archive、notarytool notarization、stapled app 验证与 drag-to-Applications DMG 发布。
+分发链路包括 Developer ID release archive、notarytool notarization、stapled app 验证与双击自移动安装 DMG 发布。
 
 ```mermaid
 flowchart LR
@@ -77,10 +77,10 @@ flowchart LR
 
 - Release 构建使用 `Developer ID Application`
 - Release 启用 hardened runtime
-- 分发脚本通过 `scripts/build-release.sh`、`scripts/notarize-release.sh`、`scripts/build-dmg.sh`、`scripts/verify-release.sh` 串起 archive、压缩、notarize、staple、Gatekeeper 验证与 DMG 打包
+- 分发脚本通过 `scripts/build-release.sh`、`scripts/embed-mywiki-runner.sh`、`scripts/notarize-release.sh`、`scripts/build-dmg.sh`、`scripts/verify-release.sh` 串起 archive、内置 MyWikiRunner、压缩、notarize、staple、Gatekeeper 验证与 DMG 打包
 - Apple notarization 凭据通过本机 keychain 中的 `notarytool` profile 管理，而不是保存在仓库里
 
-这条链路的目标是让仓库能稳定产出可上传到下载页的 macOS DMG，同时不影响 Debug/测试阶段的日常签名配置。
+这条链路的目标是让仓库能稳定产出可上传到下载页的 macOS DMG，同时不影响 Debug/测试阶段的日常签名配置。DMG 内只放真实 `.app` 和最小 Finder metadata；用户双击 DMG 内 app 时，交互式启动会复制到 `/Applications/KnowYou.app` 或 `/Applications/KnowYou New User.app`、打开目标 app，并退出临时实例。复制失败时不阻塞启动，仍回到 onboarding 的手动安装兜底。
 
 ## 3. 运行时入口
 
@@ -206,7 +206,7 @@ CLI 引擎的 Todo 语义判断必须使用 Todo 专用 JSON schema：`TodoRecon
 通知权限入口目前分布在两个 UI 表面：
 
 - `OnboardingView` 的 `permissions` 步骤会并列展示 Full Disk Access 与 Notifications，并把通知用途明确说明为 `8:30 PM daily review reminder`
-- Full Disk Access 没有应用内授权 API。onboarding 会先确认当前进程来自 `/Applications/KnowYou.app`；New User 权限回归则来自 `/Applications/KnowYou New User.app`。权限页打开系统设置后，明确提示如果列表里没有 KnowYou，就点击 `+`，从 Applications 选择当前 app；`Show App to Add` 只负责在 Finder 中定位正确 bundle，并配有 `FullDiskAccessAddGuide` 示意图
+- Full Disk Access 没有应用内授权 API。onboarding 会先确认当前进程来自 `/Applications/KnowYou.app`；New User 权限回归则来自 `/Applications/KnowYou New User.app`。由于 macOS 可能把已安装 app 的真实路径呈现为 `/System/Volumes/Data/Applications/...`，安装判断接受这两个 Applications 根路径下的目标 bundle，但仍拒绝 DMG、Downloads 和 DerivedData。权限页打开系统设置后，明确提示如果列表里没有 KnowYou，就点击 `+`，从 Applications 选择当前 app；`Show App to Add` 只负责在 Finder 中定位正确 bundle，并配有 `FullDiskAccessAddGuide` 示意图
 - `SettingsView` 继续显示 reminder 开关、通知权限状态和测试入口；用户拒绝通知权限后，也通过这里跳转到 Notification Settings
 
 当前 `AppState` 还负责应用更新提醒编排：
@@ -529,7 +529,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - `demoClick` 要求用户点击正文段落，右侧 sources 随阅读位置联动
 - `demoReference` 解释段落与 reference 的追溯关系
 - `privacy` 用居中 coachmark 强调 `.md` 纯本地与“没有服务端”
-- `installApp` 要求生产用户先从 `/Applications/KnowYou.app` 运行；主按钮会尝试复制当前 bundle 到 `/Applications/KnowYou.app` 并重启，失败时提供 Finder reveal 供用户手动拖动
+- `installApp` 要求生产用户先从 `/Applications/KnowYou.app` 运行；New User QA 则要求 `/Applications/KnowYou New User.app`。判断层同时接受 `/System/Volumes/Data/Applications/<target app>` 作为 macOS 数据卷上的等价安装路径。DMG 内双击 app 会优先自动复制当前 bundle 到目标 Applications bundle 并重启；如果自动移动失败，onboarding 主按钮会使用同一套 mover 重试，最后提供 Finder reveal 供用户手动拖动
 - `permissions` 只 gate `Full Disk Access`，并在同位置 coachmark 里解释通知与剪贴板上下文价值；如果系统列表里没有 KnowYou，主路径是点击 `+` 后从 Applications 选择当前 app，`Show App to Add` 用于在 Finder 中定位正确 bundle，页面同时展示 `FullDiskAccessAddGuide` bitmap 示意图
 - `enginePrompt` 只负责高亮真实产品里的引擎按钮，`engineSetup` 则在现有引擎配置组件里完成默认引擎设置
 - `generating` 在权限与引擎都 ready 后先展示首次历史生成确认弹窗，明确 **KnowYou** 只在当前 Mac 本地生成，包含 `All local. No backend server.` 隐私承诺
@@ -714,7 +714,7 @@ sequenceDiagram
 1. 用户首次进入真实主阅读器，默认选中 `Demo Day`
 2. `demoRead` / `demoClick` / `demoReference` 依次引导用户先读正文、再点段落、再理解右侧 reference
 3. `privacy` 先建立 “`.md` 纯本地、无服务端” 的信任边界
-4. `installApp` 确认用户正在从 `/Applications/KnowYou.app` 运行；如果不是，则要求移动到 Applications 后重启
+4. `installApp` 确认用户正在从 `/Applications/KnowYou.app` 运行；DMG 或 Downloads 中的交互式启动会先自移动到 Applications 并重启，失败时才要求用户手动移动
 5. `permissions` 只要求用户完成 `Full Disk Access`
 6. `enginePrompt` 高亮右上角真实引擎按钮，用户在 `engineSetup` 中完成默认引擎设置
 7. `generating` 步骤展示首次历史生成确认弹窗；弹窗说明 **KnowYou** 只在当前 Mac 本地生成近期日记，并包含 `All local. No backend server.` 隐私承诺
@@ -728,7 +728,7 @@ sequenceDiagram
 
 My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责是把已经生成的日记 Markdown 整理成更容易阅读和检索的个人 wiki：可追溯的来源、具体实体、长期概念、近期活动和需要复核的线索。
 
-当前实现采用“KnowYou 运行壳 + 持久 Source Catalog + LLM Wiki 原生后端 pipeline + My Wiki 展示壳”的结构。Source Catalog 是进入 LLM 处理前的授权和 checkpoint 边界：diary 默认 included 但可取消，external source 默认 opt-in，manual imports 保留层级并在 UI 中显示为 `Manual Uploads`。Entity / concept 生成和合并完全由 `ThirdParty/llm_wiki` 原生 `autoIngest` 决定；KnowYou 不再生成或读取 `mywiki.schema.json`，不再写入 `schema.md` / `purpose.md`，也不再向 prompt 注入 KnowYou schema、purpose、output contract、entity 标签提示或 People/Projects/Topics 等旧分类兼容语义。LLM Wiki headless ingest 是唯一可信页面生成路径；KnowYou 只负责刷新 catalog、materialize 已选择且需要处理的 source、触发 pipeline、记录进度/错误、读取原生 `wiki/sources`、`wiki/entities`、`wiki/concepts` 并展示简洁 UI。
+当前实现采用“KnowYou 运行壳 + 持久 Source Catalog + 内置 MyWikiRunner + My Wiki 展示壳”的结构。Source Catalog 是进入 LLM 处理前的授权和 checkpoint 边界：diary 默认 included 但可取消，external source 默认 opt-in，manual imports 保留层级并在 UI 中显示为 `Manual Uploads`。Entity / concept 生成和合并完全由 runner 内部的 llm_wiki 原生 `autoIngest` 决定；KnowYou 不再生成或读取 `mywiki.schema.json`，不再写入 `schema.md` / `purpose.md`，也不再向 prompt 注入 KnowYou schema、purpose、output contract、entity 标签提示或 People/Projects/Topics 等旧分类兼容语义。MyWikiRunner headless ingest 是唯一可信页面生成路径；KnowYou 只负责刷新 catalog、materialize 已选择且需要处理的 source、触发 pipeline、记录进度/错误、读取原生 `wiki/sources`、`wiki/entities`、`wiki/concepts` 并展示简洁 UI。
 
 - [MyWikiProjectExporter.swift](../KnowYou/Services/MyWiki/MyWikiProjectExporter.swift) 创建原生 My Wiki 项目目录 `raw/sources`、`wiki/sources`、`wiki/entities`、`wiki/concepts`；旧 `syncDiaries` 仍保留兼容路径，新的 Update My Wiki 路径由 Source Catalog materialization 负责写入 diary raw source。它会清除旧的 `mywiki.schema.json`、`schema.md`、`purpose.md`，避免旧 KnowYou prompt context 影响后续原生 ingest
 - [MyWikiSourceCatalog.swift](../KnowYou/Services/MyWiki/MyWikiSourceCatalog.swift) 定义持久 catalog record、inclusion state、processing status、tree node 和 `.knowyou/source-catalog.json` store。它保存用户选择、content hash、last indexed checkpoint、source 层级和已生成 summary 路径，不复制完整正文
@@ -736,8 +736,8 @@ My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责
 - [MyWikiMarkdownStore.swift](../KnowYou/Services/MyWiki/MyWikiMarkdownStore.swift) 固定读取 LLM Wiki 原生三个目录，解析 frontmatter、正文、mentions、sources、aliases、related、tags 和 confidence，转成 SwiftUI 索引与详情模型。读取层不再兼容旧 `wiki/people`、`wiki/projects`、`wiki/topics`、`wiki/preferences`、`wiki/follow-ups` 等目录或旧 type
 - `MyWikiRenameService` 负责 display name、aliases 与 summary 的保存；保存前会检查同分类内的标题或 slug 冲突，冲突时交给 UI 引导用户保留现名、另选名称或进入合并审核
 - `MyWikiDuplicateService` 负责主动发现疑似重复项，并在用户确认后合并 sources、aliases、related 与正文；合并前写入 `.llm-wiki/page-history/` 备份，合并后重写 wiki 内部引用并刷新 dashboard snapshot
-- [MyWikiPipelineBridge.swift](../KnowYou/Services/MyWiki/MyWikiPipelineBridge.swift) 复用 llm_wiki 的项目发现和启动边界；运行时调用 `ThirdParty/llm_wiki` headless ingest，并把 Source Catalog manifest 作为 `--manifest` 传给 runner。development source 模式下会先检查 `node_modules/vite`，缺失时在 `ThirdParty/llm_wiki` 执行一次 `npm install`，避免 runner 在 `import "vite"` 阶段直接失败。默认每次只处理 3 个 source，方便用户逐步重跑和检查质量。pipeline 不可用或失败时只写入 `.llm-wiki/last-ingest-status.json` 的 failed 状态，不生成 keyword/regex fallback 本体页，也不把降级结果标记为成功
-- [ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts](../ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts) 只做运行壳：解析 `--manifest`、`--max-sources`、`--skip-indexed`、`--continue-on-error`，选择 source，重置运行状态，删除旧 KnowYou prompt context 文件，然后直接调用 llm_wiki 原生 `autoIngest`。提供 manifest 时，headless runner 只处理 manifest 内列出的 project-relative `raw/sources` 路径，并把 `folderContext` 通过原生 `autoIngest` 参数传入；没有 manifest 且限定 `--max-sources` 时，优先选择尚未生成 `wiki/sources/<source>.md` 的最新 raw source，再回退到已索引 source。[ingest.ts](../ThirdParty/llm_wiki/src/lib/ingest.ts) 的生成目标保持 LLM Wiki 原生 `wiki/sources`、`wiki/entities`、`wiki/concepts`，cache key 使用 native-contextless pipeline version，避免复用旧 schema-injected 输出
+- [MyWikiPipelineBridge.swift](../KnowYou/Services/MyWiki/MyWikiPipelineBridge.swift) 启动 app bundle 内置的 `Contents/Resources/MyWikiRunner`。runner 托管 llm_wiki 原生 `autoIngest`，并把 Source Catalog manifest 作为 `--manifest` 传入；所有 LLM 调用通过 My Wiki Diary Engine bridge 回到 KnowYou 已保存的 engine 配置。`scripts/embed-mywiki-runner.sh` 会把 bundled Node 与 `mywiki-runner.js` 放入 release、New User QA 和 dev-launch app；`scripts/build-dmg.sh` 会拒绝缺少 runner 的 app。产品构建不包含额外 GUI 工作台、`node_modules` 或 `ThirdParty/llm_wiki` 源码作为运行依赖。仅测试和本地开发可以显式注入开发源码 fallback；普通用户 UI 不会走该路径，也不需要安装 Node/npm。默认每次只处理 3 个 source，方便用户逐步重跑和检查质量。pipeline 不可用或失败时只写入 `.llm-wiki/last-ingest-status.json` 的 failed 状态，不生成 keyword/regex fallback 本体页，也不把降级结果标记为成功
+- [ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts](../ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts) 只做运行壳：解析 `--manifest`、`--max-sources`、`--skip-indexed`、`--continue-on-error` 和 `knowyou-bridge` provider 参数，选择 source，重置运行状态，删除旧 KnowYou prompt context 文件，然后直接调用 llm_wiki 原生 `autoIngest`。提供 manifest 时，headless runner 只处理 manifest 内列出的 project-relative `raw/sources` 路径，并把 `folderContext` 通过原生 `autoIngest` 参数传入；没有 manifest 且限定 `--max-sources` 时，优先选择尚未生成 `wiki/sources/<source>.md` 的最新 raw source，再回退到已索引 source。[ingest.ts](../ThirdParty/llm_wiki/src/lib/ingest.ts) 的生成目标保持 LLM Wiki 原生 `wiki/sources`、`wiki/entities`、`wiki/concepts`，cache key 使用 native-contextless pipeline version，避免复用旧 schema-injected 输出
 - [MyWikiAgentContextProvider.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/Services/MyWiki/MyWikiAgentContextProvider.swift) 输出给 Codex、Claude、Cowork 等 agent 使用的最小必要背景摘要
 - [MyWikiContextPackService.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/Services/MyWiki/MyWikiContextPackService.swift) 根据第三方 agent 提供的一段背景信息生成 compact context pack。它读取 `wiki/` 和 `raw/sources/` 下的 Markdown，构建 query plan，优先排序已整理的 wiki 页面，并为每个 item 返回 excerpt、matched terms 和 citation
 - [MyWikiContextPackCommand.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/Services/MyWiki/MyWikiContextPackCommand.swift) 提供 headless CLI：`KnowYou --my-wiki-context --project-root <path> --background <text>`。该模式只输出 JSON 并退出，不启动主窗口或后台采集服务
@@ -745,7 +745,7 @@ My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责
 - `Tools/MyWikiMCP` 只保留为开发期/兼容性 wrapper，不是用户默认配置路径；`.agents/skills/my-wiki-context` 是给支持 Skill 的 agent 的使用说明
 - [MyWikiAgentConnectionSheet.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/UI/MyWiki/MyWikiAgentConnectionSheet.swift) 提供 `Use My Wiki in Agents` 入口。默认 UX 是选择内置 agent 后点击 `Add My Wiki`：Codex 写入带 `# BEGIN/END KnowYou My Wiki MCP` 标记的 `~/.codex/config.toml` 受控配置块；Claude Code、Claude Desktop、Cursor、Gemini CLI 和 OpenClaw 合并写入各自 JSON MCP 配置；Codex、Claude Code、Cursor、Gemini CLI 和 OpenClaw 同步安装 `my-wiki-context` Skill；generic MCP 配置保留在 `Advanced MCP Config`
 - [MyWikiSourceLibrary.swift](../KnowYou/Services/MyWiki/MyWikiSourceLibrary.swift) 与 [MyWikiSourceLibraryView.swift](../KnowYou/UI/MyWiki/MyWikiSourceLibraryView.swift) 提供分层 Source Library 管理入口。UI 从 Source Catalog snapshot 渲染 diary、external documents 和 manual imports，支持 title/path 搜索、status filter、目录三态选择、include/exclude/invert visible 批量操作和 summary 链接；手动导入支持选择文件夹、多文件导入和拖拽，新文件仍放入 `raw/sources/Manual Imports`，但展示 root 是 `Manual Uploads`。导入只刷新 catalog，不触发 ingest；选择变更自动保存，`Update My Wiki` 才运行处理
-- [MyWikiPanel.swift](../KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底 My Wiki 工作区：左侧是高密度可折叠索引，分类顺序为 `Entities`、`Concepts`、`Sources`，每个分类默认显示 10 个 name-only 条目；超过 10 个时用当前分类底部的 `Show more (N)` 原地展开，并用 `Show less` 收回，不再进入分类全量列表页。左侧顶部显示 `My Wiki digest` 状态条，明确说明 digest 会在 Diary 和 Todo 就绪后每日自动更新，也可点击 `Update Now` 手动触发，并同时显示上次与下次更新时间；source/progress 区域把进度卡作为纯状态展示，旁边提供 `Manage Sources` 按钮；每个分类的 tag 筛选从当前条目 frontmatter `tags` 动态统计，按频次降序、同频按名称排序，`other` 排在具体 tag 后；默认只显示前 6 个 tag，剩余可展开；无 tags 时不显示筛选。Header 和详情页 `More` 菜单都提供 `Use My Wiki in Agents`
+- [MyWikiPanel.swift](../KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底 My Wiki 工作区：左侧是高密度可折叠索引，分类顺序为 `Entities`、`Concepts`、`Sources`，每个分类默认显示 10 个 name-only 条目；超过 10 个时用当前分类底部的 `Show more (N)` 原地展开，并用 `Show less` 收回，不再进入分类全量列表页。左侧顶部显示 `My Wiki digest` 状态条，明确说明 digest 会在 Diary 和 Todo 就绪后每日自动更新，也可点击 `Update Now` 手动触发，并同时显示上次与下次更新时间；点击后按钮立即进入 `Generating...` 禁用状态，并在 status/progress 区域先显示本地 running placeholder，随后轮询 `.llm-wiki/last-ingest-status.json` 替换为真实进度；My Wiki folder 尚不可用时按钮显示 `Unavailable` 并给出可见状态。source/progress 区域把进度卡作为纯状态展示，旁边提供 `Manage Sources` 按钮；每个分类的 tag 筛选从当前条目 frontmatter `tags` 动态统计，按频次降序、同频按名称排序，`other` 排在具体 tag 后；默认只显示前 6 个 tag，剩余可展开；无 tags 时不显示筛选。Header 和详情页 `More` 菜单都提供 `Use My Wiki in Agents`
 - [MyWikiDetailView.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiDetailView.swift) 提供 LLM Wiki 风格详情页，顶部 header 展示 summary，正文区域默认展示完整 `markdownBody`，并保留 Recent Mentions、Related、Duplicate Suggestions 等 metadata 区；不再重复渲染独立 Summary 卡片；`Sources` 放在详情最后，仍可点击打开原 source
 
 数据流如下：
@@ -759,7 +759,8 @@ flowchart LR
     C --> D["selected pending/changed sources"]
     D --> E["raw/sources + .knowyou/ingest-manifest.json"]
     E --> J["MyWikiPipelineBridge"]
-    J --> K["LLM Wiki headless ingest with Codex CLI provider"]
+    J --> K["Bundled MyWikiRunner (llm_wiki autoIngest)"]
+    K <--> L["KnowYou Diary Engine bridge"]
     K --> F["wiki/sources + wiki/entities + wiki/concepts"]
     F --> G["MyWikiPanel"]
     F --> H["MyWikiAgentContextProvider"]
@@ -772,7 +773,7 @@ My Wiki 只处理用户授权进入 catalog 的 source。KnowYou diary 默认可
 
 AppState 维护覆盖式 `AutomationJobSnapshot`，按 `Diary`、`Todo`、`My Wiki` 三类保存最新任务状态，而不是追加历史日志。Home 只把 `running`、`degraded`、`failed`、`blocked` 这些 active/attention 状态显示成 hero 右下角的 compact 更新区；`scheduled` 和 `completed` 不在 Home 占空间。每行展示任务、状态、短说明和小进度条，并允许用户点击跳转到对应页面。
 
-Diary 仍是主节拍，每 3 小时自动检查和刷新一次。Todo 默认排在 Diary 之后 10 分钟，也会在手动或 onboarding diary 完成后处理对应 story；如果没有 today story，Todo 状态显示 blocked，并提示先生成今天的 diary。Todo 页面的 `Update Now` 点击后立即进入 `Updating...` 状态，避免用户误以为没有反应。My Wiki 默认排在 Diary 和 Todo 就绪后运行，每天一次；页面内的 `Update Now` 与后台调度复用同一个 digest runner。
+Diary 仍是主节拍，每 3 小时自动检查和刷新一次。Todo 默认排在 Diary 之后 10 分钟，也会在手动或 onboarding diary 完成后处理对应 story；如果没有 today story，Todo 状态显示 blocked，并提示先生成今天的 diary。Todo 页面的 `Update Now` 点击后立即进入 `Updating...` 状态，避免用户误以为没有反应。My Wiki 默认排在 Diary 和 Todo 就绪后运行，每天一次；页面内的 `Update Now` 与后台调度复用同一个 digest runner，并在任务启动时立即显示 `Generating...` 和本地 running 进度，避免长时间 pipeline 没写状态文件时看起来无响应。
 
 ## 13. 当前架构约束
 

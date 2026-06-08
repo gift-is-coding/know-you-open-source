@@ -19,6 +19,14 @@ import type { IngestScenario } from "@/test-helpers/scenarios/types"
 
 vi.mock("@/commands/fs", () => realFs)
 
+const embeddingMocks = vi.hoisted(() => ({
+  embedPage: vi.fn(),
+}))
+
+vi.mock("@/lib/embedding", () => ({
+  embedPage: embeddingMocks.embedPage,
+}))
+
 // Sequenced streamChat: stage-1 returns analysisResponse, stage-2 returns
 // generationResponse. Any further calls return empty (shouldn't happen in a
 // typical autoIngest run).
@@ -54,6 +62,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   pendingResponses = []
+  embeddingMocks.embedPage.mockReset()
   useReviewStore.setState({ items: [] })
   useActivityStore.setState({ items: [] })
   useChatStore.setState({
@@ -66,6 +75,36 @@ beforeEach(() => {
     streamingContent: "",
   })
 })
+
+async function setupBareProject(name: string): Promise<Ctx> {
+  const tmp = await createTempProject(name)
+  await fs.mkdir(path.join(tmp.path, "raw", "sources"), { recursive: true })
+  await fs.mkdir(path.join(tmp.path, "wiki", "sources"), { recursive: true })
+  await fs.writeFile(path.join(tmp.path, "schema.md"), "", "utf-8")
+  await fs.writeFile(path.join(tmp.path, "purpose.md"), "", "utf-8")
+  await fs.writeFile(path.join(tmp.path, "wiki", "index.md"), "# Index\n", "utf-8")
+  await fs.writeFile(path.join(tmp.path, "wiki", "overview.md"), "# Overview\n", "utf-8")
+
+  useWikiStore.setState({
+    project: {
+      name: "t",
+      path: tmp.path,
+      createdAt: 0,
+      purposeText: "",
+      fileTree: [],
+    } as unknown as ReturnType<typeof useWikiStore.getState>["project"],
+  })
+  useWikiStore.getState().setLlmConfig({
+    provider: "openai",
+    apiKey: "test-key",
+    model: "gpt-4",
+    ollamaUrl: "",
+    customEndpoint: "",
+    maxContextSize: 128000,
+  })
+
+  return { tmp }
+}
 
 interface Ctx {
   tmp: { path: string; cleanup: () => Promise<void> }
@@ -195,4 +234,76 @@ describe("ingest scenarios (fixture-driven)", () => {
       await assertOutcome(scenario, ctx.tmp.path)
     },
   )
+})
+
+describe("autoIngest hardening", () => {
+  it("does not overwrite an existing source summary when fallback summary is needed", async () => {
+    ctx = await setupBareProject("ingest-existing-source-summary")
+    const sourcePath = path.join(ctx.tmp.path, "raw", "sources", "meeting.md")
+    await fs.writeFile(sourcePath, "Alice helped Bob ship release notes.", "utf-8")
+    const summaryPath = path.join(ctx.tmp.path, "wiki", "sources", "meeting.md")
+    const existingSummary = "# Source: meeting.md\n\nExisting curated summary."
+    await fs.writeFile(summaryPath, existingSummary, "utf-8")
+
+    pendingResponses = [
+      "Alice and Bob worked together.",
+      [
+        "---FILE: wiki/entities/alice.md---",
+        "# Alice",
+        "",
+        "Alice helped Bob.",
+        "---END FILE---",
+      ].join("\n"),
+    ]
+
+    await autoIngest(ctx.tmp.path, sourcePath, useWikiStore.getState().llmConfig)
+
+    await expect(fs.readFile(summaryPath, "utf-8")).resolves.toBe(existingSummary)
+  })
+
+  it("uses relative wiki paths for embedding page ids so same-name entity and concept pages do not collide", async () => {
+    ctx = await setupBareProject("ingest-embedding-page-id")
+    const sourcePath = path.join(ctx.tmp.path, "raw", "sources", "meeting.md")
+    await fs.writeFile(sourcePath, "KnowYou is both a product and a concept here.", "utf-8")
+    useWikiStore.setState({
+      embeddingConfig: {
+        enabled: true,
+        endpoint: "http://example.test/v1/embeddings",
+        apiKey: "test-key",
+        model: "text-embedding-test",
+        maxChunkChars: undefined,
+        overlapChunkChars: undefined,
+      },
+    } as Partial<ReturnType<typeof useWikiStore.getState>>)
+    embeddingMocks.embedPage.mockResolvedValue(undefined)
+
+    pendingResponses = [
+      "KnowYou appears as an entity and concept.",
+      [
+        "---FILE: wiki/sources/meeting.md---",
+        "# Source: meeting.md",
+        "",
+        "Source summary.",
+        "---END FILE---",
+        "---FILE: wiki/entities/knowyou.md---",
+        "# KnowYou",
+        "",
+        "KnowYou product.",
+        "---END FILE---",
+        "---FILE: wiki/concepts/knowyou.md---",
+        "# KnowYou",
+        "",
+        "KnowYou concept.",
+        "---END FILE---",
+      ].join("\n"),
+    ]
+
+    await autoIngest(ctx.tmp.path, sourcePath, useWikiStore.getState().llmConfig)
+
+    const pageIds = embeddingMocks.embedPage.mock.calls
+      .map((call) => call[1])
+      .filter((pageId) => pageId.includes("knowyou"))
+      .sort()
+    expect(pageIds).toEqual(["concepts/knowyou", "entities/knowyou"])
+  })
 })

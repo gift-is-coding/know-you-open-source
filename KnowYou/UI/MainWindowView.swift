@@ -10,7 +10,8 @@ private enum MainWindowMode {
 
 enum MainWindowWorkspacePolicy {
     static let usesUnifiedNavigationSplitViewAcrossModes = true
-    static let keepsEngineSelectorInGlobalToolbar = true
+    static let keepsEngineSelectorInSwiftUIToolbarTrailingChrome = true
+    static let keepsEngineSelectorAsRightmostTitlebarElement = true
     static let showsPrivacyMessageOutsideEngineSelector = true
     static let privacyMessage = "Your data stays local. No backend server."
     static let privacyMessageFontSize: CGFloat = 14
@@ -40,6 +41,12 @@ struct MainWindowView: View {
         self.onStoryParagraphTap = onStoryParagraphTap
     }
 
+    private var bundledMyWikiRunner: Result<MyWikiRunnerBundle?, Error> {
+        Result {
+            try MyWikiRunnerBundle.resolveDefault()
+        }
+    }
+
     var body: some View {
         NavigationSplitView {
             sidebar
@@ -60,15 +67,8 @@ struct MainWindowView: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            Text(AppBuildMetadata.current.badgeText)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(.ultraThinMaterial, in: Capsule())
+            buildVersionBadge
                 .padding(12)
-                .allowsHitTesting(false)
-                .accessibilityIdentifier("build-version-badge")
         }
         .toolbar {
             ToolbarItem(placement: .navigation) {
@@ -78,40 +78,8 @@ struct MainWindowView: View {
                     }
                 }
             }
-            ToolbarItemGroup(placement: .primaryAction) {
-                let engineToolbarPresentation = engineToolbarPresentation
-                DiaryEngineSelectorButton(
-                    title: engineToolbarPresentation.title,
-                    state: engineToolbarPresentation.state,
-                    emphasized: showsOnboardingEngineButton || engineToolbarPresentation.emphasized,
-                    attentionSystemImage: engineToolbarPresentation.attentionSystemImage,
-                    action: openEngineSelector
-                )
-                .onboardingCoachmarkTarget(.engineButton)
-                .popover(isPresented: $isShowingEnginePanel, arrowEdge: .top) {
-                    DiaryEnginePanel(
-                        rows: engineRows,
-                        recoveryNudge: engineRecoveryNudge,
-                        isRetestingAll: appState.isRetestingEngines,
-                        onSelectDefault: { engine in
-                            appState.selectDefaultEngine(engine)
-                            isShowingEnginePanel = false
-                        },
-                        onRetestEngine: { engine in
-                            Task { @MainActor in
-                                await appState.retestEngine(engine)
-                            }
-                        },
-                        onRetestAll: {
-                            Task { @MainActor in
-                                await appState.retestAllEngines()
-                            }
-                        },
-                        onConfigureAPI: {
-                            openAPIDetail()
-                        }
-                    )
-                }
+            ToolbarItem(placement: .primaryAction) {
+                diaryEngineToolbarSelector
             }
         }
         .sheet(
@@ -239,6 +207,54 @@ struct MainWindowView: View {
         )
     }
 
+    private var buildVersionBadge: some View {
+        Text(AppBuildMetadata.current.badgeText)
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: Capsule())
+            .allowsHitTesting(false)
+            .accessibilityIdentifier("build-version-badge")
+    }
+
+    private var diaryEngineToolbarSelector: some View {
+        let presentation = engineToolbarPresentation
+        return DiaryEngineSelectorButton(
+            title: presentation.title,
+            state: presentation.state,
+            emphasized: showsOnboardingEngineButton || presentation.emphasized,
+            attentionSystemImage: presentation.attentionSystemImage,
+            action: openEngineSelector
+        )
+        .onboardingCoachmarkTarget(.engineButton)
+        .accessibilityIdentifier("diary-engine-toolbar-selector")
+        .popover(isPresented: $isShowingEnginePanel, arrowEdge: .top) {
+            DiaryEnginePanel(
+                rows: engineRows,
+                recoveryNudge: engineRecoveryNudge,
+                isRetestingAll: appState.isRetestingEngines,
+                onSelectDefault: { engine in
+                    appState.selectDefaultEngine(engine)
+                    isShowingEnginePanel = false
+                },
+                onRetestEngine: { engine in
+                    Task { @MainActor in
+                        await appState.retestEngine(engine)
+                    }
+                },
+                onRetestAll: {
+                    Task { @MainActor in
+                        await appState.retestAllEngines()
+                    }
+                },
+                onConfigureAPI: {
+                    openAPIDetail()
+                }
+            )
+        }
+    }
+
     @ViewBuilder
     private var mainContentPane: some View {
         if mode == .home {
@@ -346,9 +362,9 @@ struct MainWindowView: View {
             KnowledgeOntologyPanel(
                 sourceVault: appState.environment?.vaultURL,
                 projectRoot: knowledgeOntologyProjectRoot,
-                developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL(),
-                bundledHelperAppURL: KnowledgeOntologyLauncher.defaultBundledHelperAppURL(),
+                bundledRunner: bundledMyWikiRunner,
                 importedDocuments: appState.knowledgeDocumentsByConnector.values.flatMap { $0 },
+                summarizer: appState.environment?.summarizer,
                 nextDigestUpdateDate: appState.nextMyWikiAutomationCheckDate,
                 selectedEntry: $selectedMyWikiEntry
             )

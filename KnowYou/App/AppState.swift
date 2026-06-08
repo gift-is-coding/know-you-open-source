@@ -679,6 +679,7 @@ private struct ReaderPresentationSnapshot {
 final class AppState {
     typealias RefreshStageChangeHandler = @MainActor @Sendable (DayRefreshJob) -> Void
     typealias SummarizerFactory = @Sendable (DiaryEngine, SummarizerConfig, [String: String]) -> SummaryGenerating?
+    typealias MyWikiRunnerResolver = @Sendable () throws -> MyWikiRunnerBundle?
 
     private static let autoSelectionPriority: [DiaryEngine] = [
         .claudeCLI,
@@ -782,6 +783,7 @@ final class AppState {
     @ObservationIgnored private let keychainService: String
     @ObservationIgnored private let processEnvironment: [String: String]
     @ObservationIgnored private let currentDate: @Sendable () -> Date
+    @ObservationIgnored private let myWikiRunnerResolver: MyWikiRunnerResolver
     @ObservationIgnored private let probeEngine: @Sendable (DiaryEngine, SummarizerConfig, [String: String]) async -> EngineProbeResult
     @ObservationIgnored private let makeSummarizer: SummarizerFactory
     @ObservationIgnored private let onRefreshStageChange: RefreshStageChangeHandler?
@@ -812,12 +814,11 @@ final class AppState {
             return defaultUserDefaultsOverrideForTesting
         }
         let environment = defaultUserDefaultsEnvironmentOverrideForTesting ?? ProcessInfo.processInfo.environment
-        if let suiteName = environment["KNOWYOU_USER_DEFAULTS_SUITE"],
-           suiteName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
-           let defaults = UserDefaults(suiteName: suiteName) {
-            return defaults
-        }
-        return .standard
+        let profile = AppRuntimeProfile(
+            bundleIdentifier: Bundle.main.bundleIdentifier,
+            environment: environment
+        )
+        return AppRuntimeProfile.userDefaults(profile: profile)
     }
 
     var summarizerStatus: SummarizerRuntimeStatus {
@@ -872,6 +873,7 @@ final class AppState {
         },
         processEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         currentDate: @escaping @Sendable () -> Date = Date.init,
+        myWikiRunnerResolver: @escaping MyWikiRunnerResolver = { try MyWikiRunnerBundle.resolveDefault() },
         userDefaults: UserDefaults? = nil,
         keychain: KeychainStoring = KeychainHelper.shared,
         keychainService: String = KeychainHelper.service,
@@ -893,6 +895,7 @@ final class AppState {
         self.keychainService = keychainService
         self.processEnvironment = processEnvironment
         self.currentDate = currentDate
+        self.myWikiRunnerResolver = myWikiRunnerResolver
         self.probeEngine = probeEngine
         self.makeSummarizer = makeSummarizer
         self.onRefreshStageChange = onRefreshStageChange
@@ -1590,10 +1593,24 @@ final class AppState {
             .deletingLastPathComponent()
             .appending(path: "KnowledgeOntology/KnowYouContext", directoryHint: .isDirectory)
         let importedDocuments = (try? environment.databaseWriter.fetchImportedKnowledgeDocuments()) ?? []
-        let target = MyWikiPipelineBridge.resolveTarget(
-            bundledHelperAppURL: KnowledgeOntologyLauncher.defaultBundledHelperAppURL(),
-            developmentSourceURL: KnowledgeOntologyLauncher.defaultDevelopmentSourceURL()
-        )
+        let target: MyWikiPipelineTarget
+        do {
+            target = MyWikiPipelineBridge.resolveTarget(
+                bundledRunner: try myWikiRunnerResolver()
+            )
+        } catch {
+            let nextRun = currentDate().addingTimeInterval(86_400)
+            nextMyWikiAutomationCheckDate = nextRun
+            setAutomationJob(
+                kind: .wiki,
+                status: .failed,
+                detail: error.localizedDescription,
+                progress: 1,
+                lastRunAt: currentDate(),
+                nextRunAt: nextRun
+            )
+            return
+        }
         let startedAt = currentDate()
         setAutomationJob(
             kind: .wiki,
@@ -1608,7 +1625,8 @@ final class AppState {
             projectRoot: projectRoot,
             sourceVault: environment.vaultURL,
             importedDocuments: importedDocuments,
-            target: target
+            target: target,
+            summarizer: environment.summarizer
         )
 
         let nextRun = startedAt.addingTimeInterval(86_400)

@@ -91,6 +91,66 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertFalse(MyWikiPanelLifecyclePolicy.onAppearActions.contains(.syncDiaries))
     }
 
+    func testMyWikiPanelInitialStatusShowsInvalidBundledRunnerFailure() throws {
+        let error = MyWikiPipelineBridgeError.pipelineExecutionFailed(
+            "Bundled MyWiki runner script is missing."
+        )
+
+        let status = MyWikiPanelStatusPresentationPolicy.initialStatusMessage(
+            bundledRunner: .failure(error)
+        )
+
+        XCTAssertEqual(status, "Bundled MyWiki runner script is missing.")
+        XCTAssertNotEqual(status, MyWikiPanelStatusPresentationPolicy.readyMessage)
+    }
+
+    func testMyWikiPanelInitialStatusShowsMissingRunnerMessage() {
+        let status = MyWikiPanelStatusPresentationPolicy.initialStatusMessage(for: .missing)
+
+        XCTAssertEqual(status, "This app is missing the built-in MyWiki runner. Reinstall KnowYou and try again.")
+    }
+
+    func testMyWikiPanelOnAppearStatusReplacesReadyWithDegradedRunnerState() {
+        let invalidStatus = MyWikiPanelStatusPresentationPolicy.statusMessageOnAppear(
+            currentMessage: MyWikiPanelStatusPresentationPolicy.readyMessage,
+            pipelineTarget: .invalidBundledRunner("Bundled MyWiki runner script is missing.")
+        )
+        let missingStatus = MyWikiPanelStatusPresentationPolicy.statusMessageOnAppear(
+            currentMessage: MyWikiPanelStatusPresentationPolicy.readyMessage,
+            pipelineTarget: .missing
+        )
+        let activeStatus = MyWikiPanelStatusPresentationPolicy.statusMessageOnAppear(
+            currentMessage: "Updating My Wiki sources...",
+            pipelineTarget: .invalidBundledRunner("Bundled MyWiki runner script is missing.")
+        )
+
+        XCTAssertEqual(invalidStatus, "Bundled MyWiki runner script is missing.")
+        XCTAssertEqual(missingStatus, "This app is missing the built-in MyWiki runner. Reinstall KnowYou and try again.")
+        XCTAssertEqual(activeStatus, "Updating My Wiki sources...")
+    }
+
+    func testMyWikiPanelInitialStatusKeepsReadyForRunnableTargets() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let runner = root.appending(path: "MyWikiRunner", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: runner, withIntermediateDirectories: true)
+        let node = runner.appending(path: "node")
+        try "#!/usr/bin/env bash\n".write(to: node, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: node.path)
+        try "console.log('ok')\n".write(
+            to: runner.appending(path: "mywiki-runner.js"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let bundle = try MyWikiRunnerBundle(rootURL: runner)
+
+        XCTAssertEqual(
+            MyWikiPanelStatusPresentationPolicy.initialStatusMessage(for: .bundledRunner(bundle)),
+            MyWikiPanelStatusPresentationPolicy.readyMessage
+        )
+    }
+
     func testMainWindowLaunchPolicyUsesPresentedSingleWindow() {
         XCTAssertEqual(KnowYouMainWindowLaunchPolicy.title, "KnowYou")
         XCTAssertFalse(KnowYouMainWindowLaunchPolicy.usesSwiftUIWindowScene)
@@ -100,9 +160,10 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertEqual(KnowYouMainWindowLaunchPolicy.titlebarTitleFontSize, 21)
     }
 
-    func testMainWindowWorkspacePolicyKeepsToolbarStableAcrossSidebarModes() {
+    func testMainWindowWorkspacePolicyKeepsEngineSelectorInToolbarTrailingChrome() {
         XCTAssertTrue(MainWindowWorkspacePolicy.usesUnifiedNavigationSplitViewAcrossModes)
-        XCTAssertTrue(MainWindowWorkspacePolicy.keepsEngineSelectorInGlobalToolbar)
+        XCTAssertTrue(MainWindowWorkspacePolicy.keepsEngineSelectorInSwiftUIToolbarTrailingChrome)
+        XCTAssertTrue(MainWindowWorkspacePolicy.keepsEngineSelectorAsRightmostTitlebarElement)
         XCTAssertTrue(MainWindowWorkspacePolicy.showsPrivacyMessageOutsideEngineSelector)
         XCTAssertEqual(MainWindowWorkspacePolicy.privacyMessage, "Your data stays local. No backend server.")
         XCTAssertEqual(MainWindowWorkspacePolicy.privacyMessageFontSize, 14)
@@ -246,11 +307,64 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
 
         XCTAssertEqual(presentation.title, "My Wiki digest")
         XCTAssertEqual(presentation.triggerText, "Updates daily after Diary and Todo are ready.")
-        XCTAssertEqual(presentation.lastRunTitle, "Last update")
+        XCTAssertEqual(presentation.lastRunTitle, "Last successful update")
         XCTAssertEqual(presentation.lastRunValue, "7:30 AM")
         XCTAssertEqual(presentation.nextRunTitle, "Next update")
         XCTAssertEqual(presentation.nextRunValue, "3:30 PM")
         XCTAssertEqual(presentation.updateNowTitle, "Update Now")
+        XCTAssertFalse(presentation.isUpdateNowDisabled)
+        XCTAssertNil(presentation.statusMessage)
+    }
+
+    func testDigestSchedulePresentationDoesNotTreatFailedAttemptAsLastSuccessfulUpdate() {
+        let progress = MyWikiIngestProgress(
+            state: .failed,
+            message: "MyWiki runner is not available.",
+            updatedAt: "2026-06-08T09:06:54Z",
+            sourcesProcessed: 0,
+            totalSources: 44
+        )
+
+        let presentation = MyWikiDigestSchedulePresentation(
+            ingestProgress: progress,
+            nextRunDate: DateComponents(calendar: Calendar(identifier: .gregorian), timeZone: TimeZone(secondsFromGMT: 0), year: 2026, month: 6, day: 9, hour: 1, minute: 5).date!,
+            statusMessage: "MyWiki runner is not available.",
+            displayTimeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        XCTAssertEqual(presentation.lastRunTitle, "Last successful update")
+        XCTAssertEqual(presentation.lastRunValue, "Not updated yet")
+        XCTAssertEqual(presentation.statusMessage, "Last attempt failed: MyWiki runner is not available.")
+    }
+
+    func testDigestSchedulePresentationShowsGeneratingState() {
+        let presentation = MyWikiDigestSchedulePresentation(
+            ingestProgress: nil,
+            nextRunDate: nil,
+            statusMessage: nil,
+            isUpdating: true,
+            isProjectAvailable: true,
+            displayTimeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        XCTAssertEqual(presentation.updateNowTitle, "Generating...")
+        XCTAssertTrue(presentation.isUpdateNowDisabled)
+        XCTAssertEqual(presentation.statusMessage, "Generating My Wiki...")
+    }
+
+    func testDigestSchedulePresentationDisablesUpdateWhenProjectIsUnavailable() {
+        let presentation = MyWikiDigestSchedulePresentation(
+            ingestProgress: nil,
+            nextRunDate: nil,
+            statusMessage: nil,
+            isUpdating: false,
+            isProjectAvailable: false,
+            displayTimeZone: TimeZone(secondsFromGMT: 0)!
+        )
+
+        XCTAssertEqual(presentation.updateNowTitle, "Unavailable")
+        XCTAssertTrue(presentation.isUpdateNowDisabled)
+        XCTAssertEqual(presentation.statusMessage, "My Wiki folder is not available yet.")
     }
 
     func testDetailMoreMenuIncludesAgentContextAction() {

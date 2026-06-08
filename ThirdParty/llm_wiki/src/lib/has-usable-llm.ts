@@ -14,6 +14,8 @@ export type LlmProvider = LlmConfig["provider"]
  *     API key is needed (or accepted) at this layer.
  *   - `codex-cli` spawns the local Codex CLI subprocess, which
  *     authenticates via the user's existing ~/.codex login.
+ *   - `knowyou-bridge` runs only inside the bundled KnowYou runner and
+ *     asks Swift to complete through the already-configured Diary Engine.
  *
  * Hosted providers (openai, anthropic, google, minimax) require a
  * key from the user.
@@ -23,6 +25,7 @@ export const PROVIDERS_WITHOUT_KEY: ReadonlySet<LlmProvider> = new Set<LlmProvid
   "custom",
   "claude-code",
   "codex-cli",
+  "knowyou-bridge",
 ])
 
 /**

@@ -1,19 +1,54 @@
 import SwiftUI
 import AppKit
 
+enum MyWikiPanelStatusPresentationPolicy {
+    static let readyMessage = "Ready"
+
+    static func initialStatusMessage(
+        bundledRunner: Result<MyWikiRunnerBundle?, Error>,
+        fileManager: FileManager = .default
+    ) -> String {
+        initialStatusMessage(
+            for: MyWikiPipelineBridge.resolveTarget(
+                bundledRunner: bundledRunner,
+                fileManager: fileManager
+            )
+        )
+    }
+
+    static func initialStatusMessage(for target: MyWikiPipelineTarget) -> String {
+        switch target {
+        case .bundledRunner:
+            return readyMessage
+        case .invalidBundledRunner(let message):
+            return message
+        case .missing:
+            return MyWikiPipelineTarget.missingRunnerMessage
+        }
+    }
+
+    static func statusMessageOnAppear(
+        currentMessage: String,
+        pipelineTarget: MyWikiPipelineTarget
+    ) -> String {
+        guard currentMessage == readyMessage else { return currentMessage }
+        return initialStatusMessage(for: pipelineTarget)
+    }
+}
+
 struct MyWikiPanel: View {
     let sourceVault: URL?
     let projectRoot: URL?
-    let developmentSourceURL: URL
-    let bundledHelperAppURL: URL?
+    let bundledRunner: Result<MyWikiRunnerBundle?, Error>
     let importedDocuments: [ImportedKnowledgeDocument]
+    let summarizer: SummaryGenerating?
     let nextDigestUpdateDate: Date?
     @Binding var selectedEntry: MyWikiEntry?
 
     @State private var query = ""
     @State private var snapshot = MyWikiDashboardSnapshot.empty
     @State private var duplicateSuggestions: [MyWikiDuplicateSuggestion] = []
-    @State private var statusMessage = "Ready"
+    @State private var statusMessage = MyWikiPanelStatusPresentationPolicy.readyMessage
     @State private var ingestProgress: MyWikiIngestProgress?
     @State private var isSyncing = false
     @State private var expandedCategoryIDs: Set<String> = []
@@ -41,6 +76,10 @@ struct MyWikiPanel: View {
         .background(MyWikiTheme.contentBackground)
         .foregroundStyle(.primary)
         .onAppear {
+            statusMessage = MyWikiPanelStatusPresentationPolicy.statusMessageOnAppear(
+                currentMessage: statusMessage,
+                pipelineTarget: pipelineTarget
+            )
             for action in MyWikiPanelLifecyclePolicy.onAppearActions {
                 switch action {
                 case .loadDashboard:
@@ -213,7 +252,10 @@ struct MyWikiPanel: View {
     private var digestScheduleView: some View {
         let presentation = MyWikiDigestSchedulePresentation(
             ingestProgress: ingestProgress,
-            nextRunDate: nextDigestUpdateDate
+            nextRunDate: nextDigestUpdateDate,
+            statusMessage: statusMessage,
+            isUpdating: isSyncing,
+            isProjectAvailable: projectRoot != nil
         )
         return HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
@@ -223,6 +265,12 @@ struct MyWikiPanel: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                if let statusMessage = presentation.statusMessage {
+                    Text(statusMessage)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
             }
 
             Spacer(minLength: 10)
@@ -235,12 +283,12 @@ struct MyWikiPanel: View {
             Button {
                 syncDiaries()
             } label: {
-                Text(isSyncing ? "Updating..." : presentation.updateNowTitle)
+                Text(presentation.updateNowTitle)
                     .font(.system(size: 13, weight: .semibold))
                     .frame(minWidth: 92, minHeight: 32)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(isSyncing)
+            .disabled(presentation.isUpdateNowDisabled)
         }
         .padding(12)
         .background(
@@ -502,8 +550,7 @@ struct MyWikiPanel: View {
 
     private var pipelineTarget: MyWikiPipelineTarget {
         MyWikiPipelineBridge.resolveTarget(
-            bundledHelperAppURL: bundledHelperAppURL,
-            developmentSourceURL: developmentSourceURL
+            bundledRunner: bundledRunner
         )
     }
 
@@ -545,21 +592,33 @@ struct MyWikiPanel: View {
     }
 
     private func syncDiaries() {
-        guard let projectRoot else { return }
+        guard let projectRoot else {
+            statusMessage = "My Wiki folder is not available yet."
+            isShowingStatus = true
+            return
+        }
         guard !isSyncing else { return }
         isSyncing = true
-        statusMessage = "Updating My Wiki sources..."
-        loadIngestProgress()
+        statusMessage = "Generating My Wiki..."
+        ingestProgress = MyWikiIngestProgress(
+            state: .running,
+            message: "Starting My Wiki update...",
+            updatedAt: ISO8601DateFormatter().string(from: Date()),
+            sourcesProcessed: 0,
+            totalSources: 0
+        )
 
         let target = pipelineTarget
         let sourceVault = sourceVault
         let importedDocuments = importedDocuments
+        let summarizer = summarizer
         Task {
             let outcome = await MyWikiDigestRunner().run(
                 projectRoot: projectRoot,
                 sourceVault: sourceVault,
                 importedDocuments: importedDocuments,
-                target: target
+                target: target,
+                summarizer: summarizer
             )
 
             await MainActor.run {

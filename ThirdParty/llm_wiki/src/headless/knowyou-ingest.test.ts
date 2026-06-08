@@ -8,8 +8,10 @@ vi.mock("@/commands/fs", () => realFs)
 
 let pendingResponses: Array<string | Error> = []
 let streamedPrompts: string[] = []
+let streamedConfigs: unknown[] = []
 vi.mock("@/lib/llm-client", () => ({
-  streamChat: vi.fn(async (_cfg, messages, callbacks) => {
+  streamChat: vi.fn(async (cfg, messages, callbacks) => {
+    streamedConfigs.push(cfg)
     streamedPrompts.push(
       messages
         .map((message: { content: string }) => message.content)
@@ -30,12 +32,50 @@ import { runKnowYouIngest, runKnowYouIngestCli } from "./knowyou-ingest"
 beforeEach(() => {
   pendingResponses = []
   streamedPrompts = []
+  streamedConfigs = []
 })
 
 describe("KnowYou headless ingest runner", () => {
   it("uses a cache version that invalidates pre-context-removal outputs", () => {
     expect(INGEST_CACHE_PIPELINE_VERSION).toContain("v5")
     expect(INGEST_CACHE_PIPELINE_VERSION).toContain("native-contextless")
+  })
+
+  it("defaults bundled ingest to the KnowYou bridge without API secrets", async () => {
+    const tmp = await createTempProject("knowyou-headless-default-bridge")
+    const previousKey = process.env.KNOWYOU_MYWIKI_LLM_API_KEY
+    try {
+      process.env.KNOWYOU_MYWIKI_LLM_API_KEY = ["placeholder", "key"].join("-")
+      await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+      await writeFileRaw(
+        path.join(tmp.path, "raw/sources/knowyou-diary-2026-06-04.md"),
+        "# 2026-06-04\n\nBundled runner default provider.",
+      )
+
+      pendingResponses = [
+        "Analysis for default bridge.",
+        sourceSummaryBlock("2026-06-04"),
+      ]
+
+      await runKnowYouIngest({
+        projectPath: tmp.path,
+      })
+
+      expect(streamedConfigs[0]).toMatchObject({
+        provider: "knowyou-bridge",
+        apiKey: "",
+      })
+    } finally {
+      if (previousKey === undefined) {
+        delete process.env.KNOWYOU_MYWIKI_LLM_API_KEY
+      } else {
+        process.env.KNOWYOU_MYWIKI_LLM_API_KEY = previousKey
+      }
+      await tmp.cleanup()
+    }
   })
 
   it("reuses autoIngest to materialize wiki pages from raw journal sources", async () => {
@@ -454,6 +494,51 @@ describe("KnowYou headless ingest runner", () => {
       process.exitCode = originalExitCode
       stdoutWrite.mockRestore()
       stderrWrite.mockRestore()
+      await tmp.cleanup()
+    }
+  })
+
+  it("reads KnowYou LLM API settings from CLI args and secret environment", async () => {
+    const tmp = await createTempProject("knowyou-headless-llm-config")
+    const previousKey = process.env.KNOWYOU_MYWIKI_LLM_API_KEY
+    const envApiKey = ["placeholder", "secret"].join("-")
+    try {
+      process.env.KNOWYOU_MYWIKI_LLM_API_KEY = envApiKey
+      await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+      await writeFileRaw(
+        path.join(tmp.path, "raw/sources/knowyou-diary-2026-05-29.md"),
+        "# 2026-05-29\n\nConfigured LLM.",
+      )
+
+      pendingResponses = [
+        "Analysis for May 29.",
+        sourceSummaryBlock("2026-05-29"),
+      ]
+
+      await runKnowYouIngest({
+        projectPath: tmp.path,
+        provider: "custom",
+        model: "deepseek-v4-pro",
+        customEndpoint: "https://api.deepseek.com",
+        apiMode: "chat_completions",
+      })
+
+      expect(streamedConfigs[0]).toMatchObject({
+        provider: "custom",
+        apiKey: envApiKey,
+        model: "deepseek-v4-pro",
+        customEndpoint: "https://api.deepseek.com",
+        apiMode: "chat_completions",
+      })
+    } finally {
+      if (previousKey === undefined) {
+        delete process.env.KNOWYOU_MYWIKI_LLM_API_KEY
+      } else {
+        process.env.KNOWYOU_MYWIKI_LLM_API_KEY = previousKey
+      }
       await tmp.cleanup()
     }
   })

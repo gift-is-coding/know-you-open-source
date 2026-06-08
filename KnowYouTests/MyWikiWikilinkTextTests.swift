@@ -38,6 +38,23 @@ final class MyWikiWikilinkTextTests: XCTestCase {
         )
     }
 
+    func testSummaryAttributedStringMakesReferencesClickable() throws {
+        let attributed = MyWikiWikilinkText.summaryAttributedString(
+            from: "a16z Speedrun 和 [[knowyou]]、[[y-combinator|YC]] 一起构成候选机构列表。"
+        )
+        let links = linkRuns(in: attributed)
+
+        XCTAssertEqual(
+            String(attributed.characters),
+            "a16z Speedrun 和 knowyou、YC 一起构成候选机构列表。"
+        )
+        XCTAssertEqual(links.map(\.text), ["knowyou", "YC"])
+        XCTAssertEqual(
+            links.compactMap { MyWikiWikilinkText.reference(from: $0.url) },
+            ["knowyou", "y-combinator"]
+        )
+    }
+
     private func linkRuns(in attributed: AttributedString) -> [(text: String, url: URL)] {
         attributed.runs.compactMap { run in
             guard let url = run.link else { return nil }

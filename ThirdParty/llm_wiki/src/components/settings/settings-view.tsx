@@ -19,7 +19,8 @@ import { useWikiStore } from "@/stores/wiki-store"
 import { useChatStore } from "@/stores/chat-store"
 import { useUpdateStore, hasAvailableUpdate } from "@/stores/update-store"
 import { saveLanguage } from "@/lib/project-store"
-import type { SettingsDraft, DraftSetter } from "./settings-types"
+import type { SettingsDraft, DraftSetter, SettingsLlmProvider } from "./settings-types"
+import { buildSavedLlmConfig, buildSavedMultimodalConfig } from "./settings-save-config"
 import { LlmProviderSection } from "./sections/llm-provider-section"
 import { EmbeddingSection } from "./sections/embedding-section"
 import { MultimodalSection } from "./sections/multimodal-section"
@@ -65,6 +66,10 @@ const CATEGORIES: Category[] = [
   { id: "about", labelKey: "settings.categories.about", icon: Info },
 ]
 
+function settingsLlmProvider(provider: SettingsLlmProvider | "knowyou-bridge"): SettingsLlmProvider {
+  return provider === "knowyou-bridge" ? "custom" : provider
+}
+
 function initialDraft(
   llm: ReturnType<typeof useWikiStore.getState>["llmConfig"],
   embed: ReturnType<typeof useWikiStore.getState>["embeddingConfig"],
@@ -75,7 +80,7 @@ function initialDraft(
   uiLanguage: string,
 ): SettingsDraft {
   return {
-    provider: llm.provider,
+    provider: settingsLlmProvider(llm.provider),
     apiKey: llm.apiKey,
     model: llm.model,
     ollamaUrl: llm.ollamaUrl,
@@ -91,7 +96,7 @@ function initialDraft(
     embeddingOverlapChunkChars: embed.overlapChunkChars,
     multimodalEnabled: multimodal.enabled,
     multimodalUseMainLlm: multimodal.useMainLlm,
-    multimodalProvider: multimodal.provider,
+    multimodalProvider: settingsLlmProvider(multimodal.provider),
     multimodalApiKey: multimodal.apiKey,
     multimodalModel: multimodal.model,
     multimodalOllamaUrl: multimodal.ollamaUrl,
@@ -188,16 +193,7 @@ export function SettingsView() {
       saveProxyConfig,
     } = await import("@/lib/project-store")
 
-    const newLlm = {
-      provider: draft.provider,
-      apiKey: draft.apiKey,
-      model: draft.model,
-      ollamaUrl: draft.ollamaUrl,
-      customEndpoint: draft.customEndpoint,
-      maxContextSize: draft.maxContextSize,
-      apiMode: draft.provider === "custom" ? draft.apiMode : undefined,
-      reasoning: draft.reasoning,
-    }
+    const newLlm = buildSavedLlmConfig(llmConfig, draft)
     const newEmbed = {
       enabled: draft.embeddingEnabled,
       endpoint: draft.embeddingEndpoint,
@@ -206,23 +202,7 @@ export function SettingsView() {
       maxChunkChars: draft.embeddingMaxChunkChars,
       overlapChunkChars: draft.embeddingOverlapChunkChars,
     }
-    const newMultimodal = {
-      enabled: draft.multimodalEnabled,
-      useMainLlm: draft.multimodalUseMainLlm,
-      provider: draft.multimodalProvider,
-      apiKey: draft.multimodalApiKey,
-      model: draft.multimodalModel,
-      ollamaUrl: draft.multimodalOllamaUrl,
-      customEndpoint: draft.multimodalCustomEndpoint,
-      apiMode: draft.multimodalProvider === "custom" ? draft.multimodalApiMode : undefined,
-      // Clamp at save time so a hand-edited persisted store with a
-      // ridiculous concurrency value (e.g. someone setting 1000 in
-      // the JSON) doesn't blow up the captioning pipeline. Caption
-      // calls already share the LLM endpoint with everything else;
-      // going wider than ~16 just queues behind the server's batch
-      // slot.
-      concurrency: Math.max(1, Math.min(16, draft.multimodalConcurrency || 4)),
-    }
+    const newMultimodal = buildSavedMultimodalConfig(multimodalConfig, draft)
 
     const newProxy = {
       enabled: draft.proxyEnabled,
@@ -260,8 +240,11 @@ export function SettingsView() {
     setTimeout(() => setSaved(false), 2000)
   }, [
     draft,
+    llmConfig,
+    multimodalConfig,
     setLlmConfig,
     setEmbeddingConfig,
+    setMultimodalConfig,
     setOutputLanguage,
     setProxyConfig,
     setMaxHistoryMessages,

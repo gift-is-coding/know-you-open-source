@@ -86,7 +86,7 @@ describe("enrichWithWikilinks — language directive is built at call time", () 
     await enrichWithWikilinks("/p", "/p/wiki/attention.md", fakeLlmConfig())
 
     const content = mockStreamChat.mock.calls[0][1][0].content
-    expect(content).toContain("MANDATORY OUTPUT LANGUAGE: Chinese")
+    expect(content).toContain("SOURCE LANGUAGE MODE: Chinese")
   })
 
   it("explicit setting beats source content detection", async () => {

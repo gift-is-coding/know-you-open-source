@@ -37,6 +37,17 @@ async function streamViaCodexCli(
   return mod.streamCodexCli(config, messages, callbacks, signal, requestOverrides)
 }
 
+async function streamViaKnowYouBridge(
+  config: LlmConfig,
+  messages: import("./llm-providers").ChatMessage[],
+  callbacks: StreamCallbacks,
+  signal?: AbortSignal,
+  requestOverrides?: RequestOverrides,
+) {
+  const mod = await import("@/headless/knowyou-bridge-transport")
+  return mod.streamKnowYouBridge(config, messages, callbacks, signal, requestOverrides)
+}
+
 const DECODER = new TextDecoder()
 
 function parseLines(chunk: Uint8Array, buffer: string): [string[], string] {
@@ -71,6 +82,9 @@ export async function streamChat(
   }
   if (config.provider === "codex-cli") {
     return streamViaCodexCli(config, messages, callbacks, signal, requestOverrides)
+  }
+  if (config.provider === "knowyou-bridge") {
+    return streamViaKnowYouBridge(config, messages, callbacks, signal, requestOverrides)
   }
 
   const providerConfig = getProviderConfig(config)

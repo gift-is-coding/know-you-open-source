@@ -3,7 +3,8 @@ import AppKit
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
-    @State private var vaultPath: String = UserDefaults.standard.string(forKey: AppState.UserDefaultsKeys.vaultPath) ?? ""
+    @State private var vaultPath: String = AppRuntimeProfile.userDefaults()
+        .string(forKey: AppState.UserDefaultsKeys.vaultPath) ?? ""
     @State private var presentedDocument: AppSupportDocument?
     @State private var selectedTab: Tab = .general
 

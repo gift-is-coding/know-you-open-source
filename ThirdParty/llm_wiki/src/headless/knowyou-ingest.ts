@@ -1,5 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 import { autoIngest } from "@/lib/ingest"
 import { useActivityStore } from "@/stores/activity-store"
 import { useChatStore } from "@/stores/chat-store"
@@ -10,6 +11,10 @@ interface IngestOptions {
   projectPath: string
   provider?: LlmConfig["provider"]
   model?: string
+  apiKey?: string
+  customEndpoint?: string
+  ollamaUrl?: string
+  apiMode?: LlmConfig["apiMode"]
   maxSources?: number
   manifestPath?: string
   skipIndexed?: boolean
@@ -68,6 +73,21 @@ function parseArgs(argv: string[]): IngestOptions {
       index += 1
     } else if (arg === "--model" && next) {
       options.model = next
+      index += 1
+    } else if (arg === "--api-key" && next) {
+      options.apiKey = next
+      index += 1
+    } else if (arg === "--custom-endpoint" && next) {
+      options.customEndpoint = next
+      index += 1
+    } else if (arg === "--ollama-url" && next) {
+      options.ollamaUrl = next
+      index += 1
+    } else if (arg === "--api-mode" && next) {
+      if (next !== "chat_completions" && next !== "anthropic_messages") {
+        throw new Error(`Unsupported --api-mode value: ${next}`)
+      }
+      options.apiMode = next
       index += 1
     } else if (arg === "--max-sources" && next) {
       options.maxSources = Number(next)
@@ -276,13 +296,17 @@ function resetStores(projectPath: string, llmConfig: LlmConfig): void {
 }
 
 function llmConfigFor(options: IngestOptions): LlmConfig {
+  const provider = options.provider ?? "knowyou-bridge"
   return {
-    provider: options.provider ?? "codex-cli",
-    apiKey: "",
-    model: options.model ?? "gpt-5.5",
-    ollamaUrl: "",
-    customEndpoint: "",
+    provider,
+    apiKey: provider === "knowyou-bridge"
+      ? ""
+      : options.apiKey ?? process.env.KNOWYOU_MYWIKI_LLM_API_KEY ?? "",
+    model: options.model ?? (provider === "knowyou-bridge" ? "diary-engine" : "gpt-5.5"),
+    ollamaUrl: options.ollamaUrl ?? "http://localhost:11434",
+    customEndpoint: options.customEndpoint ?? "",
     maxContextSize: 128000,
+    apiMode: options.apiMode,
   }
 }
 
@@ -384,4 +408,20 @@ export async function runKnowYouIngestCli(argv: string[]): Promise<void> {
     process.stderr.write(`${message}\n`)
     process.exitCode = 1
   }
+}
+
+function isMainModule(): boolean {
+  const invokedPath = process.argv[1]
+  if (!invokedPath) {
+    return false
+  }
+  return path.resolve(invokedPath) === fileURLToPath(import.meta.url)
+}
+
+if (isMainModule()) {
+  void runKnowYouIngestCli(process.argv.slice(2)).catch((err) => {
+    const message = err instanceof Error ? err.message : String(err)
+    process.stderr.write(`${message}\n`)
+    process.exitCode = 1
+  })
 }

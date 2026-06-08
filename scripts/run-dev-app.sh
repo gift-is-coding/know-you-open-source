@@ -38,6 +38,13 @@ if [[ ! -d "$app_path" ]]; then
   exit 1
 fi
 
+"$repo_root/scripts/embed-mywiki-runner.sh" "$app_path"
+
+if [[ ! -x "$app_path/Contents/Resources/MyWikiRunner/node" ]]; then
+  echo "Expected MyWikiRunner node not found: $app_path/Contents/Resources/MyWikiRunner/node" >&2
+  exit 1
+fi
+
 if [[ ! -f "$build_metadata_path" ]]; then
   echo "Build metadata not found: $build_metadata_path" >&2
   exit 1
@@ -62,4 +69,5 @@ sleep 2
 
 echo "App path: $app_path"
 echo "Verified gitShortSHA: $actual_git_sha"
+echo "MyWikiRunner: $app_path/Contents/Resources/MyWikiRunner"
 ps -Ao pid=,command= | rg '/KnowYou.app/Contents/MacOS/KnowYou' || true

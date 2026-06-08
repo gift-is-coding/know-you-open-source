@@ -1,5 +1,7 @@
 import type { CustomApiMode } from "./llm-presets"
-import type { ReasoningConfig } from "@/stores/wiki-store"
+import type { LlmConfig, ReasoningConfig } from "@/stores/wiki-store"
+
+export type SettingsLlmProvider = Exclude<LlmConfig["provider"], "knowyou-bridge">
 
 /**
  * Shape of the draft state each section reads from and writes into.
@@ -9,15 +11,7 @@ import type { ReasoningConfig } from "@/stores/wiki-store"
  */
 export interface SettingsDraft {
   // LLM provider
-  provider:
-    | "openai"
-    | "anthropic"
-    | "google"
-    | "ollama"
-    | "custom"
-    | "minimax"
-    | "claude-code"
-    | "codex-cli"
+  provider: SettingsLlmProvider
   apiKey: string
   model: string
   ollamaUrl: string
@@ -39,15 +33,7 @@ export interface SettingsDraft {
   // Multimodal (image captioning at ingest time)
   multimodalEnabled: boolean
   multimodalUseMainLlm: boolean
-  multimodalProvider:
-    | "openai"
-    | "anthropic"
-    | "google"
-    | "ollama"
-    | "custom"
-    | "minimax"
-    | "claude-code"
-    | "codex-cli"
+  multimodalProvider: SettingsLlmProvider
   multimodalApiKey: string
   multimodalModel: string
   multimodalOllamaUrl: string

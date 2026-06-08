@@ -191,7 +191,8 @@ struct CLISummarizer: JSONSummaryGenerating {
         case openclaw
     }
 
-    private enum Expectation {
+    private enum Expectation: Equatable {
+        case raw
         case story
         case incrementalUpdate
         case acknowledgement
@@ -247,6 +248,18 @@ struct CLISummarizer: JSONSummaryGenerating {
         context: SummaryInvocationContext
     ) async throws -> String {
         try await summarizeStructured(prompt: prompt, expectation: .jsonSchema(schema), context: context)
+    }
+
+    func completeRaw(prompt: String, context: SummaryInvocationContext = .automationRefresh) async throws -> String {
+        let raw = try await run(
+            prompt: prompt,
+            expectation: .raw,
+            timeoutSeconds: primaryTimeoutSeconds(for: context)
+        )
+        guard !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw CLISummarizerError.emptyOutput
+        }
+        return raw
     }
 
     func smokeTest(prompt: String? = nil) async throws -> String {
@@ -401,6 +414,9 @@ struct CLISummarizer: JSONSummaryGenerating {
     ) throws -> InvocationPlan {
         switch tool {
         case .claude:
+            if expectation == .raw {
+                return InvocationPlan(arguments: ["-p", prompt], schemaURL: nil, outputURL: nil)
+            }
             return InvocationPlan(
                 arguments: [
                     "-p", prompt,
@@ -411,6 +427,9 @@ struct CLISummarizer: JSONSummaryGenerating {
                 outputURL: nil
             )
         case .gemini:
+            if expectation == .raw {
+                return InvocationPlan(arguments: ["-p", prompt], schemaURL: nil, outputURL: nil)
+            }
             return InvocationPlan(
                 arguments: [
                     "-p", prompt,
@@ -420,6 +439,18 @@ struct CLISummarizer: JSONSummaryGenerating {
                 outputURL: nil
             )
         case .openclaw:
+            if expectation == .raw {
+                return InvocationPlan(
+                    arguments: [
+                        "agent",
+                        "--agent", "main",
+                        "--message", prompt,
+                        "--local",
+                    ],
+                    schemaURL: nil,
+                    outputURL: nil
+                )
+            }
             return InvocationPlan(
                 arguments: [
                     "agent",
@@ -432,6 +463,21 @@ struct CLISummarizer: JSONSummaryGenerating {
                 outputURL: nil
             )
         case .codex:
+            if expectation == .raw {
+                let outputURL = temporaryFileURL()
+                try "".write(to: outputURL, atomically: true, encoding: .utf8)
+                return InvocationPlan(
+                    arguments: [
+                        "exec",
+                        "--skip-git-repo-check",
+                        "--ephemeral",
+                        "-o", outputURL.path,
+                        prompt,
+                    ],
+                    schemaURL: nil,
+                    outputURL: outputURL
+                )
+            }
             let schemaURL = try writeTemporaryFile(contents: schemaText(for: expectation))
             let outputURL = temporaryFileURL()
             try "".write(to: outputURL, atomically: true, encoding: .utf8)
@@ -462,6 +508,8 @@ struct CLISummarizer: JSONSummaryGenerating {
 
     private func schemaText(for expectation: Expectation) -> String {
         switch expectation {
+        case .raw:
+            return ""
         case .story:
             return Self.dailyStorySchema
         case .incrementalUpdate:
@@ -475,6 +523,8 @@ struct CLISummarizer: JSONSummaryGenerating {
 
     private func repairPrompt(for raw: String, expectation: Expectation) -> String {
         switch expectation {
+        case .raw:
+            return raw
         case .story:
             return storyRepairPrompt(for: raw)
         case .incrementalUpdate:
@@ -576,6 +626,8 @@ struct CLISummarizer: JSONSummaryGenerating {
 
     private func validatedOutput(from raw: String, expectation: Expectation) -> String? {
         switch expectation {
+        case .raw:
+            return raw
         case .story:
             return validatedStoryOutput(from: raw)
         case .incrementalUpdate:
@@ -907,5 +959,14 @@ struct CLISummarizer: JSONSummaryGenerating {
 
             return UUID(uuidString: sourceID) != nil
         }
+    }
+}
+
+extension CLISummarizer: MyWikiLLMCompleting {
+    func complete(messages: [MyWikiLLMMessage], options: LLMCompletionOptions) async throws -> String {
+        try await completeRaw(
+            prompt: messages.myWikiFullTranscript,
+            context: .automationRefresh
+        )
     }
 }

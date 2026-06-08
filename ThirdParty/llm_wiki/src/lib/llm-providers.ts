@@ -102,7 +102,7 @@ const JSON_CONTENT_TYPE = "application/json"
  * also relies on.
  *
  * Why this overrides at all: plugin-http's JS shim respects user-
- * set headers (see `node_modules/@tauri-apps/plugin-http/dist-js/
+ * set headers (see the Tauri HTTP plugin implementation's
  * index.js` — the loop after `new Request(input, init)` only fills
  * browser-default headers when the user did NOT already set them).
  * Rust-side, the `unsafe-headers` feature flag in
@@ -629,6 +629,14 @@ export function getProviderConfig(config: LlmConfig): ProviderConfig {
       // happens one layer up in streamChat() before getProviderConfig.
       throw new Error(
         "codex-cli provider uses subprocess transport; getProviderConfig should not be called for it",
+      )
+
+    case "knowyou-bridge":
+      // The bundled KnowYou runner writes llm.request JSONL to stdout
+      // and receives Swift Diary Engine responses on stdin. It has no
+      // URL, headers, or API key at this layer.
+      throw new Error(
+        "knowyou-bridge provider uses bridge transport; getProviderConfig should not be called for it",
       )
 
     case "custom": {

@@ -252,7 +252,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 点击 `generate` 通知时，系统必须唤起 KnowYou、定位到今天，并立即开始生成今天的 diary
 - 通知点击路由必须优先复用现有主窗口；仅在没有主窗口时才允许新开窗口
 - 设置页必须显示晚间提醒开关、通知权限状态、测试入口和简短规则说明
-- onboarding 的 `installApp` 步骤必须在 `permissions` 之前确认生产用户正在从 `/Applications/KnowYou.app` 运行；New User 权限回归必须从 `/Applications/KnowYou New User.app` 运行；未满足对应安装路径时不得进入 Full Disk Access 引导
+- onboarding 的 `installApp` 步骤必须在 `permissions` 之前确认生产用户正在从 `/Applications/KnowYou.app` 运行；New User 权限回归必须从 `/Applications/KnowYou New User.app` 运行；macOS 数据卷真实路径 `/System/Volumes/Data/Applications/<target app>` 必须视为对应 Applications 安装；未满足对应安装路径时不得进入 Full Disk Access 引导
 - onboarding 的 `permissions` 步骤必须同时解释 Full Disk Access 与 Notifications，其中通知说明必须明确它用于 `8:30 PM` 晚间回顾提醒
 - 通知权限不得阻塞 onboarding 完成；Full Disk Access 仍是权限步骤唯一硬阻塞条件
 - onboarding 的 Full Disk Access 引导必须把 `Open Full Disk Access -> 点击 + -> 从 Applications 选择当前 app` 作为主路径，并提供 `Show App to Add` 定位当前 app bundle 的 Finder 入口与 `FullDiskAccessAddGuide` bitmap 示意图
@@ -353,7 +353,7 @@ onboarding 的配置约束为：
 - `demoClick` 必须要求用户点击正文段落，右侧 source detail 才进入下一步解释
 - `demoReference` 必须说明右侧 reference 会跟随阅读位置变化，而不是重复展示另一份正文
 - `privacy` 必须直接说明“内容以本地 `.md` 文件保存在当前 Mac 上、没有服务端”
-- `installApp` 必须把 `/Applications/KnowYou.app` 作为生产推荐安装路径；自动移动失败时必须提供 Finder 入口，让用户手动拖到 Applications
+- `installApp` 必须把 `/Applications/KnowYou.app` 作为生产推荐安装路径；DMG 或 Downloads 中的交互式启动应先自动复制到目标 Applications app 并重启；自动移动失败时必须提供 Finder 入口，让用户手动拖到 Applications
 - `permissions` 只允许把 `Full Disk Access` 作为唯一权限硬 gate，并且必须解释通知与剪贴板上下文如何帮助 story 生成
 - `permissions` 必须把 Full Disk Access 拆成可执行步骤：打开系统设置、如果列表没有 KnowYou 则点击 `+`、从 Applications 选择当前 app、返回后重新检查；页面必须解释 `Show App to Add` 是用来定位当前 app bundle
 - `enginePrompt` 必须高亮真实产品里的引擎按钮，`engineSetup` 必须复用现有引擎配置模块，而不是造一套 onboarding 专用配置页
@@ -411,7 +411,7 @@ onboarding 的配置约束为：
 - 项目必须提供可复用脚本来完成 archive、压缩、notarize、staple、verify、DMG 打包
 - Apple ID app-specific password 不得保存在仓库文件中，必须通过 keychain `notarytool` profile 管理
 - 发布验证必须至少包含 `codesign --verify --deep --strict --verbose=2`、`stapler validate`、`spctl --assess --type execute -vv`
-- 对外下载主 artifact 必须是包含 `KnowYou.app` 与 `Applications` 链接的 DMG，以引导用户把 app 安装到 `/Applications`
+- 对外下载主 artifact 必须是包含真实 `KnowYou.app` 的 DMG；DMG 不依赖 `Applications` alias 或箭头坐标，背景文案引导用户双击 app，app 自己复制到 `/Applications` 后重启
 - Release 构建必须配置 Sparkle EdDSA public key；该公钥可以作为安全默认值进入项目配置，私钥必须留在发版用户 Keychain；发布脚本必须使用 Sparkle `sign_update` 为 DMG enclosure 生成签名属性
 - `fullRecovery` 成功写盘前必须执行一次规范化，以保证新生成 `Details` 保持 paragraph-level workstream 结构
 
@@ -464,7 +464,7 @@ onboarding 的配置约束为：
 - `Source Library` 必须使用宽面板和左右布局：左侧主要展示 source tree，右侧展示状态统计、筛选、批量操作、`Manual Uploads` 导入区、`Update My Wiki` 和 `Close`
 - 手动 drop/import 的文件必须复制到底层 `raw/sources/Manual Imports`，但 UI root 必须显示为 `Manual Uploads`；导入后默认 included 且 `Pending`，但不得自动进入 ingest
 - Source 选择变更必须立即保存到 `.knowyou/source-catalog.json`；`Close` 只关闭窗口，只有点击 `Update My Wiki` 才能触发 My Wiki ingest
-- My Wiki 主页面必须明确展示 digest 的触发方式：当前 digest 只在用户点击 `Update Now` / `Update My Wiki` 时运行，不因进入页面或选择 source 自动运行；页面必须显示上次更新时间，未运行过时显示 `Not updated yet`
+- My Wiki 主页面必须明确展示 digest 的触发方式：当前 digest 只在用户点击 `Update Now` / `Update My Wiki` 时运行，不因进入页面或选择 source 自动运行；页面必须显示上次更新时间，未运行过时显示 `Not updated yet`；点击 `Update Now` 后必须立即显示 `Generating...` 并禁用重复点击，同时显示可见状态或进度，不得静默等待后台 runner
 - My Diary source 首次出现时必须默认 included，但用户可以取消选择；external connector source 首次出现时必须默认 not included，只有用户主动 include 后才允许进入 My Wiki ingest
 - 已经 indexed 的 source 被取消选择时，系统不得删除旧 `wiki/sources`、entity 或 concept 输出；该 source 应显示为 `Excluded, indexed` 并从后续 ingest plan 排除
 - 已经 indexed 且内容未变的 source 再次 included 时不得重复处理；内容 hash 变化后应显示为 `Changed` 并进入下一次 Update My Wiki
@@ -485,11 +485,13 @@ onboarding 的配置约束为：
 - 默认 My Wiki 生成必须保留 LLM Wiki 原生 generation targets 和两阶段 `autoIngest` prompt；KnowYou 不得用动态 My Wiki generation target、单独页面正文 prompt、schema/purpose 层提示或旧分类映射替换或补充原生 prompt
 - LLM Wiki `auto` 输出语言模式必须跟随 source 主语言，但保留人名、产品名、工具名、缩写和英文术语原文；翻译或中文解释只能进入 aliases、tags 或正文说明。显式用户语言设置仍可强制输出语言
 - My Wiki 的正式本体抽取、关系发现、去重、总结和 agent context 必须使用 LLM 语义能力，不得用 keyword/regex/starter extractor 伪造可信本体页
-- bundled helper、`ThirdParty/llm_wiki` 开发源码或 Codex CLI pipeline 不可用时，系统必须写入失败/降级状态并保留已有页面，不得生成 keyword fallback 正式页面
+- 内置 MyWikiRunner 或已配置的 LLM pipeline 不可用时，系统必须写入失败/降级状态并保留已有页面，不得生成 keyword fallback 正式页面
 - 仓库中的旧 starter extractor 不得再作为产品代码或测试入口保留；读取层不得为了兼容旧 starter 输出而过滤或重分类原生 `entities` / `concepts` 页面
 - My Wiki 生成页的 frontmatter type 由 llm_wiki 原生 pipeline 决定；KnowYou 展示层只读取 `wiki/sources`、`wiki/entities`、`wiki/concepts` 内的 Markdown 和 frontmatter，不再兼容旧 `person`、`organization`、`project`、`event`、`topic`、`decision`、`preference`、`follow-up`、`summary` 页面
-- KnowYou 必须优先连接 bundled llm_wiki helper；没有 bundled helper 时，允许回退到 `ThirdParty/llm_wiki` 开发源码目录
-- 回退到 `ThirdParty/llm_wiki` 开发源码目录时，如果 `node_modules/vite` 缺失，系统必须先尝试在该目录执行 `npm install`，安装失败时写入明确 failed 状态，不得只向用户暴露 Node 的 `ERR_MODULE_NOT_FOUND` 堆栈
+- 产品版 My Wiki 生成必须通过内置 MyWikiRunner 运行，不得依赖额外 GUI 工作台、npm、用户 PATH、系统 Node 或开发源码目录
+- Release、New User QA 和 dev launch 产物都必须 embed `Contents/Resources/MyWikiRunner/node` 与 `mywiki-runner.js`；DMG 打包脚本必须拒绝缺少 MyWikiRunner 的 app，防止普通用户安装后点击 `Update My Wiki` 静默失败
+- 开发源码 fallback 只能由测试或本地开发显式注入；普通用户 UI 不得自动回退到 `ThirdParty/llm_wiki`
+- My Wiki ingest 必须复用 KnowYou 已配置的 LLM engine；不能默认把所有用户硬编码到 Codex CLI。API key 等 secret 必须通过环境变量或等价安全通道传给 runner，不得出现在命令行参数中
 - 第一版只能导出 KnowYou 已生成的每日 Markdown，不得直接导出未经额外授权的 SQLite 原始事件
 - 系统必须提供本地服务层能力，让 Codex、Claude、Cowork 等 agent 能读取 My Wiki 的最小必要背景摘要
 - My Wiki 必须提供 `Use My Wiki in Agents` 用户入口，并且该入口必须接入新版 My Wiki 页面，不得回退到旧 KnowledgeOntology 控制面板
@@ -499,6 +501,7 @@ onboarding 的配置约束为：
 - Codex、Claude Code、Cursor、Gemini CLI 和 OpenClaw 必须同时安装 `.agents/skills/my-wiki-context` companion Skill；Claude Desktop 只安装 MCP 连接配置；generic MCP 的手动配置必须保留在高级配置区
 - My Wiki MCP 必须暴露 `my_wiki_context`，输入是一段背景信息或任务描述，而不要求调用方只能提供关键词
 - My Wiki MCP 必须由 KnowYou app 自身内置提供，默认配置必须直接启动 `KnowYou --my-wiki-mcp --project-root <path>`；用户不得被要求安装 Node、npm 或运行 `npm install`
+- My Wiki 验证必须包含一条真实 Diary fixture 到 ontology 输出的本地检查，至少证明 `wiki/entities`、`wiki/concepts`、`wiki/sources` 和 `.llm-wiki/last-ingest-status.json` 的成功状态能由 bundled runner 生成
 - `my_wiki_context` 返回必须包含 query、query plan、items 和 citations；items 必须包含 title、page type、excerpt、score、matched terms 和 citation
 - KnowYou 的 `--my-wiki-context` headless 模式必须只输出 JSON 并退出，不得启动主窗口、采集器或常驻后台服务
 - KnowYou 的 `--my-wiki-mcp` headless 模式必须逐行响应 stdio JSON-RPC 请求，不得等待 stdin 关闭后才输出结果
@@ -588,7 +591,7 @@ Markdown 导出也应服务于这个目标：
 - 用户启动应用后，系统还能在后台持续补同步今天的新通知，而不要求手动刷新
 - Home 必须维护 `Diary`、`Todo`、`My Wiki` 三类后台任务的最新状态；每类只保留最新状态，不堆积历史，并且只把 active/attention 状态显示到 compact 更新区
 - Todo 页面必须显示 `Next update` 与 `Update Now`；点击 `Update Now` 后必须显示 `Updating...` 并禁用重复点击；没有 today story 时必须提示先生成今天的 diary，LLM 不可用时必须显示 degraded 而不能伪造任务
-- My Wiki digest 必须同时显示 `Last update` 与 `Next update`，并说明它会在 Diary 和 Todo 就绪后每日更新，也可手动更新
+- My Wiki digest 必须同时显示 `Last successful update` 与 `Next update`，并说明它会在 Diary 和 Todo 就绪后每日更新，也可手动更新；失败尝试必须显示为 `Last attempt failed` 状态文案，不能把失败时间显示成成功更新时间；项目目录或内置 MyWiki runner 不可用时手动更新入口必须显示不可用/可行动状态，不得允许点击后静默返回
 - 启动后如果当前默认 diary engine 已配置但处于 yellow，系统必须后台自动 retest 一次；用户不应必须先打开 engine popover 才刷新状态
 - 用户能在日期列表里看到已有日期
 - 用户选中某天后，能看到可阅读的 story

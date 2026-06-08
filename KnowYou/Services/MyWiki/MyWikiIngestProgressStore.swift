@@ -22,7 +22,7 @@ struct MyWikiIngestProgress: Equatable {
     var title: String {
         switch state {
         case .running:
-            return "Processing sources"
+            return totalSources > 0 ? "Processing sources" : "Generating My Wiki"
         case .succeeded:
             return "Updated"
         case .failed:

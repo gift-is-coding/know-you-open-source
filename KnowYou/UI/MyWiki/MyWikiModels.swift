@@ -151,6 +151,10 @@ enum MyWikiWikilinkText {
         return result
     }
 
+    static func summaryAttributedString(from summary: String) -> AttributedString {
+        attributedString(from: summary)
+    }
+
     static func reference(from url: URL) -> String? {
         guard url.scheme == scheme, url.host == host else { return nil }
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
@@ -308,24 +312,51 @@ enum MyWikiSourceLibraryEntryPolicy {
 struct MyWikiDigestSchedulePresentation: Equatable {
     let title = "My Wiki digest"
     let triggerText = "Updates daily after Diary and Todo are ready."
-    let lastRunTitle = "Last update"
+    let lastRunTitle: String
     let lastRunValue: String
     let nextRunTitle = "Next update"
     let nextRunValue: String
-    let updateNowTitle = "Update Now"
+    let updateNowTitle: String
+    let isUpdateNowDisabled: Bool
+    let statusMessage: String?
 
     init(
         ingestProgress: MyWikiIngestProgress?,
         nextRunDate: Date? = nil,
+        statusMessage: String? = nil,
+        isUpdating: Bool = false,
+        isProjectAvailable: Bool = true,
         displayTimeZone: TimeZone = .current
     ) {
-        if let updatedAt = ingestProgress?.updatedAt,
+        if ingestProgress?.state == .failed {
+            lastRunTitle = "Last successful update"
+            lastRunValue = "Not updated yet"
+        } else if let updatedAt = ingestProgress?.updatedAt,
            let date = ISO8601DateFormatter().date(from: updatedAt) {
+            lastRunTitle = "Last successful update"
             lastRunValue = Self.timeText(for: date, timeZone: displayTimeZone)
         } else {
+            lastRunTitle = "Last successful update"
             lastRunValue = "Not updated yet"
         }
         nextRunValue = nextRunDate.map { Self.timeText(for: $0, timeZone: displayTimeZone) } ?? "After Diary and Todo"
+
+        if isUpdating {
+            updateNowTitle = "Generating..."
+            isUpdateNowDisabled = true
+            self.statusMessage = "Generating My Wiki..."
+        } else if isProjectAvailable == false {
+            updateNowTitle = "Unavailable"
+            isUpdateNowDisabled = true
+            self.statusMessage = "My Wiki folder is not available yet."
+        } else {
+            updateNowTitle = "Update Now"
+            isUpdateNowDisabled = false
+            self.statusMessage = Self.visibleStatusMessage(
+                statusMessage,
+                ingestProgress: ingestProgress
+            )
+        }
     }
 
     private static func timeText(for date: Date, timeZone: TimeZone) -> String {
@@ -337,6 +368,22 @@ struct MyWikiDigestSchedulePresentation: Equatable {
         return formatter.string(from: date)
             .replacingOccurrences(of: "\u{202F}", with: " ")
             .replacingOccurrences(of: "\u{00A0}", with: " ")
+    }
+
+    private static func visibleStatusMessage(
+        _ message: String?,
+        ingestProgress: MyWikiIngestProgress?
+    ) -> String? {
+        let rawMessage = message ?? (ingestProgress?.state == .failed ? ingestProgress?.message : nil)
+        guard let trimmed = rawMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
+              trimmed.isEmpty == false,
+              trimmed != "Ready" else {
+            return nil
+        }
+        if ingestProgress?.state == .failed {
+            return "Last attempt failed: \(trimmed)"
+        }
+        return trimmed
     }
 }
 

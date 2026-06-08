@@ -18,6 +18,7 @@ struct AppSupportMetadata {
 struct AppRuntimeProfile {
     static let newUserBundleIdentifier = "dev.knowyou.newuser"
     static let profileRootEnvironmentKey = "KNOWYOU_PROFILE_ROOT"
+    static let userDefaultsSuiteEnvironmentKey = "KNOWYOU_USER_DEFAULTS_SUITE"
     static let keychainServiceEnvironmentKey = "KNOWYOU_KEYCHAIN_SERVICE"
 
     nonisolated(unsafe) private static var currentEnvironmentOverrideForTesting: [String: String]?
@@ -25,25 +26,55 @@ struct AppRuntimeProfile {
     let displayName: String
     let supportDirectoryName: String
     let keychainService: String
-    private let profileRootPath: String?
+    let profileRootURL: URL?
+    let userDefaultsSuiteName: String?
 
-    init(bundleIdentifier: String?, processEnvironment: [String: String] = ProcessInfo.processInfo.environment) {
+    init(
+        bundleIdentifier: String?,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
+        let defaultKeychainService: String
         if bundleIdentifier == Self.newUserBundleIdentifier {
             displayName = "KnowYou New User"
             supportDirectoryName = "KnowYou New User"
-            keychainService = Self.newUserBundleIdentifier
+            defaultKeychainService = Self.newUserBundleIdentifier
         } else {
             displayName = "KnowYou"
             supportDirectoryName = "KnowYou"
-            keychainService = processEnvironment[Self.keychainServiceEnvironmentKey] ?? "com.knowyou.app"
+            defaultKeychainService = "com.knowyou.app"
         }
-        profileRootPath = processEnvironment[Self.profileRootEnvironmentKey]
+
+        let rawKeychainService = Self.normalizedEnvironmentValue(
+            environment[Self.keychainServiceEnvironmentKey]
+        )
+        keychainService = rawKeychainService ?? defaultKeychainService
+
+        userDefaultsSuiteName = Self.normalizedEnvironmentValue(
+            environment[Self.userDefaultsSuiteEnvironmentKey]
+        )
+
+        let rawProfileRoot = Self.normalizedEnvironmentValue(environment[Self.profileRootEnvironmentKey])
+        if let rawProfileRoot {
+            profileRootURL = URL(
+                fileURLWithPath: NSString(string: rawProfileRoot).expandingTildeInPath,
+                isDirectory: true
+            ).standardizedFileURL
+        } else {
+            profileRootURL = nil
+        }
+    }
+
+    init(
+        bundleIdentifier: String?,
+        processEnvironment: [String: String]
+    ) {
+        self.init(bundleIdentifier: bundleIdentifier, environment: processEnvironment)
     }
 
     init(bundle: Bundle = .main) {
         self.init(
             bundleIdentifier: bundle.bundleIdentifier,
-            processEnvironment: Self.currentEnvironmentOverrideForTesting ?? ProcessInfo.processInfo.environment
+            environment: Self.currentEnvironmentOverrideForTesting ?? ProcessInfo.processInfo.environment
         )
     }
 
@@ -56,12 +87,24 @@ struct AppRuntimeProfile {
     }
 
     func applicationSupportDirectoryURL(create: Bool = true) throws -> URL {
+        try Self.applicationSupportDirectoryURL(create: create, profile: self)
+    }
+
+    static func applicationSupportDirectoryURL(
+        create: Bool = true,
+        profile: AppRuntimeProfile = .current
+    ) throws -> URL {
         let applicationSupportURL: URL
-        if let profileRootPath, profileRootPath.isEmpty == false {
-            applicationSupportURL = URL(fileURLWithPath: profileRootPath, isDirectory: true)
-                .appending(path: "Application Support", directoryHint: .isDirectory)
+        if let profileRootURL = profile.profileRootURL {
+            applicationSupportURL = profileRootURL.appending(
+                path: "Application Support",
+                directoryHint: .isDirectory
+            )
             if create {
-                try FileManager.default.createDirectory(at: applicationSupportURL, withIntermediateDirectories: true)
+                try FileManager.default.createDirectory(
+                    at: applicationSupportURL,
+                    withIntermediateDirectories: true
+                )
             }
         } else {
             applicationSupportURL = try FileManager.default.url(
@@ -72,7 +115,7 @@ struct AppRuntimeProfile {
             )
         }
         let appDirectoryURL = applicationSupportURL.appending(
-            path: supportDirectoryName,
+            path: profile.supportDirectoryName,
             directoryHint: .isDirectory
         )
         if create {
@@ -81,8 +124,18 @@ struct AppRuntimeProfile {
         return appDirectoryURL
     }
 
-    static func applicationSupportDirectoryURL(create: Bool = true) throws -> URL {
-        try current.applicationSupportDirectoryURL(create: create)
+    static func userDefaults(profile: AppRuntimeProfile = .current) -> UserDefaults {
+        guard let suiteName = profile.userDefaultsSuiteName,
+              let defaults = UserDefaults(suiteName: suiteName) else {
+            return .standard
+        }
+        return defaults
+    }
+
+    private static func normalizedEnvironmentValue(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let trimmed, trimmed.isEmpty == false else { return nil }
+        return trimmed
     }
 }
 

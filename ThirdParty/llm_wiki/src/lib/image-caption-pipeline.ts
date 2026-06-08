@@ -30,7 +30,7 @@
  *
  * Why JSON-on-disk and not LanceDB / sqlite: the cache is small
  * (10s of KB on real corpora), human-readable for debugging
- * ("why is this caption wrong?"), and survives `npm run dev`
+ * ("why is this caption wrong?"), and survives local dev reloads
  * restarts — no migration story needed when the embedding-side
  * schema changes. If we ever cache 100k+ images we'll revisit.
  */

@@ -187,6 +187,10 @@ struct OnboardingView: View {
                 referenceAdvancePolicy.reset()
             }
         }
+        .onChange(of: appState.currentOnboardingStep) { _, newStep in
+            guard let newStep, newStep != step else { return }
+            step = newStep
+        }
         .onChange(of: notificationsAvailable) { _, _ in
             guard appState.environment != nil else { return }
             reconcileVisibleStepWithProgress()
@@ -865,21 +869,21 @@ struct OnboardingView: View {
 
         isMovingToApplications = true
 
-        do {
-            let fileManager = FileManager.default
-            if fileManager.fileExists(atPath: targetURL.path) {
-                try fileManager.removeItem(at: targetURL)
-            }
-            try fileManager.copyItem(at: sourceURL, to: targetURL)
-
-            guard NSWorkspace.shared.open(targetURL) else {
-                throw CocoaError(.fileNoSuchFile)
-            }
-
+        let result = ApplicationInstallMover().moveToApplicationsAndOpen(
+            request: ApplicationInstallMoveRequest(
+                sourceURL: sourceURL,
+                targetURL: targetURL
+            )
+        )
+        switch result {
+        case .alreadyInstalled:
+            isMovingToApplications = false
+            step = .permissions
+        case .movedAndOpened:
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 NSApp.terminate(nil)
             }
-        } catch {
+        case .failed:
             isMovingToApplications = false
             applicationInstallError = "Could not move automatically. Show the app in Finder, then drag it to Applications."
         }

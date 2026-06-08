@@ -13,6 +13,23 @@ require_command swift
 
 prepare_release_dir
 ensure_file_exists "$app_path"
+ensure_file_exists "$app_path/Contents/Resources/MyWikiRunner/node"
+ensure_file_exists "$app_path/Contents/Resources/MyWikiRunner/mywiki-runner.js"
+
+dmg_volume_name="${KNOWYOU_DMG_VOLUME_NAME:-KnowYou}"
+dmg_app_name="${KNOWYOU_DMG_APP_NAME:-KnowYou.app}"
+dmg_title="${KNOWYOU_DMG_TITLE:-Double-click KnowYou to install}"
+dmg_subtitle="${KNOWYOU_DMG_SUBTITLE:-KnowYou will move itself to Applications and relaunch.}"
+
+if [[ -z "$dmg_volume_name" || "$dmg_volume_name" == */* ]]; then
+  echo "Invalid KNOWYOU_DMG_VOLUME_NAME: $dmg_volume_name" >&2
+  exit 1
+fi
+
+if [[ -z "$dmg_app_name" || "$dmg_app_name" == */* || "$dmg_app_name" != *.app ]]; then
+  echo "Invalid KNOWYOU_DMG_APP_NAME: $dmg_app_name" >&2
+  exit 1
+fi
 
 generator_dir="$(mktemp -d)"
 rw_dmg_path="$release_dir/$(artifact_basename)-rw.dmg"
@@ -33,14 +50,22 @@ generate_background() {
   cat >"$swift_path" <<'SWIFT'
 import AppKit
 
+guard CommandLine.arguments.count == 4 else {
+    fatalError("Usage: generate-dmg-background <output-path> <title> <subtitle>")
+}
+
 let outputURL = URL(fileURLWithPath: CommandLine.arguments[1])
 let width: CGFloat = 560
 let height: CGFloat = 300
+let scale: CGFloat = 2
+let appIconCenterX: CGFloat = 280
+let iconCenterY: CGFloat = 148
+let iconSize: CGFloat = 96
 
 guard let bitmap = NSBitmapImageRep(
     bitmapDataPlanes: nil,
-    pixelsWide: Int(width),
-    pixelsHigh: Int(height),
+    pixelsWide: Int(width * scale),
+    pixelsHigh: Int(height * scale),
     bitsPerSample: 8,
     samplesPerPixel: 4,
     hasAlpha: true,
@@ -51,6 +76,7 @@ guard let bitmap = NSBitmapImageRep(
 ) else {
     fatalError("Unable to create DMG background bitmap")
 }
+bitmap.size = NSSize(width: width, height: height)
 
 NSGraphicsContext.saveGraphicsState()
 NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
@@ -67,7 +93,7 @@ let topWash = NSGradient(
 )
 topWash?.draw(in: bounds, angle: -90)
 
-let title = "Drag KnowYou to Applications"
+let title = CommandLine.arguments[2]
 let titleAttributes: [NSAttributedString.Key: Any] = [
     .font: NSFont.systemFont(ofSize: 20, weight: .semibold),
     .foregroundColor: NSColor(calibratedWhite: 0.16, alpha: 1)
@@ -78,7 +104,7 @@ title.draw(
     withAttributes: titleAttributes
 )
 
-let subtitle = "Move the app first, then grant Full Disk Access."
+let subtitle = CommandLine.arguments[3]
 let subtitleAttributes: [NSAttributedString.Key: Any] = [
     .font: NSFont.systemFont(ofSize: 13, weight: .regular),
     .foregroundColor: NSColor(calibratedWhite: 0.42, alpha: 1)
@@ -89,24 +115,6 @@ subtitle.draw(
     withAttributes: subtitleAttributes
 )
 
-let arrowColor = NSColor(calibratedRed: 0.33, green: 0.55, blue: 0.86, alpha: 1)
-arrowColor.setStroke()
-arrowColor.setFill()
-
-let shaft = NSBezierPath()
-shaft.lineWidth = 6
-shaft.lineCapStyle = .round
-shaft.move(to: NSPoint(x: 235, y: 148))
-shaft.line(to: NSPoint(x: 325, y: 148))
-shaft.stroke()
-
-let head = NSBezierPath()
-head.move(to: NSPoint(x: 325, y: 148))
-head.line(to: NSPoint(x: 300, y: 168))
-head.line(to: NSPoint(x: 300, y: 128))
-head.close()
-head.fill()
-
 NSGraphicsContext.restoreGraphicsState()
 
 guard let data = bitmap.representation(using: .png, properties: [:]) else {
@@ -115,22 +123,29 @@ guard let data = bitmap.representation(using: .png, properties: [:]) else {
 try data.write(to: outputURL)
 SWIFT
 
-  swift "$swift_path" "$output_path"
+  swift "$swift_path" "$output_path" "$dmg_title" "$dmg_subtitle"
 }
 
 generate_background "$background_path"
 
+app_size_mb="$(du -sm "$app_path" | awk '{ print $1 }')"
+dmg_size_mb=$((app_size_mb + 128))
+if (( dmg_size_mb < 192 )); then
+  dmg_size_mb=192
+fi
+
 rm -f "$(release_dmg_path)" "$rw_dmg_path"
 hdiutil create \
-  -size 64m \
+  -size "${dmg_size_mb}m" \
   -fs HFS+ \
-  -volname "KnowYou" \
+  -volname "$dmg_volume_name" \
   -ov \
   "$rw_dmg_path"
 
 mount_output="$(hdiutil attach "$rw_dmg_path" -readwrite -noverify -noautoopen)"
-device="$(printf '%s\n' "$mount_output" | awk 'index($0, "/Volumes/KnowYou") { print $1; exit }')"
-mount_point="$(printf '%s\n' "$mount_output" | awk -F '\t' 'index($0, "/Volumes/KnowYou") { print $NF; exit }')"
+expected_mount_point="/Volumes/$dmg_volume_name"
+device="$(printf '%s\n' "$mount_output" | awk -v mount="$expected_mount_point" 'index($0, mount) { print $1; exit }')"
+mount_point="$(printf '%s\n' "$mount_output" | awk -F '\t' -v mount="$expected_mount_point" 'index($0, mount) { print $NF; exit }')"
 
 if [[ -z "$device" || -z "$mount_point" ]]; then
   echo "Unable to mount DMG for layout customization." >&2
@@ -138,14 +153,14 @@ if [[ -z "$device" || -z "$mount_point" ]]; then
   exit 1
 fi
 
-ditto "$app_path" "$mount_point/KnowYou.app"
-ln -s /Applications "$mount_point/Applications"
+ditto "$app_path" "$mount_point/$dmg_app_name"
 mkdir -p "$mount_point/.background"
 ditto "$background_path" "$mount_point/.background/background.png"
 SetFile -a V "$mount_point/.background"
 
-if ! DMG_MOUNT_POINT="$mount_point" osascript <<'APPLESCRIPT'
+if ! DMG_APP_NAME="$dmg_app_name" DMG_MOUNT_POINT="$mount_point" osascript <<'APPLESCRIPT'
 set mountPoint to system attribute "DMG_MOUNT_POINT"
+set appName to system attribute "DMG_APP_NAME"
 set backgroundPath to mountPoint & "/.background/background.png"
 
 with timeout of 300 seconds
@@ -164,8 +179,7 @@ with timeout of 300 seconds
     set arrangement of theViewOptions to not arranged
     set icon size of theViewOptions to 96
     set background picture of theViewOptions to POSIX file backgroundPath
-    set position of item "KnowYou.app" of installerFolder to {150, 148}
-    set position of item "Applications" of installerFolder to {430, 148}
+    set position of item appName of installerFolder to {280, 148}
     delay 2
     close installerWindow
   end tell
@@ -180,7 +194,7 @@ for _ in {1..30}; do
   if [[ -s "$mount_point/.DS_Store" ]]; then
     break
   fi
-  osascript -e 'tell application "Finder" to update disk "KnowYou"' >/dev/null 2>&1 || true
+  osascript -e "tell application \"Finder\" to update disk \"$dmg_volume_name\"" >/dev/null 2>&1 || true
   sleep 1
 done
 

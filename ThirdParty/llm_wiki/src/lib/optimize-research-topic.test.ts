@@ -59,7 +59,7 @@ describe("optimizeResearchTopic — language directive", () => {
     )
 
     const prompt = mockStreamChat.mock.calls[0][1][0].content
-    expect(prompt).toContain("MANDATORY OUTPUT LANGUAGE: Chinese")
+    expect(prompt).toContain("SOURCE LANGUAGE MODE: Chinese")
   })
 
   it("user setting beats the detected source language", async () => {

@@ -155,6 +155,10 @@ final class OnboardingContentTests: XCTestCase {
     func testApplicationInstallPolicyRequiresApplicationsKnowYouBundle() {
         let installedAppURL = URL(fileURLWithPath: "/Applications/KnowYou.app")
         let installedNewUserURL = URL(fileURLWithPath: "/Applications/KnowYou New User.app")
+        let dataVolumeInstalledAppURL = URL(fileURLWithPath: "/System/Volumes/Data/Applications/KnowYou.app")
+        let dataVolumeInstalledNewUserURL = URL(
+            fileURLWithPath: "/System/Volumes/Data/Applications/KnowYou New User.app"
+        )
         let mountedDMGURL = URL(fileURLWithPath: "/Volumes/KnowYou/KnowYou.app")
         let downloadsURL = URL(fileURLWithPath: "/Users/me/Downloads/KnowYou.app")
         let developmentBuildURL = URL(
@@ -162,9 +166,16 @@ final class OnboardingContentTests: XCTestCase {
         )
 
         XCTAssertTrue(OnboardingApplicationInstallPolicy.isInstalledInApplications(bundleURL: installedAppURL))
+        XCTAssertTrue(OnboardingApplicationInstallPolicy.isInstalledInApplications(bundleURL: dataVolumeInstalledAppURL))
         XCTAssertTrue(
             OnboardingApplicationInstallPolicy.isInstalledInApplications(
                 bundleURL: installedNewUserURL,
+                bundleIdentifier: AppRuntimeProfile.newUserBundleIdentifier
+            )
+        )
+        XCTAssertTrue(
+            OnboardingApplicationInstallPolicy.isInstalledInApplications(
+                bundleURL: dataVolumeInstalledNewUserURL,
                 bundleIdentifier: AppRuntimeProfile.newUserBundleIdentifier
             )
         )
@@ -183,6 +194,159 @@ final class OnboardingContentTests: XCTestCase {
                 bundleIdentifier: "dev.knowyou.app"
             )
         )
+    }
+
+    func testApplicationInstallAutoMovePolicySkipsInstalledApps() {
+        XCTAssertNil(
+            ApplicationInstallAutoMovePolicy.request(
+                bundleURL: URL(fileURLWithPath: "/Applications/KnowYou.app"),
+                bundleIdentifier: "dev.knowyou.app",
+                launchMode: .interactive,
+                isRunningUnderXCTest: false
+            )
+        )
+        XCTAssertNil(
+            ApplicationInstallAutoMovePolicy.request(
+                bundleURL: URL(fileURLWithPath: "/System/Volumes/Data/Applications/KnowYou.app"),
+                bundleIdentifier: "dev.knowyou.app",
+                launchMode: .interactive,
+                isRunningUnderXCTest: false
+            )
+        )
+    }
+
+    func testApplicationInstallAutoMovePolicyMovesMountedDMGAppToApplications() {
+        let request = ApplicationInstallAutoMovePolicy.request(
+            bundleURL: URL(fileURLWithPath: "/Volumes/KnowYou/KnowYou.app"),
+            bundleIdentifier: "dev.knowyou.app",
+            launchMode: .interactive,
+            isRunningUnderXCTest: false
+        )
+
+        XCTAssertEqual(
+            request,
+            ApplicationInstallMoveRequest(
+                sourceURL: URL(fileURLWithPath: "/Volumes/KnowYou/KnowYou.app"),
+                targetURL: URL(fileURLWithPath: "/Applications/KnowYou.app")
+            )
+        )
+    }
+
+    func testApplicationInstallAutoMovePolicyUsesNewUserTargetBundle() {
+        let request = ApplicationInstallAutoMovePolicy.request(
+            bundleURL: URL(fileURLWithPath: "/Volumes/KnowYou New User/KnowYou New User.app"),
+            bundleIdentifier: AppRuntimeProfile.newUserBundleIdentifier,
+            launchMode: .interactive,
+            isRunningUnderXCTest: false
+        )
+
+        XCTAssertEqual(
+            request,
+            ApplicationInstallMoveRequest(
+                sourceURL: URL(fileURLWithPath: "/Volumes/KnowYou New User/KnowYou New User.app"),
+                targetURL: URL(fileURLWithPath: "/Applications/KnowYou New User.app")
+            )
+        )
+    }
+
+    func testApplicationInstallAutoMovePolicySkipsTestsCliAndDerivedData() {
+        let mountedDMGURL = URL(fileURLWithPath: "/Volumes/KnowYou/KnowYou.app")
+        let derivedDataURL = URL(
+            fileURLWithPath: "/Users/me/Library/Developer/Xcode/DerivedData/KnowYou/Build/Products/Debug/KnowYou.app"
+        )
+
+        XCTAssertNil(
+            ApplicationInstallAutoMovePolicy.request(
+                bundleURL: mountedDMGURL,
+                bundleIdentifier: "dev.knowyou.app",
+                launchMode: .interactive,
+                isRunningUnderXCTest: true
+            )
+        )
+        XCTAssertNil(
+            ApplicationInstallAutoMovePolicy.request(
+                bundleURL: mountedDMGURL,
+                bundleIdentifier: "dev.knowyou.app",
+                launchMode: .myWikiMCP,
+                isRunningUnderXCTest: false
+            )
+        )
+        XCTAssertNil(
+            ApplicationInstallAutoMovePolicy.request(
+                bundleURL: mountedDMGURL,
+                bundleIdentifier: "dev.knowyou.app",
+                launchMode: .myWikiContext,
+                isRunningUnderXCTest: false
+            )
+        )
+        XCTAssertNil(
+            ApplicationInstallAutoMovePolicy.request(
+                bundleURL: mountedDMGURL,
+                bundleIdentifier: "dev.knowyou.app",
+                launchMode: .endOfDayReminder,
+                isRunningUnderXCTest: false
+            )
+        )
+        XCTAssertNil(
+            ApplicationInstallAutoMovePolicy.request(
+                bundleURL: derivedDataURL,
+                bundleIdentifier: "dev.knowyou.app",
+                launchMode: .interactive,
+                isRunningUnderXCTest: false
+            )
+        )
+    }
+
+    func testApplicationInstallMoverCopiesOpensAndReplacesExistingTarget() {
+        var removedURLs: [URL] = []
+        var copiedPairs: [(source: URL, target: URL)] = []
+        var openedURLs: [URL] = []
+        let sourceURL = URL(fileURLWithPath: "/Volumes/KnowYou/KnowYou.app")
+        let targetURL = URL(fileURLWithPath: "/Applications/KnowYou.app")
+        let mover = ApplicationInstallMover(
+            fileExists: { $0 == targetURL },
+            removeItem: { removedURLs.append($0) },
+            copyItem: { copiedPairs.append((source: $0, target: $1)) },
+            open: {
+                openedURLs.append($0)
+                return true
+            }
+        )
+
+        let result = mover.moveToApplicationsAndOpen(
+            request: ApplicationInstallMoveRequest(sourceURL: sourceURL, targetURL: targetURL)
+        )
+
+        XCTAssertEqual(result, .movedAndOpened(targetURL: targetURL))
+        XCTAssertEqual(removedURLs, [targetURL])
+        XCTAssertEqual(copiedPairs.map(\.source), [sourceURL])
+        XCTAssertEqual(copiedPairs.map(\.target), [targetURL])
+        XCTAssertEqual(openedURLs, [targetURL])
+    }
+
+    func testApplicationInstallMoverReportsCopyFailureWithoutOpening() {
+        enum CopyFailure: Error {
+            case denied
+        }
+        var openedURLs: [URL] = []
+        let sourceURL = URL(fileURLWithPath: "/Volumes/KnowYou/KnowYou.app")
+        let targetURL = URL(fileURLWithPath: "/Applications/KnowYou.app")
+        let mover = ApplicationInstallMover(
+            fileExists: { _ in false },
+            removeItem: { _ in },
+            copyItem: { _, _ in throw CopyFailure.denied },
+            open: {
+                openedURLs.append($0)
+                return true
+            }
+        )
+
+        let result = mover.moveToApplicationsAndOpen(
+            request: ApplicationInstallMoveRequest(sourceURL: sourceURL, targetURL: targetURL)
+        )
+
+        XCTAssertEqual(result, .failed)
+        XCTAssertTrue(openedURLs.isEmpty)
     }
 
     func testFullDiskAccessBypassIsLimitedToDerivedDataDebugBuilds() {

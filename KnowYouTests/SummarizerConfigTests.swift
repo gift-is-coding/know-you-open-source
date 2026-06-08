@@ -304,6 +304,15 @@ final class SummarizerConfigTests: XCTestCase {
         XCTAssertNotNil(config.makeSummarizer() as? CodexDirectSummarizer)
     }
 
+    func testCodexAuthSummarizerCanPowerMyWikiLLMBridge() throws {
+        var config = SummarizerConfig.load(from: defaults)
+        config.type = .codexAuth
+
+        let summarizer = try XCTUnwrap(config.makeSummarizer())
+
+        XCTAssertNotNil(summarizer as? any MyWikiLLMCompleting)
+    }
+
     func testMakeSummarizerReturnsCLISummarizerForClaudeCLI() {
         // Use the test binary itself as a stand-in executable that is guaranteed to exist
         var config = SummarizerConfig.load(from: defaults)

@@ -104,6 +104,87 @@ final class CodexDirectSummarizerTests: XCTestCase {
         XCTAssertEqual(firstMessage["content"] as? String, "Incremental markdown")
     }
 
+    func testMyWikiCompletionReusesCodexAuthWithSystemInstructionsAndTranscript() async throws {
+        CodexDirectStubURLProtocol.response = .success(
+            statusCode: 200,
+            body: Data("""
+            data: {"type":"response.completed","response":{"output_text":"Codex MyWiki ontology"}}
+
+            """.utf8)
+        )
+        let summarizer = CodexDirectSummarizer(
+            credentialProvider: StubCodexCredentialProvider(
+                credential: CodexOAuthCredential(
+                    accessToken: "access-token",
+                    refreshToken: "refresh-token",
+                    expiresAt: Date(timeIntervalSince1970: 2_000_000_000),
+                    accountID: "account-id",
+                    source: .authFile(path: "/tmp/auth.json")
+                )
+            ),
+            session: CodexDirectStubURLProtocol.makeSession(),
+            instructions: "Default diary instructions."
+        )
+
+        let result = try await summarizer.complete(
+            messages: [
+                MyWikiLLMMessage(role: "system", content: "Extract My Wiki ontology."),
+                MyWikiLLMMessage(role: "user", content: "Diary text"),
+                MyWikiLLMMessage(role: "assistant", content: "Prior context")
+            ],
+            options: LLMCompletionOptions(temperature: 0.2, maxTokens: 8192)
+        )
+
+        XCTAssertEqual(result, "Codex MyWiki ontology")
+        let body = try XCTUnwrap(CodexDirectStubURLProtocol.lastBodyData)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(object["instructions"] as? String, "Extract My Wiki ontology.")
+        XCTAssertEqual(object["max_output_tokens"] as? Int, 8192)
+        let input = try XCTUnwrap(object["input"] as? [[String: Any]])
+        XCTAssertEqual(input.count, 2)
+        XCTAssertEqual(input[0]["role"] as? String, "user")
+        XCTAssertEqual(input[0]["content"] as? String, "Diary text")
+        XCTAssertEqual(input[1]["role"] as? String, "assistant")
+        XCTAssertEqual(input[1]["content"] as? String, "Prior context")
+    }
+
+    func testMyWikiCompletionReasoningOffOmitsReasoningPayload() async throws {
+        CodexDirectStubURLProtocol.response = .success(
+            statusCode: 200,
+            body: Data("""
+            data: {"type":"response.completed","response":{"output_text":"Codex MyWiki ontology"}}
+
+            """.utf8)
+        )
+        let summarizer = CodexDirectSummarizer(
+            credentialProvider: StubCodexCredentialProvider(
+                credential: CodexOAuthCredential(
+                    accessToken: "access-token",
+                    refreshToken: "refresh-token",
+                    expiresAt: Date(timeIntervalSince1970: 2_000_000_000),
+                    accountID: "account-id",
+                    source: .authFile(path: "/tmp/auth.json")
+                )
+            ),
+            session: CodexDirectStubURLProtocol.makeSession(),
+            instructions: "Default diary instructions."
+        )
+
+        _ = try await summarizer.complete(
+            messages: [MyWikiLLMMessage(role: "user", content: "Diary text")],
+            options: LLMCompletionOptions(
+                temperature: 0.2,
+                maxTokens: 8192,
+                reasoning: LLMReasoningOptions(mode: "off")
+            )
+        )
+
+        let body = try XCTUnwrap(CodexDirectStubURLProtocol.lastBodyData)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertNil(object["reasoning"])
+        XCTAssertNil(object["include"])
+    }
+
     func testCompletedSSEEventIgnoresReasoningOutputItemsWithoutContent() async throws {
         CodexDirectStubURLProtocol.response = .success(
             statusCode: 200,

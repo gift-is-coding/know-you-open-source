@@ -285,6 +285,12 @@ private struct MyWikiMarkdownBodyView: View {
             inlineText(content)
                 .font(headingFont(for: level))
                 .fontWeight(.semibold)
+                .lineLimit(MyWikiDetailLayoutPolicy.markdownHeadingLineLimit)
+                .truncationMode(.middle)
+                .allowsTightening(true)
+                .minimumScaleFactor(0.82)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, level == 1 ? 8 : 4)
         case .paragraph(let content):
             inlineText(content)
@@ -372,13 +378,13 @@ private struct MyWikiMarkdownBodyView: View {
     private func headingFont(for level: Int) -> Font {
         switch level {
         case 1:
-            return .system(size: 26, weight: .semibold)
+            return .system(size: MyWikiDetailLayoutPolicy.markdownHeading1FontSize, weight: .semibold)
         case 2:
-            return .system(size: 21, weight: .semibold)
+            return .system(size: MyWikiDetailLayoutPolicy.markdownHeading2FontSize, weight: .semibold)
         case 3:
-            return .system(size: 17, weight: .semibold)
+            return .system(size: MyWikiDetailLayoutPolicy.markdownHeading3FontSize, weight: .semibold)
         default:
-            return .system(size: 16, weight: .semibold)
+            return .system(size: MyWikiDetailLayoutPolicy.markdownHeading3FontSize, weight: .semibold)
         }
     }
 }

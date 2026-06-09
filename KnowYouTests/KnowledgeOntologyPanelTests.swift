@@ -195,6 +195,8 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertLessThanOrEqual(MyWikiDetailLayoutPolicy.summaryFontSize, 16)
         XCTAssertLessThanOrEqual(MyWikiDetailLayoutPolicy.relatedChipMaxWidth, 280)
         XCTAssertEqual(MyWikiDetailLayoutPolicy.relatedChipLineLimit, 1)
+        XCTAssertLessThanOrEqual(MyWikiDetailLayoutPolicy.markdownHeading1FontSize, 22)
+        XCTAssertEqual(MyWikiDetailLayoutPolicy.markdownHeadingLineLimit, 3)
     }
 
     func testIndexRowUsesSimpleNameOnlyPolicy() {

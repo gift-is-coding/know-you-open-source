@@ -103,15 +103,52 @@ checksum_asset_name() {
   printf '%s.sha256\n' "$(basename "$(release_dmg_path)")"
 }
 
-sparkle_signature_attributes() {
-  local signer="${KNOWYOU_SPARKLE_SIGN_UPDATE:-sign_update}"
-
-  if [[ "$signer" == */* ]]; then
-    ensure_file_exists "$signer"
-  else
-    require_command "$signer"
+resolve_sparkle_sign_update() {
+  if [[ -n "${KNOWYOU_SPARKLE_SIGN_UPDATE:-}" ]]; then
+    ensure_file_exists "$KNOWYOU_SPARKLE_SIGN_UPDATE"
+    printf '%s\n' "$KNOWYOU_SPARKLE_SIGN_UPDATE"
+    return
   fi
 
+  if command -v sign_update >/dev/null 2>&1; then
+    command -v sign_update
+    return
+  fi
+
+  local build_dir="${KNOWYOU_RELEASE_BUILD_DIR_FOR_TESTING:-}"
+  if [[ -z "$build_dir" ]]; then
+    build_dir="$(build_setting "BUILD_DIR" 2>/dev/null || true)"
+  fi
+
+  local derived_data_root=""
+  case "$build_dir" in
+    */Build/Products/*) derived_data_root="${build_dir%%/Build/Products/*}" ;;
+    */Build/Products) derived_data_root="${build_dir%/Build/Products}" ;;
+  esac
+
+  if [[ -n "$derived_data_root" ]]; then
+    local candidate
+    local candidates=(
+      "$derived_data_root/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update"
+      "$derived_data_root/SourcePackages/checkouts/Sparkle/bin/sign_update"
+    )
+
+    for candidate in "${candidates[@]}"; do
+      if [[ -x "$candidate" ]]; then
+        printf '%s\n' "$candidate"
+        return
+      fi
+    done
+  fi
+
+  echo "Missing required command: sign_update" >&2
+  echo "Set KNOWYOU_SPARKLE_SIGN_UPDATE or make Sparkle's sign_update available on PATH." >&2
+  exit 1
+}
+
+sparkle_signature_attributes() {
+  local signer
+  signer="$(resolve_sparkle_sign_update)"
   "$signer" "$(release_dmg_path)" | tr -d '\n'
 }
 

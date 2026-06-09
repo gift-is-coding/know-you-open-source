@@ -44,6 +44,16 @@ assert_eq "$repo_root/build/test-release/KnowYou-1.2.3-145.zip" "$(release_zip_p
 assert_eq "$repo_root/build/test-release/KnowYou-1.2.3-145-notarized.zip" "$(notarized_zip_path)" "notarized_zip_path"
 assert_eq "$repo_root/build/test-release/KnowYou-1.2.3-145.dmg" "$(release_dmg_path)" "release_dmg_path"
 
+fake_derived_data_root="$KNOWYOU_RELEASE_DIR/fake-derived-data"
+fake_sign_update="$fake_derived_data_root/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update"
+mkdir -p "$(dirname "$fake_sign_update")" "$fake_derived_data_root/Build/Products"
+touch "$fake_sign_update"
+chmod +x "$fake_sign_update"
+unset KNOWYOU_SPARKLE_SIGN_UPDATE
+export KNOWYOU_RELEASE_BUILD_DIR_FOR_TESTING="$fake_derived_data_root/Build/Products"
+assert_eq "$fake_sign_update" "$(resolve_sparkle_sign_update)" "resolve_sparkle_sign_update SwiftPM artifact fallback"
+unset KNOWYOU_RELEASE_BUILD_DIR_FOR_TESTING
+
 project_text="$(cat "$repo_root/KnowYou.xcodeproj/project.pbxproj")"
 assert_contains "$project_text" 'INFOPLIST_FILE = KnowYou/Config/Info.plist;' "explicit app Info.plist"
 assert_contains "$project_text" 'KNOWYOU_SPARKLE_PUBLIC_ED_KEY = "DPaKuqvU48UAoI0rOvKtWaStpzMsX9fwypStdx4md/M=";' "Sparkle public key setting"

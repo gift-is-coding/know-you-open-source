@@ -189,6 +189,14 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertFalse(MyWikiDetailLayoutPolicy.showsStandaloneSummaryCard)
     }
 
+    func testDetailLayoutKeepsContentBelowTitlebarAndCapsLongLabels() {
+        XCTAssertGreaterThanOrEqual(MyWikiDetailLayoutPolicy.contentTopInset, 52)
+        XCTAssertLessThanOrEqual(MyWikiDetailLayoutPolicy.titleFontSize, 34)
+        XCTAssertLessThanOrEqual(MyWikiDetailLayoutPolicy.summaryFontSize, 16)
+        XCTAssertLessThanOrEqual(MyWikiDetailLayoutPolicy.relatedChipMaxWidth, 280)
+        XCTAssertEqual(MyWikiDetailLayoutPolicy.relatedChipLineLimit, 1)
+    }
+
     func testIndexRowUsesSimpleNameOnlyPolicy() {
         XCTAssertTrue(MyWikiIndexRowHitTargetPolicy.usesFullRowContentShape)
         XCTAssertFalse(MyWikiIndexRowHitTargetPolicy.showsSummary)

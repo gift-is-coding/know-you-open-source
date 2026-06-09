@@ -27,8 +27,10 @@ struct MyWikiDetailView: View {
                     emptyState
                 }
             }
-            .padding(32)
-            .frame(maxWidth: 1040, alignment: .topLeading)
+            .padding(.top, MyWikiDetailLayoutPolicy.contentTopInset)
+            .padding(.horizontal, MyWikiDetailLayoutPolicy.horizontalPadding)
+            .padding(.bottom, MyWikiDetailLayoutPolicy.horizontalPadding)
+            .frame(maxWidth: MyWikiDetailLayoutPolicy.contentMaxWidth, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(MyWikiTheme.contentBackground)
@@ -37,8 +39,10 @@ struct MyWikiDetailView: View {
     private var toolbar: some View {
         HStack {
             Text(entry.map { "\($0.category.displayTitle) / \($0.title)" } ?? "My Wiki")
-                .font(.system(size: 13))
+                .font(.system(size: MyWikiDetailLayoutPolicy.toolbarLabelFontSize))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
 
             Spacer()
 
@@ -72,7 +76,10 @@ struct MyWikiDetailView: View {
                 .textCase(.uppercase)
 
             Text(entry.title)
-                .font(.system(size: 42, weight: .semibold))
+                .font(.system(size: MyWikiDetailLayoutPolicy.titleFontSize, weight: .semibold))
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+                .fixedSize(horizontal: false, vertical: true)
 
             summaryText(entry.summary)
 
@@ -99,7 +106,7 @@ struct MyWikiDetailView: View {
 
     private func summaryText(_ summary: String) -> some View {
         Text(MyWikiWikilinkText.summaryAttributedString(from: summary.isEmpty ? "No summary yet." : summary))
-            .font(.system(size: 18))
+            .font(.system(size: MyWikiDetailLayoutPolicy.summaryFontSize))
             .foregroundStyle(.primary)
             .lineSpacing(5)
             .fixedSize(horizontal: false, vertical: true)
@@ -143,8 +150,11 @@ struct MyWikiDetailView: View {
                             } label: {
                                 Text(related)
                                     .font(.system(size: 12))
+                                    .lineLimit(MyWikiDetailLayoutPolicy.relatedChipLineLimit)
+                                    .truncationMode(.middle)
                                     .padding(.horizontal, 10)
                                     .frame(height: 28)
+                                    .frame(maxWidth: MyWikiDetailLayoutPolicy.relatedChipMaxWidth, alignment: .leading)
                                     .background(Capsule().fill(MyWikiTheme.controlBackground))
                             }
                             .buttonStyle(.plain)
@@ -465,10 +475,12 @@ struct FlowLayout: Layout {
     private func rows(for subviews: Subviews, proposalWidth: CGFloat) -> [Row] {
         var rows: [Row] = []
         var current = Row()
+        let availableWidth = max(1, proposalWidth)
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if current.items.isEmpty == false && current.width + spacing + size.width > proposalWidth {
+            let proposedSize = subview.sizeThatFits(ProposedViewSize(width: availableWidth, height: nil))
+            let size = CGSize(width: min(proposedSize.width, availableWidth), height: proposedSize.height)
+            if current.items.isEmpty == false && current.width + spacing + size.width > availableWidth {
                 rows.append(current)
                 current = Row()
             }

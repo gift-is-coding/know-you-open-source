@@ -198,6 +198,14 @@ enum MyWikiWikilinkText {
 
 enum MyWikiDetailLayoutPolicy {
     static let showsStandaloneSummaryCard = false
+    static let contentTopInset: CGFloat = 56
+    static let horizontalPadding: CGFloat = 32
+    static let contentMaxWidth: CGFloat = 920
+    static let toolbarLabelFontSize: CGFloat = 12
+    static let titleFontSize: CGFloat = 32
+    static let summaryFontSize: CGFloat = 16
+    static let relatedChipMaxWidth: CGFloat = 260
+    static let relatedChipLineLimit = 1
 }
 
 enum MyWikiIndexRowHitTargetPolicy {

@@ -10,7 +10,7 @@ Store Apple notarization credentials in the login keychain:
 
 ```bash
 xcrun notarytool store-credentials "know-you-notary" \
-  --apple-id "ouyang_danhua@outlook.com" \
+  --apple-id "danhua_ouyang@outlook.com" \
   --team-id "3DY726RPHL" \
   --password "<app-specific-password>"
 ```

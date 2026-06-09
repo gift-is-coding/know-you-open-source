@@ -65,7 +65,7 @@ The machine will store a keychain-backed `notarytool` profile instead of persist
 Expected profile:
 
 - profile name: `know-you-notary`
-- Apple ID: `ouyang_danhua@outlook.com`
+- Apple ID: `danhua_ouyang@outlook.com`
 - Team ID: `3DY726RPHL`
 
 ## Verification

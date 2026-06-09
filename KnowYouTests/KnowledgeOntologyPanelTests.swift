@@ -191,12 +191,14 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
 
     func testDetailLayoutKeepsContentBelowTitlebarAndCapsLongLabels() {
         XCTAssertGreaterThanOrEqual(MyWikiDetailLayoutPolicy.contentTopInset, 52)
-        XCTAssertLessThanOrEqual(MyWikiDetailLayoutPolicy.titleFontSize, 34)
+        XCTAssertTrue(MyWikiDetailLayoutPolicy.usesFixedToolbarBoundary)
+        XCTAssertLessThanOrEqual(MyWikiDetailLayoutPolicy.titleFontSize, 24)
         XCTAssertLessThanOrEqual(MyWikiDetailLayoutPolicy.summaryFontSize, 16)
-        XCTAssertLessThanOrEqual(MyWikiDetailLayoutPolicy.relatedChipMaxWidth, 280)
+        XCTAssertTrue(MyWikiDetailLayoutPolicy.relatedChipsUseIntrinsicWidth)
+        XCTAssertLessThanOrEqual(MyWikiDetailLayoutPolicy.relatedChipMaxWidth, 340)
         XCTAssertEqual(MyWikiDetailLayoutPolicy.relatedChipLineLimit, 1)
-        XCTAssertLessThanOrEqual(MyWikiDetailLayoutPolicy.markdownHeading1FontSize, 22)
-        XCTAssertEqual(MyWikiDetailLayoutPolicy.markdownHeadingLineLimit, 3)
+        XCTAssertLessThanOrEqual(MyWikiDetailLayoutPolicy.markdownHeading1FontSize, 20)
+        XCTAssertEqual(MyWikiDetailLayoutPolicy.markdownHeadingLineLimit, 2)
     }
 
     func testIndexRowUsesSimpleNameOnlyPolicy() {

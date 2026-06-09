@@ -16,21 +16,23 @@ struct MyWikiDetailView: View {
     var onOpenRelated: (String) -> Void = { _ in }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                toolbar
+        VStack(spacing: 0) {
+            toolbar
 
-                if let entry {
-                    entryHeader(entry)
-                    contentGrid(entry)
-                } else {
-                    emptyState
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    if let entry {
+                        entryHeader(entry)
+                        contentGrid(entry)
+                    } else {
+                        emptyState
+                    }
                 }
+                .padding(.top, MyWikiDetailLayoutPolicy.scrollContentTopInset)
+                .padding(.horizontal, MyWikiDetailLayoutPolicy.horizontalPadding)
+                .padding(.bottom, MyWikiDetailLayoutPolicy.horizontalPadding)
+                .frame(maxWidth: MyWikiDetailLayoutPolicy.contentMaxWidth, alignment: .topLeading)
             }
-            .padding(.top, MyWikiDetailLayoutPolicy.contentTopInset)
-            .padding(.horizontal, MyWikiDetailLayoutPolicy.horizontalPadding)
-            .padding(.bottom, MyWikiDetailLayoutPolicy.horizontalPadding)
-            .frame(maxWidth: MyWikiDetailLayoutPolicy.contentMaxWidth, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(MyWikiTheme.contentBackground)
@@ -65,6 +67,18 @@ struct MyWikiDetailView: View {
                 .buttonStyle(.borderedProminent)
             }
         }
+        .padding(.top, MyWikiDetailLayoutPolicy.contentTopInset)
+        .padding(.horizontal, MyWikiDetailLayoutPolicy.horizontalPadding)
+        .padding(.bottom, 12)
+        .frame(maxWidth: MyWikiDetailLayoutPolicy.contentMaxWidth, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MyWikiTheme.contentBackground)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(MyWikiTheme.border)
+                .frame(height: 1)
+        }
+        .zIndex(1)
     }
 
     private func entryHeader(_ entry: MyWikiEntry) -> some View {
@@ -77,9 +91,11 @@ struct MyWikiDetailView: View {
 
             Text(entry.title)
                 .font(.system(size: MyWikiDetailLayoutPolicy.titleFontSize, weight: .semibold))
-                .lineLimit(2)
-                .minimumScaleFactor(0.82)
+                .lineLimit(MyWikiDetailLayoutPolicy.titleLineLimit)
+                .truncationMode(.middle)
+                .minimumScaleFactor(0.9)
                 .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             summaryText(entry.summary)
 
@@ -143,7 +159,10 @@ struct MyWikiDetailView: View {
 
             if entry.related.isEmpty == false {
                 detailCard("Related") {
-                    FlowLayout(spacing: 8) {
+                    FlowLayout(
+                        spacing: 8,
+                        maxItemWidth: MyWikiDetailLayoutPolicy.relatedChipMaxWidth
+                    ) {
                         ForEach(entry.related, id: \.self) { related in
                             Button {
                                 onOpenRelated(related)
@@ -153,8 +172,7 @@ struct MyWikiDetailView: View {
                                     .lineLimit(MyWikiDetailLayoutPolicy.relatedChipLineLimit)
                                     .truncationMode(.middle)
                                     .padding(.horizontal, 10)
-                                    .frame(height: 28)
-                                    .frame(maxWidth: MyWikiDetailLayoutPolicy.relatedChipMaxWidth, alignment: .leading)
+                                    .frame(minHeight: 28, alignment: .leading)
                                     .background(Capsule().fill(MyWikiTheme.controlBackground))
                             }
                             .buttonStyle(.plain)
@@ -453,6 +471,7 @@ private extension Text {
 
 struct FlowLayout: Layout {
     let spacing: CGFloat
+    var maxItemWidth: CGFloat?
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let rows = rows(for: subviews, proposalWidth: proposal.width ?? 600)
@@ -482,10 +501,13 @@ struct FlowLayout: Layout {
         var rows: [Row] = []
         var current = Row()
         let availableWidth = max(1, proposalWidth)
+        let itemWidthLimit = maxItemWidth.map { min(max(1, $0), availableWidth) } ?? availableWidth
 
         for subview in subviews {
-            let proposedSize = subview.sizeThatFits(ProposedViewSize(width: availableWidth, height: nil))
-            let size = CGSize(width: min(proposedSize.width, availableWidth), height: proposedSize.height)
+            let intrinsicSize = subview.sizeThatFits(.unspecified)
+            let proposedWidth = min(intrinsicSize.width, itemWidthLimit)
+            let proposedSize = subview.sizeThatFits(ProposedViewSize(width: proposedWidth, height: nil))
+            let size = CGSize(width: min(proposedSize.width, itemWidthLimit), height: proposedSize.height)
             if current.items.isEmpty == false && current.width + spacing + size.width > availableWidth {
                 rows.append(current)
                 current = Row()

@@ -310,6 +310,22 @@ function llmConfigFor(options: IngestOptions): LlmConfig {
   }
 }
 
+async function withConsoleDiagnosticsOnStderr<T>(operation: () => Promise<T>): Promise<T> {
+  const originalLog = console.log
+  const originalInfo = console.info
+  const originalDebug = console.debug
+  console.log = (...args: unknown[]) => console.error(...args)
+  console.info = (...args: unknown[]) => console.error(...args)
+  console.debug = (...args: unknown[]) => console.error(...args)
+  try {
+    return await operation()
+  } finally {
+    console.log = originalLog
+    console.info = originalInfo
+    console.debug = originalDebug
+  }
+}
+
 export async function runKnowYouIngest(options: IngestOptions): Promise<IngestStatus> {
   const projectPath = path.resolve(options.projectPath).replace(/\\/g, "/")
   const llmConfig = llmConfigFor(options)
@@ -389,7 +405,7 @@ export async function runKnowYouIngest(options: IngestOptions): Promise<IngestSt
 export async function runKnowYouIngestCli(argv: string[]): Promise<void> {
   const options = parseArgs(argv)
   try {
-    const status = await runKnowYouIngest(options)
+    const status = await withConsoleDiagnosticsOnStderr(() => runKnowYouIngest(options))
     process.stdout.write(`${JSON.stringify(status)}\n`)
     if (status.status === "failed") {
       process.exitCode = 1

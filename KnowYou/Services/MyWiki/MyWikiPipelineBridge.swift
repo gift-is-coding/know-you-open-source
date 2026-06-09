@@ -215,7 +215,7 @@ struct MyWikiDigestRunner {
         sourceVault: URL?,
         importedDocuments: [ImportedKnowledgeDocument],
         target: MyWikiPipelineTarget,
-        summarizer: SummaryGenerating? = nil,
+        summarizer: SummaryGenerating? = nil
     ) async -> MyWikiDigestRunResult {
         await Task.detached(priority: .userInitiated) {
             do {

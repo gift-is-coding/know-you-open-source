@@ -113,4 +113,22 @@ describe("KnowYou bridge transport", () => {
     await expect(first).resolves.toMatchObject({ id: "req-a", content: "first" })
     await expect(second).resolves.toMatchObject({ id: "req-b", content: "second" })
   })
+
+  it("decodes process JSONL responses across UTF-8 chunk boundaries", async () => {
+    const stdin = new PassThrough()
+    const stdout = new PassThrough()
+    const transport = createKnowYouBridgeTransport({ stdin, stdout })
+    const content = "中文响应"
+    const response = transport.waitForResponse("req-cn")
+    const line = Buffer.from(
+      `${JSON.stringify({ type: "llm.response", id: "req-cn", content })}\n`,
+      "utf-8",
+    )
+    const chineseStart = line.indexOf(Buffer.from("中", "utf-8"))
+
+    stdin.write(line.subarray(0, chineseStart + 1))
+    stdin.write(line.subarray(chineseStart + 1))
+
+    await expect(response).resolves.toMatchObject({ id: "req-cn", content })
+  })
 })

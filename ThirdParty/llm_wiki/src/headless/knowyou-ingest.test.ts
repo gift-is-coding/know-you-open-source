@@ -27,6 +27,7 @@ vi.mock("@/lib/llm-client", () => ({
 }))
 
 import { INGEST_CACHE_PIPELINE_VERSION } from "@/lib/ingest"
+import { saveIngestCache } from "@/lib/ingest-cache"
 import { runKnowYouIngest, runKnowYouIngestCli } from "./knowyou-ingest"
 
 beforeEach(() => {
@@ -74,6 +75,48 @@ describe("KnowYou headless ingest runner", () => {
       } else {
         process.env.KNOWYOU_MYWIKI_LLM_API_KEY = previousKey
       }
+      await tmp.cleanup()
+    }
+  })
+
+  it("writes ingest diagnostics to stderr so stdout stays reserved for bridge JSONL", async () => {
+    const tmp = await createTempProject("knowyou-headless-stderr-diagnostics")
+    const stdoutSpy = vi.spyOn(console, "log").mockImplementation(() => undefined)
+    const stderrSpy = vi.spyOn(console, "error").mockImplementation(() => undefined)
+    try {
+      await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+      await writeFileRaw(
+        path.join(tmp.path, "raw/sources/knowyou-diary-2026-06-05.md"),
+        "# 2026-06-05\n\n诊断日志不应该污染 stdout 协议通道。",
+      )
+
+      pendingResponses = [
+        "诊断日志 stderr 分流分析。",
+        sourceSummaryBlock("2026-06-05"),
+      ]
+
+      await runKnowYouIngest({
+        projectPath: tmp.path,
+        provider: "openai",
+        model: "test-model",
+      })
+
+      const isIngestDiagnostic = (args: unknown[]) =>
+        args.some((arg) => {
+          const text = String(arg)
+          return text.includes("[ingest:diag]") || text.includes("[ingest:caption]")
+        })
+      const stdoutDiagnostics = stdoutSpy.mock.calls.filter(isIngestDiagnostic)
+      const stderrDiagnostics = stderrSpy.mock.calls.filter(isIngestDiagnostic)
+
+      expect(stdoutDiagnostics).toHaveLength(0)
+      expect(stderrDiagnostics.length).toBeGreaterThan(0)
+    } finally {
+      stdoutSpy.mockRestore()
+      stderrSpy.mockRestore()
       await tmp.cleanup()
     }
   })
@@ -494,6 +537,66 @@ describe("KnowYou headless ingest runner", () => {
       process.exitCode = originalExitCode
       stdoutWrite.mockRestore()
       stderrWrite.mockRestore()
+      await tmp.cleanup()
+    }
+  })
+
+  it("keeps stale-cache diagnostics off CLI stdout", async () => {
+    const tmp = await createTempProject("knowyou-headless-cli-stdout-purity")
+    const stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
+    const stdoutLogSpy = vi.spyOn(console, "log").mockImplementation(() => undefined)
+    const stderrLogSpy = vi.spyOn(console, "error").mockImplementation(() => undefined)
+    const originalExitCode = process.exitCode
+    process.exitCode = undefined
+    try {
+      const sourceName = "knowyou-diary-2026-06-06.md"
+      const sourceContent = "# 2026-06-06\n\nStale cache diagnostics should not enter stdout."
+      await fs.mkdir(path.join(tmp.path, "raw/sources"), { recursive: true })
+      await fs.mkdir(path.join(tmp.path, "wiki"), { recursive: true })
+      await writeFileRaw(path.join(tmp.path, "wiki/index.md"), "# My Wiki Index\n")
+      await writeFileRaw(path.join(tmp.path, "wiki/overview.md"), "# Overview\n")
+      await writeFileRaw(path.join(tmp.path, "raw/sources", sourceName), sourceContent)
+      await saveIngestCache(
+        tmp.path,
+        sourceName,
+        sourceContent,
+        ["wiki/sources/missing-stale-cache-page.md"],
+        {
+          schema: "",
+          purpose: "",
+          pipelineVersion: INGEST_CACHE_PIPELINE_VERSION,
+        },
+      )
+
+      pendingResponses = [
+        "Analysis after stale cache.",
+        sourceSummaryBlock("2026-06-06"),
+      ]
+
+      await runKnowYouIngestCli([
+        "--project",
+        tmp.path,
+        "--provider",
+        "openai",
+        "--model",
+        "test-model",
+      ])
+
+      const stdoutText = stdoutWrite.mock.calls.map(([chunk]) => String(chunk)).join("")
+      const isCacheDiagnostic = (args: unknown[]) =>
+        args.some((arg) => String(arg).includes("[ingest-cache]"))
+      const stdoutDiagnostics = stdoutLogSpy.mock.calls.filter(isCacheDiagnostic)
+      const stderrDiagnostics = stderrLogSpy.mock.calls.filter(isCacheDiagnostic)
+
+      expect(process.exitCode).toBeUndefined()
+      expect(stdoutText).toContain('"status":"succeeded"')
+      expect(stdoutDiagnostics).toHaveLength(0)
+      expect(stderrDiagnostics.length).toBeGreaterThan(0)
+    } finally {
+      process.exitCode = originalExitCode
+      stdoutWrite.mockRestore()
+      stdoutLogSpy.mockRestore()
+      stderrLogSpy.mockRestore()
       await tmp.cleanup()
     }
   })

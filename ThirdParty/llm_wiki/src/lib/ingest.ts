@@ -57,6 +57,10 @@ import { sameScriptFamily } from "@/lib/language-metadata"
 
 export const INGEST_CACHE_PIPELINE_VERSION = "knowyou-native-llm-wiki-v5-native-contextless"
 
+function logIngestDiagnostic(...args: unknown[]): void {
+  console.error(...args)
+}
+
 // Legacy export kept for backward compatibility with existing diagnostic
 // tests. The live pipeline goes through parseFileBlocks() below, which
 // handles classes of LLM output this regex silently drops (see H1/H3/H5
@@ -342,7 +346,7 @@ async function autoIngestImpl(
   const sp = normalizePath(sourcePath)
   const activity = useActivityStore.getState()
   const fileName = getFileName(sp)
-  console.log(`[ingest:diag] autoIngestImpl ENTRY for "${fileName}" (project="${pp}", source="${sp}")`)
+  logIngestDiagnostic(`[ingest:diag] autoIngestImpl ENTRY for "${fileName}" (project="${pp}", source="${sp}")`)
   const activityId = activity.addItem({
     type: "ingest",
     title: fileName,
@@ -375,12 +379,12 @@ async function autoIngestImpl(
   // source-summary page on the current pipeline's contract regardless
   // of when the file was first ingested.
   const cachedFiles = await checkIngestCache(pp, fileName, sourceContent, ingestCacheContext)
-  console.log(`[ingest:diag] cache check for "${fileName}":`, cachedFiles === null ? "MISS (full pipeline)" : `HIT (${cachedFiles.length} cached files)`)
+  logIngestDiagnostic(`[ingest:diag] cache check for "${fileName}":`, cachedFiles === null ? "MISS (full pipeline)" : `HIT (${cachedFiles.length} cached files)`)
   if (cachedFiles !== null) {
     try {
-      console.log(`[ingest:diag] cache-hit branch: starting image extraction for ${sp}`)
+      logIngestDiagnostic(`[ingest:diag] cache-hit branch: starting image extraction for ${sp}`)
       const savedImages = await extractAndSaveSourceImages(pp, sp)
-      console.log(`[ingest:diag] cache-hit branch: got ${savedImages.length} image(s)`)
+      logIngestDiagnostic(`[ingest:diag] cache-hit branch: got ${savedImages.length} image(s)`)
       if (savedImages.length > 0) {
         // Caption first (populates the cache), THEN inject — the
         // safety-net section uses the cache to populate alt text.
@@ -400,7 +404,7 @@ async function autoIngestImpl(
         // to start clean.)
         const mmCfg = useWikiStore.getState().multimodalConfig
         if (!mmCfg.enabled) {
-          console.log(
+          logIngestDiagnostic(
             `[ingest:caption] cache-hit + disabled — skipping caption + safety-net inject (${savedImages.length} image(s) untouched on disk)`,
           )
         } else {
@@ -435,7 +439,7 @@ async function autoIngestImpl(
           await reembedSourceSummary(pp, fileName)
         }
       } else {
-        console.log(`[ingest:diag] cache-hit branch: skipping injection (no images returned from extraction)`)
+        logIngestDiagnostic(`[ingest:diag] cache-hit branch: skipping injection (no images returned from extraction)`)
       }
     } catch (err) {
       console.warn(
@@ -469,11 +473,11 @@ async function autoIngestImpl(
   // Failure here is never fatal — extractAndSaveSourceImages logs
   // and returns [] on any error.
   activity.updateItem(activityId, { detail: "Extracting embedded images..." })
-  console.log(`[ingest:diag] full-pipeline branch: starting image extraction for ${sp}`)
+  logIngestDiagnostic(`[ingest:diag] full-pipeline branch: starting image extraction for ${sp}`)
   const savedImages = await extractAndSaveSourceImages(pp, sp)
-  console.log(`[ingest:diag] full-pipeline branch: got ${savedImages.length} image(s)`)
+  logIngestDiagnostic(`[ingest:diag] full-pipeline branch: got ${savedImages.length} image(s)`)
   if (savedImages.length > 0) {
-    console.log(
+    logIngestDiagnostic(
       `[ingest:images] saved ${savedImages.length} image(s) for "${fileName}" → wiki/media/${fileName.replace(/\.[^.]+$/, "")}/`,
     )
   }
@@ -528,7 +532,7 @@ async function autoIngestImpl(
       /!\[[^\]]*\]\([^)\s]+\)/g,
       " ",
     )
-    console.log(
+    logIngestDiagnostic(
       `[ingest:caption] disabled — stripped image refs from sourceContent (${savedImages.length} image(s) won't appear in wiki pages)`,
     )
   } else if (
@@ -556,7 +560,7 @@ async function autoIngestImpl(
           }),
       })
       enrichedSourceContent = result.enrichedMarkdown
-      console.log(
+      logIngestDiagnostic(
         `[ingest:caption] images=${savedImages.length} fresh=${result.freshCaptions} cached=${result.cachedCaptions} failed=${result.failed}`,
       )
     } catch (err) {
@@ -1344,10 +1348,10 @@ async function injectImagesIntoSourceSummary(
   const sourceBaseName = fileName.replace(/\.[^.]+$/, "")
   const sourceSummaryPath = `wiki/sources/${sourceBaseName}.md`
   const sourceSummaryFullPath = `${pp}/${sourceSummaryPath}`
-  console.log(`[ingest:diag] injectImagesIntoSourceSummary: target=${sourceSummaryFullPath}, images=${savedImages.length}`)
+  logIngestDiagnostic(`[ingest:diag] injectImagesIntoSourceSummary: target=${sourceSummaryFullPath}, images=${savedImages.length}`)
   try {
     const existing = await tryReadFile(sourceSummaryFullPath)
-    console.log(`[ingest:diag] injectImagesIntoSourceSummary: existing file ${existing ? `read OK (${existing.length} chars)` : "MISSING (will write stub)"}`)
+    logIngestDiagnostic(`[ingest:diag] injectImagesIntoSourceSummary: existing file ${existing ? `read OK (${existing.length} chars)` : "MISSING (will write stub)"}`)
     // Load captions from the on-disk cache so the safety-net
     // section embeds caption text as alt — the embedding pipeline
     // indexes whatever's in the wiki page, so without this, search
@@ -1389,7 +1393,7 @@ async function injectImagesIntoSourceSummary(
       ].join("\n")
       await writeFile(sourceSummaryFullPath, stubFrontmatter + wrapped)
     }
-    console.log(
+    logIngestDiagnostic(
       `[ingest:images] injected ${savedImages.length} image reference(s) into ${sourceSummaryPath}`,
     )
   } catch (err) {
@@ -1427,7 +1431,7 @@ async function reembedSourceSummary(pp: string, fileName: string): Promise<void>
     const title = titleMatch ? titleMatch[1].trim() : sourceBaseName
     const { embedPage } = await import("@/lib/embedding")
     await embedPage(pp, sourceBaseName, title, content, embCfg)
-    console.log(`[ingest:caption] re-embedded ${sourceBaseName} with captioned alt text`)
+    logIngestDiagnostic(`[ingest:caption] re-embedded ${sourceBaseName} with captioned alt text`)
   } catch (err) {
     console.warn(
       `[ingest:caption] re-embed failed for ${sourceBaseName}:`,

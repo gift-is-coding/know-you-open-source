@@ -1,3 +1,4 @@
+import { StringDecoder } from "node:string_decoder"
 import type { LlmConfig } from "@/stores/wiki-store"
 import type { ChatMessage, ContentBlock, RequestOverrides } from "@/lib/llm-providers"
 import type { StreamCallbacks } from "@/lib/llm-client"
@@ -83,6 +84,7 @@ export function createKnowYouBridgeTransport(streams: KnowYouBridgeStreams): Kno
   const received = new Map<string, BridgeResponse>()
   let lineBuffer = ""
   let listening = false
+  const decoder = new StringDecoder("utf8")
 
   const rejectAll = (error: Error) => {
     for (const entry of pending.values()) {
@@ -112,7 +114,7 @@ export function createKnowYouBridgeTransport(streams: KnowYouBridgeStreams): Kno
   }
 
   const onData = (chunk: string | Buffer) => {
-    lineBuffer += typeof chunk === "string" ? chunk : chunk.toString("utf-8")
+    lineBuffer += typeof chunk === "string" ? chunk : decoder.write(chunk)
     const lines = lineBuffer.split("\n")
     lineBuffer = lines.pop() ?? ""
     for (const line of lines) {

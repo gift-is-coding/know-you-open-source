@@ -127,6 +127,15 @@ enum GlobalSearchExecutionPolicy {
     }
 }
 
+enum GlobalSearchIndexCompletionPolicy {
+    static let rechecksPendingQueryAfterAnyIndexBuild = true
+
+    static func queryToRunAfterCompletedIndexBuild(pendingQuery: String?) -> String? {
+        let query = pendingQuery?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return query.isEmpty ? nil : query
+    }
+}
+
 private enum GlobalSearchIndexLoadOutcome: Sendable {
     case success(GlobalSearchIndex)
     case failure(String)
@@ -1035,7 +1044,9 @@ struct MainWindowView: View {
             case .success(let index):
                 globalSearchIndex = index
                 globalSearchErrorMessage = nil
-                if runPendingQueryWhenReady, let query = pendingGlobalSearchQuery {
+                if let query = GlobalSearchIndexCompletionPolicy.queryToRunAfterCompletedIndexBuild(
+                    pendingQuery: pendingGlobalSearchQuery
+                ) {
                     searchGlobalSearchIndex(query: query, index: index)
                 }
             case .failure(let message):

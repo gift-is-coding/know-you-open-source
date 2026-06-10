@@ -200,6 +200,16 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertEqual(GlobalSearchExecutionPolicy.loadingMessage, "Searching locally...")
     }
 
+    func testGlobalSearchIndexCompletionRechecksPendingQueryAfterPrewarmBuild() {
+        XCTAssertTrue(GlobalSearchIndexCompletionPolicy.rechecksPendingQueryAfterAnyIndexBuild)
+        XCTAssertEqual(
+            GlobalSearchIndexCompletionPolicy.queryToRunAfterCompletedIndexBuild(pendingQuery: "  啥玩意  "),
+            "啥玩意"
+        )
+        XCTAssertNil(GlobalSearchIndexCompletionPolicy.queryToRunAfterCompletedIndexBuild(pendingQuery: nil))
+        XCTAssertNil(GlobalSearchIndexCompletionPolicy.queryToRunAfterCompletedIndexBuild(pendingQuery: "   "))
+    }
+
     func testDetailPresentationShowsMarkdownPageByDefault() {
         let entry = MyWikiEntry(
             id: "adam-wu",

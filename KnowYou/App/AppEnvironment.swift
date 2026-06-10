@@ -25,6 +25,11 @@ final class AppEnvironment {
     var externalSourcesDirectoryURL: URL {
         databaseURL.deletingLastPathComponent().appending(path: "ExternalSources", directoryHint: .isDirectory)
     }
+    var globalSearchIndexURL: URL {
+        databaseURL.deletingLastPathComponent()
+            .appending(path: "SearchIndex", directoryHint: .isDirectory)
+            .appending(path: "global-search-index-v1.json")
+    }
 
     convenience init(
         databasePath: String,

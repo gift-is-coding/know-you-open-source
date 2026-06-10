@@ -192,6 +192,14 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertEqual(GlobalSearchExecutionPolicy.loadingMessage, "Searching locally...")
     }
 
+    func testGlobalSearchUsesPersistentBackgroundIndexing() {
+        XCTAssertTrue(GlobalSearchExecutionPolicy.usesPersistentIndex)
+        XCTAssertTrue(GlobalSearchExecutionPolicy.buildsIndexInBackground)
+        XCTAssertTrue(GlobalSearchExecutionPolicy.searchesIndexInBackground)
+        XCTAssertEqual(GlobalSearchExecutionPolicy.indexingMessage, "Indexing locally...")
+        XCTAssertEqual(GlobalSearchExecutionPolicy.loadingMessage, "Searching locally...")
+    }
+
     func testDetailPresentationShowsMarkdownPageByDefault() {
         let entry = MyWikiEntry(
             id: "adam-wu",

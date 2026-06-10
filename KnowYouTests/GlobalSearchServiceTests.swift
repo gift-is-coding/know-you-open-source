@@ -2,6 +2,110 @@ import XCTest
 @testable import KnowYou
 
 final class GlobalSearchServiceTests: XCTestCase {
+    func testPersistentIndexFindsDiarySourceTodoAndMyWikiAfterReload() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fixture = try makePersistentIndexFixture(root: root, diaryText: "今天反复提到啥玩意这个表达。")
+        let request = GlobalSearchIndexBuildRequest(
+            diaryNotes: ["2026-04-24": fixture.diaryURL],
+            sourceDocuments: [fixture.sourceDocument],
+            todoItems: [fixture.todo],
+            myWikiProjectRoot: fixture.myWikiRoot
+        )
+        let index = try GlobalSearchIndexBuilder().buildIndex(for: request)
+        let store = GlobalSearchIndexStore(
+            indexURL: root.appending(path: "SearchIndex/global-search-index-v1.json")
+        )
+
+        try store.save(index)
+        let reloadedIndex = try XCTUnwrap(store.loadValidIndex(expectedSignature: index.manifest.sourceSignature))
+        let response = GlobalSearchService().search(query: "啥玩意", index: reloadedIndex, maxResults: 10)
+
+        XCTAssertEqual(response.results.map(\.kind), [.todo, .diary, .myWiki, .source])
+        XCTAssertEqual(response.groups.map(\.title), ["Todo", "Diary", "My Wiki", "Sources"])
+        XCTAssertEqual(response.results.first(where: { $0.kind == .diary })?.dayKey, "2026-04-24")
+        XCTAssertEqual(response.results.first(where: { $0.kind == .source })?.documentID, "source-1")
+        XCTAssertEqual(response.results.first(where: { $0.kind == .myWiki })?.myWikiEntryID, "huang-shan")
+    }
+
+    func testPersistentIndexSignatureChangesWhenDiarySourceOrMyWikiInputsChange() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fixture = try makePersistentIndexFixture(root: root, diaryText: "初始 啥玩意")
+        let builder = GlobalSearchIndexBuilder()
+        let firstRequest = GlobalSearchIndexBuildRequest(
+            diaryNotes: ["2026-04-24": fixture.diaryURL],
+            sourceDocuments: [fixture.sourceDocument],
+            todoItems: [fixture.todo],
+            myWikiProjectRoot: fixture.myWikiRoot
+        )
+        let firstSignature = try builder.sourceSignature(for: firstRequest)
+
+        try write("初始 啥玩意 with changed diary content", to: fixture.diaryURL)
+        var changedSourceDocument = fixture.sourceDocument
+        changedSourceDocument.contentHash = "changed-hash"
+        try write(
+            """
+            ---
+            title: Huang Shan
+            aliases: [啥玩意]
+            ---
+            ## Summary
+            Huang Shan keeps tracking 啥玩意 after a wiki edit.
+            """,
+            to: fixture.myWikiRoot.appending(path: "wiki/entities/huang-shan.md")
+        )
+
+        let changedRequest = GlobalSearchIndexBuildRequest(
+            diaryNotes: ["2026-04-24": fixture.diaryURL],
+            sourceDocuments: [changedSourceDocument],
+            todoItems: [fixture.todo],
+            myWikiProjectRoot: fixture.myWikiRoot
+        )
+
+        XCTAssertNotEqual(try builder.sourceSignature(for: changedRequest), firstSignature)
+    }
+
+    func testPersistentIndexStoreIgnoresCorruptSchemaMismatchedAndSignatureMismatchedCache() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let indexURL = root.appending(path: "SearchIndex/global-search-index-v1.json")
+        let store = GlobalSearchIndexStore(indexURL: indexURL)
+        try write("{ not valid json", to: indexURL)
+        XCTAssertNil(try store.loadValidIndex(expectedSignature: "signature"))
+
+        let wrongSchema = GlobalSearchIndex(
+            manifest: GlobalSearchIndexManifest(
+                schemaVersion: GlobalSearchIndexManifest.currentSchemaVersion + 1,
+                createdAt: Date(timeIntervalSince1970: 1),
+                sourceSignature: "signature",
+                documentCount: 0
+            ),
+            documents: []
+        )
+        try store.save(wrongSchema)
+        XCTAssertNil(try store.loadValidIndex(expectedSignature: "signature"))
+
+        let validIndex = GlobalSearchIndex(
+            manifest: GlobalSearchIndexManifest(
+                schemaVersion: GlobalSearchIndexManifest.currentSchemaVersion,
+                createdAt: Date(timeIntervalSince1970: 2),
+                sourceSignature: "signature",
+                documentCount: 0
+            ),
+            documents: []
+        )
+        try store.save(validIndex)
+        XCTAssertNil(try store.loadValidIndex(expectedSignature: "other-signature"))
+        XCTAssertNotNil(try store.loadValidIndex(expectedSignature: "signature"))
+    }
+
     func testSearchFindsDiarySourceAndTodo() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
@@ -122,5 +226,67 @@ final class GlobalSearchServiceTests: XCTestCase {
             withIntermediateDirectories: true
         )
         try contents.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private func makePersistentIndexFixture(
+        root: URL,
+        diaryText: String
+    ) throws -> (
+        diaryURL: URL,
+        sourceDocument: ImportedKnowledgeDocument,
+        todo: UnifiedTodoItem,
+        myWikiRoot: URL
+    ) {
+        let diaryURL = root.appending(path: "Vault/2026-04-24.md")
+        let sourceURL = root.appending(path: "KnowledgeSources/local/main/content.md")
+        let myWikiRoot = root.appending(path: "KnowledgeOntology/KnowYouContext", directoryHint: .isDirectory)
+        try write(diaryText, to: diaryURL)
+        try write("Imported source also says 啥玩意 in a project note.", to: sourceURL)
+        try write(
+            """
+            ---
+            title: Huang Shan
+            aliases: [啥玩意]
+            ---
+            ## Summary
+            Huang Shan keeps tracking 啥玩意 across project notes.
+            """,
+            to: myWikiRoot.appending(path: "wiki/entities/huang-shan.md")
+        )
+
+        let sourceDocument = ImportedKnowledgeDocument(
+            id: "source-1",
+            connectorInstanceID: "local-main",
+            connectorID: .localFolderImport,
+            remoteID: "Projects/source.md",
+            title: "Project Source",
+            sourcePath: "/Users/example/Projects/source.md",
+            remoteURL: nil,
+            mimeType: "text/markdown",
+            contentHash: "hash",
+            remoteUpdatedAt: nil,
+            firstImportedAt: Date(timeIntervalSince1970: 1),
+            lastSyncedAt: Date(timeIntervalSince1970: 2),
+            deletedAt: nil,
+            localContentPath: sourceURL.path,
+            localMetadataPath: sourceURL.deletingLastPathComponent().appending(path: "metadata.json").path,
+            normalizationVersion: 1,
+            originKind: "local-folder"
+        )
+        let todo = UnifiedTodoItem(
+            id: "todo-1",
+            title: "Follow up on 啥玩意 taxonomy",
+            normalizedTitle: "follow up on 啥玩意 taxonomy",
+            status: .open,
+            sourceDayKey: "2026-04-24",
+            sourceEventIDs: [],
+            createdAt: Date(timeIntervalSince1970: 3),
+            completedAt: nil,
+            completionEvidenceEventIDs: [],
+            promotionKind: .manual,
+            completionKind: nil
+        )
+
+        return (diaryURL, sourceDocument, todo, myWikiRoot)
     }
 }

@@ -115,11 +115,40 @@ enum GlobalSearchExecutionPolicy {
     static let showsExplicitSubmitButton = true
     static let showsLoadingIndicatorDuringExecution = true
     static let usesStoredResponseInsteadOfBodySearch = true
+    static let usesPersistentIndex = true
+    static let buildsIndexInBackground = true
+    static let searchesIndexInBackground = true
+    static let indexingMessage = "Indexing locally..."
     static let loadingMessage = "Searching locally..."
 
     static func queryForExecution(draftQuery: String, submittedQuery: String) -> String? {
         let normalizedSubmittedQuery = submittedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         return normalizedSubmittedQuery.isEmpty ? nil : normalizedSubmittedQuery
+    }
+}
+
+private enum GlobalSearchIndexLoadOutcome: Sendable {
+    case success(GlobalSearchIndex)
+    case failure(String)
+
+    static func loadOrBuild(
+        request: GlobalSearchIndexBuildRequest,
+        indexURL: URL
+    ) -> GlobalSearchIndexLoadOutcome {
+        do {
+            let builder = GlobalSearchIndexBuilder()
+            let signature = try builder.sourceSignature(for: request)
+            let store = GlobalSearchIndexStore(indexURL: indexURL)
+            if let cachedIndex = try store.loadValidIndex(expectedSignature: signature) {
+                return .success(cachedIndex)
+            }
+
+            let index = try builder.buildIndex(for: request, sourceSignature: signature)
+            try store.save(index)
+            return .success(index)
+        } catch {
+            return .failure(error.localizedDescription)
+        }
     }
 }
 
@@ -138,6 +167,11 @@ struct MainWindowView: View {
     @State private var globalSearchResponse = GlobalSearchResponse(query: "", results: [], groups: [])
     @State private var isGlobalSearchSearching = false
     @State private var globalSearchTask: Task<Void, Never>?
+    @State private var globalSearchIndex: GlobalSearchIndex?
+    @State private var isGlobalSearchIndexing = false
+    @State private var globalSearchIndexTask: Task<Void, Never>?
+    @State private var pendingGlobalSearchQuery: String?
+    @State private var globalSearchErrorMessage: String?
     @State private var activeGlobalSearchTarget: GlobalSearchNavigationTarget?
     @FocusState private var isGlobalSearchFieldFocused: Bool
     let showsOnboardingEngineButton: Bool
@@ -525,7 +559,7 @@ struct MainWindowView: View {
                         submitGlobalSearch()
                     } label: {
                         HStack(spacing: 6) {
-                            if isGlobalSearchSearching {
+                            if isGlobalSearchSearching || isGlobalSearchIndexing {
                                 ProgressView()
                                     .controlSize(.small)
                             } else {
@@ -564,6 +598,22 @@ struct MainWindowView: View {
                     systemImage: "magnifyingglass",
                     description: Text("Diary, My Wiki, Sources, and Todo are searched locally on this Mac.")
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let globalSearchErrorMessage {
+                ContentUnavailableView(
+                    "Search unavailable",
+                    systemImage: "exclamationmark.magnifyingglass",
+                    description: Text(globalSearchErrorMessage)
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if isGlobalSearchIndexing {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.regular)
+                    Text(GlobalSearchExecutionPolicy.indexingMessage)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if isGlobalSearchSearching {
                 VStack(spacing: 12) {
@@ -623,6 +673,7 @@ struct MainWindowView: View {
         .navigationTitle("Search")
         .onAppear {
             focusGlobalSearchFieldSoon()
+            ensureGlobalSearchIndex(runPendingQueryWhenReady: false)
         }
     }
 
@@ -805,6 +856,12 @@ struct MainWindowView: View {
         guard query.isEmpty == false else {
             return "Search diary, My Wiki, sources, and Todo."
         }
+        if let globalSearchErrorMessage {
+            return globalSearchErrorMessage
+        }
+        if isGlobalSearchIndexing {
+            return GlobalSearchExecutionPolicy.indexingMessage
+        }
         if isGlobalSearchSearching {
             return GlobalSearchExecutionPolicy.loadingMessage
         }
@@ -922,8 +979,10 @@ struct MainWindowView: View {
         globalSearchTask = nil
         globalSearchQuery = ""
         submittedGlobalSearchQuery = ""
+        pendingGlobalSearchQuery = nil
         globalSearchResponse = GlobalSearchResponse(query: "", results: [], groups: [])
         isGlobalSearchSearching = false
+        globalSearchErrorMessage = nil
         clearGlobalSearchTarget()
     }
 
@@ -937,32 +996,70 @@ struct MainWindowView: View {
         globalSearchTask?.cancel()
         submittedGlobalSearchQuery = query
         globalSearchResponse = GlobalSearchResponse(query: query, results: [], groups: [])
-        isGlobalSearchSearching = true
+        pendingGlobalSearchQuery = query
+        isGlobalSearchSearching = false
+        globalSearchErrorMessage = nil
         clearGlobalSearchTarget()
+        ensureGlobalSearchIndex(runPendingQueryWhenReady: true)
+    }
 
-        let diaryNotes = appState.noteIndex
-        let sourceDocuments = appState.knowledgeDocumentsByConnector.values.flatMap { $0 }
-        let todoItems = appState.todoItems
-        let projectRoot = knowledgeOntologyProjectRoot
+    private func ensureGlobalSearchIndex(runPendingQueryWhenReady: Bool) {
+        guard let indexURL = appState.environment?.globalSearchIndexURL else {
+            globalSearchErrorMessage = "Search index is unavailable until the local profile is ready."
+            return
+        }
+        guard isGlobalSearchIndexing == false else { return }
+
+        let request = GlobalSearchIndexBuildRequest(
+            diaryNotes: appState.noteIndex,
+            sourceDocuments: appState.knowledgeDocumentsByConnector.values.flatMap { $0 },
+            todoItems: appState.todoItems,
+            myWikiProjectRoot: knowledgeOntologyProjectRoot
+        )
+
+        globalSearchIndexTask?.cancel()
+        isGlobalSearchIndexing = globalSearchIndex == nil || runPendingQueryWhenReady
+        isGlobalSearchSearching = false
+        globalSearchErrorMessage = nil
+
+        globalSearchIndexTask = Task { @MainActor in
+            let outcome = await Task.detached(priority: .userInitiated) {
+                GlobalSearchIndexLoadOutcome.loadOrBuild(request: request, indexURL: indexURL)
+            }.value
+
+            guard Task.isCancelled == false else { return }
+            isGlobalSearchIndexing = false
+            globalSearchIndexTask = nil
+
+            switch outcome {
+            case .success(let index):
+                globalSearchIndex = index
+                globalSearchErrorMessage = nil
+                if runPendingQueryWhenReady, let query = pendingGlobalSearchQuery {
+                    searchGlobalSearchIndex(query: query, index: index)
+                }
+            case .failure(let message):
+                globalSearchErrorMessage = message
+                isGlobalSearchSearching = false
+            }
+        }
+    }
+
+    private func searchGlobalSearchIndex(query: String, index: GlobalSearchIndex) {
+        globalSearchTask?.cancel()
+        isGlobalSearchSearching = true
+        isGlobalSearchIndexing = false
+        globalSearchErrorMessage = nil
 
         globalSearchTask = Task { @MainActor in
-            await Task.yield()
-            guard Task.isCancelled == false else { return }
-
-            let response = GlobalSearchService().search(
-                GlobalSearchRequest(
-                    query: query,
-                    diaryNotes: diaryNotes,
-                    sourceDocuments: sourceDocuments,
-                    todoItems: todoItems,
-                    myWikiEntries: loadGlobalSearchMyWikiEntries(projectRoot: projectRoot),
-                    maxResults: 60
-                )
-            )
+            let response = await Task.detached(priority: .userInitiated) {
+                GlobalSearchService().search(query: query, index: index, maxResults: 60)
+            }.value
 
             guard Task.isCancelled == false, submittedGlobalSearchQuery == query else { return }
             globalSearchResponse = response
             isGlobalSearchSearching = false
+            pendingGlobalSearchQuery = nil
             globalSearchTask = nil
         }
     }

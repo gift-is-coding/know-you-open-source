@@ -1,5 +1,24 @@
 import Foundation
 
+struct GlobalSearchIndexBuildRequest: Equatable, Sendable {
+    let diaryNotes: [String: URL]
+    let sourceDocuments: [ImportedKnowledgeDocument]
+    let todoItems: [UnifiedTodoItem]
+    let myWikiProjectRoot: URL?
+
+    init(
+        diaryNotes: [String: URL],
+        sourceDocuments: [ImportedKnowledgeDocument],
+        todoItems: [UnifiedTodoItem],
+        myWikiProjectRoot: URL? = nil
+    ) {
+        self.diaryNotes = diaryNotes
+        self.sourceDocuments = sourceDocuments
+        self.todoItems = todoItems
+        self.myWikiProjectRoot = myWikiProjectRoot
+    }
+}
+
 struct GlobalSearchRequest: Equatable {
     let query: String
     let diaryNotes: [String: URL]
@@ -42,7 +61,7 @@ struct GlobalSearchGroup: Identifiable, Equatable {
 }
 
 struct GlobalSearchResult: Identifiable, Equatable {
-    enum Kind: String, Equatable {
+    enum Kind: String, Codable, Equatable, Sendable {
         case todo
         case diary
         case myWiki
@@ -65,104 +84,219 @@ struct GlobalSearchResult: Identifiable, Equatable {
     let myWikiEntryID: String?
 }
 
-struct GlobalSearchService {
-    var fileManager: FileManager = .default
+struct GlobalSearchIndexDocument: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let title: String
+    let kind: GlobalSearchResult.Kind
+    let groupTitle: String
+    let searchableText: String
+    let normalizedSearchableText: String
+    let normalizedTitle: String
+    let snippetText: String
+    let baseScore: Int
+    let todoID: String?
+    let dayKey: String?
+    let connectorInstanceID: String?
+    let documentID: String?
+    let myWikiCategoryID: String?
+    let myWikiEntryID: String?
 
-    func search(_ request: GlobalSearchRequest) -> GlobalSearchResponse {
-        let query = request.query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let queryPlan = GlobalSearchQueryPlan(query: query)
-        guard query.isEmpty == false,
-              request.maxResults > 0,
-              queryPlan.isEmpty == false
-        else {
-            return GlobalSearchResponse(query: request.query, results: [], groups: [])
+    init(
+        id: String,
+        title: String,
+        kind: GlobalSearchResult.Kind,
+        groupTitle: String,
+        searchableText: String,
+        snippetText: String,
+        baseScore: Int,
+        todoID: String? = nil,
+        dayKey: String? = nil,
+        connectorInstanceID: String? = nil,
+        documentID: String? = nil,
+        myWikiCategoryID: String? = nil,
+        myWikiEntryID: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.kind = kind
+        self.groupTitle = groupTitle
+        self.searchableText = searchableText
+        normalizedSearchableText = searchableText.lowercased()
+        normalizedTitle = title.lowercased()
+        self.snippetText = snippetText
+        self.baseScore = baseScore
+        self.todoID = todoID
+        self.dayKey = dayKey
+        self.connectorInstanceID = connectorInstanceID
+        self.documentID = documentID
+        self.myWikiCategoryID = myWikiCategoryID
+        self.myWikiEntryID = myWikiEntryID
+    }
+}
+
+struct GlobalSearchIndexManifest: Codable, Equatable, Sendable {
+    static let currentSchemaVersion = 1
+
+    let schemaVersion: Int
+    let createdAt: Date
+    let sourceSignature: String
+    let documentCount: Int
+}
+
+struct GlobalSearchIndex: Codable, Equatable, Sendable {
+    let manifest: GlobalSearchIndexManifest
+    let documents: [GlobalSearchIndexDocument]
+}
+
+struct GlobalSearchIndexStore: Sendable {
+    let indexURL: URL
+
+    func loadValidIndex(expectedSignature: String) throws -> GlobalSearchIndex? {
+        guard FileManager.default.fileExists(atPath: indexURL.path) else {
+            return nil
         }
 
-        let results = (
-            todoResults(from: request.todoItems, queryPlan: queryPlan)
-                + diaryResults(from: request.diaryNotes, queryPlan: queryPlan)
-                + myWikiResults(from: request.myWikiEntries, queryPlan: queryPlan)
-                + sourceResults(from: request.sourceDocuments, queryPlan: queryPlan)
-        )
-        .sorted(by: Self.sort)
-        .prefix(request.maxResults)
+        let index: GlobalSearchIndex
+        do {
+            let data = try Data(contentsOf: indexURL)
+            index = try Self.decoder.decode(GlobalSearchIndex.self, from: data)
+        } catch {
+            return nil
+        }
 
-        let resultList = Array(results)
-        return GlobalSearchResponse(
-            query: request.query,
-            results: resultList,
-            groups: Self.group(resultList)
+        guard index.manifest.schemaVersion == GlobalSearchIndexManifest.currentSchemaVersion,
+              index.manifest.sourceSignature == expectedSignature,
+              index.manifest.documentCount == index.documents.count
+        else {
+            return nil
+        }
+        return index
+    }
+
+    func save(_ index: GlobalSearchIndex) throws {
+        try FileManager.default.createDirectory(
+            at: indexURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let data = try Self.encoder.encode(index)
+        try data.write(to: indexURL, options: .atomic)
+    }
+
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return encoder
+    }()
+
+    private static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+}
+
+struct GlobalSearchIndexBuilder: @unchecked Sendable {
+    var fileManager: FileManager = .default
+
+    func sourceSignature(for request: GlobalSearchIndexBuildRequest) throws -> String {
+        let descriptors = try signatureDescriptors(for: request)
+        return SHA256Hasher.hash(descriptors.joined(separator: "\n"))
+    }
+
+    func buildIndex(
+        for request: GlobalSearchIndexBuildRequest,
+        sourceSignature: String? = nil
+    ) throws -> GlobalSearchIndex {
+        let signature = try sourceSignature ?? self.sourceSignature(for: request)
+        let documents = try documents(for: request)
+        return GlobalSearchIndex(
+            manifest: GlobalSearchIndexManifest(
+                schemaVersion: GlobalSearchIndexManifest.currentSchemaVersion,
+                createdAt: Date(),
+                sourceSignature: signature,
+                documentCount: documents.count
+            ),
+            documents: documents
         )
     }
 
-    private func todoResults(
-        from items: [UnifiedTodoItem],
-        queryPlan: GlobalSearchQueryPlan
-    ) -> [GlobalSearchResult] {
-        items.compactMap { item in
+    func buildIndex(from request: GlobalSearchRequest) -> GlobalSearchIndex {
+        let documents =
+            todoDocuments(from: request.todoItems)
+            + diaryDocuments(from: request.diaryNotes)
+            + myWikiDocuments(from: request.myWikiEntries)
+            + sourceDocuments(from: request.sourceDocuments)
+        let signature = SHA256Hasher.hash("transient|\(request.query)|\(documents.map(\.id).joined(separator: "|"))")
+        return GlobalSearchIndex(
+            manifest: GlobalSearchIndexManifest(
+                schemaVersion: GlobalSearchIndexManifest.currentSchemaVersion,
+                createdAt: Date(),
+                sourceSignature: signature,
+                documentCount: documents.count
+            ),
+            documents: documents
+        )
+    }
+
+    private func documents(for request: GlobalSearchIndexBuildRequest) throws -> [GlobalSearchIndexDocument] {
+        let myWikiEntries: [MyWikiEntry]
+        if let projectRoot = request.myWikiProjectRoot {
+            myWikiEntries = (try? MyWikiMarkdownStore(fileManager: fileManager)
+                .loadDashboard(projectRoot: projectRoot)
+                .primaryEntries) ?? []
+        } else {
+            myWikiEntries = []
+        }
+
+        return todoDocuments(from: request.todoItems)
+            + diaryDocuments(from: request.diaryNotes)
+            + myWikiDocuments(from: myWikiEntries)
+            + sourceDocuments(from: request.sourceDocuments)
+    }
+
+    private func todoDocuments(from items: [UnifiedTodoItem]) -> [GlobalSearchIndexDocument] {
+        items.map { item in
             let searchable = [
                 item.title,
                 item.normalizedTitle,
                 item.sourceDayKey,
                 item.status.rawValue,
             ].joined(separator: "\n")
-            let match = Self.match(searchable, title: item.title, queryPlan: queryPlan)
-            guard match.score > 0 else { return nil }
-
-            return GlobalSearchResult(
+            return GlobalSearchIndexDocument(
                 id: "todo:\(item.id)",
                 title: item.title,
                 kind: .todo,
                 groupTitle: "Todo",
-                snippet: Self.excerpt(from: item.title, queryPlan: queryPlan),
-                score: match.score + 3_000,
-                matchedTerms: match.matchedTerms,
-                matchCount: match.matchCount,
+                searchableText: searchable,
+                snippetText: item.title,
+                baseScore: 3_000,
                 todoID: item.id,
-                dayKey: item.sourceDayKey,
-                connectorInstanceID: nil,
-                documentID: nil,
-                myWikiCategoryID: nil,
-                myWikiEntryID: nil
+                dayKey: item.sourceDayKey
             )
         }
     }
 
-    private func diaryResults(
-        from notes: [String: URL],
-        queryPlan: GlobalSearchQueryPlan
-    ) -> [GlobalSearchResult] {
+    private func diaryDocuments(from notes: [String: URL]) -> [GlobalSearchIndexDocument] {
         notes
-            .filter { Self.isDiaryDayKey($0.key) }
+            .filter { GlobalSearchService.isDiaryDayKey($0.key) }
             .compactMap { dayKey, url in
                 guard let contents = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-                let match = Self.match(contents, title: dayKey, queryPlan: queryPlan)
-                guard match.score > 0 else { return nil }
-
-                return GlobalSearchResult(
+                return GlobalSearchIndexDocument(
                     id: "diary:\(dayKey)",
                     title: dayKey,
                     kind: .diary,
                     groupTitle: "Diary",
-                    snippet: Self.excerpt(from: contents, queryPlan: queryPlan),
-                    score: match.score + 2_000,
-                    matchedTerms: match.matchedTerms,
-                    matchCount: match.matchCount,
-                    todoID: nil,
-                    dayKey: dayKey,
-                    connectorInstanceID: nil,
-                    documentID: nil,
-                    myWikiCategoryID: nil,
-                    myWikiEntryID: nil
+                    searchableText: contents,
+                    snippetText: contents,
+                    baseScore: 2_000,
+                    dayKey: dayKey
                 )
             }
     }
 
-    private func myWikiResults(
-        from entries: [MyWikiEntry],
-        queryPlan: GlobalSearchQueryPlan
-    ) -> [GlobalSearchResult] {
-        entries.compactMap { entry in
+    private func myWikiDocuments(from entries: [MyWikiEntry]) -> [GlobalSearchIndexDocument] {
+        entries.map { entry in
             let searchable = ([
                 entry.title,
                 entry.summary,
@@ -170,35 +304,21 @@ struct GlobalSearchService {
                 entry.markdownBody,
             ] + entry.aliases + entry.related + entry.tags + entry.sourceNames + entry.mentions.map(\.text))
                 .joined(separator: "\n")
-            let match = Self.match(searchable, title: entry.title, queryPlan: queryPlan)
-            guard match.score > 0 else { return nil }
-
-            return GlobalSearchResult(
+            return GlobalSearchIndexDocument(
                 id: "my-wiki:\(entry.category.id):\(entry.id)",
                 title: entry.title,
                 kind: .myWiki,
                 groupTitle: "My Wiki",
-                snippet: Self.excerpt(
-                    from: entry.markdownBody.isEmpty ? entry.summary : entry.markdownBody,
-                    queryPlan: queryPlan
-                ),
-                score: match.score + 1_500,
-                matchedTerms: match.matchedTerms,
-                matchCount: match.matchCount,
-                todoID: nil,
-                dayKey: nil,
-                connectorInstanceID: nil,
-                documentID: nil,
+                searchableText: searchable,
+                snippetText: entry.markdownBody.isEmpty ? entry.summary : entry.markdownBody,
+                baseScore: 1_500,
                 myWikiCategoryID: entry.category.id,
                 myWikiEntryID: entry.id
             )
         }
     }
 
-    private func sourceResults(
-        from documents: [ImportedKnowledgeDocument],
-        queryPlan: GlobalSearchQueryPlan
-    ) -> [GlobalSearchResult] {
+    private func sourceDocuments(from documents: [ImportedKnowledgeDocument]) -> [GlobalSearchIndexDocument] {
         documents.compactMap { document in
             guard document.deletedAt == nil,
                   fileManager.fileExists(atPath: document.localContentPath),
@@ -216,26 +336,155 @@ struct GlobalSearchService {
                 document.remoteID,
                 contents,
             ].joined(separator: "\n")
-            let match = Self.match(searchable, title: document.title, queryPlan: queryPlan)
-            guard match.score > 0 else { return nil }
-
-            return GlobalSearchResult(
+            return GlobalSearchIndexDocument(
                 id: "source:\(document.connectorInstanceID):\(document.id)",
                 title: document.title,
                 kind: .source,
                 groupTitle: "Sources",
-                snippet: Self.excerpt(from: contents, queryPlan: queryPlan),
-                score: match.score + 1_000,
-                matchedTerms: match.matchedTerms,
-                matchCount: match.matchCount,
-                todoID: nil,
-                dayKey: nil,
+                searchableText: searchable,
+                snippetText: contents,
+                baseScore: 1_000,
                 connectorInstanceID: document.connectorInstanceID,
-                documentID: document.id,
-                myWikiCategoryID: nil,
-                myWikiEntryID: nil
+                documentID: document.id
             )
         }
+    }
+
+    private func signatureDescriptors(for request: GlobalSearchIndexBuildRequest) throws -> [String] {
+        var descriptors: [String] = []
+
+        for (dayKey, url) in request.diaryNotes.sorted(by: { $0.key < $1.key }) where GlobalSearchService.isDiaryDayKey(dayKey) {
+            descriptors.append("diary|\(dayKey)|\(fileSignature(url))")
+        }
+
+        for document in request.sourceDocuments.sorted(by: { $0.id < $1.id }) {
+            descriptors.append([
+                "source",
+                document.id,
+                document.connectorInstanceID,
+                document.remoteID,
+                document.contentHash,
+                document.localContentPath,
+                document.deletedAt?.timeIntervalSince1970.description ?? "active",
+            ].joined(separator: "|"))
+        }
+
+        for item in request.todoItems.sorted(by: { $0.id < $1.id }) {
+            descriptors.append([
+                "todo",
+                item.id,
+                item.title,
+                item.normalizedTitle,
+                item.status.rawValue,
+                item.sourceDayKey,
+                item.completedAt?.timeIntervalSince1970.description ?? "",
+                item.completionKind?.rawValue ?? "",
+            ].joined(separator: "|"))
+        }
+
+        if let projectRoot = request.myWikiProjectRoot {
+            let files = myWikiMarkdownFiles(projectRoot: projectRoot)
+            for file in files {
+                descriptors.append("mywiki|\(file.path)|\(fileSignature(file))")
+            }
+        } else {
+            descriptors.append("mywiki|none")
+        }
+
+        return descriptors
+    }
+
+    private func myWikiMarkdownFiles(projectRoot: URL) -> [URL] {
+        let filesByCategory: [[URL]] = MyWikiCategory.nativeCategories.map { category in
+            let directory = projectRoot.appending(path: "wiki/\(category.id)", directoryHint: .isDirectory)
+            guard let files = try? fileManager.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ) else {
+                return []
+            }
+            return files.filter { $0.pathExtension.lowercased() == "md" }
+        }
+        return filesByCategory.flatMap { $0 }
+        .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+    }
+
+    private func fileSignature(_ url: URL) -> String {
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]) else {
+            return "\(url.path)|missing"
+        }
+        let size = values.fileSize ?? -1
+        let modifiedAt = values.contentModificationDate?.timeIntervalSince1970 ?? -1
+        return "\(url.path)|\(size)|\(modifiedAt)"
+    }
+}
+
+struct GlobalSearchService {
+    var fileManager: FileManager = .default
+
+    func search(_ request: GlobalSearchRequest) -> GlobalSearchResponse {
+        let index = GlobalSearchIndexBuilder(fileManager: fileManager).buildIndex(from: request)
+        return search(query: request.query, index: index, maxResults: request.maxResults)
+    }
+
+    func search(
+        query rawQuery: String,
+        index: GlobalSearchIndex,
+        maxResults: Int = 40
+    ) -> GlobalSearchResponse {
+        let request = GlobalSearchIndexedRequest(query: rawQuery, index: index, maxResults: maxResults)
+        let query = request.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let queryPlan = GlobalSearchQueryPlan(query: query)
+        guard query.isEmpty == false,
+              request.maxResults > 0,
+              queryPlan.isEmpty == false
+        else {
+            return GlobalSearchResponse(query: request.query, results: [], groups: [])
+        }
+
+        let results = request.index.documents.compactMap { document in
+            result(from: document, queryPlan: queryPlan)
+        }
+        .sorted(by: Self.sort)
+        .prefix(request.maxResults)
+
+        let resultList = Array(results)
+        return GlobalSearchResponse(
+            query: request.query,
+            results: resultList,
+            groups: Self.group(resultList)
+        )
+    }
+
+    private func result(
+        from document: GlobalSearchIndexDocument,
+        queryPlan: GlobalSearchQueryPlan
+    ) -> GlobalSearchResult? {
+        let match = Self.match(
+            normalizedBody: document.normalizedSearchableText,
+            title: document.title,
+            normalizedTitle: document.normalizedTitle,
+            queryPlan: queryPlan
+        )
+        guard match.score > 0 else { return nil }
+
+        return GlobalSearchResult(
+            id: document.id,
+            title: document.title,
+            kind: document.kind,
+            groupTitle: document.groupTitle,
+            snippet: Self.excerpt(from: document.snippetText, queryPlan: queryPlan),
+            score: match.score + document.baseScore,
+            matchedTerms: match.matchedTerms,
+            matchCount: match.matchCount,
+            todoID: document.todoID,
+            dayKey: document.dayKey,
+            connectorInstanceID: document.connectorInstanceID,
+            documentID: document.documentID,
+            myWikiCategoryID: document.myWikiCategoryID,
+            myWikiEntryID: document.myWikiEntryID
+        )
     }
 
     private static func match(
@@ -248,6 +497,47 @@ struct GlobalSearchService {
         var matchCount = 0
         let titleLower = title.lowercased()
         let bodyLower = body.lowercased()
+
+        for phrase in queryPlan.phrases {
+            var phraseScore = 0
+            if contains(phrase, in: titleLower) {
+                phraseScore += 180
+            }
+            let bodyCount = occurrenceCount(of: phrase, in: bodyLower)
+            phraseScore += min(bodyCount, 8) * 36
+            if phraseScore > 0 {
+                score += phraseScore
+                matchedTerms.append(phrase)
+                matchCount += max(bodyCount, 1)
+            }
+        }
+
+        for term in queryPlan.terms {
+            var termScore = 0
+            if contains(term, in: titleLower) {
+                termScore += 90
+            }
+            let bodyCount = occurrenceCount(of: term, in: bodyLower)
+            termScore += min(bodyCount, 8) * 18
+            if termScore > 0 {
+                score += termScore
+                matchedTerms.append(term)
+                matchCount += max(bodyCount, 1)
+            }
+        }
+
+        return (score, uniquePreservingOrder(matchedTerms), max(matchCount, score > 0 ? 1 : 0))
+    }
+
+    private static func match(
+        normalizedBody bodyLower: String,
+        title: String,
+        normalizedTitle titleLower: String,
+        queryPlan: GlobalSearchQueryPlan
+    ) -> (score: Int, matchedTerms: [String], matchCount: Int) {
+        var score = 0
+        var matchedTerms: [String] = []
+        var matchCount = 0
 
         for phrase in queryPlan.phrases {
             var phraseScore = 0
@@ -331,7 +621,7 @@ struct GlobalSearchService {
         return "\(prefix)\(clean[start..<end])\(suffix)"
     }
 
-    private static func isDiaryDayKey(_ value: String) -> Bool {
+    static func isDiaryDayKey(_ value: String) -> Bool {
         value.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil
     }
 
@@ -375,6 +665,12 @@ struct GlobalSearchService {
             return 3
         }
     }
+}
+
+private struct GlobalSearchIndexedRequest: Equatable {
+    let query: String
+    let index: GlobalSearchIndex
+    let maxResults: Int
 }
 
 private struct GlobalSearchQueryPlan: Equatable {

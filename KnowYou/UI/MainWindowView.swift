@@ -112,6 +112,10 @@ enum GlobalSearchCommandPolicy {
 enum GlobalSearchExecutionPolicy {
     static let requiresExplicitSubmit = true
     static let submitLabel = "Search"
+    static let showsExplicitSubmitButton = true
+    static let showsLoadingIndicatorDuringExecution = true
+    static let usesStoredResponseInsteadOfBodySearch = true
+    static let loadingMessage = "Searching locally..."
 
     static func queryForExecution(draftQuery: String, submittedQuery: String) -> String? {
         let normalizedSubmittedQuery = submittedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -131,6 +135,9 @@ struct MainWindowView: View {
     @State private var selectedMyWikiEntry: MyWikiEntry?
     @State private var globalSearchQuery = ""
     @State private var submittedGlobalSearchQuery = ""
+    @State private var globalSearchResponse = GlobalSearchResponse(query: "", results: [], groups: [])
+    @State private var isGlobalSearchSearching = false
+    @State private var globalSearchTask: Task<Void, Never>?
     @State private var activeGlobalSearchTarget: GlobalSearchNavigationTarget?
     @FocusState private var isGlobalSearchFieldFocused: Bool
     let showsOnboardingEngineButton: Bool
@@ -488,6 +495,7 @@ struct MainWindowView: View {
 
     private var globalSearchContent: some View {
         let response = globalSearchResponse
+        let trimmedQuery = globalSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
@@ -513,6 +521,23 @@ struct MainWindowView: View {
                         .help("Clear")
                         .accessibilityLabel("Clear Search")
                     }
+                    Button {
+                        submitGlobalSearch()
+                    } label: {
+                        HStack(spacing: 6) {
+                            if isGlobalSearchSearching {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.forward.circle.fill")
+                            }
+                            Text(GlobalSearchExecutionPolicy.submitLabel)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(trimmedQuery.isEmpty || isGlobalSearchSearching)
+                    .help("Search")
+                    .accessibilityIdentifier("global-search-submit-button")
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
@@ -539,6 +564,15 @@ struct MainWindowView: View {
                     systemImage: "magnifyingglass",
                     description: Text("Diary, My Wiki, Sources, and Todo are searched locally on this Mac.")
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if isGlobalSearchSearching {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.regular)
+                    Text(GlobalSearchExecutionPolicy.loadingMessage)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if response.results.isEmpty {
                 ContentUnavailableView(
@@ -761,34 +795,18 @@ struct MainWindowView: View {
         appState.engineStatuses[appState.defaultEngine]?.state ?? .gray
     }
 
-    private var globalSearchResponse: GlobalSearchResponse {
-        guard let query = GlobalSearchExecutionPolicy.queryForExecution(
-            draftQuery: globalSearchQuery,
-            submittedQuery: submittedGlobalSearchQuery
-        ) else {
-            return GlobalSearchResponse(query: submittedGlobalSearchQuery, results: [], groups: [])
-        }
-        return GlobalSearchService().search(
-            GlobalSearchRequest(
-                query: query,
-                diaryNotes: appState.noteIndex,
-                sourceDocuments: appState.knowledgeDocumentsByConnector.values.flatMap { $0 },
-                todoItems: appState.todoItems,
-                myWikiEntries: globalSearchMyWikiEntries,
-                maxResults: 60
-            )
-        )
-    }
-
-    private var globalSearchMyWikiEntries: [MyWikiEntry] {
-        guard let knowledgeOntologyProjectRoot else { return [] }
-        return (try? MyWikiMarkdownStore().loadDashboard(projectRoot: knowledgeOntologyProjectRoot).primaryEntries) ?? []
+    private func loadGlobalSearchMyWikiEntries(projectRoot: URL?) -> [MyWikiEntry] {
+        guard let projectRoot else { return [] }
+        return (try? MyWikiMarkdownStore().loadDashboard(projectRoot: projectRoot).primaryEntries) ?? []
     }
 
     private func globalSearchSummary(_ response: GlobalSearchResponse) -> String {
         let query = submittedGlobalSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard query.isEmpty == false else {
             return "Search diary, My Wiki, sources, and Todo."
+        }
+        if isGlobalSearchSearching {
+            return GlobalSearchExecutionPolicy.loadingMessage
         }
         if response.totalResultCount == 1 {
             return "1 result"
@@ -881,7 +899,7 @@ struct MainWindowView: View {
                 return
             }
             mode = .knowledgeOntology
-            selectedMyWikiEntry = globalSearchMyWikiEntries.first {
+            selectedMyWikiEntry = loadGlobalSearchMyWikiEntries(projectRoot: knowledgeOntologyProjectRoot).first {
                 $0.category.id == categoryID && $0.id == entryID
             }
         case .source:
@@ -900,14 +918,53 @@ struct MainWindowView: View {
     }
 
     private func clearGlobalSearchInput() {
+        globalSearchTask?.cancel()
+        globalSearchTask = nil
         globalSearchQuery = ""
         submittedGlobalSearchQuery = ""
+        globalSearchResponse = GlobalSearchResponse(query: "", results: [], groups: [])
+        isGlobalSearchSearching = false
         clearGlobalSearchTarget()
     }
 
     private func submitGlobalSearch() {
-        submittedGlobalSearchQuery = globalSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = globalSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.isEmpty == false else {
+            clearGlobalSearchInput()
+            return
+        }
+
+        globalSearchTask?.cancel()
+        submittedGlobalSearchQuery = query
+        globalSearchResponse = GlobalSearchResponse(query: query, results: [], groups: [])
+        isGlobalSearchSearching = true
         clearGlobalSearchTarget()
+
+        let diaryNotes = appState.noteIndex
+        let sourceDocuments = appState.knowledgeDocumentsByConnector.values.flatMap { $0 }
+        let todoItems = appState.todoItems
+        let projectRoot = knowledgeOntologyProjectRoot
+
+        globalSearchTask = Task { @MainActor in
+            await Task.yield()
+            guard Task.isCancelled == false else { return }
+
+            let response = GlobalSearchService().search(
+                GlobalSearchRequest(
+                    query: query,
+                    diaryNotes: diaryNotes,
+                    sourceDocuments: sourceDocuments,
+                    todoItems: todoItems,
+                    myWikiEntries: loadGlobalSearchMyWikiEntries(projectRoot: projectRoot),
+                    maxResults: 60
+                )
+            )
+
+            guard Task.isCancelled == false, submittedGlobalSearchQuery == query else { return }
+            globalSearchResponse = response
+            isGlobalSearchSearching = false
+            globalSearchTask = nil
+        }
     }
 
     private var knowledgeImportEnabledBinding: Binding<Bool> {

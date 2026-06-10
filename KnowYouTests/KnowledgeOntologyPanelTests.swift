@@ -185,6 +185,13 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         )
     }
 
+    func testGlobalSearchPresentationUsesVisibleSubmitLoadingAndStoredResults() {
+        XCTAssertTrue(GlobalSearchExecutionPolicy.showsExplicitSubmitButton)
+        XCTAssertTrue(GlobalSearchExecutionPolicy.showsLoadingIndicatorDuringExecution)
+        XCTAssertTrue(GlobalSearchExecutionPolicy.usesStoredResponseInsteadOfBodySearch)
+        XCTAssertEqual(GlobalSearchExecutionPolicy.loadingMessage, "Searching locally...")
+    }
+
     func testDetailPresentationShowsMarkdownPageByDefault() {
         let entry = MyWikiEntry(
             id: "adam-wu",

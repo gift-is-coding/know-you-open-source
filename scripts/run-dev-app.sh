@@ -4,27 +4,27 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 derived_data_path="$repo_root/.derived-data/dev"
 app_path="$derived_data_path/Build/Products/Debug/KnowYou.app"
-bundle_id="dev.knowyou.app"
+app_executable="$app_path/Contents/MacOS/KnowYou"
 build_metadata_path="$app_path/Contents/Resources/BuildMetadata.json"
 expected_git_sha="$(git -C "$repo_root" rev-parse --short HEAD)"
 
-osascript -e "tell application id \"$bundle_id\" to quit" >/dev/null 2>&1 || true
+current_worktree_pids() {
+  ps -Ao pid=,command= | awk -v exe="$app_executable" 'index($0, exe) { print $1 }'
+}
 
 for _ in {1..20}; do
-  if ! pgrep -f '/KnowYou.app/Contents/MacOS/KnowYou' >/dev/null; then
+  pids="$(current_worktree_pids)"
+  if [[ -z "$pids" ]]; then
     break
   fi
+  kill $pids >/dev/null 2>&1 || true
   sleep 0.25
 done
 
-pkill -f '/KnowYou.app/Contents/MacOS/KnowYou' || true
-
-# Clear old global Xcode app bundles so "open" never picks a stale build.
-find "$HOME/Library/Developer/Xcode/DerivedData" \
-  -path '*/Build/Products/Debug/KnowYou.app' \
-  -type d \
-  -prune \
-  -exec rm -rf {} +
+remaining_pids="$(current_worktree_pids)"
+if [[ -n "$remaining_pids" ]]; then
+  kill -9 $remaining_pids >/dev/null 2>&1 || true
+fi
 
 rm -rf "$app_path"
 
@@ -64,7 +64,7 @@ if [[ "$actual_git_sha" != "$expected_git_sha" ]]; then
   exit 1
 fi
 
-open "$app_path"
+open -n "$app_path"
 sleep 2
 
 echo "App path: $app_path"

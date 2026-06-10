@@ -7,10 +7,12 @@ final class SettingsMetadataTests: XCTestCase {
             marketingVersion: "1.0",
             buildNumber: "42",
             buildTimestamp: "04-17 20:32",
-            gitShortSHA: "379aff5"
+            gitShortSHA: "379aff5",
+            gitBranch: "codex/networking-main-sync",
+            worktreeName: "networking-main-sync"
         )
 
-        XCTAssertEqual(metadata.badgeText, "v1.0 · 04-17 20:32 (42) · 379aff5")
+        XCTAssertEqual(metadata.badgeText, "v1.0 · 04-17 20:32 (42) · 379aff5 · networking-main-sync")
     }
 
     func testAppBuildMetadataBadgeTextFallsBackToVersionAndBuildWhenGitSHAMissing() {

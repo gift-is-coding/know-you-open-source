@@ -7,11 +7,18 @@ info_plist_path="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
 auto_build_number="1"
 build_timestamp="$(date '+%m-%d %H:%M')"
 git_short_sha=""
+git_branch=""
+worktree_name="$(basename "$SRCROOT")"
 
 if command -v git >/dev/null 2>&1; then
   auto_build_number="$(git -C "$SRCROOT" rev-list --count HEAD 2>/dev/null || printf '1')"
   git_short_sha="$(git -C "$SRCROOT" rev-parse --short HEAD 2>/dev/null || true)"
+  git_branch="$(git -C "$SRCROOT" branch --show-current 2>/dev/null || true)"
 fi
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
 
 set_plist_string() {
   key="$1"
@@ -38,6 +45,8 @@ if [ -f "$info_plist_path" ]; then
 fi
 
 mkdir -p "$(dirname "$output_path")"
+escaped_branch="$(json_escape "$git_branch")"
+escaped_worktree="$(json_escape "$worktree_name")"
 cat >"$output_path" <<EOF
-{"buildNumber":"$auto_build_number","buildTimestamp":"$build_timestamp","gitShortSHA":"$git_short_sha"}
+{"buildNumber":"$auto_build_number","buildTimestamp":"$build_timestamp","gitShortSHA":"$git_short_sha","gitBranch":"$escaped_branch","worktreeName":"$escaped_worktree"}
 EOF

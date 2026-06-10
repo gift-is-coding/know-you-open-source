@@ -215,7 +215,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 单个 source 扫描失败不得阻塞其他 source。
 - 用户必须能手动触发 `Refresh`，它只重新扫描本地目录。
 - 当启用每日 source scan 时，系统必须安装独立于 Daily Memory Export 的用户级 `LaunchAgent`。
-- 侧边栏必须始终显示 `Home`、`Search`、`Networking (Coming soon)`、`Todo`、`My Wiki`、`My Diary`、`Other Source` 这些同级一级入口，并且 Feishu/Lark、Notion、Google Drive 等已添加来源必须排在 `Other Source` 后面。
+- 侧边栏必须始终显示 `Home`、`Search`、`Networking`、`Todo`、`My Wiki`、`My Diary`、`Other Source` 这些同级一级入口，并且 Feishu/Lark、Notion、Google Drive 等已添加来源必须排在 `Other Source` 后面。
 - `Search` 必须位于 `Home` 下方，并作为外层 workspace 搜索入口，而不是放在 My Wiki、Todo 或 Diary 子页面内部。
 - `Search` V1 必须使用本地关键词/短语匹配搜索 `AppState.noteIndex` 中的日记 Markdown、My Wiki dashboard 中的 Entities/Concepts、已扫描 source 文档的 `localContentPath` 正文，以及统一 Todo 标题/状态；结果必须按 `Todo`、`Diary`、`My Wiki`、`Sources` 分组，并能点击打开对应 Todo inbox、日期日记、My Wiki entity/concept 或 source 文档。搜索结果 title/snippet 必须高亮命中关键词；点击结果后，目标页面必须提供轻量定位反馈：Todo row 滚动并高亮 row/title 关键词、Diary 滚动到第一个命中段落并高亮关键词、My Wiki 选中对应 entity/concept、Source 文档对命中 Markdown block 和其中关键词做高亮。
 - `Search` V1 必须按 Enter 后才执行检索；输入过程不得实时扫描日记、source、Todo 或 My Wiki，以免大 workspace 中每个 key stroke 触发昂贵 I/O。
@@ -223,8 +223,8 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - Diary 左侧日期列表必须只显示 today 加 last 3 days；三天补生成必须只检查 yesterday、2 days ago、3 days ago，不得把 today 混进 `Generate Last 3 Days`。
 - `Home` 必须作为默认理解入口，使用英文短句和视觉资产提醒用户保持 KnowYou 在后台运行，展示 `Automatic Diary update` 和下一次自动更新本地时间，提供 `Generate Now` 刷新今天，并且只在过去三天缺少 model diary 时显示 `Generate Last 3 Days`。
 - `Home` 的更新区必须保持 compact：只在 `running`、`degraded`、`failed`、`blocked` 时显示在 hero 右下角，`scheduled` 和 `completed` 不得占用页面空间。
-- `Home` 的功能入口必须单列显示，顺序为 `Networking (Coming soon)`、`Todo`、`My Wiki`、`Today’s Diary`、`Other Source`，并用简短人话解释用途和工作方式。
-- `Networking (Coming soon)` 入口不得只显示空白 placeholder；必须用英文短句和视觉资产说明用户可以创建不同场景的 profile，可用于求职、社交和 discovery，并说明 My Diary / My Wiki 到本地 profiles 之间的数据边界；页面必须显示单独的 `Coming soon` 状态，且不得出现 `Clear identity` 或 `identity stays clear`。
+- `Home` 的功能入口必须单列显示，顺序为 `Networking`、`Todo`、`My Wiki`、`Today’s Diary`、`Other Source`，并用简短人话解释用途和工作方式。
+- `Networking` 入口必须打开本地原生 cockpit，而不是空白 placeholder、Coming soon preview、WebView 或传统推荐 feed。
 - `My Wiki`、`Other Source`、`My Diary` 必须使用同一套 sidebar row 组件、字号、图标尺寸、行高和选中态。
 - 右上角 engine selector 必须固定在主窗口全局 toolbar 中，不得随 `My Wiki`、`Other Source`、`My Diary` 的内容切换改变位置或变成页面内部组件；当前默认 engine 不可可靠生成 diary 时，胶囊外侧必须显示红色感叹号。
 - `Other Source` 必须是独立入口，不得折叠或收起其他来源。

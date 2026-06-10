@@ -353,9 +353,17 @@ final class OnboardingContentTests: XCTestCase {
         let developmentBuildURL = URL(
             fileURLWithPath: "/Users/me/Library/Developer/Xcode/DerivedData/KnowYou/Build/Products/Debug/KnowYou.app"
         )
+        let worktreeLocalDevelopmentBuildURL = URL(
+            fileURLWithPath: "/Users/me/project/.derived-data/dev/Build/Products/Debug/KnowYou.app"
+        )
         let installedAppURL = URL(fileURLWithPath: "/Applications/KnowYou.app")
 
         XCTAssertTrue(OnboardingPermissionBypassPolicy.allowsFullDiskAccessBypass(bundleURL: developmentBuildURL))
+        XCTAssertTrue(
+            OnboardingPermissionBypassPolicy.allowsFullDiskAccessBypass(
+                bundleURL: worktreeLocalDevelopmentBuildURL
+            )
+        )
         XCTAssertFalse(OnboardingPermissionBypassPolicy.allowsFullDiskAccessBypass(bundleURL: installedAppURL))
     }
 

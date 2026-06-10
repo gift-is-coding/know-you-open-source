@@ -17,7 +17,7 @@ struct DateSidebarView: View {
     let onSelectKnowledgeConnector: (String) -> Void
     let onSelectKnowledgeDocument: (String, String) -> Void
     let onOpenKnowledgeOntology: () -> Void
-    let onOpenNetworkingComingSoon: () -> Void
+    let onOpenNetworking: () -> Void
     let onOpenSyncMemory: () -> Void
     @State private var expandedSectionIDs: Set<String> = []
     @State private var isDiaryGroupExpanded = true
@@ -320,8 +320,8 @@ struct DateSidebarView: View {
             onSelectKnowledgeDocument(instanceID, documentID)
         case .knowledgeOntology:
             onOpenKnowledgeOntology()
-        case .networkingComingSoon:
-            onOpenNetworkingComingSoon()
+        case .networking:
+            onOpenNetworking()
         case nil:
             break
         }
@@ -339,7 +339,7 @@ struct DateSidebarView: View {
         } else if itemID == "my-wiki" {
             return .knowledgeOntology
         } else if itemID == "networking" {
-            return .networkingComingSoon
+            return .networking
         } else if itemID == "add-source" || itemID == "other-source" {
             return .otherSource(focusAddConnector: false)
         } else if itemID.hasPrefix("document:") {
@@ -445,7 +445,7 @@ enum SidebarSelectionAction: Equatable {
     case diaryDate(String)
     case otherSource(focusAddConnector: Bool)
     case knowledgeOntology
-    case networkingComingSoon
+    case networking
     case knowledgeConnector(String)
     case knowledgeDocument(String, String)
 }
@@ -569,12 +569,12 @@ struct DateSidebarPresentation {
         )
         networkingRootItem = SidebarRootItem(
             id: "networking",
-            title: "Networking (Coming soon)",
+            title: "Networking",
             systemImage: "network",
             isSelected: selectedItemID == "networking",
             isEnabled: true,
             showsAddButton: false,
-            selectionAction: .networkingComingSoon
+            selectionAction: .networking
         )
         diaryRootItem = SidebarRootItem(
             id: "diary-root",

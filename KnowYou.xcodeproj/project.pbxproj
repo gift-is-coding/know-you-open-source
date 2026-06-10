@@ -174,6 +174,13 @@
 		E60000010000000000000008 /* MyWikiAgentConnectionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E60001010000000000000008 /* MyWikiAgentConnectionSheet.swift */; };
 		E60000010000000000000009 /* MyWikiAgentInstructionLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = E60001010000000000000009 /* MyWikiAgentInstructionLauncher.swift */; };
 		E6000001000000000000000A /* MyWikiMCPCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6000101000000000000000A /* MyWikiMCPCommand.swift */; };
+		BB0000010000000000000001 /* NetworkingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000001 /* NetworkingModels.swift */; };
+		BB0000010000000000000002 /* NetworkingCockpitPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000002 /* NetworkingCockpitPresentation.swift */; };
+		BB0000010000000000000003 /* NetworkingProfileGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000003 /* NetworkingProfileGenerationService.swift */; };
+		BB0000010000000000000004 /* NetworkingActivationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000004 /* NetworkingActivationService.swift */; };
+		BB0000010000000000000005 /* NetworkingMCPCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000005 /* NetworkingMCPCommand.swift */; };
+		BB0000010000000000000006 /* NetworkingCockpitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000006 /* NetworkingCockpitView.swift */; };
+		BB0000010000000000000007 /* NetworkingCockpitPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000007 /* NetworkingCockpitPresentationTests.swift */; };
 		F30000010000000000000001 /* MyWikiProjectExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F30001010000000000000001 /* MyWikiProjectExporterTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -354,6 +361,13 @@
 		B20001010000000000000007 /* CodexDirectSummarizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexDirectSummarizerTests.swift; sourceTree = "<group>"; };
 		B20001010000000000000008 /* CodexDirectSummarizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexDirectSummarizer.swift; sourceTree = "<group>"; };
 		B20001010000000000000009 /* CloudSummarizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSummarizerTests.swift; sourceTree = "<group>"; };
+		BB0001010000000000000001 /* NetworkingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingModels.swift; sourceTree = "<group>"; };
+		BB0001010000000000000002 /* NetworkingCockpitPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingCockpitPresentation.swift; sourceTree = "<group>"; };
+		BB0001010000000000000003 /* NetworkingProfileGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingProfileGenerationService.swift; sourceTree = "<group>"; };
+		BB0001010000000000000004 /* NetworkingActivationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingActivationService.swift; sourceTree = "<group>"; };
+		BB0001010000000000000005 /* NetworkingMCPCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingMCPCommand.swift; sourceTree = "<group>"; };
+		BB0001010000000000000006 /* NetworkingCockpitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingCockpitView.swift; sourceTree = "<group>"; };
+		BB0001010000000000000007 /* NetworkingCockpitPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingCockpitPresentationTests.swift; sourceTree = "<group>"; };
 		CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = KnowYou/Assets.xcassets; sourceTree = "<group>"; };
 		E7177E38EFF3DA333280EFBA /* KnowledgeOntologyPanel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyPanel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -423,6 +437,26 @@
 			path = MyWiki;
 			sourceTree = "<group>";
 		};
+		BB0002010000000000000001 /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				BB0001010000000000000001 /* NetworkingModels.swift */,
+				BB0001010000000000000002 /* NetworkingCockpitPresentation.swift */,
+				BB0001010000000000000003 /* NetworkingProfileGenerationService.swift */,
+				BB0001010000000000000004 /* NetworkingActivationService.swift */,
+				BB0001010000000000000005 /* NetworkingMCPCommand.swift */,
+			);
+			path = Networking;
+			sourceTree = "<group>";
+		};
+		BB0002010000000000000002 /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				BB0001010000000000000006 /* NetworkingCockpitView.swift */,
+			);
+			path = Networking;
+			sourceTree = "<group>";
+		};
 		A10000060000000000000001 = {
 			isa = PBXGroup;
 			children = (
@@ -468,6 +502,7 @@
 				A10000060000000000000020 /* Updates */,
 				A1000006000000000000001D /* Onboarding */,
 				830002010000000000000002 /* MyWiki */,
+				BB0002010000000000000002 /* Networking */,
 				D8C86E3E512B54C4B921C658 /* KnowledgeOntology */,
 				D90000060000000000000001 /* Knowledge */,
 			);
@@ -585,6 +620,7 @@
 				830001010000000000000007 /* MyWikiPipelineBridgeTests.swift */,
 				8A0001010000000000000001 /* MyWikiLLMBridgeTests.swift */,
 				830001010000000000000009 /* MyWikiAgentContextProviderTests.swift */,
+				BB0001010000000000000007 /* NetworkingCockpitPresentationTests.swift */,
 				E60001010000000000000001 /* MyWikiContextPackServiceTests.swift */,
 				E60001010000000000000002 /* MyWikiContextPackCommandTests.swift */,
 				E60001010000000000000003 /* MyWikiAgentConfigurationTests.swift */,
@@ -636,6 +672,7 @@
 				A1000006000000000000001B /* Summary */,
 				A1000006000000000000001F /* Updates */,
 				830002010000000000000001 /* MyWiki */,
+				BB0002010000000000000001 /* Networking */,
 				45F0A963C3E524FB2CB9807B /* KnowledgeOntology */,
 			);
 			path = Services;
@@ -1038,6 +1075,11 @@
 				8B0000010000000000000002 /* GlobalSearchService.swift in Sources */,
 				E60000010000000000000005 /* MyWikiContextPackCommand.swift in Sources */,
 				E6000001000000000000000A /* MyWikiMCPCommand.swift in Sources */,
+				BB0000010000000000000001 /* NetworkingModels.swift in Sources */,
+				BB0000010000000000000002 /* NetworkingCockpitPresentation.swift in Sources */,
+				BB0000010000000000000003 /* NetworkingProfileGenerationService.swift in Sources */,
+				BB0000010000000000000004 /* NetworkingActivationService.swift in Sources */,
+				BB0000010000000000000005 /* NetworkingMCPCommand.swift in Sources */,
 				850000010000000000000002 /* MyWikiNavigationResolver.swift in Sources */,
 				860000010000000000000001 /* MyWikiIngestProgressStore.swift in Sources */,
 				870000010000000000000001 /* MyWikiSourceLibrary.swift in Sources */,
@@ -1051,6 +1093,7 @@
 				E60000010000000000000007 /* MyWikiAgentConfigurationInstaller.swift in Sources */,
 				E60000010000000000000008 /* MyWikiAgentConnectionSheet.swift in Sources */,
 				E60000010000000000000009 /* MyWikiAgentInstructionLauncher.swift in Sources */,
+				BB0000010000000000000006 /* NetworkingCockpitView.swift in Sources */,
 				C9F400816BDCE324EFF86EE3 /* KnowledgeOntologyProjectExporter.swift in Sources */,
 				5CD500F8D621611083D406AD /* KnowledgeOntologyPanel.swift in Sources */,
 			);
@@ -1122,6 +1165,7 @@
 				830000010000000000000007 /* MyWikiPipelineBridgeTests.swift in Sources */,
 				8A0000010000000000000001 /* MyWikiLLMBridgeTests.swift in Sources */,
 				830000010000000000000009 /* MyWikiAgentContextProviderTests.swift in Sources */,
+				BB0000010000000000000007 /* NetworkingCockpitPresentationTests.swift in Sources */,
 				E60000010000000000000001 /* MyWikiContextPackServiceTests.swift in Sources */,
 				E60000010000000000000002 /* MyWikiContextPackCommandTests.swift in Sources */,
 				E60000010000000000000003 /* MyWikiAgentConfigurationTests.swift in Sources */,

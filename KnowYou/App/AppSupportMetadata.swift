@@ -144,8 +144,17 @@ struct AppBuildMetadata: Equatable {
     let buildNumber: String
     let buildTimestamp: String?
     let gitShortSHA: String?
+    let gitBranch: String?
+    let worktreeName: String?
 
-    init(marketingVersion: String, buildNumber: String, buildTimestamp: String?, gitShortSHA: String?) {
+    init(
+        marketingVersion: String,
+        buildNumber: String,
+        buildTimestamp: String?,
+        gitShortSHA: String?,
+        gitBranch: String? = nil,
+        worktreeName: String? = nil
+    ) {
         self.marketingVersion = marketingVersion
         self.buildNumber = buildNumber
         let normalizedTimestamp = buildTimestamp?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -161,6 +170,9 @@ struct AppBuildMetadata: Equatable {
         } else {
             self.gitShortSHA = nil
         }
+
+        self.gitBranch = Self.normalizedBuildLabel(gitBranch)
+        self.worktreeName = Self.normalizedBuildLabel(worktreeName)
     }
 
     init(bundle: Bundle) {
@@ -170,7 +182,9 @@ struct AppBuildMetadata: Equatable {
             marketingVersion: info["CFBundleShortVersionString"] as? String ?? "0",
             buildNumber: resource?.buildNumber ?? (info["CFBundleVersion"] as? String ?? "0"),
             buildTimestamp: resource?.buildTimestamp,
-            gitShortSHA: resource?.gitShortSHA
+            gitShortSHA: resource?.gitShortSHA,
+            gitBranch: resource?.gitBranch,
+            worktreeName: resource?.worktreeName
         )
     }
 
@@ -186,7 +200,17 @@ struct AppBuildMetadata: Equatable {
             base = "v\(marketingVersion) (\(buildNumber))"
         }
         guard let gitShortSHA else { return base }
-        return "\(base) · \(gitShortSHA)"
+        let sourceLabel = worktreeName ?? gitBranch
+        guard let sourceLabel else { return "\(base) · \(gitShortSHA)" }
+        return "\(base) · \(gitShortSHA) · \(sourceLabel)"
+    }
+
+    private static func normalizedBuildLabel(_ value: String?) -> String? {
+        let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let normalized, normalized.isEmpty == false, normalized != "unknown" else {
+            return nil
+        }
+        return normalized
     }
 }
 
@@ -194,6 +218,8 @@ private struct BuildMetadataResource: Decodable {
     let buildNumber: String?
     let buildTimestamp: String?
     let gitShortSHA: String?
+    let gitBranch: String?
+    let worktreeName: String?
 
     static func load(from bundle: Bundle) -> BuildMetadataResource? {
         guard let url = bundle.url(forResource: "BuildMetadata", withExtension: "json"),

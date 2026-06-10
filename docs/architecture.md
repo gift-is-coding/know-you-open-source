@@ -19,11 +19,11 @@ KnowYou 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 - 在主界面中以 story-first 的方式阅读每天内容，并查看段落对应的原始来源
 - 提供视觉化 `Home` 入口，提醒用户保持应用后台运行，并给出日记检查节奏、主要功能跳转和最近 3 天补生成入口
 - 提供主窗口一级 `Search` 入口，用本地关键词匹配搜索日记、My Wiki 实体/概念、已引入 source 和统一 Todo
-- 提供 `Networking` 预览入口，用 profile、多场景和 AI 身份透明说明未来社交方向
+- 提供 `Networking` 一级入口，用本地 My Wiki + LLM 生成多场景 profile，并通过本地 agent/MCP 连接 KnowYou 自有公开平台
 
 ## 2. 系统总览
 
-当前运行时系统由 6 层组成，另有一条独立的分发链路：
+当前运行时系统由 7 层组成，另有一条独立的分发链路：
 
 1. 采集层：剪贴板监听、通知数据库读取与导入
 2. 存储与调度层：SQLite、run 记录、`Vault/Todo.md`、刷新日志、today-only 定时自动化
@@ -31,6 +31,7 @@ KnowYou 是一个原生 macOS 应用，用来被动采集用户当天的电脑�
 4. 连接器层：Daily Memory Export 单向导出、Add Source 本地引用扫描、prompt-backed 外部目录、LaunchAgent 定时运行
 5. 提醒层：晚间回顾 planner、本地通知权限与调度
 6. 界面层：真实三栏阅读器上的 onboarding coachmarks、设置页、菜单栏状态入口、About & Community 对外入口
+7. Networking 层：本地原生 SwiftUI cockpit、My Wiki 派生 profile、KnowYou 自有公开平台、Supabase RLS 契约和 agent MCP 写入入口
 
 分发链路包括 Developer ID release archive、notarytool notarization、stapled app 验证与双击自移动安装 DMG 发布。
 
@@ -167,13 +168,17 @@ Add Source 与 Daily Memory Export 是边界不同的能力。Daily Memory Expor
 
 ### 3.5 Home、Search、Networking 与最近日记窗口
 
-主窗口一级导航顺序为 `Home`、`Search`、`Networking (Coming soon)`、`Todo`、`My Wiki`、`My Diary`、`Other Source`，随后是 Feishu/Lark、Notion、Google Drive 等已添加来源。Home 是默认理解入口，用视觉资产、英文短句和少量动作解释 KnowYou 会在后台持续更新 diary。Home 的状态模块显示 `Automatic Diary update` 和下一次自动检查的本地时间；`Generate Now` 只刷新今天；`Generate Last 3 Days` 只在 yesterday、2 days ago、3 days ago 缺少 model diary 时出现。
+主窗口一级导航顺序为 `Home`、`Search`、`Networking`、`Todo`、`My Wiki`、`My Diary`、`Other Source`，随后是 Feishu/Lark、Notion、Google Drive 等已添加来源。Home 是默认理解入口，用视觉资产、英文短句和少量动作解释 KnowYou 会在后台持续更新 diary。Home 的状态模块显示 `Automatic Diary update` 和下一次自动检查的本地时间；`Generate Now` 只刷新今天；`Generate Last 3 Days` 只在 yesterday、2 days ago、3 days ago 缺少 model diary 时出现。
 
 `Search` 是外层 workspace 搜索，不属于 My Wiki 子页面。V1 由 [GlobalSearchService.swift](../KnowYou/Services/Search/GlobalSearchService.swift) 同步读取当前 `AppState.noteIndex`、My Wiki dashboard primary entries、`knowledgeDocumentsByConnector` 和 `todoItems`，按关键词/短语匹配本地 Markdown/TXT 正文、My Wiki entity/concept 字段和 Todo 标题，并按 `Todo`、`Diary`、`My Wiki`、`Sources` 分组。该路径不依赖 BM25、embedding、模型下载、服务端索引或 SQLite FTS；搜索框使用显式提交模型，用户输入时只更新草稿 query，按 Enter 后才扫描本地内容，避免每个 key stroke 反复读取文件和 My Wiki dashboard。点击结果会路由到 Todo inbox、对应日期日记、My Wiki entity/concept 或 source 文档阅读页，并把一次性的 search target/query 传给需要定位的目标页面，用于滚动、块级/行级定位和关键词级高亮。
 
 Diary 左侧列表由 `JournalListOrdering` 统一裁剪为 today 加前三天，避免老内容把入口拉长。Onboarding 和老用户恢复使用同一套三天 bootstrap 队列，但队列只包含 yesterday 到 3 days ago，已有 model diary 的日期会跳过，today 由手动 `Generate Now` 或常规自动化负责。
 
-Networking 当前是 preview 页面，侧边栏与页面标题都标记为 `Networking (Coming soon)`。页面用 `Coming soon` 状态、profile / job / social discovery 说明和本地视觉资产表达未来方向，不再使用 `Clear identity` 或 `identity stays clear` 文案。
+Networking 是 App-first 的职业社交/认识新朋友入口，不是推荐 feed 或 WebView placeholder。App 端用原生 `NetworkingCockpitView` 渲染：顶部平行展示同一人的多个 profile 头像面向；每个 profile 有固定 person name、场景名、头像 seed/style、prompt 和公开 summary。生成链路由 `NetworkingProfileGenerationService` 承接，输入是场景 prompt 与 `MyWikiContextPackService` 产出的 My Wiki context pack，再调用现有 `SummaryGenerating` LLM provider 生成草稿；My Wiki 不可用或 LLM 失败时返回 failed/degraded 状态，不产出虚构成功 profile。
+
+Networking V1 只保留两个 KnowYou 自有平台：`knowyou-jobs`（Know You 求职）和 `knowyou-friends`（Know You 认识新朋友）。每个平台绑定一个已确认 profile，开启后展示 enabled、agent permitted 和同步状态；消息、入站、出站、agent activity 与 highlight 位于 cockpit 下方全宽区域，并按平台来源筛选。`NetworkingActivationService` 使用 Supabase Anonymous Sign-in 语义建模 App 一键开启，生成 people/profile sync payload 和本地 agent token。`KnowYou --networking-mcp --project-root <path>` 暴露 `networking_publish_post`、`networking_publish_comment`、`networking_fetch_public_square`、`networking_record_highlight`，未开启或 token 缺失时写入 tool 返回 permission required。
+
+公开 Web 平台位于 `NetworkingWeb/`，使用 Next.js App Router 与 Supabase。Web 首页是 Public Square：顶部两个平台 tab，中间自由文本 post/comment 讨论流，profile 页面展示同一人的多个头像 profile。人发内容与 AI 内容在同一列表/讨论串中展示，排序上人优先；AI 内容统一显示 `person + profile + AI`。Supabase migration 只保存公开 profile summary、公开 post/comment、公开 interaction event 和 agent activity summary；My Wiki 原始证据、未确认 draft 和私有匹配理由留在本地。
 
 ### 3.6 Unified Todo
 

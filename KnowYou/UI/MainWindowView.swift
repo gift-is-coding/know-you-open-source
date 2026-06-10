@@ -6,7 +6,7 @@ private enum MainWindowMode {
     case search
     case journal
     case knowledgeOntology
-    case networkingComingSoon
+    case networking
 }
 
 private struct GlobalSearchNavigationTarget: Equatable {
@@ -330,7 +330,7 @@ struct MainWindowView: View {
             selectedItemID: selectedSidebarItemID,
             knowledgeImportConfig: appState.knowledgeImportConfig,
             knowledgeDocumentsByConnector: appState.knowledgeDocumentsByConnector,
-            isActive: mode == .home || mode == .search || mode == .knowledgeOntology || mode == .networkingComingSoon || (mode == .journal && appState.readerFocus == .dateList),
+            isActive: mode == .home || mode == .search || mode == .knowledgeOntology || mode == .networking || (mode == .journal && appState.readerFocus == .dateList),
             isKnowledgeOntologySelected: mode == .knowledgeOntology,
             todoOpenCount: appState.openTodoCount,
             onOpenHome: {
@@ -369,9 +369,9 @@ struct MainWindowView: View {
                 clearGlobalSearchTarget()
                 mode = .knowledgeOntology
             },
-            onOpenNetworkingComingSoon: {
+            onOpenNetworking: {
                 clearGlobalSearchTarget()
-                mode = .networkingComingSoon
+                mode = .networking
             },
             onOpenSyncMemory: openSyncMemoryPanel
         )
@@ -433,8 +433,8 @@ struct MainWindowView: View {
             globalSearchContent
         } else if mode == .knowledgeOntology {
             knowledgeOntologyContent
-        } else if mode == .networkingComingSoon {
-            networkingComingSoonContent
+        } else if mode == .networking {
+            networkingContent
         } else {
             switch appState.mainContentSelection {
             case .diary:
@@ -524,7 +524,7 @@ struct MainWindowView: View {
             },
             onOpenNetworking: {
                 clearGlobalSearchTarget()
-                mode = .networkingComingSoon
+                mode = .networking
             },
             onGenerateRecentHistory: {
                 _ = appState.queueRecentHistoryBootstrapIfNeeded(force: true)
@@ -532,8 +532,8 @@ struct MainWindowView: View {
         )
     }
 
-    private var networkingComingSoonContent: some View {
-        NetworkingPreviewView(presentation: NetworkingPreviewPresentation())
+    private var networkingContent: some View {
+        NetworkingCockpitView(presentation: NetworkingCockpitPresentation())
     }
 
     private var globalSearchContent: some View {
@@ -774,7 +774,7 @@ struct MainWindowView: View {
 
     private var detailPane: some View {
         Group {
-            if mode == .home || mode == .search || mode == .knowledgeOntology || mode == .networkingComingSoon {
+            if mode == .home || mode == .search || mode == .knowledgeOntology || mode == .networking {
                 Color.clear
                     .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 0)
             } else {
@@ -802,7 +802,7 @@ struct MainWindowView: View {
             return "search"
         } else if mode == .knowledgeOntology {
             return "my-wiki"
-        } else if mode == .networkingComingSoon {
+        } else if mode == .networking {
             return "networking"
         }
         switch appState.mainContentSelection {
@@ -1558,8 +1558,8 @@ struct HomeDashboardPresentation: Equatable {
         self.featureCards = [
             HomeFeatureCardPresentation(
                 id: "networking",
-                title: "Networking (Coming soon)",
-                subtitle: "Create separate profiles for work, hiring, social, and founder moments when you are ready to share.",
+                title: "Networking",
+                subtitle: "Generate profile faces from My Wiki, bind them to Know You Jobs or Friends, and let local agents bring back signals.",
                 systemImage: "network"
             ),
             HomeFeatureCardPresentation(
@@ -1806,63 +1806,6 @@ private struct HomeDashboardView: View {
         case .wiki:
             onOpenMyWiki()
         }
-    }
-}
-
-struct NetworkingPreviewPresentation: Equatable {
-    let title = "Networking"
-    let status = "Coming soon"
-    let visualAssetName = "NetworkingPreviewHero"
-    let profileLabels = ["Career", "Founder", "Social"]
-    let statements = [
-        "My Diary and selected sources build My Wiki.",
-        "Profiles stay local until you choose what to share.",
-        "Data boundary keeps the full wiki out of public platforms.",
-    ]
-
-    var visibleCopy: [String] {
-        [status, title] + profileLabels + statements
-    }
-}
-
-private struct NetworkingPreviewView: View {
-    let presentation: NetworkingPreviewPresentation
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 28) {
-            Image(presentation.visualAssetName)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 430, height: 310)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-
-            VStack(alignment: .leading, spacing: 18) {
-                Text(presentation.status)
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
-                Text(presentation.title)
-                    .font(.largeTitle.weight(.semibold))
-                HStack(spacing: 8) {
-                    ForEach(presentation.profileLabels, id: \.self) { label in
-                        Text(label)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.accentColor)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
-                    }
-                }
-                ForEach(presentation.statements, id: \.self) { statement in
-                    Label(statement, systemImage: "checkmark.circle.fill")
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(.primary)
-                }
-            }
-            .frame(maxWidth: 460, alignment: .leading)
-        }
-        .padding(34)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .textBackgroundColor))
     }
 }
 

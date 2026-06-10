@@ -113,6 +113,9 @@ struct KnowYouApp: App {
         if launchMode == .myWikiMCP {
             Self.runMyWikiMCPCommandAndExit(arguments: CommandLine.arguments)
         }
+        if launchMode == .networkingMCP {
+            Self.runNetworkingMCPCommandAndExit(arguments: CommandLine.arguments)
+        }
         let didScheduleApplicationMove = Self.scheduleApplicationInstallAutoMoveIfNeeded(launchMode: launchMode)
 
         self.launchMode = launchMode
@@ -176,6 +179,7 @@ struct KnowYouApp: App {
         launchMode != .endOfDayReminder
             && launchMode != .myWikiContext
             && launchMode != .myWikiMCP
+            && launchMode != .networkingMCP
             && isRunningUnderXCTest == false
     }
 
@@ -210,6 +214,11 @@ struct KnowYouApp: App {
 
     private static func runMyWikiMCPCommandAndExit(arguments: [String]) -> Never {
         let exitCode = MyWikiMCPCommand.serve(arguments: arguments)
+        Darwin.exit(exitCode)
+    }
+
+    private static func runNetworkingMCPCommandAndExit(arguments: [String]) -> Never {
+        let exitCode = NetworkingMCPCommand.serve(arguments: arguments)
         Darwin.exit(exitCode)
     }
 
@@ -419,6 +428,7 @@ enum LaunchMode: Equatable {
     case endOfDayReminder
     case myWikiContext
     case myWikiMCP
+    case networkingMCP
 
     init(arguments: [String]) {
         if arguments.contains("--sync-memory-now") {
@@ -431,6 +441,8 @@ enum LaunchMode: Equatable {
             self = .myWikiContext
         } else if arguments.contains(MyWikiMCPCommand.launchArgument) {
             self = .myWikiMCP
+        } else if arguments.contains(NetworkingMCPCommand.launchArgument) {
+            self = .networkingMCP
         } else {
             self = .interactive
         }

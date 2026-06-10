@@ -66,7 +66,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertFalse(presentation.sourceRootItem.showsAddButton)
         XCTAssertFalse(presentation.sourceRootItem.isExpandable)
         XCTAssertEqual(presentation.networkingRootItem.id, "networking")
-        XCTAssertEqual(presentation.networkingRootItem.title, "Networking (Coming soon)")
+        XCTAssertEqual(presentation.networkingRootItem.title, "Networking")
         XCTAssertFalse(presentation.networkingRootItem.showsAddButton)
         XCTAssertFalse(presentation.networkingRootItem.isExpandable)
         XCTAssertEqual(presentation.searchRootItem.id, "search")
@@ -130,7 +130,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(DateSidebarView.selectionAction(for: "search"), .search)
     }
 
-    func testSidebarPresentationShowsNetworkingComingSoonRootItem() {
+    func testSidebarPresentationShowsNetworkingRootItem() {
         let presentation = DateSidebarPresentation(
             dates: [],
             selectedItemID: "networking",
@@ -140,8 +140,8 @@ final class DailyMarkdownViewTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.networkingRootItem.id, "networking")
-        XCTAssertEqual(presentation.networkingRootItem.title, "Networking (Coming soon)")
-        XCTAssertEqual(presentation.networkingRootItem.selectionAction, .networkingComingSoon)
+        XCTAssertEqual(presentation.networkingRootItem.title, "Networking")
+        XCTAssertEqual(presentation.networkingRootItem.selectionAction, .networking)
         XCTAssertTrue(presentation.networkingRootItem.isSelected)
         XCTAssertFalse(presentation.homeRootItem.isSelected)
         XCTAssertFalse(presentation.searchRootItem.isSelected)
@@ -460,7 +460,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(DateSidebarView.selectionAction(for: "diary:2026-05-23"), .diaryDate("2026-05-23"))
         XCTAssertEqual(DateSidebarView.selectionAction(for: "my-wiki"), .knowledgeOntology)
         XCTAssertEqual(DateSidebarView.selectionAction(for: "add-source"), .otherSource(focusAddConnector: false))
-        XCTAssertEqual(DateSidebarView.selectionAction(for: "networking"), .networkingComingSoon)
+        XCTAssertEqual(DateSidebarView.selectionAction(for: "networking"), .networking)
         XCTAssertNil(DateSidebarView.selectionAction(for: "connector:feishu-main"))
         XCTAssertEqual(
             DateSidebarView.selectionAction(for: "document:feishu-main:doc-alpha"),
@@ -511,7 +511,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.primaryActionTitle, "Generate Last 3 Days")
         XCTAssertTrue(presentation.showsRecentHistoryAction)
         XCTAssertEqual(presentation.visualAssetName, "HomeDashboardHero")
-        XCTAssertEqual(presentation.featureCards.map(\.title), ["Networking (Coming soon)", "Todo", "My Wiki", "Today’s Diary", "Other Source"])
+        XCTAssertEqual(presentation.featureCards.map(\.title), ["Networking", "Todo", "My Wiki", "Today’s Diary", "Other Source"])
         XCTAssertEqual(presentation.featureCards.map(\.id), ["networking", "todo", "wiki", "today", "sources"])
         XCTAssertTrue(presentation.featureCards.allSatisfy { $0.subtitle.count > 42 })
         XCTAssertEqual(presentation.activeJobsTitle, "Updating")
@@ -602,29 +602,6 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.statusMessage, "Updating Todo...")
     }
 
-    func testNetworkingPreviewPresentationExplainsLocalProfilesAndSingleComingSoonStatus() {
-        let presentation = NetworkingPreviewPresentation()
-        let visibleCopy = presentation.visibleCopy
-        let visibleCopyText = visibleCopy.joined(separator: "\n")
-        let comingSoonMentions = visibleCopy.filter {
-            $0.range(of: "coming soon", options: [.caseInsensitive, .diacriticInsensitive]) != nil
-        }
-
-        XCTAssertEqual(comingSoonMentions, ["Coming soon"])
-        XCTAssertEqual(presentation.title, "Networking")
-        XCTAssertEqual(presentation.status, "Coming soon")
-        XCTAssertEqual(presentation.visualAssetName, "NetworkingPreviewHero")
-        XCTAssertTrue(visibleCopyText.contains("My Diary"))
-        XCTAssertTrue(visibleCopyText.contains("My Wiki"))
-        XCTAssertTrue(visibleCopyText.contains("Data boundary"))
-        XCTAssertTrue(visibleCopyText.localizedCaseInsensitiveContains("profiles stay local"))
-        XCTAssertTrue(visibleCopy.contains("Career"))
-        XCTAssertTrue(visibleCopy.contains("Founder"))
-        XCTAssertTrue(visibleCopy.contains("Social"))
-        XCTAssertFalse(visibleCopyText.localizedCaseInsensitiveContains("clear identity"))
-        XCTAssertFalse(visibleCopyText.localizedCaseInsensitiveContains("identity stays clear"))
-    }
-
     func testTodoInboxCopyContainsNoChineseUserFacingLabels() {
         let visibleCopy = TodoInboxCopy.visibleStrings.joined(separator: "\n")
 
@@ -666,7 +643,7 @@ final class DailyMarkdownViewTests: XCTestCase {
             onSelectKnowledgeConnector: { _ in },
             onSelectKnowledgeDocument: { _, _ in },
             onOpenKnowledgeOntology: {},
-            onOpenNetworkingComingSoon: {},
+            onOpenNetworking: {},
             onOpenSyncMemory: {}
         )
 

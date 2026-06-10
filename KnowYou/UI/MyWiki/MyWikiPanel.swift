@@ -47,6 +47,8 @@ struct MyWikiPanel: View {
 
     @State private var query = ""
     @State private var snapshot = MyWikiDashboardSnapshot.empty
+    @State private var searchResponse = MyWikiSearchResponse(query: "", results: [], groups: [])
+    @State private var selectedSearchResultID: String?
     @State private var duplicateSuggestions: [MyWikiDuplicateSuggestion] = []
     @State private var statusMessage = MyWikiPanelStatusPresentationPolicy.readyMessage
     @State private var ingestProgress: MyWikiIngestProgress?
@@ -88,6 +90,9 @@ struct MyWikiPanel: View {
                     syncDiaries()
                 }
             }
+        }
+        .onChange(of: query) { _, _ in
+            refreshSearchResults()
         }
         .task(id: progressRefreshTaskID) {
             guard MyWikiProgressRefreshPolicy.shouldRefresh(
@@ -163,8 +168,12 @@ struct MyWikiPanel: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(indexSections) { sectionPresentation in
-                        section(sectionPresentation)
+                    if MyWikiSearchActivationPolicy.usesSearchResults(query: query) {
+                        searchResultsView
+                    } else {
+                        ForEach(indexSections) { sectionPresentation in
+                            section(sectionPresentation)
+                        }
                     }
                 }
                 .padding(.bottom, 24)
@@ -234,7 +243,7 @@ struct MyWikiPanel: View {
     }
 
     private var searchField: some View {
-        TextField("Search or ask My Wiki...", text: $query)
+        TextField("Search My Wiki, diaries, and sources...", text: $query)
             .textFieldStyle(.plain)
             .font(.system(size: 15))
             .padding(.horizontal, 14)
@@ -466,8 +475,8 @@ struct MyWikiPanel: View {
 
             if expandedCategoryIDs.contains(category.id), sectionPresentation.tagFacets.isEmpty == false {
                 tagFacetChips(category: category, facets: sectionPresentation.tagFacets)
-        .padding(.bottom, 4)
-    }
+                    .padding(.bottom, 4)
+            }
 
             ForEach(presentation.visibleEntries) { entry in
                 MyWikiIndexRow(entry: entry, isSelected: isSelected(entry)) {
@@ -488,6 +497,74 @@ struct MyWikiPanel: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    private var searchResultsView: some View {
+        let presentation = MyWikiSearchResultsPresentation(response: searchResponse)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(presentation.resultCountTitle)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("Best matches")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(height: 28)
+
+            if presentation.groups.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("No results")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Try another keyword.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(MyWikiTheme.cardBackground)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(MyWikiTheme.border, lineWidth: 1)
+                        )
+                )
+            } else {
+                ForEach(presentation.groups) { group in
+                    searchGroup(group)
+                }
+            }
+        }
+    }
+
+    private func searchGroup(_ group: MyWikiSearchGroupPresentation) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.secondary)
+                Text(group.title)
+                    .font(.system(size: 18, weight: .semibold))
+                    .lineLimit(1)
+                Spacer()
+                Text(group.resultCountTitle)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(height: 30)
+
+            ForEach(group.results) { result in
+                MyWikiSearchResultRow(
+                    result: result,
+                    isSelected: selectedSearchResultID == result.id
+                ) {
+                    openSearchResult(result)
+                }
+            }
+        }
+        .padding(.top, 2)
     }
 
     private var indexSections: [MyWikiIndexCategorySection] {
@@ -633,6 +710,7 @@ struct MyWikiPanel: View {
         guard let projectRoot else { return }
         do {
             snapshot = try MyWikiMarkdownStore().loadDashboard(projectRoot: projectRoot)
+            refreshSearchResults()
             loadIngestProgress()
             if expandedCategoryIDs.isEmpty {
                 expandedCategoryIDs = Set(snapshot.categories.map(\.id))
@@ -646,6 +724,20 @@ struct MyWikiPanel: View {
         } catch {
             statusMessage = error.localizedDescription
         }
+    }
+
+    private func refreshSearchResults() {
+        guard let projectRoot,
+              MyWikiSearchActivationPolicy.usesSearchResults(query: query)
+        else {
+            searchResponse = MyWikiSearchResponse(query: query, results: [], groups: [])
+            selectedSearchResultID = nil
+            return
+        }
+
+        searchResponse = MyWikiSearchService().search(
+            MyWikiSearchRequest(projectRoot: projectRoot, query: query)
+        )
     }
 
     private func refreshDuplicateSuggestionsInBackground(projectRoot: URL) {
@@ -703,6 +795,29 @@ struct MyWikiPanel: View {
         } catch {
             statusMessage = error.localizedDescription
         }
+    }
+
+    private func openSearchResult(_ result: MyWikiSearchResult) {
+        selectedSearchResultID = result.id
+        reviewingSuggestion = nil
+
+        if result.sourceKind == .wiki,
+           let entry = snapshot.allEntries.first(where: { relativePath(for: $0.fileURL) == result.relativePath }) {
+            selectedEntry = entry
+        } else {
+            openSource(result.relativePath)
+        }
+    }
+
+    private func relativePath(for url: URL) -> String {
+        guard let projectRoot else { return url.lastPathComponent }
+        let rootPath = projectRoot.standardizedFileURL.resolvingSymlinksInPath().path
+        let path = url.standardizedFileURL.resolvingSymlinksInPath().path
+        let rootPrefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        if path.hasPrefix(rootPrefix) {
+            return String(path.dropFirst(rootPrefix.count)).replacingOccurrences(of: "\\", with: "/")
+        }
+        return url.lastPathComponent
     }
 
     private func duplicateSuggestionCount(for entry: MyWikiEntry) -> Int {
@@ -794,6 +909,52 @@ private struct MyWikiIndexRow: View {
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(isSelected ? Color.blue.opacity(0.78) : Color.clear, lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct MyWikiSearchResultRow: View {
+    let result: MyWikiSearchResult
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(result.snippet)
+                    .font(.system(size: 13))
+                    .foregroundStyle(isSelected ? .primary : .secondary)
+                    .lineLimit(6)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Divider()
+                    .opacity(0.7)
+
+                HStack(spacing: 6) {
+                    Image(systemName: result.sourceKind == .wiki ? "doc.richtext" : "doc.text")
+                        .font(.system(size: 11, weight: .medium))
+                    Text(result.title)
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Text("\(result.matchCount)")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? MyWikiTheme.selectionBackground : MyWikiTheme.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isSelected ? Color.blue.opacity(0.78) : MyWikiTheme.border, lineWidth: 1)
                     )
             )
         }

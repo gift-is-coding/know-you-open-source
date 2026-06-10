@@ -501,6 +501,42 @@ struct MyWikiIndexCategorySection: Identifiable {
     }
 }
 
+enum MyWikiSearchActivationPolicy {
+    static func usesSearchResults(query: String) -> Bool {
+        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+}
+
+struct MyWikiSearchResultsPresentation: Equatable {
+    let query: String
+    let resultCountTitle: String
+    let groups: [MyWikiSearchGroupPresentation]
+
+    init(response: MyWikiSearchResponse) {
+        query = response.query
+        resultCountTitle = Self.resultCountTitle(for: response.totalResultCount)
+        groups = response.groups.map(MyWikiSearchGroupPresentation.init)
+    }
+
+    private static func resultCountTitle(for count: Int) -> String {
+        count == 1 ? "1 result" : "\(count) results"
+    }
+}
+
+struct MyWikiSearchGroupPresentation: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let resultCountTitle: String
+    let results: [MyWikiSearchResult]
+
+    init(group: MyWikiSearchGroup) {
+        id = group.id
+        title = group.title
+        resultCountTitle = "\(group.results.count)"
+        results = group.results
+    }
+}
+
 struct MyWikiIndexSectionsBuilder {
     func categorySections(
         snapshot: MyWikiDashboardSnapshot,

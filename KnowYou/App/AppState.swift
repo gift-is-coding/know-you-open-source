@@ -26,6 +26,7 @@ final class MainAppLoginItemManager: LoginItemManaging {
 
 extension Notification.Name {
     static let endOfDayReminderOpened = Notification.Name("KnowYou.endOfDayReminderOpened")
+    static let globalSearchRequested = Notification.Name("KnowYou.globalSearchRequested")
 }
 
 enum ReaderFocusZone: Hashable {

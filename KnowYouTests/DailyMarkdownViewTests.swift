@@ -69,9 +69,14 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.networkingRootItem.title, "Networking (Coming soon)")
         XCTAssertFalse(presentation.networkingRootItem.showsAddButton)
         XCTAssertFalse(presentation.networkingRootItem.isExpandable)
+        XCTAssertEqual(presentation.searchRootItem.id, "search")
+        XCTAssertEqual(presentation.searchRootItem.title, "Search")
+        XCTAssertEqual(presentation.searchRootItem.selectionAction, .search)
+        XCTAssertFalse(presentation.searchRootItem.showsAddButton)
+        XCTAssertFalse(presentation.searchRootItem.isExpandable)
         XCTAssertEqual(presentation.diaryRootItem.id, "diary-root")
         XCTAssertEqual(presentation.diaryRootItem.title, "My Diary")
-        XCTAssertEqual(Array(presentation.rootItems.prefix(6)).map(\.id), ["home", "networking", "todo-root", "my-wiki", "diary-root", "add-source"])
+        XCTAssertEqual(Array(presentation.rootItems.prefix(7)).map(\.id), ["home", "search", "networking", "todo-root", "my-wiki", "diary-root", "add-source"])
         XCTAssertEqual(presentation.diarySections.first?.items.map(\.title), ["Today", "Yesterday"])
     }
 
@@ -90,10 +95,10 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.todoRootItem.badgeCount, 2)
         XCTAssertEqual(presentation.todoRootItem.selectionAction, .todo)
         XCTAssertTrue(presentation.todoRootItem.isSelected)
-        XCTAssertEqual(Array(presentation.rootItems.prefix(6)).map(\.id), ["home", "networking", "todo-root", "my-wiki", "diary-root", "add-source"])
+        XCTAssertEqual(Array(presentation.rootItems.prefix(7)).map(\.id), ["home", "search", "networking", "todo-root", "my-wiki", "diary-root", "add-source"])
     }
 
-    func testSidebarPresentationShowsHomeBeforeNetworking() {
+    func testSidebarPresentationShowsSearchBelowHome() {
         let presentation = DateSidebarPresentation(
             dates: [],
             selectedItemID: "home",
@@ -105,7 +110,24 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.homeRootItem.title, "Home")
         XCTAssertEqual(presentation.homeRootItem.selectionAction, .home)
         XCTAssertTrue(presentation.homeRootItem.isSelected)
-        XCTAssertEqual(Array(presentation.rootItems.prefix(2)).map(\.id), ["home", "networking"])
+        XCTAssertEqual(presentation.searchRootItem.title, "Search")
+        XCTAssertEqual(presentation.searchRootItem.selectionAction, .search)
+        XCTAssertFalse(presentation.searchRootItem.isSelected)
+        XCTAssertEqual(Array(presentation.rootItems.prefix(2)).map(\.id), ["home", "search"])
+    }
+
+    func testSidebarPresentationSelectsSearchRootItem() {
+        let presentation = DateSidebarPresentation(
+            dates: [],
+            selectedItemID: "search",
+            knowledgeImportConfig: .default,
+            today: makeDate(year: 2026, month: 5, day: 23),
+            calendar: gregorianCalendar
+        )
+
+        XCTAssertTrue(presentation.searchRootItem.isSelected)
+        XCTAssertFalse(presentation.homeRootItem.isSelected)
+        XCTAssertEqual(DateSidebarView.selectionAction(for: "search"), .search)
     }
 
     func testSidebarPresentationShowsNetworkingComingSoonRootItem() {
@@ -122,6 +144,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.networkingRootItem.selectionAction, .networkingComingSoon)
         XCTAssertTrue(presentation.networkingRootItem.isSelected)
         XCTAssertFalse(presentation.homeRootItem.isSelected)
+        XCTAssertFalse(presentation.searchRootItem.isSelected)
         XCTAssertFalse(presentation.todoRootItem.isSelected)
         XCTAssertFalse(presentation.myWikiRootItem.isSelected)
         XCTAssertFalse(presentation.sourceRootItem.isSelected)
@@ -432,6 +455,7 @@ final class DailyMarkdownViewTests: XCTestCase {
     @MainActor
     func testDateSidebarSelectionActionRoutesRootAndConnectorIDs() {
         XCTAssertEqual(DateSidebarView.selectionAction(for: "home"), .home)
+        XCTAssertEqual(DateSidebarView.selectionAction(for: "search"), .search)
         XCTAssertEqual(DateSidebarView.selectionAction(for: "todo-root"), .todo)
         XCTAssertEqual(DateSidebarView.selectionAction(for: "diary:2026-05-23"), .diaryDate("2026-05-23"))
         XCTAssertEqual(DateSidebarView.selectionAction(for: "my-wiki"), .knowledgeOntology)
@@ -635,6 +659,7 @@ final class DailyMarkdownViewTests: XCTestCase {
             isKnowledgeOntologySelected: false,
             todoOpenCount: 0,
             onOpenHome: {},
+            onOpenSearch: {},
             onSelectDiaryDate: { _ in },
             onOpenTodo: {},
             onSelectOtherSource: { _ in },
@@ -923,6 +948,71 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.initialScrollParagraphID, "daily-journal-1")
     }
 
+    func testPresentationUsesSearchQueryAsScrollTarget() {
+        let first = DailyStoryParagraph(
+            id: "daily-journal-0",
+            text: "First paragraph",
+            sourceEventIDs: [UUID()]
+        )
+        let second = DailyStoryParagraph(
+            id: "daily-journal-1",
+            text: "中间夹着 啥玩意 这个表达。",
+            sourceEventIDs: [UUID()]
+        )
+        let story = DailyStory(
+            dayKey: "2026-04-08",
+            generatedAt: Date(timeIntervalSince1970: 0),
+            sections: [
+                DailyStorySection(id: "summary", title: "Summary", paragraphs: [first, second])
+            ]
+        )
+
+        let presentation = DailyMarkdownPresentation(
+            story: story,
+            selectedParagraphID: "daily-journal-0",
+            searchQuery: "啥玩意"
+        )
+
+        XCTAssertEqual(presentation.searchHighlightedParagraphID, "daily-journal-1")
+        XCTAssertEqual(presentation.scrollTargetParagraphID, "daily-journal-1")
+        XCTAssertEqual(presentation.initialScrollParagraphID, "daily-journal-1")
+    }
+
+    func testPresentationUsesSearchQueryTokenAsScrollTarget() {
+        let first = DailyStoryParagraph(
+            id: "daily-journal-0",
+            text: "First paragraph",
+            sourceEventIDs: [UUID()]
+        )
+        let second = DailyStoryParagraph(
+            id: "daily-journal-1",
+            text: "这里单独出现了 taxonomy 这个词。",
+            sourceEventIDs: [UUID()]
+        )
+        let story = DailyStory(
+            dayKey: "2026-04-08",
+            generatedAt: Date(timeIntervalSince1970: 0),
+            sections: [
+                DailyStorySection(id: "summary", title: "Summary", paragraphs: [first, second])
+            ]
+        )
+
+        let presentation = DailyMarkdownPresentation(
+            story: story,
+            searchQuery: "follow taxonomy"
+        )
+
+        XCTAssertEqual(presentation.searchHighlightedParagraphID, "daily-journal-1")
+        XCTAssertEqual(presentation.scrollTargetParagraphID, "daily-journal-1")
+    }
+
+    func testTodoInboxHighlightPresentationMarksOnlyMatchedItem() {
+        let presentation = TodoInboxHighlightPresentation(highlightedItemID: "todo-2")
+
+        XCTAssertFalse(presentation.isHighlighted(itemID: "todo-1"))
+        XCTAssertTrue(presentation.isHighlighted(itemID: "todo-2"))
+    }
+
     func testPresentationFallsBackToFirstParagraphWhenSelectionMissing() {
         let first = DailyStoryParagraph(
             id: "daily-journal-0",
@@ -983,6 +1073,46 @@ final class DailyMarkdownViewTests: XCTestCase {
         }
         XCTAssertEqual(tasks.map(\.isCompleted), [false, true])
         XCTAssertEqual(tasks.map(\.content.plainText), ["跟进会议", "完成文档"])
+    }
+
+    func testMarkdownSearchHighlightPresentationMatchesListBlocks() {
+        let blocks = DailyMarkdownRenderer.blocks(from: """
+        # Project Notes
+
+        - First
+        - 啥玩意 follow-up
+        """)
+
+        XCTAssertFalse(MarkdownSearchHighlightPresentation.blockContainsQuery(blocks[0], query: "啥玩意"))
+        XCTAssertTrue(MarkdownSearchHighlightPresentation.blockContainsQuery(blocks[1], query: "啥玩意"))
+    }
+
+    func testSearchHighlightedTextPresentationHighlightsAllKeywordOccurrences() {
+        let highlighted = SearchHighlightedTextPresentation.highlightedAttributedString(
+            "今天提到啥玩意，后来又说啥玩意。",
+            query: "啥玩意"
+        )
+
+        let highlightedTexts = highlighted.runs.compactMap { run -> String? in
+            guard run.backgroundColor != nil else { return nil }
+            return String(highlighted[run.range].characters)
+        }
+
+        XCTAssertEqual(highlightedTexts, ["啥玩意", "啥玩意"])
+    }
+
+    func testSearchHighlightedTextPresentationHighlightsCaseInsensitiveMatches() {
+        let highlighted = SearchHighlightedTextPresentation.highlightedAttributedString(
+            "Follow Up follow up",
+            query: "follow"
+        )
+
+        let highlightedTexts = highlighted.runs.compactMap { run -> String? in
+            guard run.backgroundColor != nil else { return nil }
+            return String(highlighted[run.range].characters)
+        }
+
+        XCTAssertEqual(highlightedTexts, ["Follow", "follow"])
     }
 
     func testDailyTodoCandidateExtractorReadsOpenTasksFromTodoParagraphs() throws {

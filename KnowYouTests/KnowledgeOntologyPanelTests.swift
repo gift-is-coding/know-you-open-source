@@ -169,6 +169,22 @@ final class KnowledgeOntologyPanelTests: XCTestCase {
         XCTAssertEqual(MainWindowWorkspacePolicy.privacyMessageFontSize, 14)
     }
 
+    func testGlobalSearchCommandUsesStandardFindShortcutAndMainSearchRoute() {
+        XCTAssertEqual(GlobalSearchCommandPolicy.menuTitle, "Search")
+        XCTAssertEqual(GlobalSearchCommandPolicy.keyboardEquivalent, "f")
+        XCTAssertEqual(GlobalSearchCommandPolicy.notificationName, .globalSearchRequested)
+    }
+
+    func testGlobalSearchExecutesOnlyAfterExplicitSubmit() {
+        XCTAssertTrue(GlobalSearchExecutionPolicy.requiresExplicitSubmit)
+        XCTAssertEqual(GlobalSearchExecutionPolicy.submitLabel, "Search")
+        XCTAssertNil(GlobalSearchExecutionPolicy.queryForExecution(draftQuery: "entity", submittedQuery: ""))
+        XCTAssertEqual(
+            GlobalSearchExecutionPolicy.queryForExecution(draftQuery: "entity", submittedQuery: " concept "),
+            "concept"
+        )
+    }
+
     func testDetailPresentationShowsMarkdownPageByDefault() {
         let entry = MyWikiEntry(
             id: "adam-wu",

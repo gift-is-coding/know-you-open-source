@@ -142,6 +142,20 @@ struct KnowYouApp: App {
                     KnowYouMainWindowPresenter.shared.showConfiguredWindowIfNeeded()
                 }
                 .keyboardShortcut("n", modifiers: .command)
+
+                Button(GlobalSearchCommandPolicy.menuTitle) {
+                    KnowYouMainWindowPresenter.shared.showConfiguredWindowIfNeeded()
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(
+                            name: GlobalSearchCommandPolicy.notificationName,
+                            object: nil
+                        )
+                    }
+                }
+                .keyboardShortcut(
+                    KeyEquivalent(Character(GlobalSearchCommandPolicy.keyboardEquivalent)),
+                    modifiers: .command
+                )
             }
         }
 

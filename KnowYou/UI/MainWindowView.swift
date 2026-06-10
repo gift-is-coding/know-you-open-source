@@ -3,9 +3,95 @@ import AppKit
 
 private enum MainWindowMode {
     case home
+    case search
     case journal
     case knowledgeOntology
     case networkingComingSoon
+}
+
+private struct GlobalSearchNavigationTarget: Equatable {
+    enum Kind: Equatable {
+        case todo
+        case diary
+        case myWiki
+        case source
+    }
+
+    let kind: Kind
+    let query: String
+    let todoID: String?
+    let dayKey: String?
+    let connectorInstanceID: String?
+    let documentID: String?
+    let myWikiCategoryID: String?
+    let myWikiEntryID: String?
+
+    static func make(
+        from result: GlobalSearchResult,
+        query: String
+    ) -> GlobalSearchNavigationTarget? {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedQuery.isEmpty == false else { return nil }
+
+        switch result.kind {
+        case .todo:
+            guard let todoID = result.todoID else { return nil }
+            return GlobalSearchNavigationTarget(
+                kind: .todo,
+                query: normalizedQuery,
+                todoID: todoID,
+                dayKey: result.dayKey,
+                connectorInstanceID: nil,
+                documentID: nil,
+                myWikiCategoryID: nil,
+                myWikiEntryID: nil
+            )
+        case .diary:
+            guard let dayKey = result.dayKey else { return nil }
+            return GlobalSearchNavigationTarget(
+                kind: .diary,
+                query: normalizedQuery,
+                todoID: nil,
+                dayKey: dayKey,
+                connectorInstanceID: nil,
+                documentID: nil,
+                myWikiCategoryID: nil,
+                myWikiEntryID: nil
+            )
+        case .myWiki:
+            guard let categoryID = result.myWikiCategoryID,
+                  let entryID = result.myWikiEntryID
+            else {
+                return nil
+            }
+            return GlobalSearchNavigationTarget(
+                kind: .myWiki,
+                query: normalizedQuery,
+                todoID: nil,
+                dayKey: nil,
+                connectorInstanceID: nil,
+                documentID: nil,
+                myWikiCategoryID: categoryID,
+                myWikiEntryID: entryID
+            )
+        case .source:
+            guard let connectorInstanceID = result.connectorInstanceID,
+                  let documentID = result.documentID
+            else {
+                return nil
+            }
+            return GlobalSearchNavigationTarget(
+                kind: .source,
+                query: normalizedQuery,
+                todoID: nil,
+                dayKey: nil,
+                connectorInstanceID: connectorInstanceID,
+                documentID: documentID,
+                myWikiCategoryID: nil,
+                myWikiEntryID: nil
+            )
+        }
+    }
 }
 
 enum MainWindowWorkspacePolicy {
@@ -15,6 +101,22 @@ enum MainWindowWorkspacePolicy {
     static let showsPrivacyMessageOutsideEngineSelector = true
     static let privacyMessage = "Your data stays local. No backend server."
     static let privacyMessageFontSize: CGFloat = 14
+}
+
+enum GlobalSearchCommandPolicy {
+    static let menuTitle = "Search"
+    static let keyboardEquivalent = "f"
+    static let notificationName = Notification.Name.globalSearchRequested
+}
+
+enum GlobalSearchExecutionPolicy {
+    static let requiresExplicitSubmit = true
+    static let submitLabel = "Search"
+
+    static func queryForExecution(draftQuery: String, submittedQuery: String) -> String? {
+        let normalizedSubmittedQuery = submittedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalizedSubmittedQuery.isEmpty ? nil : normalizedSubmittedQuery
+    }
 }
 
 struct MainWindowView: View {
@@ -27,6 +129,10 @@ struct MainWindowView: View {
     @State private var isTestingAPIConnection = false
     @State private var mode: MainWindowMode = .home
     @State private var selectedMyWikiEntry: MyWikiEntry?
+    @State private var globalSearchQuery = ""
+    @State private var submittedGlobalSearchQuery = ""
+    @State private var activeGlobalSearchTarget: GlobalSearchNavigationTarget?
+    @FocusState private var isGlobalSearchFieldFocused: Bool
     let showsOnboardingEngineButton: Bool
     let onOpenEngineSetup: (() -> Void)?
     let onStoryParagraphTap: ((String) -> Void)?
@@ -159,6 +265,9 @@ struct MainWindowView: View {
         .onAppear {
             startKeyMonitor()
         }
+        .onReceive(NotificationCenter.default.publisher(for: GlobalSearchCommandPolicy.notificationName)) { _ in
+            openGlobalSearch(focusingField: true)
+        }
         .onDisappear {
             stopKeyMonitor()
         }
@@ -171,36 +280,47 @@ struct MainWindowView: View {
             selectedItemID: selectedSidebarItemID,
             knowledgeImportConfig: appState.knowledgeImportConfig,
             knowledgeDocumentsByConnector: appState.knowledgeDocumentsByConnector,
-            isActive: mode == .home || mode == .knowledgeOntology || mode == .networkingComingSoon || (mode == .journal && appState.readerFocus == .dateList),
+            isActive: mode == .home || mode == .search || mode == .knowledgeOntology || mode == .networkingComingSoon || (mode == .journal && appState.readerFocus == .dateList),
             isKnowledgeOntologySelected: mode == .knowledgeOntology,
             todoOpenCount: appState.openTodoCount,
             onOpenHome: {
+                clearGlobalSearchTarget()
                 mode = .home
             },
+            onOpenSearch: {
+                openGlobalSearch(focusingField: true)
+            },
             onSelectDiaryDate: { dayKey in
+                clearGlobalSearchTarget()
                 mode = .journal
                 appState.selectDate(dayKey)
             },
             onOpenTodo: {
+                clearGlobalSearchTarget()
                 mode = .journal
                 appState.openTodoInbox()
             },
             onSelectOtherSource: { focusAddConnector in
+                clearGlobalSearchTarget()
                 mode = .journal
                 appState.selectOtherSourceManager(focusAddConnector: focusAddConnector)
             },
             onSelectKnowledgeConnector: { instanceID in
+                clearGlobalSearchTarget()
                 mode = .journal
                 appState.selectKnowledgeConnector(instanceID: instanceID)
             },
             onSelectKnowledgeDocument: { instanceID, documentID in
+                clearGlobalSearchTarget()
                 mode = .journal
                 appState.selectKnowledgeDocument(connectorInstanceID: instanceID, documentID: documentID)
             },
             onOpenKnowledgeOntology: {
+                clearGlobalSearchTarget()
                 mode = .knowledgeOntology
             },
             onOpenNetworkingComingSoon: {
+                clearGlobalSearchTarget()
                 mode = .networkingComingSoon
             },
             onOpenSyncMemory: openSyncMemoryPanel
@@ -259,6 +379,8 @@ struct MainWindowView: View {
     private var mainContentPane: some View {
         if mode == .home {
             homeDashboardContent
+        } else if mode == .search {
+            globalSearchContent
         } else if mode == .knowledgeOntology {
             knowledgeOntologyContent
         } else if mode == .networkingComingSoon {
@@ -270,6 +392,8 @@ struct MainWindowView: View {
             case .todo:
                 TodoInboxView(
                     items: appState.todoItems,
+                    highlightedItemID: activeTodoSearchTargetID,
+                    searchQuery: activeTodoSearchQuery,
                     reviewCandidates: appState.todoReviewCandidates,
                     closeRecommendations: appState.todoCloseRecommendations,
                     automationStatusMessage: appState.todoAutomationStatusMessage,
@@ -322,10 +446,12 @@ struct MainWindowView: View {
             missingRecentDayCount: appState.missingRecentHistoryBootstrapDayKeys.count,
             jobSnapshots: appState.automationJobSnapshots,
             onOpenToday: {
+                clearGlobalSearchTarget()
                 mode = .journal
                 appState.selectDate(ISO8601DayKey.format(Date()))
             },
             onGenerateToday: {
+                clearGlobalSearchTarget()
                 mode = .journal
                 appState.selectDate(ISO8601DayKey.format(Date()))
                 Task { @MainActor in
@@ -333,17 +459,21 @@ struct MainWindowView: View {
                 }
             },
             onOpenTodo: {
+                clearGlobalSearchTarget()
                 mode = .journal
                 appState.openTodoInbox()
             },
             onOpenMyWiki: {
+                clearGlobalSearchTarget()
                 mode = .knowledgeOntology
             },
             onAddSources: {
+                clearGlobalSearchTarget()
                 mode = .journal
                 appState.selectOtherSourceManager(focusAddConnector: true)
             },
             onOpenNetworking: {
+                clearGlobalSearchTarget()
                 mode = .networkingComingSoon
             },
             onGenerateRecentHistory: {
@@ -354,6 +484,112 @@ struct MainWindowView: View {
 
     private var networkingComingSoonContent: some View {
         NetworkingPreviewView(presentation: NetworkingPreviewPresentation())
+    }
+
+    private var globalSearchContent: some View {
+        let response = globalSearchResponse
+
+        return VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                    TextField("Search diary, sources, todo", text: $globalSearchQuery)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 22, weight: .medium))
+                        .focused($isGlobalSearchFieldFocused)
+                        .onSubmit {
+                            submitGlobalSearch()
+                        }
+                        .accessibilityIdentifier("global-search-field")
+                    if globalSearchQuery.isEmpty == false {
+                        Button {
+                            clearGlobalSearchInput()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Clear")
+                        .accessibilityLabel("Clear Search")
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(nsColor: .textBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                )
+
+                Text(globalSearchSummary(response))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(24)
+
+            Divider()
+
+            if submittedGlobalSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                ContentUnavailableView(
+                    "Search across your workspace",
+                    systemImage: "magnifyingglass",
+                    description: Text("Diary, My Wiki, Sources, and Todo are searched locally on this Mac.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if response.results.isEmpty {
+                ContentUnavailableView(
+                    "No results",
+                    systemImage: "doc.text.magnifyingglass",
+                    description: Text("Try another keyword or phrase.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 18) {
+                        ForEach(response.groups) { group in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(group.title)
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+
+                                VStack(spacing: 0) {
+                                    ForEach(group.results) { result in
+                                        Button {
+                                            openGlobalSearchResult(result)
+                                        } label: {
+                                            globalSearchResultRow(result)
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        if result.id != group.results.last?.id {
+                                            Divider()
+                                                .padding(.leading, 42)
+                                        }
+                                    }
+                                }
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(Color(nsColor: .textBackgroundColor))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                )
+                            }
+                        }
+                    }
+                    .padding(24)
+                }
+            }
+        }
+        .navigationTitle("Search")
+        .onAppear {
+            focusGlobalSearchFieldSoon()
+        }
     }
 
     private var knowledgeOntologyContent: some View {
@@ -411,6 +647,7 @@ struct MainWindowView: View {
             refreshLogNotice: appState.refreshLogNotice(for: appState.selectedDate),
             isGenerating: appState.isGeneratingJournal(for: appState.selectedDate),
             isActive: appState.readerFocus == .storyParagraphs,
+            searchQuery: activeDiarySearchQuery,
             todoCandidates: appState.selectedTodoCandidatePresentations,
             onSelectParagraph: { paragraphID in
                 appState.focusStoryParagraphs()
@@ -443,7 +680,7 @@ struct MainWindowView: View {
 
     private var detailPane: some View {
         Group {
-            if mode == .home || mode == .knowledgeOntology || mode == .networkingComingSoon {
+            if mode == .home || mode == .search || mode == .knowledgeOntology || mode == .networkingComingSoon {
                 Color.clear
                     .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 0)
             } else {
@@ -467,6 +704,8 @@ struct MainWindowView: View {
     private var selectedSidebarItemID: String? {
         if mode == .home {
             return "home"
+        } else if mode == .search {
+            return "search"
         } else if mode == .knowledgeOntology {
             return "my-wiki"
         } else if mode == .networkingComingSoon {
@@ -489,8 +728,186 @@ struct MainWindowView: View {
         }
     }
 
+    private var activeTodoSearchTargetID: String? {
+        guard activeGlobalSearchTarget?.kind == .todo else { return nil }
+        return activeGlobalSearchTarget?.todoID
+    }
+
+    private var activeTodoSearchQuery: String? {
+        guard activeGlobalSearchTarget?.kind == .todo else { return nil }
+        return activeGlobalSearchTarget?.query
+    }
+
+    private var activeDiarySearchQuery: String? {
+        guard activeGlobalSearchTarget?.kind == .diary,
+              activeGlobalSearchTarget?.dayKey == appState.selectedDate
+        else {
+            return nil
+        }
+        return activeGlobalSearchTarget?.query
+    }
+
+    private func activeSourceSearchQuery(connectorInstanceID: String) -> String? {
+        guard activeGlobalSearchTarget?.kind == .source,
+              activeGlobalSearchTarget?.connectorInstanceID == connectorInstanceID,
+              activeGlobalSearchTarget?.documentID == appState.selectedKnowledgeDocument?.id
+        else {
+            return nil
+        }
+        return activeGlobalSearchTarget?.query
+    }
+
     private var currentEngineState: EngineIndicatorState {
         appState.engineStatuses[appState.defaultEngine]?.state ?? .gray
+    }
+
+    private var globalSearchResponse: GlobalSearchResponse {
+        guard let query = GlobalSearchExecutionPolicy.queryForExecution(
+            draftQuery: globalSearchQuery,
+            submittedQuery: submittedGlobalSearchQuery
+        ) else {
+            return GlobalSearchResponse(query: submittedGlobalSearchQuery, results: [], groups: [])
+        }
+        return GlobalSearchService().search(
+            GlobalSearchRequest(
+                query: query,
+                diaryNotes: appState.noteIndex,
+                sourceDocuments: appState.knowledgeDocumentsByConnector.values.flatMap { $0 },
+                todoItems: appState.todoItems,
+                myWikiEntries: globalSearchMyWikiEntries,
+                maxResults: 60
+            )
+        )
+    }
+
+    private var globalSearchMyWikiEntries: [MyWikiEntry] {
+        guard let knowledgeOntologyProjectRoot else { return [] }
+        return (try? MyWikiMarkdownStore().loadDashboard(projectRoot: knowledgeOntologyProjectRoot).primaryEntries) ?? []
+    }
+
+    private func globalSearchSummary(_ response: GlobalSearchResponse) -> String {
+        let query = submittedGlobalSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.isEmpty == false else {
+            return "Search diary, My Wiki, sources, and Todo."
+        }
+        if response.totalResultCount == 1 {
+            return "1 result"
+        }
+        return "\(response.totalResultCount) results"
+    }
+
+    private func globalSearchResultRow(_ result: GlobalSearchResult) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: globalSearchIcon(for: result.kind))
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    Text(SearchHighlightedTextPresentation.highlightedAttributedString(
+                        result.title,
+                        query: submittedGlobalSearchQuery
+                    ))
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(globalSearchKindTitle(for: result.kind))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                Text(SearchHighlightedTextPresentation.highlightedAttributedString(
+                    result.snippet,
+                    query: submittedGlobalSearchQuery
+                ))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+            }
+
+            Spacer(minLength: 12)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+    }
+
+    private func globalSearchIcon(for kind: GlobalSearchResult.Kind) -> String {
+        switch kind {
+        case .todo:
+            return "checklist"
+        case .diary:
+            return "book.closed"
+        case .source:
+            return "doc.richtext"
+        case .myWiki:
+            return "square.stack.3d.up"
+        }
+    }
+
+    private func globalSearchKindTitle(for kind: GlobalSearchResult.Kind) -> String {
+        switch kind {
+        case .todo:
+            return "Todo"
+        case .diary:
+            return "Diary"
+        case .source:
+            return "Source"
+        case .myWiki:
+            return "My Wiki"
+        }
+    }
+
+    private func openGlobalSearchResult(_ result: GlobalSearchResult) {
+        activeGlobalSearchTarget = GlobalSearchNavigationTarget.make(
+            from: result,
+            query: submittedGlobalSearchQuery
+        )
+
+        switch result.kind {
+        case .todo:
+            mode = .journal
+            appState.openTodoInbox()
+        case .diary:
+            guard let dayKey = result.dayKey else { return }
+            mode = .journal
+            appState.selectDate(dayKey)
+        case .myWiki:
+            guard let categoryID = result.myWikiCategoryID,
+                  let entryID = result.myWikiEntryID
+            else {
+                return
+            }
+            mode = .knowledgeOntology
+            selectedMyWikiEntry = globalSearchMyWikiEntries.first {
+                $0.category.id == categoryID && $0.id == entryID
+            }
+        case .source:
+            guard let connectorInstanceID = result.connectorInstanceID,
+                  let documentID = result.documentID
+            else {
+                return
+            }
+            mode = .journal
+            appState.selectKnowledgeDocument(connectorInstanceID: connectorInstanceID, documentID: documentID)
+        }
+    }
+
+    private func clearGlobalSearchTarget() {
+        activeGlobalSearchTarget = nil
+    }
+
+    private func clearGlobalSearchInput() {
+        globalSearchQuery = ""
+        submittedGlobalSearchQuery = ""
+        clearGlobalSearchTarget()
+    }
+
+    private func submitGlobalSearch() {
+        submittedGlobalSearchQuery = globalSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        clearGlobalSearchTarget()
     }
 
     private var knowledgeImportEnabledBinding: Binding<Bool> {
@@ -554,6 +971,11 @@ struct MainWindowView: View {
 
     @MainActor
     private func handleKeyEvent(_ event: NSEvent, appState: AppState) -> Bool {
+        if isGlobalSearchShortcut(event) {
+            openGlobalSearch(focusingField: true)
+            return true
+        }
+
         switch appState.readerFocus {
         case .dateList:
             switch event.keyCode {
@@ -571,6 +993,33 @@ struct MainWindowView: View {
             case 53:  appState.handleReaderExit();      return true  // Escape
             default:  return false
             }
+        }
+    }
+
+    private func isGlobalSearchShortcut(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.contains(.command),
+              flags.contains(.option) == false,
+              flags.contains(.control) == false,
+              event.charactersIgnoringModifiers?.lowercased() == GlobalSearchCommandPolicy.keyboardEquivalent
+        else {
+            return false
+        }
+        return true
+    }
+
+    private func openGlobalSearch(focusingField: Bool) {
+        clearGlobalSearchTarget()
+        mode = .search
+        if focusingField {
+            focusGlobalSearchFieldSoon()
+        }
+    }
+
+    private func focusGlobalSearchFieldSoon() {
+        Task { @MainActor in
+            await Task.yield()
+            isGlobalSearchFieldFocused = true
         }
     }
 
@@ -624,7 +1073,8 @@ struct MainWindowView: View {
                         documents: appState.selectedKnowledgeDocuments,
                         selectedDocumentID: appState.selectedKnowledgeDocument?.id,
                         selectedMarkdown: appState.selectedKnowledgeDocumentMarkdown,
-                        statusMessage: appState.knowledgeImportStatusMessage
+                        statusMessage: appState.knowledgeImportStatusMessage,
+                        searchQuery: activeSourceSearchQuery(connectorInstanceID: connectorInstanceID)
                     )
                 )
             } else {

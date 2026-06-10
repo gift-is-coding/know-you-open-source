@@ -92,6 +92,22 @@ final class KnowledgeSourceContentViewTests: XCTestCase {
         XCTAssertNil(presentation.markdown)
     }
 
+    func testPresentationCarriesSearchQueryForSelectedDocument() {
+        let connector = makeConnector()
+        let document = makeDocument(id: "doc-1", title: "Project Plan")
+
+        let presentation = KnowledgeSourceContentPresentation(
+            connector: connector,
+            documents: [document],
+            selectedDocumentID: "doc-1",
+            selectedMarkdown: "# Project Plan\n\n啥玩意 follow-up",
+            statusMessage: nil,
+            searchQuery: " 啥玩意 "
+        )
+
+        XCTAssertEqual(presentation.searchQuery, "啥玩意")
+    }
+
     func testPresentationShowsDisabledStateWithoutRefreshAction() {
         let connector = KnowledgeConnectorInstanceConfig(
             id: "drive-main",

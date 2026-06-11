@@ -7,10 +7,15 @@ struct NetworkingCockpitView: View {
 
     @State private var selectedProfileID = "profile-career"
     @State private var selectedPlatformID = "knowyou-careers"
-    @State private var isEnabled = false
+    @State private var activationStatus: NetworkingActivationViewStatus = .pending
     @State private var generatedDrafts: [String: NetworkingProfileDraft] = [:]
     @State private var generationStatus: NetworkingGenerationStatus = .idle
-    @State private var activationMessage: String?
+    @State private var approvedProfileIDs: Set<String> = []
+    @State private var attemptedAutoGenerationProfileIDs: Set<String> = []
+    @State private var customUseCase = ""
+    @State private var customImageDirection = ""
+    @State private var customTone = "warm"
+    @State private var customRedactionNotes = ""
 
     private let activePersonName = "Tianfu Wu"
     private let profileGenerationTimeoutNanoseconds: UInt64 = 45_000_000_000
@@ -19,21 +24,33 @@ struct NetworkingCockpitView: View {
         profiles.first { $0.id == selectedProfileID } ?? profiles[0]
     }
 
+    private var selectedPlatform: NetworkingPlatformConfiguration {
+        platforms.first { $0.id == selectedPlatformID } ?? platforms[0]
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 privacyNotice
                 generateProfilesStep
-                connectCommunitiesStep
-                messagesStep
+                communitiesAndMessagesStep
             }
-            .padding(28)
+            .padding(.horizontal, 28)
+            .padding(.bottom, 28)
+        }
+        .safeAreaInset(edge: .top) {
+            Color.clear.frame(height: 18)
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier("networking-cockpit-native")
         .task {
-            loadActivationState()
+            ensureActivationState()
+            loadApprovalState()
+            autoGenerateSelectedProfileIfNeeded()
+        }
+        .onChange(of: selectedProfileID) { _, _ in
+            autoGenerateSelectedProfileIfNeeded()
         }
     }
 
@@ -42,7 +59,7 @@ struct NetworkingCockpitView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Networking")
                     .font(.largeTitle.weight(.semibold))
-                Text("Turn your local My Wiki context into scene-specific profiles, connect them to Know You communities, and let your local agent bring back the moments worth your attention.")
+                Text("Create public-facing profiles from local My Wiki context, approve what can be shared, then let your local agent work inside selected Know You communities.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -51,19 +68,15 @@ struct NetworkingCockpitView: View {
             Spacer(minLength: 18)
 
             VStack(alignment: .trailing, spacing: 10) {
-                Button {
-                    enableNetworking()
-                } label: {
-                    Label(isEnabled ? "Networking enabled" : "Enable Networking", systemImage: isEnabled ? "checkmark.circle.fill" : "power")
-                }
-                .buttonStyle(.borderedProminent)
+                StatusPill(text: activationStatus.title, color: activationStatus.color)
 
-                if let activationMessage {
-                    Text(activationMessage)
+                if let message = activationStatus.message {
+                    Text(message)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(activationStatus.isFailure ? .red : .secondary)
                         .multilineTextAlignment(.trailing)
                         .frame(maxWidth: 260, alignment: .trailing)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 HStack(spacing: 8) {
@@ -90,7 +103,7 @@ struct NetworkingCockpitView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Privacy and redaction")
                     .font(.headline)
-                Text("Profiles are generated from local My Wiki context with sensitive details redacted. Raw evidence, private drafts, account details, and deep matching reasons stay on this Mac until you explicitly approve what becomes public.")
+                Text("Profiles are generated from local My Wiki context with sensitive details redacted. Contact info, account handles, exact locations, private relationships, health or finance details, raw diary or notification text, tokens, deep matching reasons, and unconfirmed claims stay private unless you rewrite and approve them.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -109,111 +122,117 @@ struct NetworkingCockpitView: View {
         StepPanel(
             index: 1,
             title: "Generate profiles",
-            subtitle: "Choose a default scenario or create a custom one. The prompt stays behind the scenes; you review the generated result first."
+            subtitle: "Choose a default scenario or create a custom one. Default profiles start from a hidden prompt plus My Wiki; custom profiles use the fields below to shape that prompt."
         ) {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 12) {
-                    ForEach(profiles) { profile in
-                        Button {
-                            selectedProfileID = profile.id
-                        } label: {
-                            ProfileScenarioCard(
-                                profile: profile,
-                                isSelected: profile.id == selectedProfileID
-                            )
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(profiles) { profile in
+                            Button {
+                                selectedProfileID = profile.id
+                            } label: {
+                                ProfileScenarioCard(
+                                    profile: profile,
+                                    isSelected: profile.id == selectedProfileID,
+                                    isApproved: approvedProfileIDs.contains(profile.id),
+                                    hasDraft: generatedDrafts[profile.id] != nil
+                                )
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
-
-                    Button {
-                        selectedProfileID = "profile-custom"
-                    } label: {
-                        CustomScenarioCard(isSelected: selectedProfileID == "profile-custom")
-                    }
-                    .buttonStyle(.plain)
+                    .padding(.vertical, 2)
                 }
 
-                HStack(spacing: 10) {
+                if selectedProfileID == "profile-custom" {
+                    CustomProfileEditor(
+                        useCase: $customUseCase,
+                        imageDirection: $customImageDirection,
+                        tone: $customTone,
+                        redactionNotes: $customRedactionNotes,
+                        redactionItems: Self.defaultRedactionItems,
+                        onGenerate: {
+                            generateSelectedProfile()
+                        },
+                        isGenerating: generationStatus.isGenerating
+                    )
+                }
+
+                HStack(alignment: .top, spacing: 12) {
                     Button {
                         generateSelectedProfile()
                     } label: {
                         Label(
-                            generationStatus.isGenerating ? "Generating..." : "Generate from My Wiki",
-                            systemImage: generationStatus.isGenerating ? "hourglass" : "sparkles"
+                            generationStatus.isGenerating ? "Generating..." : refreshButtonTitle,
+                            systemImage: generationStatus.isGenerating ? "hourglass" : "arrow.triangle.2.circlepath"
                         )
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(generationStatus.isGenerating)
 
-                    if let message = generationStatus.message {
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(generationStatus.isFailure ? .red : .secondary)
-                    }
+                    GenerationStatusCard(
+                        status: generationStatus,
+                        onRetry: {
+                            generateSelectedProfile()
+                        }
+                    )
                 }
 
                 GeneratedResultPreview(
                     profile: selectedProfile,
-                    draft: generatedDrafts[selectedProfile.id]
+                    draft: generatedDrafts[selectedProfile.id],
+                    isApproved: approvedProfileIDs.contains(selectedProfile.id),
+                    isGenerating: generationStatus.isGenerating,
+                    onApprove: approveSelectedProfile,
+                    onRegenerate: generateSelectedProfile
                 )
             }
         }
     }
 
-    private var connectCommunitiesStep: some View {
+    private var communitiesAndMessagesStep: some View {
         StepPanel(
             index: 2,
-            title: "Connect communities",
-            subtitle: "Each community uses one approved profile. You can change the profile before the local agent starts posting or replying."
+            title: "Communities and messages",
+            subtitle: "Each community is linked to one approved profile. Choose a community above and the inbox below follows that source."
         ) {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 14)], spacing: 14) {
-                ForEach(platforms) { platform in
-                    CommunityBindingCard(
-                        platform: platform,
-                        profile: platform.assignedProfile(in: profiles) ?? profiles[0],
-                        isSelected: platform.id == selectedPlatformID,
-                        isEnabled: isEnabled
-                    ) {
-                        selectedPlatformID = platform.id
+            VStack(alignment: .leading, spacing: 16) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 14)], spacing: 14) {
+                    ForEach(platforms) { platform in
+                        let profile = platform.assignedProfile(in: profiles) ?? profiles[0]
+                        CommunityBindingCard(
+                            platform: platform,
+                            profile: profile,
+                            isSelected: platform.id == selectedPlatformID,
+                            isAgentReady: activationStatus.isReady,
+                            isProfileApproved: approvedProfileIDs.contains(profile.id)
+                        ) {
+                            selectedPlatformID = platform.id
+                        }
                     }
                 }
+
+                SelectedCommunityDetail(
+                    platform: selectedPlatform,
+                    profile: selectedPlatform.assignedProfile(in: profiles) ?? profiles[0],
+                    isAgentReady: activationStatus.isReady,
+                    isProfileApproved: approvedProfileIDs.contains(selectedPlatform.assignedProfileID),
+                    items: filteredInboxItems
+                )
             }
         }
     }
 
-    private var messagesStep: some View {
-        StepPanel(
-            index: 3,
-            title: "Review messages and leads",
-            subtitle: "Highlights, inbound replies, outbound agent actions, and activity logs stay grouped by community. Human action remains the final step."
-        ) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text("Community inbox")
-                        .font(.headline)
-                    Spacer()
-                    Picker("Community", selection: $selectedPlatformID) {
-                        ForEach(platforms) { platform in
-                            Text(platform.name).tag(platform.id)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 220)
-                }
-
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 270), spacing: 12)], spacing: 12) {
-                    ForEach(filteredInboxItems) { item in
-                        InboxCard(item: item)
-                    }
-                }
-            }
-        }
+    private var refreshButtonTitle: String {
+        selectedProfileID == "profile-custom" ? "Generate custom profile" : "Refresh from My Wiki"
     }
 
     private var filteredInboxItems: [NetworkingCockpitItem] {
-        let items = presentation.sections.flatMap(\.items)
+        let items = presentation.items(forPlatformID: selectedPlatformID)
         guard items.isEmpty == false else {
-            return fallbackInboxItems
+            return fallbackInboxItems.filter { item in
+                item.platformID == selectedPlatformID
+            }
         }
         return items
     }
@@ -226,7 +245,17 @@ struct NetworkingCockpitView: View {
                 title: "Worth reaching out",
                 publicSummary: "A founder is looking for someone with local-first agent product experience in Know You Careers.",
                 privateReason: "My Wiki connects this to current KnowYou Networking and agent runtime work.",
-                publicReferenceID: "post-careers-1"
+                publicReferenceID: "post-careers-1",
+                platformID: "knowyou-careers"
+            ),
+            NetworkingCockpitItem(
+                id: "jobs-activity",
+                direction: .activity,
+                title: "Agent prepared a reply",
+                publicSummary: "The local agent drafted a labeled AI comment as Tianfu Wu · Career / Hiring · AI.",
+                privateReason: "Written through the local Networking MCP after activation and token permission.",
+                publicReferenceID: "comment-agent-1",
+                platformID: "knowyou-careers"
             ),
             NetworkingCockpitItem(
                 id: "friends-inbound",
@@ -234,15 +263,8 @@ struct NetworkingCockpitView: View {
                 title: "Inbound interaction",
                 publicSummary: "Someone replied to the Friends profile with hiking, film photography, and small weekend gatherings.",
                 privateReason: "Lifestyle overlap is high; source evidence stays local.",
-                publicReferenceID: "comment-friends-1"
-            ),
-            NetworkingCockpitItem(
-                id: "agent-activity",
-                direction: .activity,
-                title: "Agent replied",
-                publicSummary: "The local agent posted a labeled AI comment as Tianfu Wu · Career / Hiring · AI.",
-                privateReason: "Written through the local Networking MCP after activation and token permission.",
-                publicReferenceID: "comment-agent-1"
+                publicReferenceID: "comment-friends-1",
+                platformID: "knowyou-friends"
             ),
         ]
     }
@@ -257,15 +279,15 @@ struct NetworkingCockpitView: View {
                 englishLabel: "Career",
                 scenarioID: NetworkingProfileScenario.jobs.id,
                 scenarioDescription: "For jobs, hiring, collaborators, and concrete work opportunities.",
-                prompt: NetworkingProfileScenario.jobs.prompt,
-                avatar: NetworkingProfileAvatar(fallbackLetter: "T", backgroundHex: "#C25A35", avatarSeed: "tianfu-career", avatarStyle: "generated-face"),
+                prompt: "Summarize work, projects, hiring needs, and collaboration context from My Wiki.",
+                avatar: NetworkingProfileAvatar(fallbackLetter: "T", backgroundHex: "#3E6C68", avatarSeed: "tianfu-career-clean-professional", avatarStyle: "generated-face"),
                 summarySections: [
-                    NetworkingProfileSummarySection(title: "Current focus", body: "Building KnowYou Networking: a local-context agent layer for profiles, hiring, collaboration, and public community interaction."),
-                    NetworkingProfileSummarySection(title: "Can own", body: "macOS SwiftUI, Next.js, Supabase, MCP agent runtime, product judgment, and end-to-end shipping across app and web."),
-                    NetworkingProfileSummarySection(title: "Best matches", body: "Founding engineering, design engineering, agent products, local-first AI systems, and people who want dense product context."),
+                    NetworkingProfileSummarySection(title: "Draft not generated", body: "Open this profile to generate a fresh draft from My Wiki before approval."),
+                    NetworkingProfileSummarySection(title: "Expected shape", body: "Work focus, projects you can own, hiring or job-search signals, and concrete collaboration preferences."),
+                    NetworkingProfileSummarySection(title: "Redaction", body: "Contact details, account handles, exact locations, private evidence, and uncertain claims are removed by default."),
                 ],
                 autoUpdate: true,
-                lastUpdatedLabel: "Updated from My Wiki 12h ago",
+                lastUpdatedLabel: "Draft not generated",
                 platformIDs: ["knowyou-careers"]
             ),
             NetworkingGeneratedProfile(
@@ -276,34 +298,39 @@ struct NetworkingCockpitView: View {
                 englishLabel: "Friends",
                 scenarioID: NetworkingProfileScenario.friends.id,
                 scenarioDescription: "For meeting new friends through interests, activities, and everyday rhythm.",
-                prompt: NetworkingProfileScenario.friends.prompt,
-                avatar: NetworkingProfileAvatar(fallbackLetter: "T", backgroundHex: "#5E7C66", avatarSeed: "tianfu-friends", avatarStyle: "generated-face"),
+                prompt: "Summarize social interests, activities, personality, and meeting preferences from My Wiki.",
+                avatar: NetworkingProfileAvatar(fallbackLetter: "T", backgroundHex: "#6D6FA6", avatarSeed: "tianfu-friends-soft-social", avatarStyle: "generated-face"),
                 summarySections: [
-                    NetworkingProfileSummarySection(title: "Interests", body: "Quiet dinners, long walks, films, thoughtful conversations, small activities, and real life outside product work."),
-                    NetworkingProfileSummarySection(title: "Social rhythm", body: "Prefers specific, low-pressure conversations that can unfold naturally instead of high-frequency networking."),
-                    NetworkingProfileSummarySection(title: "Best matches", body: "Local friends, activity partners, people who like building trust through small and concrete moments."),
+                    NetworkingProfileSummarySection(title: "Draft not generated", body: "Open this profile to generate a fresh draft from My Wiki before approval."),
+                    NetworkingProfileSummarySection(title: "Expected shape", body: "Interests, activities, social rhythm, and what kind of everyday friendship context is welcome."),
+                    NetworkingProfileSummarySection(title: "Redaction", body: "Private relationships, exact locations, raw diary text, and sensitive life details stay local."),
                 ],
                 autoUpdate: true,
-                lastUpdatedLabel: "Updated from My Wiki 3d ago",
+                lastUpdatedLabel: "Draft not generated",
                 platformIDs: ["knowyou-friends"]
             ),
             NetworkingGeneratedProfile(
                 id: "profile-custom",
                 personName: activePersonName,
                 displayName: activePersonName,
-                label: "Custom scenario",
+                label: "Custom profile",
                 englishLabel: "Custom",
                 scenarioID: "custom",
-                scenarioDescription: "Create a new scene by choosing goals and editing the hidden generation instruction.",
-                prompt: "Custom prompt is configured behind the scenes.",
-                avatar: NetworkingProfileAvatar(fallbackLetter: "T", backgroundHex: "#6E6A8E", avatarSeed: "tianfu-custom", avatarStyle: "generated-face"),
+                scenarioDescription: customUseCase.isEmpty ? "Create a scene-specific public profile with custom goals, image direction, tone, and redaction notes." : customUseCase,
+                prompt: customProfilePrompt,
+                avatar: NetworkingProfileAvatar(
+                    fallbackLetter: "T",
+                    backgroundHex: customImageDirection.isEmpty ? "#8A6B5F" : "#6B7C8D",
+                    avatarSeed: "tianfu-custom-\(customImageDirection)-\(customTone)",
+                    avatarStyle: "generated-face"
+                ),
                 summarySections: [
-                    NetworkingProfileSummarySection(title: "Draft mode", body: "Pick a scene, adjust the hidden instruction, and generate a new public-facing profile from My Wiki."),
-                    NetworkingProfileSummarySection(title: "Review first", body: "The generated summary stays private until you approve it for a community."),
-                    NetworkingProfileSummarySection(title: "Good for", body: "Events, research collaborators, investor conversations, small communities, or any scene that needs a different face of the same person."),
+                    NetworkingProfileSummarySection(title: "Draft not generated", body: "Fill the custom fields, then generate from My Wiki."),
+                    NetworkingProfileSummarySection(title: "Use case", body: customUseCase.isEmpty ? "A user-defined scene such as events, research collaborators, investors, or small communities." : customUseCase),
+                    NetworkingProfileSummarySection(title: "Public tone", body: customTone.capitalized),
                 ],
                 autoUpdate: false,
-                lastUpdatedLabel: "Not generated yet",
+                lastUpdatedLabel: "Draft not generated",
                 platformIDs: []
             ),
         ]
@@ -316,34 +343,45 @@ struct NetworkingCockpitView: View {
                 name: "Know You Careers",
                 subtitle: "Jobs, hiring, collaborators",
                 assignedProfileID: "profile-career",
-                status: isEnabled ? .active : .paused,
+                status: communityStatus(for: "profile-career"),
                 activity: NetworkingPlatformActivity(outbound: 3, inbound: 2, highlights: 4)
             ),
             NetworkingPlatformConfiguration(
                 id: "knowyou-friends",
-                name: "Know You Friends",
+                name: "Find Your Friends",
                 subtitle: "Interests, activities, new friends",
                 assignedProfileID: "profile-friends",
-                status: isEnabled ? .active : .paused,
+                status: communityStatus(for: "profile-friends"),
                 activity: NetworkingPlatformActivity(outbound: 1, inbound: 3, highlights: 2)
             ),
         ]
     }
 
-    private func loadActivationState() {
-        guard let projectRoot,
-              let state = NetworkingActivationStateStore().load(projectRoot: projectRoot) else {
-            isEnabled = false
-            return
-        }
-        isEnabled = state.isEnabled
-        activationMessage = state.isEnabled ? "Local agent permission is saved for this My Wiki project." : nil
+    private var customProfilePrompt: String {
+        """
+        Generate a public networking profile from local My Wiki context.
+        Use case: \(customUseCase.isEmpty ? "User-defined networking scene." : customUseCase)
+        Profile image direction: \(customImageDirection.isEmpty ? "Scene-appropriate, recognizable, and not overly literal." : customImageDirection)
+        Public tone: \(customTone)
+        Redaction notes: \(customRedactionNotes.isEmpty ? "Apply the default redaction rules." : customRedactionNotes)
+        Default redaction rules: \(Self.defaultRedactionItems.joined(separator: ", "))
+        """
     }
 
-    private func enableNetworking() {
+    private func communityStatus(for profileID: String) -> NetworkingPlatformStatus {
+        guard activationStatus.isReady else { return .paused }
+        return approvedProfileIDs.contains(profileID) ? .active : .paused
+    }
+
+    private func ensureActivationState() {
         guard let projectRoot else {
-            isEnabled = false
-            activationMessage = "My Wiki project is not ready yet."
+            activationStatus = .failed("My Wiki project is not ready yet.")
+            return
+        }
+
+        let store = NetworkingActivationStateStore()
+        if let state = store.load(projectRoot: projectRoot), state.isEnabled {
+            activationStatus = .ready
             return
         }
 
@@ -359,12 +397,42 @@ struct NetworkingCockpitView: View {
         )
 
         do {
-            try NetworkingActivationStateStore().save(state, projectRoot: projectRoot)
-            isEnabled = true
-            activationMessage = "Local agent permission saved. MCP tools can prepare AI-labeled posts and comments."
+            try store.save(state, projectRoot: projectRoot)
+            activationStatus = .ready
         } catch {
-            isEnabled = false
-            activationMessage = "Could not save local agent permission: \(error.localizedDescription)"
+            activationStatus = .failed("Could not prepare local agent permission: \(error.localizedDescription)")
+        }
+    }
+
+    private func loadApprovalState() {
+        guard let projectRoot else { return }
+        approvedProfileIDs = NetworkingProfileApprovalStateStore()
+            .load(projectRoot: projectRoot)
+            .approvedProfileIDs
+    }
+
+    private func autoGenerateSelectedProfileIfNeeded() {
+        guard generatedDrafts[selectedProfileID] == nil,
+              attemptedAutoGenerationProfileIDs.contains(selectedProfileID) == false,
+              generationStatus.isGenerating == false else {
+            return
+        }
+        attemptedAutoGenerationProfileIDs.insert(selectedProfileID)
+        generateSelectedProfile()
+    }
+
+    private func approveSelectedProfile() {
+        guard let projectRoot,
+              generatedDrafts[selectedProfile.id] != nil else {
+            return
+        }
+        let nextState = NetworkingProfileApprovalState(approvedProfileIDs: approvedProfileIDs)
+            .approving(selectedProfile.id)
+        do {
+            try NetworkingProfileApprovalStateStore().save(nextState, projectRoot: projectRoot)
+            approvedProfileIDs = nextState.approvedProfileIDs
+        } catch {
+            activationStatus = .failed("Could not save profile approval: \(error.localizedDescription)")
         }
     }
 
@@ -380,7 +448,7 @@ struct NetworkingCockpitView: View {
 
         let profile = selectedProfile
         let scenario = scenario(for: profile)
-        generationStatus = .generating
+        generationStatus = .generating(profile.id)
 
         Task {
             do {
@@ -397,7 +465,7 @@ struct NetworkingCockpitView: View {
                 }
                 await MainActor.run {
                     generatedDrafts[profile.id] = draft
-                    generationStatus = .succeeded("Generated from My Wiki. Review the draft before publishing.")
+                    generationStatus = .succeeded("Generated from My Wiki. Review and approve this draft before community automation can use it.")
                 }
             } catch {
                 await MainActor.run {
@@ -434,18 +502,79 @@ struct NetworkingCockpitView: View {
         default:
             return NetworkingProfileScenario(
                 id: "custom",
-                label: "Custom",
-                prompt: "Generate a public profile for a user-defined networking scene. Summarize only what is useful and safe to share.",
+                label: "Custom profile",
+                prompt: customProfilePrompt,
                 platformID: "",
                 description: "A user-defined scene for KnowYou Networking."
             )
         }
     }
+
+    private static let defaultRedactionItems = [
+        "contact info",
+        "account handles",
+        "exact locations",
+        "private relationships",
+        "health/finance",
+        "raw diary/notifications",
+        "tokens/account details",
+        "deep matching reasons",
+        "unconfirmed claims",
+    ]
+}
+
+private enum NetworkingActivationViewStatus: Equatable {
+    case pending
+    case ready
+    case failed(String)
+
+    var title: String {
+        switch self {
+        case .pending:
+            return "Preparing agent"
+        case .ready:
+            return "Agent ready locally"
+        case .failed:
+            return "Agent needs attention"
+        }
+    }
+
+    var message: String? {
+        switch self {
+        case .pending:
+            return "Preparing local permission for this My Wiki project."
+        case .ready:
+            return nil
+        case let .failed(message):
+            return message
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .pending:
+            return .orange
+        case .ready:
+            return .green
+        case .failed:
+            return .red
+        }
+    }
+
+    var isReady: Bool {
+        if case .ready = self { return true }
+        return false
+    }
+
+    var isFailure: Bool {
+        if case .failed = self { return true }
+        return false
+    }
 }
 
 private enum NetworkingGenerationStatus: Equatable {
     case idle
-    case generating
+    case generating(String)
     case succeeded(String)
     case failed(String)
 
@@ -518,13 +647,15 @@ private struct StepPanel<Content: View>: View {
 private struct ProfileScenarioCard: View {
     let profile: NetworkingGeneratedProfile
     let isSelected: Bool
+    let isApproved: Bool
+    let hasDraft: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
-                GeneratedFaceAvatar(avatar: profile.avatar, size: 48)
+                GeneratedFaceAvatar(avatar: profile.avatar, size: 56)
                 Spacer()
-                StatusPill(text: "default", color: .green)
+                StatusPill(text: statusTitle, color: statusColor)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -539,18 +670,30 @@ private struct ProfileScenarioCard: View {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
                     .font(.caption)
-                Text(profile.lastUpdatedLabel ?? "Ready to generate")
+                Text(profile.lastUpdatedLabel ?? "Draft not generated")
                     .font(.caption2)
                     .lineLimit(1)
             }
             .foregroundStyle(.secondary)
         }
-        .frame(width: 210, alignment: .topLeading)
-        .frame(minHeight: 154, alignment: .topLeading)
+        .frame(width: 246, alignment: .topLeading)
+        .frame(minHeight: 174, alignment: .topLeading)
         .padding(14)
         .background(Color(nsColor: .textBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(selectionStroke)
+    }
+
+    private var statusTitle: String {
+        if isApproved { return "Approved" }
+        if hasDraft { return "Needs approval" }
+        return profile.autoUpdate ? "default" : "custom"
+    }
+
+    private var statusColor: Color {
+        if isApproved { return .green }
+        if hasDraft { return .orange }
+        return profile.autoUpdate ? .blue : .gray
     }
 
     private var selectionStroke: some View {
@@ -559,51 +702,195 @@ private struct ProfileScenarioCard: View {
     }
 }
 
-private struct CustomScenarioCard: View {
-    let isSelected: Bool
+private struct CustomProfileEditor: View {
+    @Binding var useCase: String
+    @Binding var imageDirection: String
+    @Binding var tone: String
+    @Binding var redactionNotes: String
+
+    let redactionItems: [String]
+    let onGenerate: () -> Void
+    let isGenerating: Bool
+
+    private let toneOptions = ["concise", "warm", "professional", "playful"]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.12))
-                    .frame(width: 48, height: 48)
-                Image(systemName: "plus")
-                    .font(.title3.weight(.semibold))
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "slider.horizontal.3")
                     .foregroundStyle(Color.accentColor)
+                    .frame(width: 22)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Custom profile")
+                        .font(.headline)
+                    Text("Describe the public scene and the profile image direction. KnowYou will combine this with My Wiki and default redaction rules.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Custom scenario")
-                    .font(.headline)
-                Text("Choose a scene, edit the hidden instruction, then generate a new profile from My Wiki.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: 14)], spacing: 14) {
+                LabeledTextEditor(title: "Use case", text: $useCase, placeholder: "Example: meet design-minded founders at small AI product events.")
+                LabeledTextEditor(title: "Profile image direction", text: $imageDirection, placeholder: "Example: thoughtful product builder, calm, approachable, crisp.")
+                LabeledTextEditor(title: "Redaction notes", text: $redactionNotes, placeholder: "Anything extra that should never appear publicly.")
             }
 
-            StatusPill(text: "private draft", color: .gray)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Public tone")
+                    .font(.caption.weight(.semibold))
+                Picker("Public tone", selection: $tone) {
+                    ForEach(toneOptions, id: \.self) { option in
+                        Text(option.capitalized).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: 520)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Default redaction checklist")
+                    .font(.caption.weight(.semibold))
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 8)], spacing: 8) {
+                    ForEach(redactionItems, id: \.self) { item in
+                        HStack(spacing: 7) {
+                            Image(systemName: "checkmark.shield")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.green)
+                            Text(item)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(Color.green.opacity(0.07))
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    }
+                }
+            }
+
+            Button {
+                onGenerate()
+            } label: {
+                Label(isGenerating ? "Generating..." : "Generate custom profile", systemImage: isGenerating ? "hourglass" : "sparkles")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isGenerating)
         }
-        .frame(width: 210, alignment: .topLeading)
-        .frame(minHeight: 154, alignment: .topLeading)
         .padding(14)
         .background(Color(nsColor: .textBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(isSelected ? Color.accentColor.opacity(0.78) : Color(nsColor: .separatorColor).opacity(0.5), lineWidth: isSelected ? 1.6 : 1)
+                .stroke(Color.accentColor.opacity(0.28))
         )
+    }
+}
+
+private struct LabeledTextEditor: View {
+    let title: String
+    @Binding var text: String
+    let placeholder: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+            ZStack(alignment: .topLeading) {
+                if text.isEmpty {
+                    Text(placeholder)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 8)
+                }
+                TextEditor(text: $text)
+                    .font(.caption)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 74)
+                    .padding(3)
+            }
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+    }
+}
+
+private struct GenerationStatusCard: View {
+    let status: NetworkingGenerationStatus
+    let onRetry: () -> Void
+
+    var body: some View {
+        Group {
+            switch status {
+            case .idle:
+                EmptyView()
+            case .generating:
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(status.message ?? "")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .frame(maxWidth: 420, alignment: .leading)
+                .background(Color.accentColor.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            case let .succeeded(message):
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: 420, alignment: .leading)
+                    .background(Color.green.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            case let .failed(message):
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("Could not finish profile generation")
+                        .font(.caption.weight(.semibold))
+                    Text(message)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Check your Diary Engine, then retry.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Button("Retry", action: onRetry)
+                        .font(.caption)
+                        .buttonStyle(.bordered)
+                }
+                .padding(10)
+                .frame(maxWidth: 420, alignment: .leading)
+                .background(Color.red.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.red.opacity(0.18))
+                )
+            }
+        }
     }
 }
 
 private struct GeneratedResultPreview: View {
     let profile: NetworkingGeneratedProfile
     let draft: NetworkingProfileDraft?
+    let isApproved: Bool
+    let isGenerating: Bool
+    let onApprove: () -> Void
+    let onRegenerate: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 14) {
-                GeneratedFaceAvatar(avatar: profile.avatar, size: 64)
+                GeneratedFaceAvatar(avatar: profile.avatar, size: 68)
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Generated result preview")
                         .font(.caption.weight(.semibold))
@@ -613,10 +900,11 @@ private struct GeneratedResultPreview: View {
                     Text(profile.scenarioDescription)
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
                 StatusPill(text: "My Wiki + LLM", color: .green)
-                StatusPill(text: "needs approval", color: .gray)
+                StatusPill(text: approvalTitle, color: approvalColor)
             }
 
             if let draft {
@@ -631,10 +919,30 @@ private struct GeneratedResultPreview: View {
                 .padding(12)
                 .background(Color(nsColor: .controlBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                HStack(spacing: 10) {
+                    if isApproved {
+                        Label("Approved", systemImage: "checkmark.circle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.green)
+                    } else {
+                        Button("Approve profile", action: onApprove)
+                            .buttonStyle(.borderedProminent)
+                    }
+
+                    Button("Regenerate", action: onRegenerate)
+                        .buttonStyle(.bordered)
+                        .disabled(isGenerating)
+                }
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
-                    ForEach(profile.summarySections) { section in
-                        OutputSectionCard(section: section)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Draft not generated")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
+                        ForEach(profile.summarySections) { section in
+                            OutputSectionCard(section: section)
+                        }
                     }
                 }
             }
@@ -647,13 +955,24 @@ private struct GeneratedResultPreview: View {
                 .stroke(Color(nsColor: .separatorColor).opacity(0.45))
         )
     }
+
+    private var approvalTitle: String {
+        if draft == nil { return "Draft not generated" }
+        return isApproved ? "Approved" : "Needs approval"
+    }
+
+    private var approvalColor: Color {
+        if draft == nil { return .gray }
+        return isApproved ? .green : .orange
+    }
 }
 
 private struct CommunityBindingCard: View {
     let platform: NetworkingPlatformConfiguration
     let profile: NetworkingGeneratedProfile
     let isSelected: Bool
-    let isEnabled: Bool
+    let isAgentReady: Bool
+    let isProfileApproved: Bool
     let onSelect: () -> Void
 
     var body: some View {
@@ -675,7 +994,7 @@ private struct CommunityBindingCard: View {
                 Divider()
 
                 HStack(alignment: .center, spacing: 10) {
-                    GeneratedFaceAvatar(avatar: profile.avatar, size: 34)
+                    GeneratedFaceAvatar(avatar: profile.avatar, size: 38)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Matched profile")
                             .font(.caption2)
@@ -695,9 +1014,10 @@ private struct CommunityBindingCard: View {
                     PlatformStat(title: "Highlights", value: platform.activity.highlights)
                 }
 
-                Text(isEnabled ? "Agent posting is permitted through local MCP." : "Enable Networking before the agent can post or reply.")
+                Text(statusMessage)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -709,6 +1029,82 @@ private struct CommunityBindingCard: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    private var statusMessage: String {
+        guard isAgentReady else {
+            return "Local agent permission is still being prepared for this My Wiki project."
+        }
+        guard isProfileApproved else {
+            return "Approve the matched profile before agent automation starts."
+        }
+        return "Agent can use this approved profile through local MCP."
+    }
+}
+
+private struct SelectedCommunityDetail: View {
+    let platform: NetworkingPlatformConfiguration
+    let profile: NetworkingGeneratedProfile
+    let isAgentReady: Bool
+    let isProfileApproved: Bool
+    let items: [NetworkingCockpitItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                PlatformMark(name: platform.name)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(platform.name)
+                        .font(.title3.weight(.semibold))
+                    Text("Matched to \(profile.label)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                StatusPill(text: isAgentReady ? "Agent ready locally" : "Agent pending", color: isAgentReady ? .green : .orange)
+                StatusPill(text: isProfileApproved ? "Approved profile" : "Needs approval", color: isProfileApproved ? .green : .orange)
+            }
+
+            HStack(spacing: 8) {
+                PlatformStat(title: "Outbound", value: platform.activity.outbound)
+                PlatformStat(title: "Inbound", value: platform.activity.inbound)
+                PlatformStat(title: "Highlights", value: platform.activity.highlights)
+            }
+
+            Divider()
+
+            HStack {
+                Text("Messages and agent activity")
+                    .font(.headline)
+                Spacer()
+                Text(platform.id)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+            }
+
+            if items.isEmpty {
+                Text("No messages for this community yet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 270), spacing: 12)], spacing: 12) {
+                    ForEach(items) { item in
+                        InboxCard(item: item)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.accentColor.opacity(0.18))
+        )
     }
 }
 
@@ -739,7 +1135,7 @@ private struct InboxCard: View {
             }
         }
         .padding(14)
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -775,42 +1171,128 @@ private struct GeneratedFaceAvatar: View {
     }
 
     private var skinColor: Color {
-        [Color(red: 0.92, green: 0.72, blue: 0.56), Color(red: 0.78, green: 0.58, blue: 0.44), Color(red: 0.96, green: 0.80, blue: 0.66)][seedValue(modulo: 3)]
+        [
+            Color(red: 0.92, green: 0.72, blue: 0.56),
+            Color(red: 0.78, green: 0.58, blue: 0.44),
+            Color(red: 0.96, green: 0.80, blue: 0.66),
+            Color(red: 0.72, green: 0.52, blue: 0.40),
+        ][seedValue(modulo: 4)]
     }
 
     private var hairColor: Color {
-        [Color(red: 0.18, green: 0.14, blue: 0.12), Color(red: 0.30, green: 0.22, blue: 0.16), Color(red: 0.12, green: 0.18, blue: 0.20)][seedValue(modulo: 3, offset: 7)]
+        [
+            Color(red: 0.15, green: 0.12, blue: 0.10),
+            Color(red: 0.30, green: 0.22, blue: 0.16),
+            Color(red: 0.12, green: 0.18, blue: 0.20),
+            Color(red: 0.20, green: 0.16, blue: 0.24),
+        ][seedValue(modulo: 4, offset: 7)]
     }
 
     var body: some View {
         ZStack {
-            Circle()
-                .fill(baseColor.opacity(0.92))
+            backgroundShape
+                .fill(
+                    LinearGradient(
+                        colors: [baseColor.opacity(0.92), baseColor.opacity(0.62)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            decorativeLine
+                .stroke(Color.white.opacity(0.22), lineWidth: max(1, size * 0.035))
+                .frame(width: size * 0.78, height: size * 0.78)
+                .offset(x: -size * 0.06, y: -size * 0.04)
+
+            Capsule()
+                .fill(baseColor.opacity(0.95))
+                .frame(width: size * 0.50, height: size * 0.18)
+                .offset(y: size * 0.34)
 
             Circle()
                 .fill(skinColor)
-                .frame(width: size * 0.56, height: size * 0.60)
-                .offset(y: size * 0.08)
+                .frame(width: size * 0.58, height: size * 0.60)
+                .offset(y: size * 0.07)
 
-            Capsule()
+            hairShape
                 .fill(hairColor)
-                .frame(width: size * 0.48, height: size * 0.23)
-                .offset(y: -size * 0.17)
+                .frame(width: size * 0.58, height: size * 0.34)
+                .offset(y: -size * 0.18)
 
-            HStack(spacing: size * 0.14) {
-                Circle().fill(Color.black.opacity(0.72))
-                Circle().fill(Color.black.opacity(0.72))
+            if seedValue(modulo: 2, offset: 11) == 0 {
+                glasses
             }
-            .frame(width: size * 0.28, height: size * 0.05)
-            .offset(y: size * 0.03)
 
-            Capsule()
-                .fill(Color.black.opacity(0.34))
-                .frame(width: size * 0.17, height: size * 0.035)
+            HStack(spacing: size * 0.13) {
+                Circle().fill(Color.black.opacity(0.70))
+                Circle().fill(Color.black.opacity(0.70))
+            }
+            .frame(width: size * 0.30, height: size * 0.05)
+            .offset(y: size * 0.02)
+
+            expression
+                .stroke(Color.black.opacity(0.45), lineWidth: max(1.1, size * 0.024))
+                .frame(width: size * 0.18, height: size * 0.09)
                 .offset(y: size * 0.18)
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
+    }
+
+    private var backgroundShape: AnyShape {
+        switch seedValue(modulo: 3, offset: 3) {
+        case 0:
+            return AnyShape(Circle())
+        case 1:
+            return AnyShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+        default:
+            return AnyShape(RoundedRectangle(cornerRadius: size * 0.34, style: .continuous))
+        }
+    }
+
+    private var decorativeLine: Path {
+        var path = Path()
+        path.move(to: CGPoint(x: size * 0.16, y: size * 0.72))
+        path.addCurve(
+            to: CGPoint(x: size * 0.72, y: size * 0.18),
+            control1: CGPoint(x: size * 0.36, y: size * 0.42),
+            control2: CGPoint(x: size * 0.48, y: size * 0.22)
+        )
+        return path
+    }
+
+    private var hairShape: AnyShape {
+        switch seedValue(modulo: 3, offset: 5) {
+        case 0:
+            return AnyShape(Capsule())
+        case 1:
+            return AnyShape(RoundedRectangle(cornerRadius: size * 0.14, style: .continuous))
+        default:
+            return AnyShape(UnevenRoundedRectangle(topLeadingRadius: size * 0.24, bottomLeadingRadius: size * 0.04, bottomTrailingRadius: size * 0.18, topTrailingRadius: size * 0.08))
+        }
+    }
+
+    private var glasses: some View {
+        HStack(spacing: size * 0.05) {
+            RoundedRectangle(cornerRadius: size * 0.04, style: .continuous)
+                .stroke(Color.black.opacity(0.38), lineWidth: max(1, size * 0.018))
+            RoundedRectangle(cornerRadius: size * 0.04, style: .continuous)
+                .stroke(Color.black.opacity(0.38), lineWidth: max(1, size * 0.018))
+        }
+        .frame(width: size * 0.42, height: size * 0.14)
+        .offset(y: size * 0.02)
+    }
+
+    private var expression: Path {
+        var path = Path()
+        if seedValue(modulo: 2, offset: 13) == 0 {
+            path.move(to: CGPoint(x: 0, y: size * 0.02))
+            path.addQuadCurve(to: CGPoint(x: size * 0.18, y: size * 0.02), control: CGPoint(x: size * 0.09, y: size * 0.09))
+        } else {
+            path.move(to: CGPoint(x: 0, y: size * 0.04))
+            path.addLine(to: CGPoint(x: size * 0.18, y: size * 0.04))
+        }
+        return path
     }
 
     private func seedValue(modulo: Int, offset: Int = 0) -> Int {
@@ -846,8 +1328,8 @@ private struct StatusBadge: View {
 
     private var title: String {
         switch status {
-        case .active: return "enabled"
-        case .paused: return "paused"
+        case .active: return "active"
+        case .paused: return "waiting"
         case .disconnected: return "setup"
         }
     }
@@ -910,6 +1392,20 @@ private struct OutputSectionCard: View {
         .padding(12)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct AnyShape: Shape {
+    private let pathBuilder: @Sendable (CGRect) -> Path
+
+    init<S: Shape & Sendable>(_ shape: S) {
+        pathBuilder = { rect in
+            shape.path(in: rect)
+        }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        pathBuilder(rect)
     }
 }
 

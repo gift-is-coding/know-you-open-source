@@ -37,11 +37,18 @@ struct NetworkingCockpitPresentation {
                         direction: item.direction,
                         title: item.title,
                         publicSummary: item.publicSummary,
-                        publicReferenceID: item.publicReferenceID
+                        publicReferenceID: item.publicReferenceID,
+                        platformID: item.platformID
                     )
                 }
             )
         )
+    }
+
+    func items(forPlatformID platformID: String) -> [NetworkingCockpitItem] {
+        items.filter { item in
+            item.platformID == platformID
+        }
     }
 
     static func attribution(for item: NetworkingPublicContent) -> String {
@@ -66,7 +73,8 @@ struct NetworkingCockpitPresentation {
                 title: title(for: action),
                 publicSummary: publicSummary(for: action),
                 privateReason: action.privateReason,
-                publicReferenceID: action.publicReferenceID
+                publicReferenceID: action.publicReferenceID,
+                platformID: action.platformID
             )
         }
     }
@@ -146,4 +154,5 @@ private struct PublicCockpitItem: Codable, Equatable {
     let title: String
     let publicSummary: String
     let publicReferenceID: String?
+    let platformID: String
 }

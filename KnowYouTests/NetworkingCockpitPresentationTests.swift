@@ -17,6 +17,18 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertTrue(source.contains("Generate profiles"))
     }
 
+    func testInteractiveLaunchShowsMainWindowAfterPresenterConfiguration() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("KnowYou/KnowYouApp.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("showMainWindowAfterPresenterConfigurationIfNeeded"))
+        XCTAssertTrue(source.contains("KnowYouMainWindowPresenter.shared.configure"))
+        XCTAssertTrue(source.contains("DispatchQueue.main.asyncAfter(deadline: .now() + 1.0)"))
+    }
+
     func testNetworkingCockpitViewGuidesProfileCommunityAndMessageStepsInEnglish() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -28,16 +40,19 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertTrue(source.contains("Generate profiles"))
         XCTAssertTrue(source.contains("Choose a default scenario or create a custom one."))
         XCTAssertTrue(source.contains("Generated result preview"))
-        XCTAssertTrue(source.contains("Custom scenario"))
-        XCTAssertTrue(source.contains("Connect communities"))
-        XCTAssertTrue(source.contains("Review messages and leads"))
+        XCTAssertTrue(source.contains("Custom profile"))
+        XCTAssertFalse(source.contains("Custom scenario"))
+        XCTAssertTrue(source.contains("Communities and messages"))
+        XCTAssertFalse(source.contains("Connect communities"))
+        XCTAssertFalse(source.contains("Review messages and leads"))
         XCTAssertTrue(source.contains("Know You Careers"))
-        XCTAssertTrue(source.contains("Know You Friends"))
+        XCTAssertTrue(source.contains("Find Your Friends"))
+        XCTAssertFalse(source.contains("Know You Friends"))
         XCTAssertFalse(source.contains(#"Text("Prompt")"#))
         XCTAssertFalse(source.contains("selectedProfile.prompt"))
     }
 
-    func testNetworkingCockpitViewWiresRealMyWikiGenerationAndActivation() throws {
+    func testNetworkingCockpitViewUsesAutomaticLocalActivationInsteadOfEnableButton() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -46,11 +61,65 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
 
         XCTAssertTrue(source.contains("let projectRoot: URL?"))
         XCTAssertTrue(source.contains("let summarizer: (any SummaryGenerating)?"))
+        XCTAssertTrue(source.contains("ensureActivationState"))
+        XCTAssertTrue(source.contains("Agent ready locally"))
+        XCTAssertFalse(source.contains("Enable Networking"))
+        XCTAssertFalse(source.contains("Networking enabled"))
+        XCTAssertFalse(source.contains("enableNetworking()"))
+    }
+
+    func testNetworkingCockpitViewWiresRealMyWikiGenerationAndApproval() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("KnowYou/UI/Networking/NetworkingCockpitView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
         XCTAssertTrue(source.contains("generateSelectedProfile"))
         XCTAssertTrue(source.contains("NetworkingProfileGenerationService"))
-        XCTAssertTrue(source.contains("NetworkingActivationStateStore().save"))
-        XCTAssertTrue(source.contains("Generate from My Wiki"))
+        XCTAssertTrue(source.contains("Refresh from My Wiki"))
+        XCTAssertTrue(source.contains("Approve profile"))
+        XCTAssertTrue(source.contains("Regenerate"))
+        XCTAssertTrue(source.contains("Approved"))
+        XCTAssertTrue(source.contains("Draft not generated"))
+        XCTAssertTrue(source.contains("Could not finish profile generation"))
         XCTAssertTrue(source.contains("Generation timed out. Try again after checking your Diary Engine."))
+    }
+
+    func testNetworkingCockpitViewCustomProfileEditorFieldsAndRedactionDefaults() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("KnowYou/UI/Networking/NetworkingCockpitView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("Use case"))
+        XCTAssertTrue(source.contains("Profile image direction"))
+        XCTAssertTrue(source.contains("Public tone"))
+        XCTAssertTrue(source.contains("Redaction notes"))
+        XCTAssertTrue(source.contains("Generate custom profile"))
+        XCTAssertTrue(source.contains("contact info"))
+        XCTAssertTrue(source.contains("account handles"))
+        XCTAssertTrue(source.contains("exact locations"))
+        XCTAssertTrue(source.contains("private relationships"))
+        XCTAssertTrue(source.contains("health/finance"))
+        XCTAssertTrue(source.contains("raw diary/notifications"))
+        XCTAssertTrue(source.contains("tokens/account details"))
+        XCTAssertTrue(source.contains("deep matching reasons"))
+        XCTAssertTrue(source.contains("unconfirmed claims"))
+    }
+
+    func testNetworkingCockpitViewKeepsContentBelowToolbarAndWrapsErrors() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("KnowYou/UI/Networking/NetworkingCockpitView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("safeAreaInset(edge: .top)"))
+        XCTAssertTrue(source.contains("GenerationStatusCard"))
+        XCTAssertTrue(source.contains("frame(maxWidth: 420"))
+        XCTAssertTrue(source.contains("fixedSize(horizontal: false, vertical: true)"))
     }
 
     func testNetworkingCockpitVisibleCopyIsEnglishOnly() throws {
@@ -139,7 +208,8 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
                     title: "Most relevant role",
                     publicSummary: "Founding engineer opening",
                     privateReason: "Matches My Wiki evidence about local-first agent products.",
-                    publicReferenceID: "post-1"
+                    publicReferenceID: "post-1",
+                    platformID: "knowyou-careers"
                 ),
                 NetworkingCockpitItem(
                     id: "inbound",
@@ -147,7 +217,8 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
                     title: "Someone is looking at you",
                     publicSummary: "Echo's AI commented on your hiring post.",
                     privateReason: "Strong overlap with your Hiring profile.",
-                    publicReferenceID: "comment-1"
+                    publicReferenceID: "comment-1",
+                    platformID: "knowyou-friends"
                 )
             ]
         )
@@ -155,6 +226,34 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.sections.map(\.direction), [.highlight, .inbound])
         XCTAssertTrue(presentation.localBridgePayload.contains("Matches My Wiki evidence"))
         XCTAssertFalse(presentation.publicPlatformPayload.contains("Matches My Wiki evidence"))
+    }
+
+    func testCockpitItemsFilterBySelectedPlatform() {
+        let presentation = NetworkingCockpitPresentation(
+            items: [
+                NetworkingCockpitItem(
+                    id: "jobs",
+                    direction: .highlight,
+                    title: "Career role",
+                    publicSummary: "A career post.",
+                    privateReason: "Career private reason.",
+                    publicReferenceID: "post-careers",
+                    platformID: "knowyou-careers"
+                ),
+                NetworkingCockpitItem(
+                    id: "friends",
+                    direction: .inbound,
+                    title: "Friend reply",
+                    publicSummary: "A social reply.",
+                    privateReason: "Friends private reason.",
+                    publicReferenceID: "comment-friends",
+                    platformID: "knowyou-friends"
+                )
+            ]
+        )
+
+        XCTAssertEqual(presentation.items(forPlatformID: "knowyou-careers").map(\.id), ["jobs"])
+        XCTAssertEqual(presentation.items(forPlatformID: "knowyou-friends").map(\.id), ["friends"])
     }
 
     func testAgentPublicWritePayloadMarksAIAndStripsPrivateReason() throws {
@@ -399,6 +498,22 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertEqual(store.load(projectRoot: projectRoot), state)
     }
 
+    func testApprovalStateStorePersistsApprovedProfiles() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouContext", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
+        let store = NetworkingProfileApprovalStateStore()
+
+        try store.save(
+            NetworkingProfileApprovalState(approvedProfileIDs: ["profile-career", "profile-custom"]),
+            projectRoot: projectRoot
+        )
+
+        XCTAssertEqual(
+            store.load(projectRoot: projectRoot),
+            NetworkingProfileApprovalState(approvedProfileIDs: ["profile-career", "profile-custom"])
+        )
+    }
+
     func testNetworkingMCPRequiresActivationForPublishing() {
         let request = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"networking_publish_post","arguments":{"platform_id":"knowyou-jobs","profile_id":"profile-jobs","body":"hello"}}}"#
 
@@ -468,7 +583,8 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
             activity: NetworkingPlatformActivity(outbound: 7, inbound: 4, highlights: 2)
         )
 
-        XCTAssertTrue(platform.canRunAutomation(with: [generated, draft]))
+        XCTAssertTrue(platform.canRunAutomation(with: [generated, draft], approvedProfileIDs: ["work"]))
+        XCTAssertFalse(platform.canRunAutomation(with: [generated, draft], approvedProfileIDs: []))
         XCTAssertEqual(platform.assignedProfile(in: [generated, draft])?.label, "工作")
         XCTAssertTrue(generated.hasGeneratedOutput)
         XCTAssertFalse(draft.hasGeneratedOutput)

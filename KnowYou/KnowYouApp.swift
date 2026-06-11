@@ -130,6 +130,10 @@ struct KnowYouApp: App {
             launchMode: launchMode,
             appState: initialAppState
         )
+        Self.showMainWindowAfterPresenterConfigurationIfNeeded(
+            launchMode: launchMode,
+            didScheduleApplicationMove: didScheduleApplicationMove
+        )
     }
 
     var body: some Scene {
@@ -202,6 +206,24 @@ struct KnowYouApp: App {
             return true
         case .alreadyInstalled, .failed:
             return false
+        }
+    }
+
+    private static func showMainWindowAfterPresenterConfigurationIfNeeded(
+        launchMode: LaunchMode,
+        didScheduleApplicationMove: Bool
+    ) {
+        guard launchMode == .interactive,
+              didScheduleApplicationMove == false,
+              isRunningUnderXCTest == false else {
+            return
+        }
+
+        DispatchQueue.main.async {
+            KnowYouMainWindowPresenter.shared.showConfiguredWindowIfNeeded()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                KnowYouMainWindowPresenter.shared.showConfiguredWindowIfNeeded()
+            }
         }
     }
 

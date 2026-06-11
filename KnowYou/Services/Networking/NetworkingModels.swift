@@ -242,6 +242,40 @@ struct NetworkingPlatformConfiguration: Codable, Equatable, Identifiable {
         }
         return profile.hasGeneratedOutput
     }
+
+    func canRunAutomation(
+        with profiles: [NetworkingGeneratedProfile],
+        approvedProfileIDs: Set<String>
+    ) -> Bool {
+        guard status == .active,
+              let profile = assignedProfile(in: profiles),
+              profile.hasGeneratedOutput else {
+            return false
+        }
+        return approvedProfileIDs.contains(profile.id)
+    }
+}
+
+struct NetworkingProfileApprovalState: Codable, Equatable {
+    let approvedProfileIDs: Set<String>
+
+    init(approvedProfileIDs: Set<String> = []) {
+        self.approvedProfileIDs = approvedProfileIDs
+    }
+
+    init(approvedProfileIDs: [String]) {
+        self.approvedProfileIDs = Set(approvedProfileIDs)
+    }
+
+    func contains(_ profileID: String) -> Bool {
+        approvedProfileIDs.contains(profileID)
+    }
+
+    func approving(_ profileID: String) -> NetworkingProfileApprovalState {
+        var nextIDs = approvedProfileIDs
+        nextIDs.insert(profileID)
+        return NetworkingProfileApprovalState(approvedProfileIDs: nextIDs)
+    }
 }
 
 struct NetworkingProfileSyncPayload: Codable, Equatable {
@@ -286,6 +320,25 @@ struct NetworkingCockpitItem: Codable, Equatable, Identifiable {
     let publicSummary: String
     let privateReason: String
     let publicReferenceID: String?
+    let platformID: String
+
+    init(
+        id: String,
+        direction: NetworkingCockpitDirection,
+        title: String,
+        publicSummary: String,
+        privateReason: String,
+        publicReferenceID: String?,
+        platformID: String = "knowyou-careers"
+    ) {
+        self.id = id
+        self.direction = direction
+        self.title = title
+        self.publicSummary = publicSummary
+        self.privateReason = privateReason
+        self.publicReferenceID = publicReferenceID
+        self.platformID = platformID
+    }
 }
 
 struct NetworkingCockpitSection: Codable, Equatable, Identifiable {
@@ -522,7 +575,8 @@ struct NetworkingAgentRuntime: Equatable {
                 title: opportunity.title,
                 publicSummary: opportunity.publicSummary,
                 privateReason: opportunity.privateReason,
-                publicReferenceID: opportunity.publicReferenceID
+                publicReferenceID: opportunity.publicReferenceID,
+                platformID: opportunity.platformID
             )
         }
 

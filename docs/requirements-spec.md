@@ -225,6 +225,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - `Home` 的更新区必须保持 compact：只在 `running`、`degraded`、`failed`、`blocked` 时显示在 hero 右下角，`scheduled` 和 `completed` 不得占用页面空间。
 - `Home` 的功能入口必须单列显示，顺序为 `Networking`、`Todo`、`My Wiki`、`Today’s Diary`、`Other Source`，并用简短人话解释用途和工作方式。
 - `Networking` 入口必须打开本地原生 cockpit，而不是空白 placeholder、Coming soon preview、WebView 或传统推荐 feed。
+- `Networking` cockpit 必须是 profile-first 流程：进入页面默认准备本地 agent permission，不展示 `Enable Networking` 大按钮；profile 区只保留 `Career / Hiring`、`Friends / Social`、`Custom profile`，custom profile 必须提供使用场景、形象描述、public tone、额外脱敏说明和默认脱敏 checklist；生成 draft 后必须人工 `Approve profile`，approved profile 才能绑定 `Know You Careers` 或 `Find Your Friends` 社区；社区选择和下方消息/agent activity 必须按 platform 视觉关联并过滤。
 - `My Wiki`、`Other Source`、`My Diary` 必须使用同一套 sidebar row 组件、字号、图标尺寸、行高和选中态。
 - 右上角 engine selector 必须固定在主窗口全局 toolbar 中，不得随 `My Wiki`、`Other Source`、`My Diary` 的内容切换改变位置或变成页面内部组件；当前默认 engine 不可可靠生成 diary 时，胶囊外侧必须显示红色感叹号。
 - `Other Source` 必须是独立入口，不得折叠或收起其他来源。

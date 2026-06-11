@@ -77,3 +77,37 @@ struct NetworkingActivationStateStore {
         projectRoot.appending(path: ".knowyou/networking/activation.json")
     }
 }
+
+struct NetworkingProfileApprovalStateStore {
+    let fileManager: FileManager
+
+    init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+    }
+
+    func load(projectRoot: URL) -> NetworkingProfileApprovalState {
+        let url = stateURL(projectRoot: projectRoot)
+        guard fileManager.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url),
+              let state = try? JSONDecoder().decode(NetworkingProfileApprovalState.self, from: data) else {
+            return NetworkingProfileApprovalState()
+        }
+        return state
+    }
+
+    func save(_ state: NetworkingProfileApprovalState, projectRoot: URL) throws {
+        let url = stateURL(projectRoot: projectRoot)
+        try fileManager.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(state)
+        try data.write(to: url, options: .atomic)
+    }
+
+    func stateURL(projectRoot: URL) -> URL {
+        projectRoot.appending(path: ".knowyou/networking/profile-approval.json")
+    }
+}

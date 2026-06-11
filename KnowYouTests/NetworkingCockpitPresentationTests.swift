@@ -14,7 +14,54 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertFalse(source.contains("NSViewRepresentable"))
         XCTAssertFalse(source.contains("loadHTMLString"))
         XCTAssertTrue(source.contains("ScrollView"))
-        XCTAssertTrue(source.contains("Profile Generator"))
+        XCTAssertTrue(source.contains("Generate profiles"))
+    }
+
+    func testNetworkingCockpitViewGuidesProfileCommunityAndMessageStepsInEnglish() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("KnowYou/UI/Networking/NetworkingCockpitView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("Privacy and redaction"))
+        XCTAssertTrue(source.contains("Generate profiles"))
+        XCTAssertTrue(source.contains("Choose a default scenario or create a custom one."))
+        XCTAssertTrue(source.contains("Generated result preview"))
+        XCTAssertTrue(source.contains("Custom scenario"))
+        XCTAssertTrue(source.contains("Connect communities"))
+        XCTAssertTrue(source.contains("Review messages and leads"))
+        XCTAssertTrue(source.contains("Know You Careers"))
+        XCTAssertTrue(source.contains("Know You Friends"))
+        XCTAssertFalse(source.contains(#"Text("Prompt")"#))
+        XCTAssertFalse(source.contains("selectedProfile.prompt"))
+    }
+
+    func testNetworkingCockpitVisibleCopyIsEnglishOnly() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("KnowYou/UI/Networking/NetworkingCockpitView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        let containsChineseCharacter = source.unicodeScalars.contains { scalar in
+            (0x4E00...0x9FFF).contains(Int(scalar.value))
+        }
+        XCTAssertFalse(containsChineseCharacter)
+    }
+
+    func testNetworkingCockpitViewUsesGeneratedFaceAvatarsInsteadOfLetterBadges() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("KnowYou/UI/Networking/NetworkingCockpitView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("GeneratedFaceAvatar"))
+        XCTAssertTrue(source.contains("avatarSeed"))
+        XCTAssertFalse(source.contains("Text(profile.avatar.displayLetter)"))
+        XCTAssertFalse(source.contains("Text(profile.avatar.fallbackLetter)"))
+        XCTAssertFalse(source.contains("Text(profile.personName)"))
     }
 
     func testProfileDraftRequiresHumanApprovalBeforePublicSync() {

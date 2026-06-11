@@ -3,9 +3,11 @@ import SwiftUI
 struct NetworkingCockpitView: View {
     let presentation: NetworkingCockpitPresentation
 
-    @State private var selectedProfileID = "profile-jobs"
-    @State private var selectedPlatformID = "knowyou-jobs"
+    @State private var selectedProfileID = "profile-career"
+    @State private var selectedPlatformID = "knowyou-careers"
     @State private var isEnabled = false
+
+    private let activePersonName = "Tianfu Wu"
 
     private var selectedProfile: NetworkingGeneratedProfile {
         profiles.first { $0.id == selectedProfileID } ?? profiles[0]
@@ -13,12 +15,12 @@ struct NetworkingCockpitView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 18) {
                 header
-                profileStrip
-                selectedProfilePanel
-                platformsPanel
-                messagesPanel
+                privacyNotice
+                generateProfilesStep
+                connectCommunitiesStep
+                messagesStep
             }
             .padding(28)
         }
@@ -27,119 +29,140 @@ struct NetworkingCockpitView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 18) {
-            VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .top, spacing: 18) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Networking")
                     .font(.largeTitle.weight(.semibold))
-                Text("App 开启后，KnowYou 用 My Wiki 生成 profile，再让本地 agent 通过 MCP 在两个 Know You 平台发帖和回复。")
+                Text("Turn your local My Wiki context into scene-specific profiles, connect them to Know You communities, and let your local agent bring back the moments worth your attention.")
                     .font(.body)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer()
-            Button {
-                isEnabled.toggle()
-            } label: {
-                Label(isEnabled ? "已开启" : "开启", systemImage: isEnabled ? "checkmark.circle.fill" : "power")
+
+            Spacer(minLength: 18)
+
+            VStack(alignment: .trailing, spacing: 10) {
+                Button {
+                    isEnabled.toggle()
+                } label: {
+                    Label(isEnabled ? "Networking enabled" : "Enable Networking", systemImage: isEnabled ? "checkmark.circle.fill" : "power")
+                }
+                .buttonStyle(.borderedProminent)
+
+                HStack(spacing: 8) {
+                    Text("Public display name")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(activePersonName)
+                        .font(.caption.weight(.semibold))
+                    Button("Edit") {}
+                        .font(.caption)
+                        .buttonStyle(.plain)
+                }
             }
-            .buttonStyle(.borderedProminent)
         }
     }
 
-    private var profileStrip: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("Profile Generator", detail: "同一个人，不同场景面向。头像、场景和描述不同，姓名固定。")
-            HStack(spacing: 14) {
-                ForEach(profiles) { profile in
+    private var privacyNotice: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "lock.shield")
+                .font(.title3)
+                .foregroundStyle(.green)
+                .frame(width: 26)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Privacy and redaction")
+                    .font(.headline)
+                Text("Profiles are generated from local My Wiki context with sensitive details redacted. Raw evidence, private drafts, account details, and deep matching reasons stay on this Mac until you explicitly approve what becomes public.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .background(Color.green.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.green.opacity(0.22))
+        )
+    }
+
+    private var generateProfilesStep: some View {
+        StepPanel(
+            index: 1,
+            title: "Generate profiles",
+            subtitle: "Choose a default scenario or create a custom one. The prompt stays behind the scenes; you review the generated result first."
+        ) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(profiles) { profile in
+                        Button {
+                            selectedProfileID = profile.id
+                        } label: {
+                            ProfileScenarioCard(
+                                profile: profile,
+                                isSelected: profile.id == selectedProfileID
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     Button {
-                        selectedProfileID = profile.id
+                        selectedProfileID = "profile-custom"
                     } label: {
-                        ProfileFaceCard(
-                            profile: profile,
-                            isSelected: profile.id == selectedProfileID
-                        )
+                        CustomScenarioCard(isSelected: selectedProfileID == "profile-custom")
                     }
                     .buttonStyle(.plain)
                 }
+
+                GeneratedResultPreview(profile: selectedProfile)
             }
         }
     }
 
-    private var selectedProfilePanel: some View {
-        NativePanel {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 16) {
-                    ProfileAvatar(profile: selectedProfile, size: 56)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(selectedProfile.personName)
-                            .font(.title3.weight(.semibold))
-                        Text(selectedProfile.label)
-                            .font(.subheadline.weight(.medium))
-                        Text(selectedProfile.scenarioDescription)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    StatusPill(text: "My Wiki + LLM", color: .green)
-                    StatusPill(text: "human confirm", color: .gray)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Prompt")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text(selectedProfile.prompt)
-                        .font(.callout)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .background(Color(nsColor: .textBackgroundColor))
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                }
-
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
-                    ForEach(selectedProfile.summarySections) { section in
-                        OutputSectionCard(section: section)
+    private var connectCommunitiesStep: some View {
+        StepPanel(
+            index: 2,
+            title: "Connect communities",
+            subtitle: "Each community uses one approved profile. You can change the profile before the local agent starts posting or replying."
+        ) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 14)], spacing: 14) {
+                ForEach(platforms) { platform in
+                    CommunityBindingCard(
+                        platform: platform,
+                        profile: platform.assignedProfile(in: profiles) ?? profiles[0],
+                        isSelected: platform.id == selectedPlatformID,
+                        isEnabled: isEnabled
+                    ) {
+                        selectedPlatformID = platform.id
                     }
                 }
             }
         }
     }
 
-    private var platformsPanel: some View {
-        NativePanel {
-            VStack(alignment: .leading, spacing: 14) {
-                sectionTitle("Platforms", detail: "V1 只做 Know You 自己的平台。每个平台绑定一个已确认 profile。")
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 14)], spacing: 14) {
-                    ForEach(platforms) { platform in
-                        PlatformCard(
-                            platform: platform,
-                            profile: platform.assignedProfile(in: profiles) ?? profiles[0],
-                            isSelected: platform.id == selectedPlatformID,
-                            isEnabled: isEnabled
-                        ) {
-                            selectedPlatformID = platform.id
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var messagesPanel: some View {
-        NativePanel {
+    private var messagesStep: some View {
+        StepPanel(
+            index: 3,
+            title: "Review messages and leads",
+            subtitle: "Highlights, inbound replies, outbound agent actions, and activity logs stay grouped by community. Human action remains the final step."
+        ) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    sectionTitle("Messages", detail: "来自不同平台的 highlights、入站、出站和 agent activity。私有理由只在本地。")
+                    Text("Community inbox")
+                        .font(.headline)
                     Spacer()
-                    Picker("Platform", selection: $selectedPlatformID) {
+                    Picker("Community", selection: $selectedPlatformID) {
                         ForEach(platforms) { platform in
                             Text(platform.name).tag(platform.id)
                         }
                     }
                     .labelsHidden()
-                    .frame(width: 210)
+                    .frame(width: 220)
                 }
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: 12)], spacing: 12) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 270), spacing: 12)], spacing: 12) {
                     ForEach(filteredInboxItems) { item in
                         InboxCard(item: item)
                     }
@@ -161,25 +184,25 @@ struct NetworkingCockpitView: View {
             NetworkingCockpitItem(
                 id: "jobs-highlight",
                 direction: .highlight,
-                title: "Founding engineer 帖子值得人工跟进",
-                publicSummary: "Know You 求职上有人在找本地优先 agent 产品经验。",
-                privateReason: "My Wiki 显示你最近在做 KnowYou Networking 和 agent runtime。",
-                publicReferenceID: "post-jobs-1"
+                title: "Worth reaching out",
+                publicSummary: "A founder is looking for someone with local-first agent product experience in Know You Careers.",
+                privateReason: "My Wiki connects this to current KnowYou Networking and agent runtime work.",
+                publicReferenceID: "post-careers-1"
             ),
             NetworkingCockpitItem(
                 id: "friends-inbound",
                 direction: .inbound,
-                title: "有人回复了认识新朋友 profile",
-                publicSummary: "对方提到徒步、胶片和周末小范围活动。",
-                privateReason: "兴趣和生活节奏匹配，原始证据留本地。",
+                title: "Inbound interaction",
+                publicSummary: "Someone replied to the Friends profile with hiking, film photography, and small weekend gatherings.",
+                privateReason: "Lifestyle overlap is high; source evidence stays local.",
                 publicReferenceID: "comment-friends-1"
             ),
             NetworkingCockpitItem(
                 id: "agent-activity",
                 direction: .activity,
-                title: "Agent 已用职业/求职 profile 评论",
-                publicSummary: "AI 评论已标注为 林书涵 · 职业/求职 · AI。",
-                privateReason: "通过本地 Networking MCP 和 agent token 写入。",
+                title: "Agent replied",
+                publicSummary: "The local agent posted a labeled AI comment as Tianfu Wu · Career / Hiring · AI.",
+                privateReason: "Written through the local Networking MCP after activation and token permission.",
                 publicReferenceID: "comment-agent-1"
             ),
         ]
@@ -188,42 +211,61 @@ struct NetworkingCockpitView: View {
     private var profiles: [NetworkingGeneratedProfile] {
         [
             NetworkingGeneratedProfile(
-                id: "profile-jobs",
-                personName: "林书涵",
-                displayName: "林书涵",
-                label: "职业/求职",
-                englishLabel: "Jobs",
+                id: "profile-career",
+                personName: activePersonName,
+                displayName: activePersonName,
+                label: "Career / Hiring",
+                englishLabel: "Career",
                 scenarioID: NetworkingProfileScenario.jobs.id,
-                scenarioDescription: NetworkingProfileScenario.jobs.description,
+                scenarioDescription: "For jobs, hiring, collaborators, and concrete work opportunities.",
                 prompt: NetworkingProfileScenario.jobs.prompt,
-                avatar: NetworkingProfileAvatar(fallbackLetter: "林", backgroundHex: "#C25A35", avatarSeed: "lin-shuhan-jobs"),
+                avatar: NetworkingProfileAvatar(fallbackLetter: "T", backgroundHex: "#C25A35", avatarSeed: "tianfu-career", avatarStyle: "generated-face"),
                 summarySections: [
-                    NetworkingProfileSummarySection(title: "正在做", body: "KnowYou Networking：用本地 My Wiki 和 agent runtime 连接求职、招聘和合作机会。"),
-                    NetworkingProfileSummarySection(title: "能负责", body: "macOS SwiftUI、Next.js、Supabase、agent MCP、产品判断和用户访谈。"),
-                    NetworkingProfileSummarySection(title: "适合场景", body: "求职、招人、finding collaborators、找 founding engineer / design engineer。"),
+                    NetworkingProfileSummarySection(title: "Current focus", body: "Building KnowYou Networking: a local-context agent layer for profiles, hiring, collaboration, and public community interaction."),
+                    NetworkingProfileSummarySection(title: "Can own", body: "macOS SwiftUI, Next.js, Supabase, MCP agent runtime, product judgment, and end-to-end shipping across app and web."),
+                    NetworkingProfileSummarySection(title: "Best matches", body: "Founding engineering, design engineering, agent products, local-first AI systems, and people who want dense product context."),
                 ],
                 autoUpdate: true,
-                lastUpdatedLabel: "My Wiki 12 小时前",
-                platformIDs: ["knowyou-jobs"]
+                lastUpdatedLabel: "Updated from My Wiki 12h ago",
+                platformIDs: ["knowyou-careers"]
             ),
             NetworkingGeneratedProfile(
                 id: "profile-friends",
-                personName: "林书涵",
-                displayName: "林书涵",
-                label: "认识新朋友",
+                personName: activePersonName,
+                displayName: activePersonName,
+                label: "Friends / Social",
                 englishLabel: "Friends",
                 scenarioID: NetworkingProfileScenario.friends.id,
-                scenarioDescription: NetworkingProfileScenario.friends.description,
+                scenarioDescription: "For meeting new friends through interests, activities, and everyday rhythm.",
                 prompt: NetworkingProfileScenario.friends.prompt,
-                avatar: NetworkingProfileAvatar(fallbackLetter: "涵", backgroundHex: "#5E7C66", avatarSeed: "lin-shuhan-friends"),
+                avatar: NetworkingProfileAvatar(fallbackLetter: "T", backgroundHex: "#5E7C66", avatarSeed: "tianfu-friends", avatarStyle: "generated-face"),
                 summarySections: [
-                    NetworkingProfileSummarySection(title: "兴趣", body: "安静的小桌饭局、长时间散步、产品和 AI 之外的真实生活细节。"),
-                    NetworkingProfileSummarySection(title: "社交方式", body: "喜欢具体、自然、能慢慢展开的对话，不追求高频社交。"),
-                    NetworkingProfileSummarySection(title: "适合场景", body: "认识同城朋友、活动搭子、能认真聊天的人。"),
+                    NetworkingProfileSummarySection(title: "Interests", body: "Quiet dinners, long walks, films, thoughtful conversations, small activities, and real life outside product work."),
+                    NetworkingProfileSummarySection(title: "Social rhythm", body: "Prefers specific, low-pressure conversations that can unfold naturally instead of high-frequency networking."),
+                    NetworkingProfileSummarySection(title: "Best matches", body: "Local friends, activity partners, people who like building trust through small and concrete moments."),
                 ],
                 autoUpdate: true,
-                lastUpdatedLabel: "My Wiki 3 天前",
+                lastUpdatedLabel: "Updated from My Wiki 3d ago",
                 platformIDs: ["knowyou-friends"]
+            ),
+            NetworkingGeneratedProfile(
+                id: "profile-custom",
+                personName: activePersonName,
+                displayName: activePersonName,
+                label: "Custom scenario",
+                englishLabel: "Custom",
+                scenarioID: "custom",
+                scenarioDescription: "Create a new scene by choosing goals and editing the hidden generation instruction.",
+                prompt: "Custom prompt is configured behind the scenes.",
+                avatar: NetworkingProfileAvatar(fallbackLetter: "T", backgroundHex: "#6E6A8E", avatarSeed: "tianfu-custom", avatarStyle: "generated-face"),
+                summarySections: [
+                    NetworkingProfileSummarySection(title: "Draft mode", body: "Pick a scene, adjust the hidden instruction, and generate a new public-facing profile from My Wiki."),
+                    NetworkingProfileSummarySection(title: "Review first", body: "The generated summary stays private until you approve it for a community."),
+                    NetworkingProfileSummarySection(title: "Good for", body: "Events, research collaborators, investor conversations, small communities, or any scene that needs a different face of the same person."),
+                ],
+                autoUpdate: false,
+                lastUpdatedLabel: "Not generated yet",
+                platformIDs: []
             ),
         ]
     }
@@ -231,94 +273,189 @@ struct NetworkingCockpitView: View {
     private var platforms: [NetworkingPlatformConfiguration] {
         [
             NetworkingPlatformConfiguration(
-                id: "knowyou-jobs",
-                name: "Know You 求职",
-                subtitle: "求职、招聘、合作机会",
-                assignedProfileID: "profile-jobs",
+                id: "knowyou-careers",
+                name: "Know You Careers",
+                subtitle: "Jobs, hiring, collaborators",
+                assignedProfileID: "profile-career",
                 status: isEnabled ? .active : .paused,
                 activity: NetworkingPlatformActivity(outbound: 3, inbound: 2, highlights: 4)
             ),
             NetworkingPlatformConfiguration(
                 id: "knowyou-friends",
-                name: "Know You 认识新朋友",
-                subtitle: "兴趣、活动、轻社交",
+                name: "Know You Friends",
+                subtitle: "Interests, activities, new friends",
                 assignedProfileID: "profile-friends",
                 status: isEnabled ? .active : .paused,
                 activity: NetworkingPlatformActivity(outbound: 1, inbound: 3, highlights: 2)
             ),
         ]
     }
-
-    private func sectionTitle(_ title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title.uppercased())
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.tertiary)
-            Text(detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
 }
 
-private struct NativePanel<Content: View>: View {
+private struct StepPanel<Content: View>: View {
+    let index: Int
+    let title: String
+    let subtitle: String
     let content: Content
 
-    init(@ViewBuilder content: () -> Content) {
+    init(index: Int, title: String, subtitle: String, @ViewBuilder content: () -> Content) {
+        self.index = index
+        self.title = title
+        self.subtitle = subtitle
         self.content = content()
     }
 
     var body: some View {
-        content
-            .padding(18)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color(nsColor: .separatorColor).opacity(0.55))
-            )
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                Text("\(index)")
+                    .font(.headline.monospacedDigit())
+                    .foregroundStyle(.white)
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(Color.accentColor))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.title3.weight(.semibold))
+                    Text(subtitle)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            content
+        }
+        .padding(18)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.55))
+        )
     }
 }
 
-private struct ProfileFaceCard: View {
+private struct ProfileScenarioCard: View {
     let profile: NetworkingGeneratedProfile
     let isSelected: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                ProfileAvatar(profile: profile, size: 42)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(profile.personName)
-                        .font(.headline)
-                    Text(profile.label)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                GeneratedFaceAvatar(avatar: profile.avatar, size: 48)
+                Spacer()
+                StatusPill(text: "default", color: .green)
             }
-            Text(profile.scenarioDescription)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-            HStack {
-                StatusPill(text: "generated", color: .green)
-                StatusPill(text: profile.autoUpdate ? "auto" : "manual", color: .gray)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(profile.label)
+                    .font(.headline)
+                Text(profile.scenarioDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
             }
+
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.caption)
+                Text(profile.lastUpdatedLabel ?? "Ready to generate")
+                    .font(.caption2)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.secondary)
         }
-        .frame(width: 248, alignment: .topLeading)
-        .frame(minHeight: 124, alignment: .topLeading)
+        .frame(width: 210, alignment: .topLeading)
+        .frame(minHeight: 154, alignment: .topLeading)
+        .padding(14)
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(selectionStroke)
+    }
+
+    private var selectionStroke: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .stroke(isSelected ? Color.accentColor.opacity(0.78) : Color(nsColor: .separatorColor).opacity(0.5), lineWidth: isSelected ? 1.6 : 1)
+    }
+}
+
+private struct CustomScenarioCard: View {
+    let isSelected: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.12))
+                    .frame(width: 48, height: 48)
+                Image(systemName: "plus")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Custom scenario")
+                    .font(.headline)
+                Text("Choose a scene, edit the hidden instruction, then generate a new profile from My Wiki.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+
+            StatusPill(text: "private draft", color: .gray)
+        }
+        .frame(width: 210, alignment: .topLeading)
+        .frame(minHeight: 154, alignment: .topLeading)
         .padding(14)
         .background(Color(nsColor: .textBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(isSelected ? Color.accentColor.opacity(0.7) : Color(nsColor: .separatorColor).opacity(0.55), lineWidth: isSelected ? 1.5 : 1)
+                .stroke(isSelected ? Color.accentColor.opacity(0.78) : Color(nsColor: .separatorColor).opacity(0.5), lineWidth: isSelected ? 1.6 : 1)
         )
     }
 }
 
-private struct PlatformCard: View {
+private struct GeneratedResultPreview: View {
+    let profile: NetworkingGeneratedProfile
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                GeneratedFaceAvatar(avatar: profile.avatar, size: 64)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Generated result preview")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(profile.label)
+                        .font(.title3.weight(.semibold))
+                    Text(profile.scenarioDescription)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                StatusPill(text: "My Wiki + LLM", color: .green)
+                StatusPill(text: "needs approval", color: .gray)
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
+                ForEach(profile.summarySections) { section in
+                    OutputSectionCard(section: section)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.45))
+        )
+    }
+}
+
+private struct CommunityBindingCard: View {
     let platform: NetworkingPlatformConfiguration
     let profile: NetworkingGeneratedProfile
     let isSelected: Bool
@@ -330,7 +467,7 @@ private struct PlatformCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 10) {
                     PlatformMark(name: platform.name)
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(platform.name)
                             .font(.headline)
                         Text(platform.subtitle)
@@ -343,24 +480,30 @@ private struct PlatformCard: View {
 
                 Divider()
 
-                HStack(spacing: 10) {
-                    ProfileAvatar(profile: profile, size: 32)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("绑定 profile")
+                HStack(alignment: .center, spacing: 10) {
+                    GeneratedFaceAvatar(avatar: profile.avatar, size: 34)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Matched profile")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                         Text(profile.label)
                             .font(.caption.weight(.medium))
                     }
                     Spacer()
-                    StatusPill(text: isEnabled ? "agent permitted" : "not enabled", color: isEnabled ? .green : .secondary)
+                    Button("Change") {}
+                        .font(.caption)
+                        .buttonStyle(.bordered)
                 }
 
                 HStack(spacing: 8) {
-                    PlatformStat(title: "出站", value: platform.activity.outbound)
-                    PlatformStat(title: "入站", value: platform.activity.inbound)
-                    PlatformStat(title: "高亮", value: platform.activity.highlights)
+                    PlatformStat(title: "Outbound", value: platform.activity.outbound)
+                    PlatformStat(title: "Inbound", value: platform.activity.inbound)
+                    PlatformStat(title: "Highlights", value: platform.activity.highlights)
                 }
+
+                Text(isEnabled ? "Agent posting is permitted through local MCP." : "Enable Networking before the agent can post or reply.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -368,7 +511,7 @@ private struct PlatformCard: View {
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(isSelected ? Color.accentColor.opacity(0.7) : Color(nsColor: .separatorColor).opacity(0.45))
+                    .stroke(isSelected ? Color.accentColor.opacity(0.75) : Color(nsColor: .separatorColor).opacity(0.45), lineWidth: isSelected ? 1.5 : 1)
             )
         }
         .buttonStyle(.plain)
@@ -379,7 +522,7 @@ private struct InboxCard: View {
     let item: NetworkingCockpitItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 8) {
                 Circle()
                     .fill(directionColor)
@@ -394,6 +537,7 @@ private struct InboxCard: View {
             Text(item.publicSummary)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             if let publicReferenceID = item.publicReferenceID {
                 Text(publicReferenceID)
                     .font(.caption2.monospaced())
@@ -428,20 +572,59 @@ private struct InboxCard: View {
     }
 }
 
-private struct ProfileAvatar: View {
-    let profile: NetworkingGeneratedProfile
+private struct GeneratedFaceAvatar: View {
+    let avatar: NetworkingProfileAvatar
     let size: CGFloat
+
+    private var baseColor: Color {
+        Color(hex: avatar.backgroundHex)
+    }
+
+    private var skinColor: Color {
+        [Color(red: 0.92, green: 0.72, blue: 0.56), Color(red: 0.78, green: 0.58, blue: 0.44), Color(red: 0.96, green: 0.80, blue: 0.66)][seedValue(modulo: 3)]
+    }
+
+    private var hairColor: Color {
+        [Color(red: 0.18, green: 0.14, blue: 0.12), Color(red: 0.30, green: 0.22, blue: 0.16), Color(red: 0.12, green: 0.18, blue: 0.20)][seedValue(modulo: 3, offset: 7)]
+    }
 
     var body: some View {
         ZStack {
             Circle()
-                .fill(Color(hex: profile.avatar.backgroundHex).opacity(0.92))
-            Text(profile.avatar.displayLetter)
-                .font(.system(size: size * 0.42, weight: .semibold))
-                .foregroundStyle(.white)
+                .fill(baseColor.opacity(0.92))
+
+            Circle()
+                .fill(skinColor)
+                .frame(width: size * 0.56, height: size * 0.60)
+                .offset(y: size * 0.08)
+
+            Capsule()
+                .fill(hairColor)
+                .frame(width: size * 0.48, height: size * 0.23)
+                .offset(y: -size * 0.17)
+
+            HStack(spacing: size * 0.14) {
+                Circle().fill(Color.black.opacity(0.72))
+                Circle().fill(Color.black.opacity(0.72))
+            }
+            .frame(width: size * 0.28, height: size * 0.05)
+            .offset(y: size * 0.03)
+
+            Capsule()
+                .fill(Color.black.opacity(0.34))
+                .frame(width: size * 0.17, height: size * 0.035)
+                .offset(y: size * 0.18)
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
+    }
+
+    private func seedValue(modulo: Int, offset: Int = 0) -> Int {
+        let scalars = Array(avatar.avatarSeed.unicodeScalars)
+        let total = scalars.enumerated().reduce(offset) { partial, pair in
+            partial + Int(pair.element.value) * (pair.offset + 1)
+        }
+        return abs(total) % modulo
     }
 }
 
@@ -452,7 +635,7 @@ private struct PlatformMark: View {
         ZStack {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(Color.accentColor.opacity(0.13))
-            Text(String(name.prefix(1)))
+            Image(systemName: name.contains("Friends") ? "person.2" : "briefcase")
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(Color.accentColor)
         }

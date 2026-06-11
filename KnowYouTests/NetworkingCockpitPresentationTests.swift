@@ -37,6 +37,22 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertFalse(source.contains("selectedProfile.prompt"))
     }
 
+    func testNetworkingCockpitViewWiresRealMyWikiGenerationAndActivation() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("KnowYou/UI/Networking/NetworkingCockpitView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("let projectRoot: URL?"))
+        XCTAssertTrue(source.contains("let summarizer: (any SummaryGenerating)?"))
+        XCTAssertTrue(source.contains("generateSelectedProfile"))
+        XCTAssertTrue(source.contains("NetworkingProfileGenerationService"))
+        XCTAssertTrue(source.contains("NetworkingActivationStateStore().save"))
+        XCTAssertTrue(source.contains("Generate from My Wiki"))
+        XCTAssertTrue(source.contains("Generation timed out. Try again after checking your Diary Engine."))
+    }
+
     func testNetworkingCockpitVisibleCopyIsEnglishOnly() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -293,6 +309,29 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertTrue(draft.body.contains("wiki/concepts/knowyou-networking.md"))
     }
 
+    func testPromptProfileGeneratorExtractsTextFromStructuredSummarizerOutput() async throws {
+        let rawStructuredOutput = #"{"sections":[{"id":"daily-journal","paragraphs":[{"sourceEventIDs":["00000000-0000-0000-0000-000000000000"],"text":"Tianfu Wu builds local-first AI products and can own SwiftUI, web, Supabase, MCP, and product shipping."}]}]}"#
+        let generator = NetworkingPromptProfileGenerator(
+            summarizer: StubSummaryGenerating(output: rawStructuredOutput)
+        )
+
+        let content = try await generator.generateProfile(
+            scenario: .jobs,
+            prompt: "Generate a hiring profile.",
+            personName: "Tianfu Wu",
+            context: NetworkingProfileContext(
+                summary: "KnowYou context",
+                citations: ["wiki/entities/knowyou.md"]
+            )
+        )
+
+        XCTAssertEqual(
+            content.summary,
+            "Tianfu Wu builds local-first AI products and can own SwiftUI, web, Supabase, MCP, and product shipping."
+        )
+        XCTAssertFalse(content.summary.contains(#""sections""#))
+    }
+
     func testProfileGenerationFailureDoesNotCreateFictionalDraft() async {
         let service = NetworkingProfileGenerationService(
             contextProvider: StubNetworkingMyWikiContextProvider(result: .failure(NetworkingProfileGenerationError.myWikiUnavailable)),
@@ -341,6 +380,23 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertEqual(activation.profilePayloads.map(\.profileID), ["profile-jobs"])
         XCTAssertFalse(activation.agentTokenPlaintext.isEmpty)
         XCTAssertEqual(activation.agentTokenLabel, "Local KnowYou Networking agent")
+    }
+
+    func testActivationStateStorePersistsEnabledStateForNetworkingMCP() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouContext", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
+        let state = NetworkingActivationState(
+            isEnabled: true,
+            personID: "person-real-user",
+            agentTokenPlaintext: "knw_agent_real_user",
+            supabaseURL: URL(string: "https://local.knowyou.invalid")!,
+            publishableKey: "local-dev"
+        )
+
+        let store = NetworkingActivationStateStore()
+        try store.save(state, projectRoot: projectRoot)
+
+        XCTAssertEqual(store.load(projectRoot: projectRoot), state)
     }
 
     func testNetworkingMCPRequiresActivationForPublishing() {
@@ -502,6 +558,11 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
             status: .queued
         )
     }
+
+    private func temporaryDirectory() -> URL {
+        FileManager.default.temporaryDirectory
+            .appending(path: "knowyou-networking-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
+    }
 }
 
 private struct StubNetworkingMyWikiContextProvider: NetworkingMyWikiContextProviding {
@@ -522,5 +583,13 @@ private struct StubNetworkingLLMProfileGenerator: NetworkingLLMProfileGenerating
         context: NetworkingProfileContext
     ) async throws -> NetworkingGeneratedProfileContent {
         try result.get()
+    }
+}
+
+private struct StubSummaryGenerating: SummaryGenerating {
+    let output: String
+
+    func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
+        output
     }
 }

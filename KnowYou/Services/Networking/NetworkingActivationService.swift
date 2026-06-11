@@ -61,6 +61,18 @@ struct NetworkingActivationStateStore {
         return try? JSONDecoder().decode(NetworkingActivationState.self, from: data)
     }
 
+    func save(_ state: NetworkingActivationState, projectRoot: URL) throws {
+        let url = stateURL(projectRoot: projectRoot)
+        try fileManager.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(state)
+        try data.write(to: url, options: .atomic)
+    }
+
     func stateURL(projectRoot: URL) -> URL {
         projectRoot.appending(path: ".knowyou/networking/activation.json")
     }

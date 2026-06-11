@@ -533,7 +533,11 @@ struct MainWindowView: View {
     }
 
     private var networkingContent: some View {
-        NetworkingCockpitView(presentation: NetworkingCockpitPresentation())
+        NetworkingCockpitView(
+            presentation: NetworkingCockpitPresentation(),
+            projectRoot: knowledgeOntologyProjectRoot,
+            summarizer: appState.environment?.summarizer
+        )
     }
 
     private var globalSearchContent: some View {

@@ -2,12 +2,18 @@ import SwiftUI
 
 struct NetworkingCockpitView: View {
     let presentation: NetworkingCockpitPresentation
+    let projectRoot: URL?
+    let summarizer: (any SummaryGenerating)?
 
     @State private var selectedProfileID = "profile-career"
     @State private var selectedPlatformID = "knowyou-careers"
     @State private var isEnabled = false
+    @State private var generatedDrafts: [String: NetworkingProfileDraft] = [:]
+    @State private var generationStatus: NetworkingGenerationStatus = .idle
+    @State private var activationMessage: String?
 
     private let activePersonName = "Tianfu Wu"
+    private let profileGenerationTimeoutNanoseconds: UInt64 = 45_000_000_000
 
     private var selectedProfile: NetworkingGeneratedProfile {
         profiles.first { $0.id == selectedProfileID } ?? profiles[0]
@@ -26,6 +32,9 @@ struct NetworkingCockpitView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier("networking-cockpit-native")
+        .task {
+            loadActivationState()
+        }
     }
 
     private var header: some View {
@@ -43,11 +52,19 @@ struct NetworkingCockpitView: View {
 
             VStack(alignment: .trailing, spacing: 10) {
                 Button {
-                    isEnabled.toggle()
+                    enableNetworking()
                 } label: {
                     Label(isEnabled ? "Networking enabled" : "Enable Networking", systemImage: isEnabled ? "checkmark.circle.fill" : "power")
                 }
                 .buttonStyle(.borderedProminent)
+
+                if let activationMessage {
+                    Text(activationMessage)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: 260, alignment: .trailing)
+                }
 
                 HStack(spacing: 8) {
                     Text("Public display name")
@@ -116,7 +133,29 @@ struct NetworkingCockpitView: View {
                     .buttonStyle(.plain)
                 }
 
-                GeneratedResultPreview(profile: selectedProfile)
+                HStack(spacing: 10) {
+                    Button {
+                        generateSelectedProfile()
+                    } label: {
+                        Label(
+                            generationStatus.isGenerating ? "Generating..." : "Generate from My Wiki",
+                            systemImage: generationStatus.isGenerating ? "hourglass" : "sparkles"
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(generationStatus.isGenerating)
+
+                    if let message = generationStatus.message {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(generationStatus.isFailure ? .red : .secondary)
+                    }
+                }
+
+                GeneratedResultPreview(
+                    profile: selectedProfile,
+                    draft: generatedDrafts[selectedProfile.id]
+                )
             }
         }
     }
@@ -290,6 +329,146 @@ struct NetworkingCockpitView: View {
             ),
         ]
     }
+
+    private func loadActivationState() {
+        guard let projectRoot,
+              let state = NetworkingActivationStateStore().load(projectRoot: projectRoot) else {
+            isEnabled = false
+            return
+        }
+        isEnabled = state.isEnabled
+        activationMessage = state.isEnabled ? "Local agent permission is saved for this My Wiki project." : nil
+    }
+
+    private func enableNetworking() {
+        guard let projectRoot else {
+            isEnabled = false
+            activationMessage = "My Wiki project is not ready yet."
+            return
+        }
+
+        let safePersonID = activePersonName
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+        let state = NetworkingActivationState(
+            isEnabled: true,
+            personID: "local-\(safePersonID)",
+            agentTokenPlaintext: "knw_agent_local_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())",
+            supabaseURL: URL(string: "https://local.knowyou.invalid")!,
+            publishableKey: "local-dev"
+        )
+
+        do {
+            try NetworkingActivationStateStore().save(state, projectRoot: projectRoot)
+            isEnabled = true
+            activationMessage = "Local agent permission saved. MCP tools can prepare AI-labeled posts and comments."
+        } catch {
+            isEnabled = false
+            activationMessage = "Could not save local agent permission: \(error.localizedDescription)"
+        }
+    }
+
+    private func generateSelectedProfile() {
+        guard let projectRoot else {
+            generationStatus = .failed("My Wiki project is not ready yet.")
+            return
+        }
+        guard let summarizer else {
+            generationStatus = .failed("Select a Diary Engine before generating a real profile.")
+            return
+        }
+
+        let profile = selectedProfile
+        let scenario = scenario(for: profile)
+        generationStatus = .generating
+
+        Task {
+            do {
+                let service = NetworkingProfileGenerationService(
+                    generator: NetworkingPromptProfileGenerator(summarizer: summarizer)
+                )
+                let draft = try await withProfileGenerationTimeout {
+                    try await service.generateDraft(
+                        scenario: scenario,
+                        prompt: scenario.prompt,
+                        personName: activePersonName,
+                        projectRoot: projectRoot
+                    )
+                }
+                await MainActor.run {
+                    generatedDrafts[profile.id] = draft
+                    generationStatus = .succeeded("Generated from My Wiki. Review the draft before publishing.")
+                }
+            } catch {
+                await MainActor.run {
+                    generationStatus = .failed(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func withProfileGenerationTimeout<T: Sendable>(
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: profileGenerationTimeoutNanoseconds)
+                throw NetworkingProfileGenerationError.llmFailed("Generation timed out. Try again after checking your Diary Engine.")
+            }
+
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
+
+    private func scenario(for profile: NetworkingGeneratedProfile) -> NetworkingProfileScenario {
+        switch profile.id {
+        case "profile-career":
+            return .jobs
+        case "profile-friends":
+            return .friends
+        default:
+            return NetworkingProfileScenario(
+                id: "custom",
+                label: "Custom",
+                prompt: "Generate a public profile for a user-defined networking scene. Summarize only what is useful and safe to share.",
+                platformID: "",
+                description: "A user-defined scene for KnowYou Networking."
+            )
+        }
+    }
+}
+
+private enum NetworkingGenerationStatus: Equatable {
+    case idle
+    case generating
+    case succeeded(String)
+    case failed(String)
+
+    var isGenerating: Bool {
+        if case .generating = self { return true }
+        return false
+    }
+
+    var isFailure: Bool {
+        if case .failed = self { return true }
+        return false
+    }
+
+    var message: String? {
+        switch self {
+        case .idle:
+            return nil
+        case .generating:
+            return "Reading My Wiki and asking your configured LLM to draft this profile."
+        case let .succeeded(message), let .failed(message):
+            return message
+        }
+    }
 }
 
 private struct StepPanel<Content: View>: View {
@@ -419,6 +598,7 @@ private struct CustomScenarioCard: View {
 
 private struct GeneratedResultPreview: View {
     let profile: NetworkingGeneratedProfile
+    let draft: NetworkingProfileDraft?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -439,9 +619,23 @@ private struct GeneratedResultPreview: View {
                 StatusPill(text: "needs approval", color: .gray)
             }
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
-                ForEach(profile.summarySections) { section in
-                    OutputSectionCard(section: section)
+            if let draft {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Draft summary")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(draft.summary)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
+                    ForEach(profile.summarySections) { section in
+                        OutputSectionCard(section: section)
+                    }
                 }
             }
         }

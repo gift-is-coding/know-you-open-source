@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 private enum MainWindowMode {
     case home
@@ -764,12 +765,110 @@ struct MainWindowView: View {
                     await appState.refreshSelectedDayFullRecovery()
                 }
             },
+            onShareDiary: { redacted, action in
+                guard let story = appState.selectedStory else {
+                    appState.statusMessage = "No diary text to share yet."
+                    return false
+                }
+                return shareDiary(source: .fullStory(story), redacted: redacted, action: action)
+            },
+            onShareParagraph: { paragraph, redacted, action in
+                let resolvedDayKey = appState.selectedDate ?? appState.selectedStory?.dayKey ?? ISO8601DayKey.format(Date())
+                _ = shareDiary(source: .paragraph(paragraph, dayKey: resolvedDayKey), redacted: redacted, action: action)
+            },
             canFullRefresh: appState.selectedDate != nil && appState.selectedDate != OnboardingDemoStory.demoDayKey,
             fullRefreshMenuTitle: appState.selectedDate == ISO8601DayKey.format(Date())
                 ? "Full Refresh Today (Overwriting)"
                 : "Full Refresh (Overwriting)"
         )
         .onboardingCoachmarkTarget(.storyPanel)
+    }
+
+    private func shareDiary(source: DiaryShareSource, redacted: Bool, action: DiaryShareAction) -> Bool {
+        guard let payload = DiaryShareContentBuilder().payload(source: source, redacted: redacted) else {
+            appState.statusMessage = "No diary text to share yet."
+            return false
+        }
+
+        switch action {
+        case .copyImage:
+            return copyDiaryShareImage(payload)
+        case .saveImage:
+            return saveDiaryShareImage(payload)
+        }
+    }
+
+    private func copyDiaryShareImage(_ payload: DiarySharePayload) -> Bool {
+        let image = DiaryShareImageRenderer().image(for: payload)
+        if DiarySharePasteboardWriter().write(image: image) {
+            appState.statusMessage = diaryShareStatusMessage(payload: payload, action: .copyImage, succeeded: true)
+            return true
+        } else {
+            appState.statusMessage = diaryShareStatusMessage(payload: payload, action: .copyImage, succeeded: false)
+            return false
+        }
+    }
+
+    private func saveDiaryShareImage(_ payload: DiarySharePayload) -> Bool {
+        guard let data = DiaryShareImageRenderer().pngData(for: payload) else {
+            appState.statusMessage = diaryShareStatusMessage(payload: payload, action: .saveImage, succeeded: false)
+            return false
+        }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.png]
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.nameFieldStringValue = DiaryShareExportFilename.defaultName(
+            dayKey: payload.dayKey,
+            mode: payload.mode
+        )
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            appState.statusMessage = diaryShareUsesChinese(payload) ? "已取消保存分享图片" : "Share image save canceled"
+            return false
+        }
+
+        do {
+            try data.write(to: url, options: .atomic)
+            appState.statusMessage = diaryShareStatusMessage(payload: payload, action: .saveImage, succeeded: true)
+            return true
+        } catch {
+            appState.statusMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func diaryShareStatusMessage(
+        payload: DiarySharePayload,
+        action: DiaryShareAction,
+        succeeded: Bool
+    ) -> String {
+        let usesChinese = diaryShareUsesChinese(payload)
+        switch (action, succeeded, usesChinese) {
+        case (.copyImage, true, true):
+            return "复制成功，可以去别的地方粘贴"
+        case (.copyImage, false, true):
+            return "分享图片复制失败"
+        case (.saveImage, true, true):
+            return "分享图片已保存"
+        case (.saveImage, false, true):
+            return "分享图片保存失败"
+        case (.copyImage, true, false):
+            return "Copied. You can paste it elsewhere."
+        case (.copyImage, false, false):
+            return "Could not copy share image"
+        case (.saveImage, true, false):
+            return "Share image saved"
+        case (.saveImage, false, false):
+            return "Could not save share image"
+        }
+    }
+
+    private func diaryShareUsesChinese(_ payload: DiarySharePayload) -> Bool {
+        payload.body.unicodeScalars.contains { scalar in
+            (0x4E00...0x9FFF).contains(Int(scalar.value))
+        }
     }
 
     private var detailPane: some View {

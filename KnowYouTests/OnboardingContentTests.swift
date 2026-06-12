@@ -254,6 +254,9 @@ final class OnboardingContentTests: XCTestCase {
         let derivedDataURL = URL(
             fileURLWithPath: "/Users/me/Library/Developer/Xcode/DerivedData/KnowYou/Build/Products/Debug/KnowYou.app"
         )
+        let repoLocalDerivedDataURL = URL(
+            fileURLWithPath: "/Users/me/Documents/code/know-you/.derived-data/dev/Build/Products/Debug/KnowYou.app"
+        )
 
         XCTAssertNil(
             ApplicationInstallAutoMovePolicy.request(
@@ -290,6 +293,14 @@ final class OnboardingContentTests: XCTestCase {
         XCTAssertNil(
             ApplicationInstallAutoMovePolicy.request(
                 bundleURL: derivedDataURL,
+                bundleIdentifier: "dev.knowyou.app",
+                launchMode: .interactive,
+                isRunningUnderXCTest: false
+            )
+        )
+        XCTAssertNil(
+            ApplicationInstallAutoMovePolicy.request(
+                bundleURL: repoLocalDerivedDataURL,
                 bundleIdentifier: "dev.knowyou.app",
                 launchMode: .interactive,
                 isRunningUnderXCTest: false
@@ -353,9 +364,13 @@ final class OnboardingContentTests: XCTestCase {
         let developmentBuildURL = URL(
             fileURLWithPath: "/Users/me/Library/Developer/Xcode/DerivedData/KnowYou/Build/Products/Debug/KnowYou.app"
         )
+        let repoLocalDevelopmentBuildURL = URL(
+            fileURLWithPath: "/Users/me/Documents/code/know-you/.derived-data/dev/Build/Products/Debug/KnowYou.app"
+        )
         let installedAppURL = URL(fileURLWithPath: "/Applications/KnowYou.app")
 
         XCTAssertTrue(OnboardingPermissionBypassPolicy.allowsFullDiskAccessBypass(bundleURL: developmentBuildURL))
+        XCTAssertTrue(OnboardingPermissionBypassPolicy.allowsFullDiskAccessBypass(bundleURL: repoLocalDevelopmentBuildURL))
         XCTAssertFalse(OnboardingPermissionBypassPolicy.allowsFullDiskAccessBypass(bundleURL: installedAppURL))
     }
 

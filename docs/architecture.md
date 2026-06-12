@@ -51,6 +51,9 @@ flowchart LR
     K --> L
     L --> M[write .story.json]
     L --> N[compose Markdown]
+    L --> DS[DiaryShareContentBuilder]
+    DS --> DR[DiaryShareRedactor optional]
+    DR --> DI[DiaryShareImageRenderer / QR]
     N --> O[write .md]
     L --> TB[TodoReconciler / TodoCompletionSweep]
     TB --> TC[TodoStore / Vault/Todo.md]
@@ -175,7 +178,15 @@ Diary 左侧列表由 `JournalListOrdering` 统一裁剪为 today 加前三天�
 
 Networking 当前是 preview 页面，侧边栏与页面标题都标记为 `Networking (Coming soon)`。页面用 `Coming soon` 状态、profile / job / social discovery 说明和本地视觉资产表达未来方向，不再使用 `Clear identity` 或 `identity stays clear` 文案。
 
-### 3.6 Unified Todo
+### 3.6 Diary Share
+
+Diary share 是阅读器上的本地导出能力，不参与采集、生成或 source detail 链路。分享入口只消费当前 UI 已加载的 `DailyStory` 和 `DailyStoryParagraph` 文本：顶部按钮生成全文分享，段落右键菜单生成段落分享。该路径不读取 SQLite 原始事件、不读取右侧 source detail、不上传内容，也不改变 `.story.json`、`.md` 或 `Vault/Todo.md`。
+
+分享状态保留在 `DailyMarkdownView`：`脱敏` checkbox 默认开启，用户可以取消后生成 original share。`MainWindowView` 只负责把当前 story/paragraph 交给 `DiaryShareContentBuilder`，再按用户动作复制到剪贴板或通过 `NSSavePanel` 保存 PNG。
+
+展示层脱敏由 `DiaryShareRedactor` 完成，和入库用 `PrivacyFilter` 分开。`PrivacyFilter` 是持久化安全边界，可能 drop 内容；`DiaryShareRedactor` 是分享图片的可读性保护，只做 email、长数字、secret key/value、private key block、URL query/fragment 等保守替换。分享图片由 `DiaryShareImageRenderer` 在本机生成，包含日记正文、日期、redacted/original 标记、`giiift.site/know-you/download` 下载地址和 CoreImage 生成的二维码。
+
+### 3.7 Unified Todo
 
 统一 Todo inbox 的权威状态在 `Vault/Todo.md`，不是每日 Markdown 的派生状态。每日 `# 待办事项` 只保留“候选待办”的叙事职责，`Todo.md` 记录 open/completed、来源日期、来源事件、创建/完成时间、完成证据、归集方式与完成方式。旧 SQLite `todo_items` 表保留为兼容和首次 seed 来源：当 `Todo.md` 不存在但 SQLite 里已有 todo 时，`TodoStore` 会先写出 Markdown 文件。
 

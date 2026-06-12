@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import KnowYou
 
@@ -920,6 +921,266 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.paragraphs, [first, second])
     }
 
+    func testDiarySharePresentationDefaultsToRedactedWhenStoryHasParagraphs() {
+        let paragraph = DailyStoryParagraph(
+            id: "daily-journal-0",
+            text: "First paragraph",
+            sourceEventIDs: [UUID()]
+        )
+        let story = DailyStory(
+            dayKey: "2026-06-12",
+            generatedAt: Date(timeIntervalSince1970: 0),
+            sections: [
+                DailyStorySection(id: "story", title: "Story", paragraphs: [paragraph])
+            ]
+        )
+
+        let presentation = DiarySharePresentation(story: story, redacted: true)
+
+        XCTAssertTrue(presentation.canShare)
+        XCTAssertEqual(presentation.buttonTitle, "Share Redacted")
+        XCTAssertEqual(presentation.redactionToggleTitle, "Redact sensitive details")
+        XCTAssertEqual(presentation.copyButtonTitle, "Copy Image")
+        XCTAssertEqual(presentation.saveButtonTitle, "Save Image")
+        XCTAssertEqual(presentation.modeTitle, "Redacted share")
+    }
+
+    func testDiarySharePresentationDisablesShareWhenStoryIsEmpty() {
+        let story = DailyStory(
+            dayKey: "2026-06-12",
+            generatedAt: Date(timeIntervalSince1970: 0),
+            sections: [
+                DailyStorySection(id: "story", title: "Story", paragraphs: [])
+            ]
+        )
+
+        let presentation = DiarySharePresentation(story: story, redacted: true)
+
+        XCTAssertFalse(presentation.canShare)
+        XCTAssertEqual(presentation.disabledReason, "No diary text to share yet.")
+    }
+
+    func testDiarySharePresentationUsesLocalizedTitlesForChineseStory() {
+        let paragraph = DailyStoryParagraph(
+            id: "daily-journal-0",
+            text: "今天主要在整理日记分享功能。",
+            sourceEventIDs: [UUID()]
+        )
+        let story = DailyStory(
+            dayKey: "2026-06-12",
+            generatedAt: Date(timeIntervalSince1970: 0),
+            sections: [
+                DailyStorySection(id: "story", title: "Story", paragraphs: [paragraph])
+            ]
+        )
+
+        let presentation = DiarySharePresentation(story: story, redacted: true)
+
+        XCTAssertEqual(presentation.buttonTitle, "脱敏分享")
+        XCTAssertEqual(presentation.redactionToggleTitle, "脱敏")
+        XCTAssertEqual(presentation.copyButtonTitle, "复制图片")
+        XCTAssertEqual(presentation.saveButtonTitle, "保存图片")
+        XCTAssertEqual(presentation.modeTitle, "脱敏分享")
+    }
+
+    func testDiarySharePresentationKeepsEntryRedactedWhenOriginalModeIsSelected() {
+        let englishStory = DailyStory(
+            dayKey: "2026-06-12",
+            generatedAt: Date(timeIntervalSince1970: 0),
+            sections: [
+                DailyStorySection(
+                    id: "story",
+                    title: "Story",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: "I met Alex for lunch after the investor call.",
+                            sourceEventIDs: [UUID()]
+                        )
+                    ]
+                )
+            ]
+        )
+        let chineseStory = DailyStory(
+            dayKey: "2026-06-12",
+            generatedAt: Date(timeIntervalSince1970: 0),
+            sections: [
+                DailyStorySection(
+                    id: "story",
+                    title: "Story",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: "今天午饭后和 Alex 复盘了投资人电话。",
+                            sourceEventIDs: [UUID()]
+                        )
+                    ]
+                )
+            ]
+        )
+
+        let englishPresentation = DiarySharePresentation(story: englishStory, redacted: false)
+        let chinesePresentation = DiarySharePresentation(story: chineseStory, redacted: false)
+
+        XCTAssertEqual(englishPresentation.buttonTitle, "Share Redacted")
+        XCTAssertEqual(englishPresentation.modeTitle, "Original share")
+        XCTAssertEqual(chinesePresentation.buttonTitle, "脱敏分享")
+        XCTAssertEqual(chinesePresentation.modeTitle, "非脱敏分享")
+    }
+
+    func testDiarySharePresentationExplainsCopiedImageCanBePasted() {
+        let englishStory = DailyStory(
+            dayKey: "2026-06-12",
+            generatedAt: Date(timeIntervalSince1970: 0),
+            sections: [
+                DailyStorySection(
+                    id: "story",
+                    title: "Story",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: "A shareable diary moment.",
+                            sourceEventIDs: [UUID()]
+                        )
+                    ]
+                )
+            ]
+        )
+        let chineseStory = DailyStory(
+            dayKey: "2026-06-12",
+            generatedAt: Date(timeIntervalSince1970: 0),
+            sections: [
+                DailyStorySection(
+                    id: "story",
+                    title: "Story",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: "一段适合分享的日记。",
+                            sourceEventIDs: [UUID()]
+                        )
+                    ]
+                )
+            ]
+        )
+
+        XCTAssertEqual(
+            DiarySharePresentation(story: englishStory, redacted: true).copySuccessMessage,
+            "Copied. You can paste it elsewhere."
+        )
+        XCTAssertEqual(
+            DiarySharePresentation(story: chineseStory, redacted: true).copySuccessMessage,
+            "复制成功，可以去别的地方粘贴"
+        )
+    }
+
+    func testDiaryShareRendererGeneratesQRCodeForDownloadURL() throws {
+        let renderer = DiaryShareImageRenderer()
+
+        let image = try XCTUnwrap(renderer.qrImage(for: DiaryShareContentBuilder.defaultDownloadURL))
+
+        XCTAssertGreaterThan(image.size.width, 0)
+        XCTAssertGreaterThan(image.size.height, 0)
+    }
+
+    func testDiaryShareRendererReturnsPNGDataForPayload() throws {
+        let payload = DiarySharePayload(
+            dayKey: "2026-06-12",
+            sourceTitle: "Full diary",
+            body: "A compact diary moment worth sharing.",
+            mode: .redacted,
+            downloadURL: DiaryShareContentBuilder.defaultDownloadURL
+        )
+
+        let data = try XCTUnwrap(DiaryShareImageRenderer().pngData(for: payload))
+
+        XCTAssertGreaterThan(data.count, 1_000)
+        XCTAssertEqual(data.prefix(8), Data([137, 80, 78, 71, 13, 10, 26, 10]))
+    }
+
+    func testDiaryShareRendererKeepsTextVisibleInDarkAppearance() throws {
+        let previousAppearance = NSAppearance.current
+        NSAppearance.current = try XCTUnwrap(NSAppearance(named: .darkAqua))
+        defer { NSAppearance.current = previousAppearance }
+
+        let payload = DiarySharePayload(
+            dayKey: "2026-06-12",
+            sourceTitle: "Full diary",
+            body: "A compact diary moment worth sharing with the community.",
+            mode: .redacted,
+            downloadURL: DiaryShareContentBuilder.defaultDownloadURL
+        )
+
+        let image = DiaryShareImageRenderer().image(for: payload)
+        let representation = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation)))
+
+        XCTAssertGreaterThan(
+            darkPixelCount(in: representation, rect: NSRect(x: 100, y: 240, width: 700, height: 850)),
+            500
+        )
+    }
+
+    func testDiarySharePasteboardWriterPublishesPNGAndTIFFRepresentations() throws {
+        let image = NSImage(size: NSSize(width: 80, height: 80))
+        image.lockFocus()
+        NSColor.systemBlue.setFill()
+        NSRect(x: 0, y: 0, width: 80, height: 80).fill()
+        image.unlockFocus()
+        let pasteboard = FakeDiarySharePasteboard()
+
+        let didWrite = DiarySharePasteboardWriter(pasteboard: pasteboard).write(image: image)
+
+        XCTAssertTrue(didWrite)
+        XCTAssertTrue(pasteboard.didClear)
+        XCTAssertNotNil(pasteboard.dataByType[.knowYouPNG])
+        XCTAssertNotNil(pasteboard.dataByType[.tiff])
+    }
+
+    func testDiaryShareExportFilenameUsesSafeDayKeyAndMode() {
+        let filename = DiaryShareExportFilename.defaultName(
+            dayKey: "2026/06/12:night",
+            mode: .redacted
+        )
+
+        XCTAssertEqual(filename, "KnowYou-2026-06-12-night-redacted-share.png")
+    }
+
+    func testDiaryShareSelectionResolverUsesSelectedSubstringWhenItBelongsToParagraph() throws {
+        let paragraph = DailyStoryParagraph(
+            id: "daily-journal-0",
+            text: "Morning walk with a private thought worth sharing.",
+            sourceEventIDs: []
+        )
+        let text = "Morning walk with a private thought worth sharing."
+        let selectedRange = try XCTUnwrap((text as NSString).range(of: "private thought").nonEmpty)
+
+        let selectedText = DiaryShareSelectedTextResolver().selectedText(
+            in: text,
+            ranges: [selectedRange],
+            fallbackParagraph: paragraph
+        )
+
+        XCTAssertEqual(selectedText, "private thought")
+    }
+
+    func testDiaryShareSelectionResolverIgnoresSelectionOutsideParagraph() throws {
+        let paragraph = DailyStoryParagraph(
+            id: "daily-journal-0",
+            text: "This paragraph should be shared only when selection belongs here.",
+            sourceEventIDs: []
+        )
+        let text = "Selected text from another control"
+        let selectedRange = try XCTUnwrap((text as NSString).range(of: "another control").nonEmpty)
+
+        let selectedText = DiaryShareSelectedTextResolver().selectedText(
+            in: text,
+            ranges: [selectedRange],
+            fallbackParagraph: paragraph
+        )
+
+        XCTAssertNil(selectedText)
+    }
+
     func testPresentationUsesSelectedParagraphAsScrollTarget() {
         let first = DailyStoryParagraph(
             id: "daily-journal-0",
@@ -1268,5 +1529,51 @@ final class DailyMarkdownViewTests: XCTestCase {
             hour: hour,
             minute: minute
         ).date!
+    }
+
+    private func darkPixelCount(in representation: NSBitmapImageRep, rect: NSRect) -> Int {
+        let minX = max(0, Int(rect.minX))
+        let maxX = min(representation.pixelsWide, Int(rect.maxX))
+        let minY = max(0, Int(rect.minY))
+        let maxY = min(representation.pixelsHigh, Int(rect.maxY))
+        var count = 0
+
+        for x in minX..<maxX {
+            for y in minY..<maxY {
+                guard let color = representation.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else {
+                    continue
+                }
+                if color.alphaComponent > 0.5,
+                   color.redComponent < 0.35,
+                   color.greenComponent < 0.35,
+                   color.blueComponent < 0.35 {
+                    count += 1
+                }
+            }
+        }
+
+        return count
+    }
+}
+
+private final class FakeDiarySharePasteboard: DiarySharePasteboardWriting {
+    var didClear = false
+    var dataByType: [NSPasteboard.PasteboardType: Data] = [:]
+
+    func clearContents() -> Int {
+        didClear = true
+        dataByType.removeAll()
+        return 0
+    }
+
+    func setData(_ data: Data?, forType dataType: NSPasteboard.PasteboardType) -> Bool {
+        dataByType[dataType] = data
+        return true
+    }
+}
+
+private extension NSRange {
+    var nonEmpty: NSRange? {
+        location == NSNotFound || length == 0 ? nil : self
     }
 }

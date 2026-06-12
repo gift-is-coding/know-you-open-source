@@ -64,7 +64,7 @@ if [[ "$actual_git_sha" != "$expected_git_sha" ]]; then
   exit 1
 fi
 
-open "$app_path"
+open -n "$app_path"
 sleep 2
 
 echo "App path: $app_path"

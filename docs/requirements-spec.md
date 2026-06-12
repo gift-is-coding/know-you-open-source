@@ -23,6 +23,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 每日 Markdown 文件
 - 每日结构化 `.story.json` 文件
 - 应用内统一 Todo inbox
+- 用户主动生成的日记分享图片
 - 外部 memory 渠道同步（Obsidian / OpenClaw）
 - 外部知识源导入后的本地 Markdown 缓存
 
@@ -74,6 +75,10 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 
 用户应能从左侧 `Todo` 入口查看统一待办。open todo 必须优先展示，completed todo 必须保留并排在底部。用户可以在 Todo 页直接输入新任务；每日生成的候选待办可以被高置信自动归集，也可以在 Todo 页右侧 `Inbox / Candidates` 列表或日记里手动转入。
 
+### 4.8 分享日记图片
+
+用户应能在日记阅读器中把当天全文、划选文本或某个段落生成一张适合社群传播的图片。分享必须默认启用脱敏，用户可以明确取消脱敏后生成原文图片。图片必须在本机生成，可复制到剪贴板或保存为 PNG，并包含 KnowYou 下载地址和二维码。
+
 ## 5. 功能范围
 
 ### 5.1 In Scope
@@ -111,6 +116,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 多设备同步
 - 云端账户系统
 - 团队协作与共享
+- 云端托管、团队协作式共享、短链统计或自动发布到社交平台
 - 高级语义全文检索、完整标签管理系统、知识图谱界面
 - 浏览器历史、邮件、日历等更多信号源
 - 主界面中的原始 Markdown 编辑模式
@@ -143,6 +149,10 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 所有可持久化内容都必须先经过隐私过滤
 - 明显敏感文本不得以原文形式写入 SQLite
 - 被丢弃或脱敏的内容应保留最小审计信息，帮助用户理解为何某条内容未被完整保留
+- 日记分享必须只使用当前 `DailyStory` / `DailyStoryParagraph` 文本，不得读取 SQLite 原始事件或右侧 source detail 原文
+- 分享图片生成必须在本机完成，不得上传分享内容
+- 分享默认必须启用展示层脱敏；用户取消脱敏时，系统可以生成原文分享图，但该动作必须由用户显式触发
+- 分享专用脱敏必须至少覆盖 email、11 位以上连续数字、secret/password/token/api key/bearer 键值片段、private key block，以及 URL query/fragment
 
 ## 6.3 存储需求
 
@@ -238,6 +248,13 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - Generate Prompt 弹窗标题必须为 `Generate Prompt and Run in Codex/Claude to Set Up`。
 - Generate Prompt 文本必须要求 Codex / Claude Code 先检查 Feishu、Notion、Google Drive 所需 CLI、MCP 或本地工具是否 installed 和 authorized；如缺失必须 install 并引导 authorization，验证能读取 scope 后再写入本地目录。
 - 点击 `Copy Prompt` 后必须显示 `ExternalPromptRunGuide` 引导弹窗，说明去 Codex / Claude Code 粘贴运行并完成平台授权。
+- 日记顶部必须提供全文分享入口，中文内容显示 `脱敏分享`，英文内容显示 `Share Redacted`。
+- 点击全文分享入口后必须展开轻量分享面板，并默认勾选 `脱敏` / `Redact sensitive details`。
+- 用户取消脱敏后，分享按钮和面板文案必须切换到非脱敏/original 语义。
+- 全文分享面板必须提供复制图片和保存 PNG 两个动作。
+- 日记段落右键菜单必须提供脱敏分享与非脱敏分享动作；若能稳定取得属于当前段落的划选文本，则必须优先分享划选文本，否则回退当前段落。
+- 分享图片必须包含日期、分享模式、日记正文、`Shared from KnowYou`、`giiift.site/know-you/download` 和二维码。
+- Demo Day 或没有可分享日记文本时，分享入口必须禁用或不执行生成。
 - Prompt 生成器默认更新频率为 daily，默认更新时间为本地时间 `11:00`。
 - 添加 source 后，该 source 必须作为 `Other Source` 管理的并列来源条目出现。
 - 点击连接器来源条目必须在侧边栏展开或折叠该来源的路径层级；点击 Markdown/TXT 文档叶子必须打开 Markdown 预览。

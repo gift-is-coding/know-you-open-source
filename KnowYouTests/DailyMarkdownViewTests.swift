@@ -1074,6 +1074,32 @@ final class DailyMarkdownViewTests: XCTestCase {
         )
     }
 
+    func testDiarySharePresentationPromotesSharingWithoutLosingPrivacyMessage() {
+        let story = DailyStory(
+            dayKey: "2026-06-12",
+            generatedAt: Date(timeIntervalSince1970: 0),
+            sections: [
+                DailyStorySection(
+                    id: "story",
+                    title: "Story",
+                    paragraphs: [
+                        DailyStoryParagraph(
+                            id: "daily-journal-0",
+                            text: "A useful day worth sharing with the community.",
+                            sourceEventIDs: [UUID()]
+                        )
+                    ]
+                )
+            ]
+        )
+
+        let presentation = DiarySharePresentation(story: story, redacted: true)
+
+        XCTAssertEqual(presentation.buttonTone, .prominent)
+        XCTAssertEqual(presentation.encouragementTitle, "Share the interesting parts.")
+        XCTAssertEqual(presentation.encouragementDetail, "Keep the rest private.")
+    }
+
     func testDiaryShareRendererGeneratesQRCodeForDownloadURL() throws {
         let renderer = DiaryShareImageRenderer()
 

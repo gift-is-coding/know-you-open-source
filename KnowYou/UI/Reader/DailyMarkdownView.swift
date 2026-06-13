@@ -57,9 +57,9 @@ struct DailyMarkdownView: View {
                                             Button {
                                                 openFullStorySharePopover()
                                             } label: {
-                                                Label(sharePresentation.buttonTitle, systemImage: "square.and.arrow.up")
+                                                ShareToolbarLabel(presentation: sharePresentation)
                                             }
-                                            .buttonStyle(.borderless)
+                                            .buttonStyle(.plain)
                                             .disabled(!sharePresentation.canShare || dayKey == OnboardingDemoStory.demoDayKey)
                                             .help(sharePresentation.disabledReason ?? sharePresentation.modeTitle)
 
@@ -307,6 +307,8 @@ struct DailyMarkdownView: View {
                 DiarySharePreviewImage(payload: payload)
             }
 
+            DiaryShareEncouragementView(presentation: presentation)
+
             HStack(spacing: 10) {
                 Button(presentation.copyButtonTitle) {
                     let copied = performShareAction(.copyImage)
@@ -474,6 +476,11 @@ struct DailyMarkdownView: View {
     }
 }
 
+enum DiaryShareButtonTone: Equatable {
+    case prominent
+    case disabled
+}
+
 private struct DiaryShareToast: Equatable, Identifiable {
     let id = UUID()
     let message: String
@@ -483,6 +490,72 @@ private struct DiaryShareToast: Equatable, Identifiable {
 private enum DiaryShareRequest: Equatable {
     case fullStory
     case paragraph(DailyStoryParagraph)
+}
+
+private struct ShareToolbarLabel: View {
+    let presentation: DiarySharePresentation
+
+    var body: some View {
+        Label {
+            Text(presentation.buttonTitle)
+                .font(.callout.weight(.semibold))
+        } icon: {
+            Image(systemName: "square.and.arrow.up")
+                .font(.callout.weight(.semibold))
+        }
+        .labelStyle(.titleAndIcon)
+        .foregroundStyle(presentation.buttonTone == .prominent ? Color.accentColor : Color.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background {
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.accentColor.opacity(presentation.buttonTone == .prominent ? 0.18 : 0.06),
+                            Color.cyan.opacity(presentation.buttonTone == .prominent ? 0.10 : 0.04),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        }
+        .overlay {
+            Capsule()
+                .stroke(Color.accentColor.opacity(presentation.buttonTone == .prominent ? 0.30 : 0.10), lineWidth: 1)
+        }
+    }
+}
+
+private struct DiaryShareEncouragementView: View {
+    let presentation: DiarySharePresentation
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "paperplane.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 18, height: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(presentation.encouragementTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(presentation.encouragementDetail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.accentColor.opacity(0.12), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+    }
 }
 
 private struct DiarySharePreviewImage: View {
@@ -734,10 +807,13 @@ enum DiaryShareAction: Equatable {
 struct DiarySharePresentation: Equatable {
     let canShare: Bool
     let buttonTitle: String
+    let buttonTone: DiaryShareButtonTone
     let redactionToggleTitle: String
     let copyButtonTitle: String
     let saveButtonTitle: String
     let modeTitle: String
+    let encouragementTitle: String
+    let encouragementDetail: String
     let copySuccessMessage: String
     let copyFailureMessage: String
     let disabledReason: String?
@@ -749,10 +825,13 @@ struct DiarySharePresentation: Equatable {
         }
         disabledReason = canShare ? nil : "No diary text to share yet."
         buttonTitle = "Share Redacted"
+        buttonTone = canShare ? .prominent : .disabled
         redactionToggleTitle = "Redact sensitive details"
         copyButtonTitle = "Copy Image"
         saveButtonTitle = "Save Image"
         modeTitle = redacted ? "Redacted share" : "Original share"
+        encouragementTitle = "Share the interesting parts."
+        encouragementDetail = "Keep the rest private."
         copySuccessMessage = "Copied. You can paste it elsewhere."
         copyFailureMessage = "Could not copy share image"
     }

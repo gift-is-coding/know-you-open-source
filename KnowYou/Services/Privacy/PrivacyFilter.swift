@@ -139,24 +139,62 @@ struct DiaryShareContentBuilder {
 struct DiaryShareRedactor {
     func redact(_ text: String) -> String {
         var redacted = text
-        redacted = replace(pattern: #"(?is)-----BEGIN[^-]+PRIVATE KEY-----.*?-----END[^-]+PRIVATE KEY-----"#, in: redacted, with: "[secret block]")
-        redacted = replace(pattern: #"(?i)\b([A-Z0-9._%+-]+)@([A-Z0-9.-]+\.[A-Z]{2,})\b"#, in: redacted, with: "[email]")
-        redacted = replace(pattern: #"(?i)\b(password|passcode|token|secret|api[_ -]?key|bearer)\b\s*[:=]\s*\S+"#, in: redacted, with: "$1: [secret]")
-        redacted = replace(pattern: #"\b\d{11,}\b"#, in: redacted, with: "[number]")
-        redacted = replace(pattern: #"(https?://[^\s?#]+)(?:\?[^\s#]*)?(?:#[^\s]*)?"#, in: redacted, with: "$1")
+        redacted = replace(pattern: #"(?is)-----BEGIN[^-]+PRIVATE KEY-----.*?-----END[^-]+PRIVATE KEY-----"#, in: redacted) { match, _ in
+            visibleMask(forLength: match.range.length)
+        }
+        redacted = replace(pattern: #"(?i)\b([A-Z0-9._%+-]+)@([A-Z0-9.-]+\.[A-Z]{2,})\b"#, in: redacted) { match, _ in
+            visibleMask(forLength: match.range.length)
+        }
+        redacted = replace(pattern: #"(?i)\b(password|passcode|token|secret|api[_ -]?key|bearer)\b(\s*[:=]\s*)\S+"#, in: redacted) { match, source in
+            guard match.numberOfRanges >= 3,
+                  let keyRange = Range(match.range(at: 1), in: source),
+                  let separatorRange = Range(match.range(at: 2), in: source) else {
+                return visibleMask(forLength: match.range.length)
+            }
+            return String(source[keyRange]) + String(source[separatorRange]) + visibleMask(forLength: match.range.length)
+        }
+        redacted = replace(pattern: #"\b\d{11,}\b"#, in: redacted) { match, _ in
+            visibleMask(forLength: match.range.length)
+        }
+        redacted = replace(pattern: #"(https?://[^\s?#]+)(?:\?[^\s#]*)?(?:#[^\s]*)?"#, in: redacted) { match, source in
+            guard match.numberOfRanges >= 2,
+                  let baseRange = Range(match.range(at: 1), in: source) else {
+                return visibleMask(forLength: match.range.length)
+            }
+            let baseURL = String(source[baseRange])
+            if match.range.length == match.range(at: 1).length {
+                return baseURL
+            }
+            return baseURL + "?" + visibleMask(forLength: match.range.length)
+        }
         return redacted
     }
 
-    private func replace(pattern: String, in text: String, with template: String) -> String {
+    private func replace(
+        pattern: String,
+        in text: String,
+        replacement: (NSTextCheckingResult, String) -> String
+    ) -> String {
         guard let expression = try? NSRegularExpression(pattern: pattern) else {
             return text
         }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        return expression.stringByReplacingMatches(
+        let matches = expression.matches(
             in: text,
             options: [],
-            range: range,
-            withTemplate: template
+            range: range
         )
+        guard matches.isEmpty == false else { return text }
+
+        var result = text
+        for match in matches.reversed() {
+            guard let stringRange = Range(match.range, in: result) else { continue }
+            result.replaceSubrange(stringRange, with: replacement(match, result))
+        }
+        return result
+    }
+
+    private func visibleMask(forLength length: Int) -> String {
+        String(repeating: "█", count: min(max(length / 3, 4), 16))
     }
 }

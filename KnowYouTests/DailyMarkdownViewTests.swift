@@ -960,7 +960,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(presentation.disabledReason, "No diary text to share yet.")
     }
 
-    func testDiarySharePresentationUsesLocalizedTitlesForChineseStory() {
+    func testDiarySharePresentationUsesEnglishTitlesForChineseStory() {
         let paragraph = DailyStoryParagraph(
             id: "daily-journal-0",
             text: "今天主要在整理日记分享功能。",
@@ -976,11 +976,11 @@ final class DailyMarkdownViewTests: XCTestCase {
 
         let presentation = DiarySharePresentation(story: story, redacted: true)
 
-        XCTAssertEqual(presentation.buttonTitle, "脱敏分享")
-        XCTAssertEqual(presentation.redactionToggleTitle, "脱敏")
-        XCTAssertEqual(presentation.copyButtonTitle, "复制图片")
-        XCTAssertEqual(presentation.saveButtonTitle, "保存图片")
-        XCTAssertEqual(presentation.modeTitle, "脱敏分享")
+        XCTAssertEqual(presentation.buttonTitle, "Share Redacted")
+        XCTAssertEqual(presentation.redactionToggleTitle, "Redact sensitive details")
+        XCTAssertEqual(presentation.copyButtonTitle, "Copy Image")
+        XCTAssertEqual(presentation.saveButtonTitle, "Save Image")
+        XCTAssertEqual(presentation.modeTitle, "Redacted share")
     }
 
     func testDiarySharePresentationKeepsEntryRedactedWhenOriginalModeIsSelected() {
@@ -1024,8 +1024,8 @@ final class DailyMarkdownViewTests: XCTestCase {
 
         XCTAssertEqual(englishPresentation.buttonTitle, "Share Redacted")
         XCTAssertEqual(englishPresentation.modeTitle, "Original share")
-        XCTAssertEqual(chinesePresentation.buttonTitle, "脱敏分享")
-        XCTAssertEqual(chinesePresentation.modeTitle, "非脱敏分享")
+        XCTAssertEqual(chinesePresentation.buttonTitle, "Share Redacted")
+        XCTAssertEqual(chinesePresentation.modeTitle, "Original share")
     }
 
     func testDiarySharePresentationExplainsCopiedImageCanBePasted() {
@@ -1070,7 +1070,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         )
         XCTAssertEqual(
             DiarySharePresentation(story: chineseStory, redacted: true).copySuccessMessage,
-            "复制成功，可以去别的地方粘贴"
+            "Copied. You can paste it elsewhere."
         )
     }
 
@@ -1118,6 +1118,22 @@ final class DailyMarkdownViewTests: XCTestCase {
             darkPixelCount(in: representation, rect: NSRect(x: 100, y: 240, width: 700, height: 850)),
             500
         )
+    }
+
+    func testDiaryShareRendererExpandsCanvasForLongContent() {
+        let payload = DiarySharePayload(
+            dayKey: "2026-06-12",
+            sourceTitle: "Full diary",
+            body: Array(repeating: "A long diary sentence with enough words to wrap across the share card.", count: 80)
+                .joined(separator: "\n\n"),
+            mode: .redacted,
+            downloadURL: DiaryShareContentBuilder.defaultDownloadURL
+        )
+
+        let image = DiaryShareImageRenderer().image(for: payload)
+
+        XCTAssertEqual(image.size.width, 900)
+        XCTAssertGreaterThan(image.size.height, 1_200)
     }
 
     func testDiarySharePasteboardWriterPublishesPNGAndTIFFRepresentations() throws {

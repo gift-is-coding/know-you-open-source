@@ -18,13 +18,14 @@ struct DailyMarkdownView: View {
     let onRefresh: () -> Void
     let onTodayFullRefresh: () -> Void
     var onShareDiary: (Bool, DiaryShareAction) -> Bool = { _, _ in false }
-    var onShareParagraph: (DailyStoryParagraph, Bool, DiaryShareAction) -> Void = { _, _, _ in }
+    var onShareParagraph: (DailyStoryParagraph, Bool, DiaryShareAction) -> Bool = { _, _, _ in false }
     let canFullRefresh: Bool
     let fullRefreshMenuTitle: String
 
     @State private var hoveredParagraphID: String?
     @State private var showsSharePopover = false
     @State private var shareRedacted = true
+    @State private var shareRequest: DiaryShareRequest = .fullStory
     @State private var shareCopyFeedbackMessage: String?
     @State private var shareCopyFeedbackSucceeded = true
     @State private var shareToast: DiaryShareToast?
@@ -54,19 +55,13 @@ struct DailyMarkdownView: View {
                                     VStack(alignment: .trailing, spacing: 6) {
                                         HStack(spacing: 6) {
                                             Button {
-                                                shareRedacted = true
-                                                shareCopyFeedbackMessage = nil
-                                                shareCopyFeedbackSucceeded = true
-                                                showsSharePopover = true
+                                                openFullStorySharePopover()
                                             } label: {
                                                 Label(sharePresentation.buttonTitle, systemImage: "square.and.arrow.up")
                                             }
                                             .buttonStyle(.borderless)
                                             .disabled(!sharePresentation.canShare || dayKey == OnboardingDemoStory.demoDayKey)
                                             .help(sharePresentation.disabledReason ?? sharePresentation.modeTitle)
-                                            .popover(isPresented: $showsSharePopover, arrowEdge: .bottom) {
-                                                sharePopover(sharePresentation)
-                                            }
 
                                             Button {
                                                 onRefresh()
@@ -169,6 +164,7 @@ struct DailyMarkdownView: View {
                             .onChange(of: dayKey) { _, _ in
                                 showsSharePopover = false
                                 shareRedacted = true
+                                shareRequest = .fullStory
                                 shareCopyFeedbackMessage = nil
                                 shareCopyFeedbackSucceeded = true
                             }
@@ -218,6 +214,9 @@ struct DailyMarkdownView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .popover(isPresented: $showsSharePopover, arrowEdge: .top) {
+            sharePopover(sharePresentation)
+        }
         .overlay(alignment: .topTrailing) {
             if let shareToast {
                 diaryShareToast(shareToast)
@@ -273,10 +272,10 @@ struct DailyMarkdownView: View {
             }
             .contextMenu {
                 Button(shareMenuTitle(redacted: true, for: paragraph)) {
-                    onShareParagraph(DiaryShareSelectedTextResolver().paragraphForSharing(paragraph), true, .copyImage)
+                    openParagraphSharePopover(paragraph, redacted: true)
                 }
                 Button(shareMenuTitle(redacted: false, for: paragraph)) {
-                    onShareParagraph(DiaryShareSelectedTextResolver().paragraphForSharing(paragraph), false, .copyImage)
+                    openParagraphSharePopover(paragraph, redacted: false)
                 }
             }
 
@@ -304,9 +303,13 @@ struct DailyMarkdownView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            if let payload = activeSharePayload {
+                DiarySharePreviewImage(payload: payload)
+            }
+
             HStack(spacing: 10) {
                 Button(presentation.copyButtonTitle) {
-                    let copied = onShareDiary(shareRedacted, .copyImage)
+                    let copied = performShareAction(.copyImage)
                     shareCopyFeedbackSucceeded = copied
                     shareCopyFeedbackMessage = copied ? presentation.copySuccessMessage : presentation.copyFailureMessage
                     shareToast = DiaryShareToast(
@@ -318,7 +321,7 @@ struct DailyMarkdownView: View {
 
                 Button(presentation.saveButtonTitle) {
                     shareCopyFeedbackMessage = nil
-                    _ = onShareDiary(shareRedacted, .saveImage)
+                    _ = performShareAction(.saveImage)
                 }
                 .disabled(!presentation.canShare)
             }
@@ -339,7 +342,49 @@ struct DailyMarkdownView: View {
             }
         }
         .padding(14)
-        .frame(width: 300, alignment: .leading)
+        .frame(width: 340, alignment: .leading)
+    }
+
+    private func openFullStorySharePopover() {
+        shareRequest = .fullStory
+        shareRedacted = true
+        resetShareFeedback()
+        showsSharePopover = true
+    }
+
+    private func openParagraphSharePopover(_ paragraph: DailyStoryParagraph, redacted: Bool) {
+        shareRequest = .paragraph(DiaryShareSelectedTextResolver().paragraphForSharing(paragraph))
+        shareRedacted = redacted
+        resetShareFeedback()
+        showsSharePopover = true
+    }
+
+    private func resetShareFeedback() {
+        shareCopyFeedbackMessage = nil
+        shareCopyFeedbackSucceeded = true
+    }
+
+    private func performShareAction(_ action: DiaryShareAction) -> Bool {
+        switch shareRequest {
+        case .fullStory:
+            return onShareDiary(shareRedacted, action)
+        case .paragraph(let paragraph):
+            return onShareParagraph(paragraph, shareRedacted, action)
+        }
+    }
+
+    private var activeSharePayload: DiarySharePayload? {
+        switch shareRequest {
+        case .fullStory:
+            guard let story else { return nil }
+            return DiaryShareContentBuilder().payload(source: .fullStory(story), redacted: shareRedacted)
+        case .paragraph(let paragraph):
+            let resolvedDayKey = dayKey ?? story?.dayKey ?? ISO8601DayKey.format(Date())
+            return DiaryShareContentBuilder().payload(
+                source: .paragraph(paragraph, dayKey: resolvedDayKey),
+                redacted: shareRedacted
+            )
+        }
     }
 
     private func diaryShareToast(_ toast: DiaryShareToast) -> some View {
@@ -365,9 +410,6 @@ struct DailyMarkdownView: View {
     }
 
     private func shareMenuTitle(redacted: Bool, for paragraph: DailyStoryParagraph) -> String {
-        if paragraph.text.contains(where: \.isChineseIdeograph) {
-            return redacted ? "脱敏分享" : "非脱敏分享"
-        }
         return redacted ? "Share Redacted" : "Share Original"
     }
 
@@ -436,6 +478,39 @@ private struct DiaryShareToast: Equatable, Identifiable {
     let id = UUID()
     let message: String
     let succeeded: Bool
+}
+
+private enum DiaryShareRequest: Equatable {
+    case fullStory
+    case paragraph(DailyStoryParagraph)
+}
+
+private struct DiarySharePreviewImage: View {
+    let payload: DiarySharePayload
+
+    var body: some View {
+        let image = DiaryShareImageRenderer().image(for: payload)
+        let aspectRatio = image.size.width / max(image.size.height, 1)
+
+        ScrollView(.vertical) {
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(aspectRatio, contentMode: .fit)
+                .frame(width: 306)
+                .accessibilityHidden(true)
+        }
+        .scrollIndicators(.visible)
+        .frame(maxWidth: .infinity)
+        .frame(height: 240)
+        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Share image preview")
+        .accessibilityHint("Scrollable preview of the image that will be copied or saved")
+    }
 }
 
 private struct DailyTodoCandidateActionsView: View {
@@ -669,30 +744,17 @@ struct DiarySharePresentation: Equatable {
 
     init(story: DailyStory?, redacted: Bool) {
         let paragraphs = story?.sections.flatMap(\.paragraphs) ?? []
-        let combinedText = paragraphs.map(\.text).joined(separator: "\n")
-        let usesChinese = combinedText.contains(where: \.isChineseIdeograph)
         canShare = paragraphs.contains { paragraph in
             paragraph.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         }
         disabledReason = canShare ? nil : "No diary text to share yet."
-
-        if usesChinese {
-            buttonTitle = "脱敏分享"
-            redactionToggleTitle = "脱敏"
-            copyButtonTitle = "复制图片"
-            saveButtonTitle = "保存图片"
-            modeTitle = redacted ? "脱敏分享" : "非脱敏分享"
-            copySuccessMessage = "复制成功，可以去别的地方粘贴"
-            copyFailureMessage = "复制失败，请稍后再试"
-        } else {
-            buttonTitle = "Share Redacted"
-            redactionToggleTitle = "Redact sensitive details"
-            copyButtonTitle = "Copy Image"
-            saveButtonTitle = "Save Image"
-            modeTitle = redacted ? "Redacted share" : "Original share"
-            copySuccessMessage = "Copied. You can paste it elsewhere."
-            copyFailureMessage = "Could not copy share image"
-        }
+        buttonTitle = "Share Redacted"
+        redactionToggleTitle = "Redact sensitive details"
+        copyButtonTitle = "Copy Image"
+        saveButtonTitle = "Save Image"
+        modeTitle = redacted ? "Redacted share" : "Original share"
+        copySuccessMessage = "Copied. You can paste it elsewhere."
+        copyFailureMessage = "Could not copy share image"
     }
 }
 
@@ -806,8 +868,10 @@ struct DiarySharePasteboardWriter {
 }
 
 struct DiaryShareImageRenderer {
-    private let cardSize = NSSize(width: 900, height: 1_200)
+    private let cardWidth: CGFloat = 900
+    private let minimumCardHeight: CGFloat = 1_200
     private let margin: CGFloat = 72
+    private let bodyWidth: CGFloat = 680
     private let primaryTextColor = NSColor(calibratedWhite: 0.12, alpha: 1)
     private let secondaryTextColor = NSColor(calibratedWhite: 0.36, alpha: 1)
 
@@ -826,6 +890,14 @@ struct DiaryShareImageRenderer {
     }
 
     func image(for payload: DiarySharePayload) -> NSImage {
+        let bodyText = plainText(from: payload.body)
+        let bodyHeight = measuredTextHeight(
+            bodyText,
+            width: bodyWidth,
+            font: .systemFont(ofSize: 28, weight: .regular)
+        )
+        let cardHeight = max(minimumCardHeight, 510 + bodyHeight)
+        let cardSize = NSSize(width: cardWidth, height: cardHeight)
         let image = NSImage(size: cardSize)
         image.lockFocus()
         defer { image.unlockFocus() }
@@ -845,19 +917,19 @@ struct DiaryShareImageRenderer {
 
         drawText(
             "KnowYou Diary",
-            in: NSRect(x: 110, y: 1_030, width: 420, height: 44),
+            in: NSRect(x: 110, y: cardHeight - 170, width: 420, height: 44),
             font: .systemFont(ofSize: 32, weight: .semibold),
             color: primaryTextColor
         )
         drawText(
             "\(payload.dayKey) · \(modeTitle(for: payload.mode))",
-            in: NSRect(x: 110, y: 988, width: 520, height: 32),
+            in: NSRect(x: 110, y: cardHeight - 212, width: 520, height: 32),
             font: .systemFont(ofSize: 18, weight: .medium),
             color: secondaryTextColor
         )
         drawText(
-            plainText(from: payload.body),
-            in: NSRect(x: 110, y: 255, width: 680, height: 690),
+            bodyText,
+            in: NSRect(x: 110, y: 255, width: bodyWidth, height: cardHeight - 510),
             font: .systemFont(ofSize: 28, weight: .regular),
             color: primaryTextColor
         )
@@ -904,6 +976,22 @@ struct DiaryShareImageRenderer {
             .paragraphStyle: paragraphStyle,
         ]
         NSString(string: text).draw(in: rect, withAttributes: attributes)
+    }
+
+    private func measuredTextHeight(_ text: String, width: CGFloat, font: NSFont) -> CGFloat {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byWordWrapping
+        paragraphStyle.lineSpacing = 5
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .paragraphStyle: paragraphStyle,
+        ]
+        let boundingRect = NSString(string: text).boundingRect(
+            with: NSSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attributes
+        )
+        return max(44, ceil(boundingRect.height) + 16)
     }
 
     private func plainText(from markdown: String) -> String {

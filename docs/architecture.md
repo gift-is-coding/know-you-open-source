@@ -182,9 +182,9 @@ Networking 当前是 preview 页面，侧边栏与页面标题都标记为 `Netw
 
 Diary share 是阅读器上的本地导出能力，不参与采集、生成或 source detail 链路。分享入口只消费当前 UI 已加载的 `DailyStory` 和 `DailyStoryParagraph` 文本：顶部按钮生成全文分享，段落右键菜单生成段落分享。该路径不读取 SQLite 原始事件、不读取右侧 source detail、不上传内容，也不改变 `.story.json`、`.md` 或 `Vault/Todo.md`。
 
-分享状态保留在 `DailyMarkdownView`：`脱敏` checkbox 默认开启，用户可以取消后生成 original share。`MainWindowView` 只负责把当前 story/paragraph 交给 `DiaryShareContentBuilder`，再按用户动作复制到剪贴板或通过 `NSSavePanel` 保存 PNG。
+分享状态保留在 `DailyMarkdownView`：分享 popover 的 `Redact sensitive details` checkbox 默认开启，用户可以取消后生成 original share。顶部全文分享和段落右键分享都进入同一个 popover，并在 `Copy Image` / `Save Image` 上方显示当前分享图片预览；右键分享优先使用当前 AppKit selection，无法稳定取得时回退当前段落。`MainWindowView` 只负责把当前 story/paragraph 交给 `DiaryShareContentBuilder`，再按用户动作复制到剪贴板或通过 `NSSavePanel` 保存 PNG。
 
-展示层脱敏由 `DiaryShareRedactor` 完成，和入库用 `PrivacyFilter` 分开。`PrivacyFilter` 是持久化安全边界，可能 drop 内容；`DiaryShareRedactor` 是分享图片的可读性保护，只做 email、长数字、secret key/value、private key block、URL query/fragment 等保守替换。分享图片由 `DiaryShareImageRenderer` 在本机生成，包含日记正文、日期、redacted/original 标记、`giiift.site/know-you/download` 下载地址和 CoreImage 生成的二维码。
+展示层脱敏由 `DiaryShareRedactor` 完成，和入库用 `PrivacyFilter` 分开。`PrivacyFilter` 是持久化安全边界，可能 drop 内容；`DiaryShareRedactor` 是分享图片的可读性保护，只做 email、长数字、secret key/value、private key block、URL query/fragment 等保守替换，并使用明显遮挡块替代敏感片段。分享图片由 `DiaryShareImageRenderer` 在本机生成，包含日记正文、日期、redacted/original 标记、`giiift.site/know-you/download` 下载地址和 CoreImage 生成的二维码；正文高度按内容测量，长日记会生成更高图片而不是截断。
 
 ### 3.7 Unified Todo
 

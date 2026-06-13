@@ -91,7 +91,7 @@ final class PrivacyFilterTests: XCTestCase {
         XCTAssertEqual(payload?.mode, .original)
     }
 
-    func testDiaryShareRedactorMasksEmailLongNumbersSecretsAndURLQueries() {
+    func testDiaryShareRedactorUsesVisibleBlocksForSensitiveDetails() {
         let text = """
         Email me at founder@example.com.
         Card 4111111111111111.
@@ -106,9 +106,10 @@ final class PrivacyFilterTests: XCTestCase {
         XCTAssertFalse(redacted.contains("abc123secret"), redacted)
         XCTAssertFalse(redacted.contains("?token=private"), redacted)
         XCTAssertFalse(redacted.contains("#invite"), redacted)
-        XCTAssertTrue(redacted.contains("[email]"), redacted)
-        XCTAssertTrue(redacted.contains("[number]"), redacted)
-        XCTAssertTrue(redacted.contains("token: [secret]"), redacted)
+        XCTAssertFalse(redacted.contains("[email]"), redacted)
+        XCTAssertFalse(redacted.contains("[number]"), redacted)
+        XCTAssertTrue(redacted.contains("████"), redacted)
+        XCTAssertTrue(redacted.contains("token: ████"), redacted)
         XCTAssertTrue(redacted.contains("https://giiift.site/know-you/download"), redacted)
     }
 

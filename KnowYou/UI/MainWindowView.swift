@@ -165,6 +165,7 @@ struct MainWindowView: View {
     @Environment(AppState.self) private var appState
     @State private var keyMonitor: Any?
     @State private var isShowingEnginePanel = false
+    @State private var isShowingVoiceInputNudge = false
     @State private var isShowingAPIDetail = false
     @State private var apiConfigDraft = SummarizerConfig.load()
     @State private var apiProviderStatuses: [LLMAPIProviderID: EngineRuntimeStatus] = [:]
@@ -182,6 +183,7 @@ struct MainWindowView: View {
     @State private var pendingGlobalSearchQuery: String?
     @State private var globalSearchErrorMessage: String?
     @State private var activeGlobalSearchTarget: GlobalSearchNavigationTarget?
+    @State private var runningVoiceInputApplications: [VoiceInputRunningApplication] = []
     @FocusState private var isGlobalSearchFieldFocused: Bool
     let showsOnboardingEngineButton: Bool
     let onOpenEngineSetup: (() -> Void)?
@@ -235,7 +237,10 @@ struct MainWindowView: View {
                 }
             }
             ToolbarItem(placement: .primaryAction) {
-                diaryEngineToolbarSelector
+                HStack(spacing: 8) {
+                    voiceInputNudgeToolbarButton
+                    diaryEngineToolbarSelector
+                }
             }
         }
         .sheet(
@@ -314,6 +319,10 @@ struct MainWindowView: View {
         }
         .onAppear {
             startKeyMonitor()
+            refreshRunningVoiceInputApplications()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshRunningVoiceInputApplications()
         }
         .onReceive(NotificationCenter.default.publisher(for: GlobalSearchCommandPolicy.notificationName)) { _ in
             openGlobalSearch(focusingField: true)
@@ -386,6 +395,33 @@ struct MainWindowView: View {
             .background(.ultraThinMaterial, in: Capsule())
             .allowsHitTesting(false)
             .accessibilityIdentifier("build-version-badge")
+    }
+
+    @ViewBuilder
+    private var voiceInputNudgeToolbarButton: some View {
+        if let presentation = voiceInputNudgePresentation {
+            VoiceInputNudgeButton {
+                refreshRunningVoiceInputApplications()
+                isShowingVoiceInputNudge = true
+            }
+            .accessibilityIdentifier("voice-input-nudge-button")
+            .popover(isPresented: $isShowingVoiceInputNudge, arrowEdge: .top) {
+                VoiceInputNudgePopover(
+                    presentation: presentation,
+                    onOpen: { url in
+                        NSWorkspace.shared.open(url)
+                    },
+                    onLater: {
+                        appState.snoozeVoiceInputNudge()
+                        isShowingVoiceInputNudge = false
+                    },
+                    onNever: {
+                        appState.dismissVoiceInputNudgePermanently()
+                        isShowingVoiceInputNudge = false
+                    }
+                )
+            }
+        }
     }
 
     private var diaryEngineToolbarSelector: some View {
@@ -718,6 +754,12 @@ struct MainWindowView: View {
         DiaryEngineRecoveryNudgePresentation.make(
             defaultEngine: appState.defaultEngine,
             engineStatuses: appState.engineStatuses
+        )
+    }
+
+    private var voiceInputNudgePresentation: VoiceInputNudgePresentation? {
+        appState.voiceInputNudgePresentation(
+            runningApplications: runningVoiceInputApplications
         )
     }
 
@@ -1203,6 +1245,10 @@ struct MainWindowView: View {
                 }
             }
         }
+    }
+
+    private func refreshRunningVoiceInputApplications() {
+        runningVoiceInputApplications = VoiceInputAppDetector.detectRunningApplications()
     }
 
     private func openSyncMemoryPanel() {

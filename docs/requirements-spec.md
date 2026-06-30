@@ -95,6 +95,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - Daily Memory Export 到 Obsidian / OpenClaw
 - Add Source 从 Local Folder / Obsidian / Feishu(Lark) / Notion / Google Drive 的本地目录建立引用并扫描 Markdown/TXT
 - 顶部 diary engine selector
+- Voice input recommendation nudge beside the top Diary Engine selector
 - 左上标题栏更新提醒胶囊与更新 sheet
 - 晚间回顾本地通知提醒
 - 可选 diary engine：
@@ -227,6 +228,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - `Networking (Coming soon)` 入口不得只显示空白 placeholder；必须用英文短句和视觉资产说明用户可以创建不同场景的 profile，可用于求职、社交和 discovery，并说明 My Diary / My Wiki 到本地 profiles 之间的数据边界；页面必须显示单独的 `Coming soon` 状态，且不得出现 `Clear identity` 或 `identity stays clear`。
 - `My Wiki`、`Other Source`、`My Diary` 必须使用同一套 sidebar row 组件、字号、图标尺寸、行高和选中态。
 - 右上角 engine selector 必须固定在主窗口全局 toolbar 中，不得随 `My Wiki`、`Other Source`、`My Diary` 的内容切换改变位置或变成页面内部组件；当前默认 engine 不可可靠生成 diary 时，胶囊外侧必须显示红色感叹号。
+- If launch or foreground activation does not detect a known voice input, dictation, or Chinese input-method process, the engine selector must show a noticeable non-red amber exclamation nudge. Clicking it must open a small English popover recommending Typeless and 闪电说 with real product logos, official download links, the principle `Voice input -> clipboard -> KnowYou reads the clipboard and drafts your diary.`, and the actions `Later` and `Don't show again`.
 - `Other Source` 必须是独立入口，不得折叠或收起其他来源。
 - `My Diary` 必须作为内置来源与 Obsidian、Local Folder、Feishu/Lark、Notion、Google Drive 等外部来源平行呈现。
 - `Other Source` 必须打开来源管理页，而不是混合资料总览页。

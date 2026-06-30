@@ -692,6 +692,7 @@ final class AppState {
     ]
     private static let knowledgeDocumentMarkdownPreviewByteLimit = 256_000
     private static let knowledgeDocumentMarkdownPreviewTruncationMarker = "\n\n[Preview truncated]"
+    private static let voiceInputNudgeSnoozeDuration: TimeInterval = 7 * 24 * 60 * 60
 
     var availableDates: [String] = []
     var selectedDate: String?
@@ -1775,6 +1776,36 @@ final class AppState {
         userDefaults.set(currentVersion, forKey: UserDefaultsKeys.lastDismissedWhatsNewVersion)
     }
 
+    func voiceInputNudgePresentation(
+        runningApplications: [VoiceInputRunningApplication],
+        now: Date = Date()
+    ) -> VoiceInputNudgePresentation? {
+        VoiceInputNudgePresentation.make(
+            runningApplications: runningApplications,
+            isPermanentlyDismissed: userDefaults.bool(
+                forKey: UserDefaultsKeys.voiceInputNudgePermanentlyDismissed
+            ),
+            snoozedUntil: userDefaults.object(forKey: UserDefaultsKeys.voiceInputNudgeSnoozedUntil) as? Date,
+            now: now
+        )
+    }
+
+    func shouldShowVoiceInputNudge(
+        runningApplications: [VoiceInputRunningApplication],
+        now: Date = Date()
+    ) -> Bool {
+        voiceInputNudgePresentation(runningApplications: runningApplications, now: now) != nil
+    }
+
+    func snoozeVoiceInputNudge(now: Date = Date()) {
+        let snoozedUntil = now.addingTimeInterval(Self.voiceInputNudgeSnoozeDuration)
+        userDefaults.set(snoozedUntil, forKey: UserDefaultsKeys.voiceInputNudgeSnoozedUntil)
+    }
+
+    func dismissVoiceInputNudgePermanently() {
+        userDefaults.set(true, forKey: UserDefaultsKeys.voiceInputNudgePermanentlyDismissed)
+    }
+
     func performUpdatePrimaryAction() {
         guard let offer = updateOffer else { return }
 
@@ -2530,6 +2561,8 @@ final class AppState {
         static let lastDismissedWhatsNewVersion = "lastDismissedWhatsNewVersion"
         static let launchAtLoginDefaultRegistrationAttempted = "launchAtLoginDefaultRegistrationAttempted"
         static let dayReviewStates = "dayReviewStates"
+        static let voiceInputNudgeSnoozedUntil = "voiceInputNudgeSnoozedUntil"
+        static let voiceInputNudgePermanentlyDismissed = "voiceInputNudgePermanentlyDismissed"
     }
 
     private func configurePostUpdateWhatsNewIfNeeded(userDefaults: UserDefaults) {

@@ -6601,6 +6601,124 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(afterPopoverDismissal?.toolbarTitle, "Add Diary Engine")
     }
 
+    func testVoiceInputNudgeShowsWhenNoKnownVoiceInputAppIsRunning() {
+        let presentation = VoiceInputNudgePresentation.make(
+            runningApplications: [],
+            isPermanentlyDismissed: false,
+            snoozedUntil: nil,
+            now: Date(timeIntervalSince1970: 100)
+        )
+
+        XCTAssertNotNil(presentation)
+        XCTAssertEqual(presentation?.title, "Use voice input")
+        XCTAssertEqual(presentation?.detail, "Speak naturally, then let KnowYou turn the captured text into diary context.")
+        XCTAssertEqual(presentation?.principle, "Voice input -> clipboard -> KnowYou reads the clipboard and drafts your diary.")
+        XCTAssertEqual(presentation?.attentionSystemImage, "exclamationmark.circle.fill")
+        XCTAssertEqual(presentation?.laterButtonTitle, "Later")
+        XCTAssertEqual(presentation?.dismissButtonTitle, "Don't show again")
+        XCTAssertEqual(presentation?.recommendations.map(\.name), ["Typeless", "闪电说"])
+        XCTAssertEqual(presentation?.recommendations.map(\.logoAssetName), [
+            "VoiceInputLogoTypeless",
+            "VoiceInputLogoShandianshuo"
+        ])
+        XCTAssertEqual(presentation?.recommendations.map(\.downloadURL.absoluteString), [
+            "https://www.typeless.com/downloads",
+            "https://shandianshuo.cn/"
+        ])
+    }
+
+    func testVoiceInputNudgeClearsWhenKnownVoiceInputAppIsRunning() {
+        let app = VoiceInputRunningApplication(
+            localizedName: "Wispr Flow",
+            bundleIdentifier: "ai.wispr.flow",
+            bundlePath: "/Applications/Wispr Flow.app"
+        )
+
+        let presentation = VoiceInputNudgePresentation.make(
+            runningApplications: [app],
+            isPermanentlyDismissed: false,
+            snoozedUntil: nil,
+            now: Date(timeIntervalSince1970: 100)
+        )
+
+        XCTAssertNil(presentation)
+    }
+
+    func testVoiceInputNudgeMatchesShandianshuo() {
+        let app = VoiceInputRunningApplication(
+            localizedName: "闪电说",
+            bundleIdentifier: "cn.shandianshuo.app",
+            bundlePath: "/Applications/闪电说.app"
+        )
+
+        let presentation = VoiceInputNudgePresentation.make(
+            runningApplications: [app],
+            isPermanentlyDismissed: false,
+            snoozedUntil: nil,
+            now: Date(timeIntervalSince1970: 100)
+        )
+
+        XCTAssertNil(presentation)
+    }
+
+    func testVoiceInputNudgeRespectsSnoozeAndPermanentDismissal() {
+        let now = Date(timeIntervalSince1970: 100)
+
+        XCTAssertNil(VoiceInputNudgePresentation.make(
+            runningApplications: [],
+            isPermanentlyDismissed: false,
+            snoozedUntil: Date(timeIntervalSince1970: 200),
+            now: now
+        ))
+        XCTAssertNotNil(VoiceInputNudgePresentation.make(
+            runningApplications: [],
+            isPermanentlyDismissed: false,
+            snoozedUntil: Date(timeIntervalSince1970: 50),
+            now: now
+        ))
+        XCTAssertNil(VoiceInputNudgePresentation.make(
+            runningApplications: [],
+            isPermanentlyDismissed: true,
+            snoozedUntil: nil,
+            now: now
+        ))
+    }
+
+    func testVoiceInputNudgeSnoozePersistsSevenDays() {
+        let defaults = UserDefaults(suiteName: "MainWindowViewModelTests-\(UUID().uuidString)")!
+        markOnboardingComplete(in: defaults)
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: defaults,
+            keychainService: "MainWindowViewModelTests"
+        )
+        let now = Date(timeIntervalSince1970: 1_000)
+
+        appState.snoozeVoiceInputNudge(now: now)
+
+        let stored = defaults.object(forKey: AppState.UserDefaultsKeys.voiceInputNudgeSnoozedUntil) as? Date
+        XCTAssertEqual(
+            stored?.timeIntervalSince1970,
+            now.addingTimeInterval(7 * 24 * 60 * 60).timeIntervalSince1970
+        )
+        XCTAssertFalse(appState.shouldShowVoiceInputNudge(runningApplications: [], now: now))
+    }
+
+    func testVoiceInputNudgePermanentDismissPersists() {
+        let defaults = UserDefaults(suiteName: "MainWindowViewModelTests-\(UUID().uuidString)")!
+        markOnboardingComplete(in: defaults)
+        let appState = AppState(
+            bootstrapServices: false,
+            userDefaults: defaults,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        appState.dismissVoiceInputNudgePermanently()
+
+        XCTAssertTrue(defaults.bool(forKey: AppState.UserDefaultsKeys.voiceInputNudgePermanentlyDismissed))
+        XCTAssertFalse(appState.shouldShowVoiceInputNudge(runningApplications: [], now: Date()))
+    }
+
     func testEngineToolbarPresentationShowsExternalAttentionIconForUnavailableDefault() {
         let presentation = DiaryEngineToolbarPresentation.make(
             defaultEngine: .codexCLI,

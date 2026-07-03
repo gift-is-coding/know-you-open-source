@@ -89,11 +89,11 @@ struct NetworkingCockpitPresentation {
     private static func title(for direction: NetworkingCockpitDirection) -> String {
         switch direction {
         case .highlight:
-            return "Highlights"
+            return "Potential matches"
         case .inbound:
-            return "People looking for you"
+            return "Needs reply"
         case .outbound:
-            return "Your agent looking outward"
+            return "Saved for you"
         case .activity:
             return "Agent activity"
         }

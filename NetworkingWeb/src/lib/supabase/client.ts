@@ -1,5 +1,5 @@
 import { createBrowserClient } from "@supabase/ssr";
-import { hasSupabaseEnv } from "./env";
+import { getSupabasePublishableKey, getSupabaseURL, hasSupabaseEnv } from "./env";
 
 export function createClient() {
   if (!hasSupabaseEnv()) {
@@ -7,7 +7,7 @@ export function createClient() {
   }
 
   return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+    getSupabaseURL()!,
+    getSupabasePublishableKey()!
   );
 }

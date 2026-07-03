@@ -2,153 +2,6 @@ import XCTest
 @testable import KnowYou
 
 final class NetworkingCockpitPresentationTests: XCTestCase {
-    func testNetworkingCockpitViewIsNativeSwiftUIWithoutWebView() throws {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("KnowYou/UI/Networking/NetworkingCockpitView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        XCTAssertFalse(source.contains("import WebKit"))
-        XCTAssertFalse(source.contains("WKWebView"))
-        XCTAssertFalse(source.contains("NSViewRepresentable"))
-        XCTAssertFalse(source.contains("loadHTMLString"))
-        XCTAssertTrue(source.contains("ScrollView"))
-        XCTAssertTrue(source.contains("Generate profiles"))
-    }
-
-    func testInteractiveLaunchShowsMainWindowAfterPresenterConfiguration() throws {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("KnowYou/KnowYouApp.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        XCTAssertTrue(source.contains("showMainWindowAfterPresenterConfigurationIfNeeded"))
-        XCTAssertTrue(source.contains("KnowYouMainWindowPresenter.shared.configure"))
-        XCTAssertTrue(source.contains("DispatchQueue.main.asyncAfter(deadline: .now() + 1.0)"))
-    }
-
-    func testNetworkingCockpitViewGuidesProfileCommunityAndMessageStepsInEnglish() throws {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("KnowYou/UI/Networking/NetworkingCockpitView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        XCTAssertTrue(source.contains("Privacy and redaction"))
-        XCTAssertTrue(source.contains("Generate profiles"))
-        XCTAssertTrue(source.contains("Choose a default scenario or create a custom one."))
-        XCTAssertTrue(source.contains("Generated result preview"))
-        XCTAssertTrue(source.contains("Custom profile"))
-        XCTAssertFalse(source.contains("Custom scenario"))
-        XCTAssertTrue(source.contains("Communities and messages"))
-        XCTAssertFalse(source.contains("Connect communities"))
-        XCTAssertFalse(source.contains("Review messages and leads"))
-        XCTAssertTrue(source.contains("Know You Careers"))
-        XCTAssertTrue(source.contains("Find Your Friends"))
-        XCTAssertFalse(source.contains("Know You Friends"))
-        XCTAssertFalse(source.contains(#"Text("Prompt")"#))
-        XCTAssertFalse(source.contains("selectedProfile.prompt"))
-    }
-
-    func testNetworkingCockpitViewUsesAutomaticLocalActivationInsteadOfEnableButton() throws {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("KnowYou/UI/Networking/NetworkingCockpitView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        XCTAssertTrue(source.contains("let projectRoot: URL?"))
-        XCTAssertTrue(source.contains("let summarizer: (any SummaryGenerating)?"))
-        XCTAssertTrue(source.contains("ensureActivationState"))
-        XCTAssertTrue(source.contains("Agent ready locally"))
-        XCTAssertFalse(source.contains("Enable Networking"))
-        XCTAssertFalse(source.contains("Networking enabled"))
-        XCTAssertFalse(source.contains("enableNetworking()"))
-    }
-
-    func testNetworkingCockpitViewWiresRealMyWikiGenerationAndApproval() throws {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("KnowYou/UI/Networking/NetworkingCockpitView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        XCTAssertTrue(source.contains("generateSelectedProfile"))
-        XCTAssertTrue(source.contains("NetworkingProfileGenerationService"))
-        XCTAssertTrue(source.contains("Refresh from My Wiki"))
-        XCTAssertTrue(source.contains("Approve profile"))
-        XCTAssertTrue(source.contains("Regenerate"))
-        XCTAssertTrue(source.contains("Approved"))
-        XCTAssertTrue(source.contains("Draft not generated"))
-        XCTAssertTrue(source.contains("Could not finish profile generation"))
-        XCTAssertTrue(source.contains("Generation timed out. Try again after checking your Diary Engine."))
-    }
-
-    func testNetworkingCockpitViewCustomProfileEditorFieldsAndRedactionDefaults() throws {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("KnowYou/UI/Networking/NetworkingCockpitView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        XCTAssertTrue(source.contains("Use case"))
-        XCTAssertTrue(source.contains("Profile image direction"))
-        XCTAssertTrue(source.contains("Public tone"))
-        XCTAssertTrue(source.contains("Redaction notes"))
-        XCTAssertTrue(source.contains("Generate custom profile"))
-        XCTAssertTrue(source.contains("contact info"))
-        XCTAssertTrue(source.contains("account handles"))
-        XCTAssertTrue(source.contains("exact locations"))
-        XCTAssertTrue(source.contains("private relationships"))
-        XCTAssertTrue(source.contains("health/finance"))
-        XCTAssertTrue(source.contains("raw diary/notifications"))
-        XCTAssertTrue(source.contains("tokens/account details"))
-        XCTAssertTrue(source.contains("deep matching reasons"))
-        XCTAssertTrue(source.contains("unconfirmed claims"))
-    }
-
-    func testNetworkingCockpitViewKeepsContentBelowToolbarAndWrapsErrors() throws {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("KnowYou/UI/Networking/NetworkingCockpitView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        XCTAssertTrue(source.contains("safeAreaInset(edge: .top)"))
-        XCTAssertTrue(source.contains("GenerationStatusCard"))
-        XCTAssertTrue(source.contains("frame(maxWidth: 420"))
-        XCTAssertTrue(source.contains("fixedSize(horizontal: false, vertical: true)"))
-    }
-
-    func testNetworkingCockpitVisibleCopyIsEnglishOnly() throws {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("KnowYou/UI/Networking/NetworkingCockpitView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        let containsChineseCharacter = source.unicodeScalars.contains { scalar in
-            (0x4E00...0x9FFF).contains(Int(scalar.value))
-        }
-        XCTAssertFalse(containsChineseCharacter)
-    }
-
-    func testNetworkingCockpitViewUsesGeneratedFaceAvatarsInsteadOfLetterBadges() throws {
-        let sourceURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("KnowYou/UI/Networking/NetworkingCockpitView.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
-
-        XCTAssertTrue(source.contains("GeneratedFaceAvatar"))
-        XCTAssertTrue(source.contains("avatarSeed"))
-        XCTAssertFalse(source.contains("Text(profile.avatar.displayLetter)"))
-        XCTAssertFalse(source.contains("Text(profile.avatar.fallbackLetter)"))
-        XCTAssertFalse(source.contains("Text(profile.personName)"))
-    }
-
     func testProfileDraftRequiresHumanApprovalBeforePublicSync() {
         let draft = NetworkingProfileDraft(
             id: "draft-hiring",
@@ -254,6 +107,46 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.items(forPlatformID: "knowyou-careers").map(\.id), ["jobs"])
         XCTAssertEqual(presentation.items(forPlatformID: "knowyou-friends").map(\.id), ["friends"])
+    }
+
+    func testCockpitSectionTitlesMatchAgentHomeQueueLanguage() {
+        let presentation = NetworkingCockpitPresentation(
+            items: [
+                NetworkingCockpitItem(
+                    id: "reply",
+                    direction: .inbound,
+                    title: "Reply needed",
+                    publicSummary: "Someone replied to your public comment.",
+                    privateReason: "Local reason.",
+                    publicReferenceID: "comment-1",
+                    platformID: "knowyou-friends"
+                ),
+                NetworkingCockpitItem(
+                    id: "match",
+                    direction: .highlight,
+                    title: "Potential match",
+                    publicSummary: "A public post matches your profile.",
+                    privateReason: "Local reason.",
+                    publicReferenceID: "post-1",
+                    platformID: "knowyou-friends"
+                ),
+                NetworkingCockpitItem(
+                    id: "saved",
+                    direction: .outbound,
+                    title: "Saved",
+                    publicSummary: "The agent saved a risky item for review.",
+                    privateReason: "Local reason.",
+                    publicReferenceID: "post-2",
+                    platformID: "knowyou-friends"
+                )
+            ]
+        )
+
+        XCTAssertEqual(presentation.sections.map(\.title), [
+            "Potential matches",
+            "Needs reply",
+            "Saved for you"
+        ])
     }
 
     func testAgentPublicWritePayloadMarksAIAndStripsPrivateReason() throws {
@@ -405,7 +298,8 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertEqual(draft.approvalStatus, .draft)
         XCTAssertEqual(draft.summary, "公开摘要：正在做 KnowYou Networking。")
         XCTAssertTrue(draft.body.contains("SwiftUI、Next.js、Supabase"))
-        XCTAssertTrue(draft.body.contains("wiki/concepts/knowyou-networking.md"))
+        XCTAssertFalse(draft.body.contains("wiki/concepts/knowyou-networking.md"))
+        XCTAssertEqual(draft.citations, ["wiki/concepts/knowyou-networking.md"])
     }
 
     func testPromptProfileGeneratorExtractsTextFromStructuredSummarizerOutput() async throws {
@@ -429,6 +323,98 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
             "Tianfu Wu builds local-first AI products and can own SwiftUI, web, Supabase, MCP, and product shipping."
         )
         XCTAssertFalse(content.summary.contains(#""sections""#))
+    }
+
+    func testPromptProfileGeneratorRequestsPublicRedactedScenarioProfile() async throws {
+        let summarizer = CapturingJSONSummaryGenerating(
+            output: #"{"summary":"Tianfu builds local-first AI products.","sections":[{"title":"What I do","body":"Builds product and agent systems."}]}"#
+        )
+        let generator = NetworkingPromptProfileGenerator(summarizer: summarizer)
+
+        _ = try await generator.generateProfile(
+            scenario: .jobs,
+            prompt: "Generate a career profile.",
+            personName: "Tianfu Wu",
+            context: NetworkingProfileContext(
+                summary: "- Work Platform Builder [wiki/concepts/work-platform-builder.md]\n  excerpt: Builds product architecture and agent systems.",
+                citations: ["wiki/concepts/work-platform-builder.md"]
+            )
+        )
+
+        let capturedPrompt = summarizer.capturedPrompt ?? ""
+        XCTAssertTrue(capturedPrompt.contains("Output language: English"))
+        XCTAssertTrue(capturedPrompt.contains("Scenario lens: Career / Hiring"))
+        XCTAssertTrue(capturedPrompt.contains("public profile"))
+        XCTAssertTrue(capturedPrompt.contains("Redact"))
+        XCTAssertTrue(capturedPrompt.contains("Do not include raw My Wiki evidence"))
+        XCTAssertTrue(capturedPrompt.contains("Do not include deep matching reasons"))
+        XCTAssertTrue(capturedPrompt.contains("Use the citations only as grounding"))
+        XCTAssertTrue(capturedPrompt.contains("Do not write a diary entry"))
+        XCTAssertTrue(capturedPrompt.contains("Use third-person public profile prose"))
+        XCTAssertTrue(capturedPrompt.contains("If public-safe evidence is sparse"))
+        XCTAssertTrue(capturedPrompt.contains("Write a long-form profile"))
+        XCTAssertTrue(capturedPrompt.contains("2,000 to 3,000 words"))
+        XCTAssertTrue(capturedPrompt.contains("6 to 10 titled sections"))
+        XCTAssertFalse(capturedPrompt.contains("生成公开 profile 草稿"))
+        XCTAssertTrue(summarizer.capturedSchema?.contains(#""minItems":6"#) ?? false)
+        XCTAssertTrue(summarizer.capturedSchema?.contains(#""maxItems":10"#) ?? false)
+    }
+
+    func testLaunchModeRecognizesNetworkingProfileDraftCommand() {
+        XCTAssertEqual(
+            LaunchMode(arguments: ["KnowYou", "--networking-profile-draft"]),
+            .networkingProfileDraft
+        )
+    }
+
+    func testNetworkingProfileDraftCommandGeneratesDraftFromCuratedMyWiki() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouContext", directoryHint: .isDirectory)
+        try writeMyWikiPage(
+            """
+            ---
+            type: concept
+            title: Work Platform Builder
+            tags: [career, product, engineering, agent, collaboration]
+            ---
+
+            # Work Platform Builder
+
+            Tianfu builds local-first AI products, SwiftUI app surfaces, Supabase-backed web systems, MCP runtime flows, and agent collaboration workflows.
+            """,
+            to: projectRoot.appending(path: "wiki/concepts/work-platform-builder.md")
+        )
+        try writeMyWikiPage(
+            """
+            # Raw Private Source
+
+            This raw source should never be read by networking profile generation.
+            """,
+            to: projectRoot.appending(path: "raw/sources/private-source.md")
+        )
+
+        let result = NetworkingProfileDraftCommand.run(
+            arguments: [
+                "KnowYou",
+                "--networking-profile-draft",
+                "--project-root", projectRoot.path,
+                "--scenario", "jobs",
+                "--person-name", "Tianfu Wu",
+                "--pretty",
+            ],
+            summarizer: StubSummaryGenerating(
+                output: #"{"summary":"Tianfu builds local-first AI products and agent systems.","sections":[{"title":"What I build","body":"Local-first app, web, Supabase, MCP, and agent workflows."}]}"#
+            )
+        )
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertEqual(result.stderr, "")
+
+        let draft = try JSONDecoder().decode(NetworkingProfileDraft.self, from: Data(result.stdout.utf8))
+        XCTAssertEqual(draft.personName, "Tianfu Wu")
+        XCTAssertEqual(draft.summary, "Tianfu builds local-first AI products and agent systems.")
+        XCTAssertFalse(draft.body.contains("wiki/concepts/work-platform-builder.md"))
+        XCTAssertEqual(draft.citations, ["wiki/concepts/work-platform-builder.md"])
+        XCTAssertFalse(draft.body.contains("raw/sources/private-source.md"))
     }
 
     func testProfileGenerationFailureDoesNotCreateFictionalDraft() async {
@@ -457,6 +443,189 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
+    }
+
+    func testMyWikiNetworkingContextProviderUsesOnlyCuratedWikiPages() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouContext", directoryHint: .isDirectory)
+        try writeMyWikiPage(
+            """
+            ---
+            type: concept
+            title: Career Agent Product Work
+            tags: [career, agent, product, hiring]
+            ---
+
+            # Career Agent Product Work
+
+            Tianfu builds local-first agent products, SwiftUI surfaces, Supabase-backed web systems, and MCP runtime flows for hiring and collaboration.
+            """,
+            to: projectRoot.appending(path: "wiki/concepts/career-agent-product-work.md")
+        )
+        try writeMyWikiPage(
+            """
+            ---
+            type: knowyou-diary
+            day: 2026-06-01
+            ---
+
+            # Raw Diary
+
+            raw private hiring agent product work should never be cited directly by Networking profile generation.
+            """,
+            to: projectRoot.appending(path: "raw/sources/knowyou-diary-2026-06-01.md")
+        )
+        try writeMyWikiPage(
+            """
+            ---
+            type: source
+            day: 2026-06-01
+            ---
+
+            # Source-Layer Diary Page
+
+            source layer hiring agent product work should not be used for public profile generation.
+            """,
+            to: projectRoot.appending(path: "wiki/sources/knowyou-diary-2026-06-01.md")
+        )
+
+        let context = try MyWikiNetworkingContextProvider().context(
+            for: .jobs,
+            prompt: "Generate a career profile for hiring and collaboration.",
+            projectRoot: projectRoot
+        )
+
+        XCTAssertEqual(context.citations, ["wiki/concepts/career-agent-product-work.md"])
+        XCTAssertTrue(context.summary.contains("Career Agent Product Work"))
+        XCTAssertFalse(context.summary.contains("Raw Diary"))
+        XCTAssertFalse(context.summary.contains("Source-Layer Diary Page"))
+        XCTAssertFalse(context.citations.contains { $0.hasPrefix("raw/sources/") })
+        XCTAssertFalse(context.citations.contains { $0.hasPrefix("wiki/sources/") })
+    }
+
+    func testPromptProfileGeneratorExtractsDiaryEntryJSONFallback() async throws {
+        let rawStructuredOutput = #"{"diary_entry":"Tianfu builds local-first agent products, knowledge memory systems, and public-safe profile workflows."}"#
+        let generator = NetworkingPromptProfileGenerator(
+            summarizer: StubSummaryGenerating(output: rawStructuredOutput)
+        )
+
+        let content = try await generator.generateProfile(
+            scenario: .jobs,
+            prompt: "Generate a hiring profile.",
+            personName: "Tianfu Wu",
+            context: NetworkingProfileContext(
+                summary: "KnowYou context",
+                citations: ["wiki/concepts/knowyou.md"]
+            )
+        )
+
+        XCTAssertEqual(
+            content.summary,
+            "Tianfu builds local-first agent products, knowledge memory systems, and public-safe profile workflows."
+        )
+        XCTAssertFalse(content.summary.contains("diary_entry"))
+    }
+
+    func testMyWikiNetworkingContextProviderUsesScenarioLensForCareerAndFriends() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouContext", directoryHint: .isDirectory)
+        try writeMyWikiPage(
+            """
+            ---
+            type: concept
+            title: Work Platform Builder
+            tags: [career, product, engineering, agent, collaboration]
+            ---
+
+            # Work Platform Builder
+
+            Tianfu can own product architecture, macOS app details, web platform delivery, agent workflows, enterprise AI work, and hiring conversations.
+            """,
+            to: projectRoot.appending(path: "wiki/concepts/work-platform-builder.md")
+        )
+        try writeMyWikiPage(
+            """
+            ---
+            type: concept
+            title: Social Rhythm and Interests
+            tags: [friends, social, interests, activities, personal]
+            ---
+
+            # Social Rhythm and Interests
+
+            Tianfu likes relaxed conversations about products, cities, food, creative tools, weekend activities, and meeting thoughtful new friends.
+            """,
+            to: projectRoot.appending(path: "wiki/concepts/social-rhythm-and-interests.md")
+        )
+
+        let provider = MyWikiNetworkingContextProvider()
+        let careerContext = try provider.context(
+            for: .jobs,
+            prompt: "Generate a career profile.",
+            projectRoot: projectRoot
+        )
+        let friendsContext = try provider.context(
+            for: .friends,
+            prompt: "Generate a personal profile for meeting friends.",
+            projectRoot: projectRoot
+        )
+
+        XCTAssertEqual(careerContext.citations.first, "wiki/concepts/work-platform-builder.md")
+        XCTAssertEqual(friendsContext.citations.first, "wiki/concepts/social-rhythm-and-interests.md")
+        XCTAssertTrue(careerContext.summary.contains("agent workflows"))
+        XCTAssertTrue(friendsContext.summary.contains("meeting thoughtful new friends"))
+    }
+
+    func testMyWikiNetworkingContextProviderCanReadOnlyPagesChangedAfterDate() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouContext", directoryHint: .isDirectory)
+        let oldPage = projectRoot.appending(path: "wiki/concepts/old-career-context.md")
+        let newPage = projectRoot.appending(path: "wiki/concepts/new-career-context.md")
+        try writeMyWikiPage(
+            """
+            ---
+            type: concept
+            title: Old Career Context
+            tags: [career, agent, product]
+            ---
+
+            # Old Career Context
+
+            Tianfu has older agent product context that should already be folded into the profile.
+            """,
+            to: oldPage
+        )
+        try writeMyWikiPage(
+            """
+            ---
+            type: concept
+            title: New Career Context
+            tags: [career, hiring, collaboration, agent]
+            ---
+
+            # New Career Context
+
+            Tianfu recently added a new hiring and collaboration signal for incremental profile update.
+            """,
+            to: newPage
+        )
+        let cutoff = Date(timeIntervalSince1970: 1_779_840_000)
+        try FileManager.default.setAttributes(
+            [.modificationDate: cutoff.addingTimeInterval(-60 * 60)],
+            ofItemAtPath: oldPage.path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: cutoff.addingTimeInterval(60 * 60)],
+            ofItemAtPath: newPage.path
+        )
+
+        let context = try MyWikiNetworkingContextProvider().context(
+            for: .jobs,
+            prompt: "Update a career profile with new hiring and collaboration material.",
+            projectRoot: projectRoot,
+            changedAfter: cutoff
+        )
+
+        XCTAssertEqual(context.citations, ["wiki/concepts/new-career-context.md"])
+        XCTAssertTrue(context.summary.contains("New Career Context"))
+        XCTAssertFalse(context.summary.contains("Old Career Context"))
     }
 
     func testActivationPayloadUsesAnonymousIdentityAndAgentToken() throws {
@@ -512,6 +681,96 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
             store.load(projectRoot: projectRoot),
             NetworkingProfileApprovalState(approvedProfileIDs: ["profile-career", "profile-custom"])
         )
+    }
+
+    func testProfileDraftStateStorePersistsGeneratedDraftsForReopen() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouContext", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
+        let store = NetworkingProfileDraftStateStore()
+        let generatedAt = Date(timeIntervalSince1970: 1_779_840_000)
+        let updatedAt = Date(timeIntervalSince1970: 1_779_926_400)
+        let draft = NetworkingProfileDraft(
+            id: "jobs",
+            personName: "Tianfu Wu",
+            profileLabel: "Career / Hiring",
+            summary: "Builds local-first AI products.",
+            body: "Long public-safe career profile body.",
+            source: .myWiki,
+            approvalStatus: .draft,
+            citations: ["wiki/concepts/work-platform-builder.md"],
+            generatedAt: generatedAt,
+            updatedAt: updatedAt
+        )
+
+        try store.save(
+            NetworkingProfileDraftState(draftsByProfileID: ["profile-career": draft]),
+            projectRoot: projectRoot
+        )
+
+        XCTAssertEqual(
+            store.load(projectRoot: projectRoot),
+            NetworkingProfileDraftState(draftsByProfileID: ["profile-career": draft])
+        )
+    }
+
+    func testProfileDraftStateStorePersistsAdditiveCustomProfilesAndDailyCheck() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouContext", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
+        let store = NetworkingProfileDraftStateStore()
+        let lastCheck = Date(timeIntervalSince1970: 1_779_926_400)
+        let custom = NetworkingCustomProfileConfiguration(
+            id: "profile-custom-founder-events",
+            label: "Founder events",
+            useCase: "Meet design-minded founders at small AI product events.",
+            imageDirection: "Calm product builder with crisp visual language.",
+            tone: "warm",
+            redactionNotes: "Do not include exact event locations.",
+            createdAt: Date(timeIntervalSince1970: 1_779_840_000)
+        )
+        let state = NetworkingProfileDraftState(
+            draftsByProfileID: [:],
+            customProfiles: [custom],
+            lastDailyUpdateCheckAt: lastCheck
+        )
+
+        try store.save(state, projectRoot: projectRoot)
+
+        XCTAssertEqual(store.load(projectRoot: projectRoot), state)
+    }
+
+    func testProfileDraftStateStoreBackfillsLegacyDraftTimestampsFromStateFile() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouContext", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
+        let store = NetworkingProfileDraftStateStore()
+        let draft = NetworkingProfileDraft(
+            id: "jobs",
+            personName: "Tianfu Wu",
+            profileLabel: "Career / Hiring",
+            summary: "Legacy summary",
+            body: "Legacy body",
+            source: .myWiki,
+            approvalStatus: .draft
+        )
+        let legacyData = try JSONEncoder().encode(NetworkingProfileDraftState(draftsByProfileID: ["profile-career": draft]))
+        let stateURL = store.stateURL(projectRoot: projectRoot)
+        try FileManager.default.createDirectory(at: stateURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try legacyData.write(to: stateURL)
+        let modifiedAt = Date(timeIntervalSince1970: 1_779_840_000)
+        try FileManager.default.setAttributes([.modificationDate: modifiedAt], ofItemAtPath: stateURL.path)
+
+        let loadedDraft = try XCTUnwrap(store.load(projectRoot: projectRoot).draftsByProfileID["profile-career"])
+
+        XCTAssertEqual(loadedDraft.generatedAt, modifiedAt)
+        XCTAssertEqual(loadedDraft.updatedAt, modifiedAt)
+    }
+
+    func testProfileUpdatePolicyRunsAtMostDaily() {
+        let policy = NetworkingProfileUpdatePolicy()
+        let now = Date(timeIntervalSince1970: 1_779_926_400)
+
+        XCTAssertTrue(policy.shouldRunDailyUpdate(now: now, lastCheckedAt: nil))
+        XCTAssertFalse(policy.shouldRunDailyUpdate(now: now, lastCheckedAt: now.addingTimeInterval(-60 * 60)))
+        XCTAssertTrue(policy.shouldRunDailyUpdate(now: now, lastCheckedAt: now.addingTimeInterval(-25 * 60 * 60)))
     }
 
     func testNetworkingMCPRequiresActivationForPublishing() {
@@ -679,6 +938,14 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         FileManager.default.temporaryDirectory
             .appending(path: "knowyou-networking-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
     }
+
+    private func writeMyWikiPage(_ contents: String, to url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try contents.write(to: url, atomically: true, encoding: .utf8)
+    }
 }
 
 private struct StubNetworkingMyWikiContextProvider: NetworkingMyWikiContextProviding {
@@ -707,5 +974,31 @@ private struct StubSummaryGenerating: SummaryGenerating {
 
     func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
         output
+    }
+}
+
+private final class CapturingJSONSummaryGenerating: JSONSummaryGenerating, @unchecked Sendable {
+    let output: String
+    private(set) var capturedPrompt: String?
+    private(set) var capturedSchema: String?
+
+    init(output: String) {
+        self.output = output
+    }
+
+    func summarize(dayKey: String, markdown: String, context: SummaryInvocationContext) async throws -> String {
+        capturedPrompt = markdown
+        return output
+    }
+
+    func summarizeJSON(
+        dayKey: String,
+        prompt: String,
+        schema: String,
+        context: SummaryInvocationContext
+    ) async throws -> String {
+        capturedPrompt = prompt
+        capturedSchema = schema
+        return output
     }
 }

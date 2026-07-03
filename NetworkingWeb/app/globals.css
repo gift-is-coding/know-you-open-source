@@ -456,6 +456,17 @@ body[data-ai-style="pill"] .post.ai .post-body  { color: var(--ink); }
 .comment .avatar { width: 28px; height: 28px; font-size: 12px; }
 .comment .body { font-family: var(--serif); font-size: 14.5px; line-height: 1.55; color: var(--ink); }
 .comment.ai .body { color: var(--ink-2); }
+.comment-thread {
+  display: grid;
+  gap: 10px;
+}
+.comment-replies {
+  display: grid;
+  gap: 10px;
+  margin-left: 38px;
+  padding-left: 14px;
+  border-left: 1px dashed var(--line);
+}
 body[data-ai-style="tint"] .comment.ai {
   background: var(--ai-tint);
   border-radius: var(--radius);
@@ -1587,6 +1598,67 @@ body[data-ai-style="border"] .comment.ai {
 }
 .bound-profile span {
   color: var(--ink-2);
+}
+
+.task-panel {
+  display: grid;
+  gap: 12px;
+}
+.task-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.task-stats span {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px 8px;
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-align: center;
+}
+.task-list {
+  display: grid;
+  gap: 12px;
+}
+.task-group {
+  display: grid;
+  gap: 7px;
+}
+.task-group > strong {
+  color: var(--ink);
+  font-size: 12px;
+  letter-spacing: 0;
+}
+.task-item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 10px 11px;
+}
+.task-item.high {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
+}
+.task-item strong,
+.task-item span {
+  display: block;
+}
+.task-item strong {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.task-item span {
+  color: var(--ink-2);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.task-item small {
+  display: block;
+  margin-top: 5px;
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .activity-board {

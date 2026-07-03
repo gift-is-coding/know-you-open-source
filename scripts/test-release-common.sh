@@ -36,6 +36,18 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  local label="$3"
+
+  if [[ "$haystack" == *"$needle"* ]]; then
+    echo "Assertion failed for $label" >&2
+    echo "Expected not to find: $needle" >&2
+    exit 1
+  fi
+}
+
 assert_eq "1.2.3" "$(marketing_version)" "marketing_version"
 assert_eq "45" "$(build_number)" "build_number"
 assert_eq "145" "$(release_repo_build_number)" "release_repo_build_number"
@@ -110,6 +122,11 @@ assert_contains "$install_new_user_script" 'Contents/Resources/MyWikiRunner/node
 run_dev_app_script="$(cat "$repo_root/scripts/run-dev-app.sh")"
 assert_contains "$run_dev_app_script" 'embed-mywiki-runner.sh" "$app_path"' "dev launch embeds MyWikiRunner"
 assert_contains "$run_dev_app_script" 'Contents/Resources/MyWikiRunner/node' "dev launch verifies bundled MyWiki node"
+assert_contains "$run_dev_app_script" 'mode="open"' "dev launch defaults to safe open mode"
+assert_contains "$run_dev_app_script" '--fresh' "dev launch exposes explicit fresh rebuild mode"
+assert_contains "$run_dev_app_script" 'open "$app_path"' "dev launch opens existing worktree app without forcing a new instance"
+assert_not_contains "$run_dev_app_script" 'pkill' "dev launch avoids global process killing"
+assert_not_contains "$run_dev_app_script" "open -n" "dev launch does not force duplicate app instances by default"
 
 dmg_script="$(cat "$repo_root/scripts/build-dmg.sh")"
 assert_contains "$dmg_script" 'Contents/Resources/MyWikiRunner/node' "DMG build rejects apps missing MyWikiRunner"

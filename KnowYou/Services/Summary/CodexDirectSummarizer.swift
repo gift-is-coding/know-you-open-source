@@ -49,7 +49,7 @@ enum CodexDirectSummarizerError: Error, LocalizedError, Equatable {
     }
 }
 
-struct CodexDirectSummarizer: IncrementalSummaryGenerating {
+struct CodexDirectSummarizer: IncrementalSummaryGenerating, JSONSummaryGenerating {
     static let apiURL = URL(string: "https://chatgpt.com/backend-api/codex/responses")!
 
     let credentialProvider: any CodexCredentialProviding
@@ -81,6 +81,30 @@ struct CodexDirectSummarizer: IncrementalSummaryGenerating {
         context: SummaryInvocationContext
     ) async throws -> String {
         try await sendRequest(input: markdown)
+    }
+
+    func summarizeJSON(
+        dayKey: String,
+        prompt: String,
+        schema: String,
+        context: SummaryInvocationContext
+    ) async throws -> String {
+        let input = """
+        Generate JSON for \(dayKey).
+
+        JSON schema:
+        \(schema)
+
+        Prompt:
+        \(prompt)
+        """
+        return try await sendRequest(
+            input: [
+                CodexResponsesInputMessage(role: "user", content: input)
+            ],
+            instructions: "You are a careful structured JSON generator. Return only valid JSON that matches the provided schema. Do not include markdown fences, commentary, or diary-style wrapper text.",
+            options: LLMCompletionOptions()
+        )
     }
 
     func smokeTest(prompt: String? = nil) async throws -> String {

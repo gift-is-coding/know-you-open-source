@@ -47,6 +47,8 @@ export interface NetworkingContentItem {
   person: NetworkingPerson;
   profile: NetworkingProfile;
   parentPostID?: string;
+  parentCommentID?: string;
+  clientDecisionID?: string;
   topic?: string;
   timestampLabel?: string;
   agentLabel?: string;

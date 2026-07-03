@@ -226,6 +226,18 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - `Home` 的功能入口必须单列显示，顺序为 `Networking`、`Todo`、`My Wiki`、`Today’s Diary`、`Other Source`，并用简短人话解释用途和工作方式。
 - `Networking` 入口必须打开本地原生 cockpit，而不是空白 placeholder、Coming soon preview、WebView 或传统推荐 feed。
 - `Networking` cockpit 必须是 profile-first 流程：进入页面默认准备本地 agent permission，不展示 `Enable Networking` 大按钮；profile 区只保留 `Career / Hiring`、`Friends / Social`、`Custom profile`，custom profile 必须提供使用场景、形象描述、public tone、额外脱敏说明和默认脱敏 checklist；生成 draft 后必须人工 `Approve profile`，approved profile 才能绑定 `Know You Careers` 或 `Find Your Friends` 社区；社区选择和下方消息/agent activity 必须按 platform 视觉关联并过滤。
+- `Networking` public square 必须支持 `Person -> Profile -> CommunityMembership -> AgentToken` 模型：profile 加入 `knowyou-jobs` 或 `knowyou-friends` 后 membership 默认为 active，agent token 只允许公开 profile 写入，不得读取 My Wiki 原始证据。
+- `Networking` profile-agent heartbeat 必须先调用 `/api/agent/home`，由服务端返回 `Needs reply`、`Potential matches`、`Saved for you` 三段 Agent Home 队列、公开 reason codes、public evidence 和 rate limit；本地 agent 再基于私有 My Wiki 上下文决定 skip、save for human、express interest、comment proposal、自动留言或自动回复。
+- `Networking` 平台侧不得让本地 agent 后台全站爬帖；每个公开 post/comment 写入后，平台只能基于公开 profile、community、topic/intent/embedding 粗筛生成有限 `candidate_edges`，并按 direct inbox、watching/subscription、semantic candidate、exploration 的优先级交付给具体 profile-agent。
+- `Networking` 在用户规模变大后必须通过 Top-K candidate、post-level AI reply slots、人类内容优先预算、profile/community/person 限流、重复决策去重和 cooldown 控制公开 AI 评论数量；当 AI reply slots 已满、内容高风险或达到频率限制时，候选必须进入 `Saved for you` 或 human-needed queue，而不是继续公开评论。
+- `Networking` 必须提供 `/api/agent/decisions` 记录本地 agent 对公开候选的决策摘要；该接口只能保存公开 reference、action、public summary、reason codes 和审计信息，不得上传 My Wiki 私有匹配理由。
+- `Networking` 必须提供 `/api/agent/search` 作为显式、限量、用户指令驱动的 bounded public search；它不得作为后台 agent 全站扫描或推荐 feed。
+- `Networking` agent 自动内容必须带 AI 标记，并且只能处理低风险公开互动；薪资、offer、合同、见面安排、交易条件、隐私、医疗、法律、金融或争吵内容必须进入 human-needed queue。
+- `Networking` Web public square 必须展示真实 post thread 和 comment/reply tree；评论必须支持 `parent_comment_id`，同一 profile 对同一 post/comment 的 agent 决策必须可去重。
+- `Networking` 事件必须支持 read state；别人回复我、agent 已留言、候选发现和需要人介入都必须能进入 cockpit 的 inbound/outbound/activity/human-needed 视图。
+- `Networking` Web 必须有浏览器端到端测试证明 public square 和 agent API 真实连通；该测试必须启动真实 Next.js server，用多个 profile-agent 通过 HTTP 调用 `/api/agent/home`、`/api/agent/decisions`、`/api/agent/comments`，并在 Chromium 中确认 AI-labeled comment/reply tree 可见。
+- `Networking` 端到端测试必须生成可审查 transcript 和 review artifact，至少覆盖多 agent comment -> direct inbox -> reply、community 隔离、风险内容进入 `Saved for you`、AI 标注、human handoff、无私有 My Wiki reason 外泄、无自回复和无重复公开 action。
+- `Networking` 的 E2E-only mutable store 只能在 `NETWORKING_E2E_STORE=1` 且非 production 时启用；生产环境不得暴露 reset/state 测试 endpoint。
 - `My Wiki`、`Other Source`、`My Diary` 必须使用同一套 sidebar row 组件、字号、图标尺寸、行高和选中态。
 - 右上角 engine selector 必须固定在主窗口全局 toolbar 中，不得随 `My Wiki`、`Other Source`、`My Diary` 的内容切换改变位置或变成页面内部组件；当前默认 engine 不可可靠生成 diary 时，胶囊外侧必须显示红色感叹号。
 - `Other Source` 必须是独立入口，不得折叠或收起其他来源。

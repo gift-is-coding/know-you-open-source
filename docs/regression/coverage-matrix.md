@@ -9,6 +9,7 @@
 | My Wiki | [05-my-wiki-source-library-agent.md](test-cases/05-my-wiki-source-library-agent.md) | app-clean | pre-push + nightly | My Wiki files, Source Library state |
 | Diary engines | [06-engine-settings-status.md](test-cases/06-engine-settings-status.md) | app-clean | pre-push + nightly | engine status rows, config defaults |
 | Settings, reminders, updates | [07-settings-sync-reminder-update.md](test-cases/07-settings-sync-reminder-update.md) | app-clean + true-clean | nightly + manual-release | UserDefaults, LaunchAgent dry-run evidence |
+| Networking | [10-networking-agent-platform.md](test-cases/10-networking-agent-platform.md) | app-clean + browser E2E | pre-push + nightly | profile draft state, public square transcript, agent API review |
 | Clipboard and notification pipeline | [08-real-pipeline-smoke.md](test-cases/08-real-pipeline-smoke.md) | real-machine | manual-release | SQLite rows, Markdown sentinel |
 | Release gate | [09-release-gate.md](test-cases/09-release-gate.md) | true-clean + real-machine | manual-release | build, test, signing, notarization logs |
 
@@ -22,6 +23,7 @@ The default pre-push gate should cover:
 4. Todo supports manual add, candidate promotion, and completion persistence.
 5. Other Source and My Wiki core surfaces are reachable without modal blockers.
 6. Engine selector and Settings status surfaces remain reachable and understandable.
+7. Networking opens as a native App surface, shows generated/approved profile states, and Web agent APIs pass browser E2E.
 
 ## Manual Release Set
 

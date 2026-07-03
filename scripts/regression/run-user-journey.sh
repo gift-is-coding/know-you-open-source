@@ -188,7 +188,10 @@ build_app_clean_app() {
   xcodebuild build \
     -scheme KnowYou \
     -destination 'platform=macOS' \
-    -derivedDataPath "$derived_data"
+    -derivedDataPath "$derived_data" \
+    CODE_SIGNING_ALLOWED=NO \
+    CODE_SIGNING_REQUIRED=NO \
+    CODE_SIGN_IDENTITY=
 }
 
 launch_app_clean_app() {
@@ -234,7 +237,8 @@ case "$mode" in
       "03-todo-inbox" \
       "04-other-source-connectors" \
       "05-my-wiki-source-library-agent" \
-      "06-engine-settings-status"
+      "06-engine-settings-status" \
+      "10-networking-agent-platform"
     if [[ "$dry_run" == false ]]; then
       build_app_clean_app
       if [[ "$launch_after_prepare" == true ]]; then

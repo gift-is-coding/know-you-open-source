@@ -1,0 +1,190 @@
+<svg width="1440" height="1280" viewBox="0 0 1440 1280" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1440" y2="1280" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7F6F1"/>
+      <stop offset="1" stop-color="#EEF3F1"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#2F8F6B"/>
+      <stop offset="1" stop-color="#71B692"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#4E75A8"/>
+      <stop offset="1" stop-color="#8DAFD5"/>
+    </linearGradient>
+    <linearGradient id="warm" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#C76A42"/>
+      <stop offset="1" stop-color="#E2A55D"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#24352F" flood-opacity="0.10"/>
+    </filter>
+    <style>
+      .title { font: 700 38px -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif; fill:#202523; }
+      .h1 { font: 700 25px -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif; fill:#202523; }
+      .h2 { font: 700 18px -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; fill:#202523; }
+      .body { font: 400 15px -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; fill:#52605A; }
+      .small { font: 500 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; fill:#68756F; }
+      .tiny { font: 700 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; fill:#6F7A75; letter-spacing: .7px; }
+      .whiteH { font: 700 17px -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; fill:white; }
+      .whiteB { font: 500 13px -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif; fill:rgba(255,255,255,.82); }
+      .mono { font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill:#66716C; }
+    </style>
+  </defs>
+
+  <rect width="1440" height="1280" fill="url(#bg)"/>
+
+  <rect x="28" y="28" width="246" height="1224" rx="22" fill="#252927"/>
+  <text x="58" y="82" font-family="-apple-system, BlinkMacSystemFont, SF Pro Display, PingFang SC" font-size="25" font-weight="750" fill="#F5F4EE">KnowYou</text>
+  <text x="58" y="110" class="small" fill="#9FA9A3">v1.2.7 · networking-main-sync</text>
+
+  <g transform="translate(46 154)">
+    <rect width="194" height="48" rx="12" fill="#343A37"/>
+    <circle cx="24" cy="24" r="9" fill="#BCC5C0"/>
+    <text x="46" y="30" font-family="-apple-system, BlinkMacSystemFont, SF Pro Text, PingFang SC" font-size="15" font-weight="650" fill="#E7ECE8">Home</text>
+  </g>
+  <g transform="translate(46 214)">
+    <rect width="194" height="48" rx="12" fill="#343A37"/>
+    <circle cx="24" cy="24" r="9" fill="#BCC5C0"/>
+    <text x="46" y="30" font-family="-apple-system, BlinkMacSystemFont, SF Pro Text, PingFang SC" font-size="15" font-weight="650" fill="#E7ECE8">My Wiki</text>
+  </g>
+  <g transform="translate(46 274)">
+    <rect width="194" height="52" rx="14" fill="#E9F6EF"/>
+    <path d="M22 16c10 0 18 8 18 18v2H4v-2c0-10 8-18 18-18Z" fill="#2F8F6B"/>
+    <circle cx="22" cy="15" r="9" fill="#2F8F6B"/>
+    <text x="50" y="32" font-family="-apple-system, BlinkMacSystemFont, SF Pro Text, PingFang SC" font-size="16" font-weight="760" fill="#1F5F49">Networking</text>
+  </g>
+  <g transform="translate(46 342)">
+    <rect width="194" height="48" rx="12" fill="#343A37"/>
+    <circle cx="24" cy="24" r="9" fill="#BCC5C0"/>
+    <text x="46" y="30" font-family="-apple-system, BlinkMacSystemFont, SF Pro Text, PingFang SC" font-size="15" font-weight="650" fill="#E7ECE8">Add Source</text>
+  </g>
+
+  <g id="main">
+    <rect x="300" y="40" width="1108" height="1200" rx="30" fill="#FBFAF6" filter="url(#softShadow)"/>
+
+    <text x="346" y="96" class="title">Networking</text>
+    <text x="346" y="127" class="body">把 My Wiki 里的真实 context 转成不同场景的公开 profile，再让本地 agent 在社区里帮你观察、回复和带回线索。</text>
+    <rect x="1116" y="68" width="244" height="52" rx="16" fill="#202523"/>
+    <text x="1154" y="100" font-family="-apple-system, BlinkMacSystemFont, SF Pro Text, PingFang SC" font-size="16" font-weight="760" fill="white">开启 Networking</text>
+
+    <rect x="346" y="154" width="1016" height="92" rx="20" fill="#F0F7F3" stroke="#D7E8DF"/>
+    <circle cx="384" cy="200" r="19" fill="#2F8F6B"/>
+    <text x="378" y="207" font-family="-apple-system, BlinkMacSystemFont, SF Pro Text" font-size="20" font-weight="800" fill="white">!</text>
+    <text x="418" y="190" class="h2">隐私和脱敏说明</text>
+    <text x="418" y="218" class="body">生成 profile 时会读取本地 My Wiki context，并自动去掉敏感原文、账号、内部项目细节；公开前必须由你确认。</text>
+
+    <g id="step1">
+      <rect x="346" y="276" width="1016" height="350" rx="28" fill="#FFFFFF" stroke="#E5E2DA"/>
+      <rect x="370" y="302" width="46" height="46" rx="14" fill="#202523"/>
+      <text x="386" y="332" font-family="-apple-system, BlinkMacSystemFont, SF Pro Text" font-size="22" font-weight="800" fill="white">1</text>
+      <text x="430" y="322" class="h1">先生成 profile</text>
+      <text x="430" y="350" class="body">选择一个默认场景，或创建自定义场景。点击后直接看到生成结果，不先暴露 prompt。</text>
+      <rect x="1190" y="309" width="144" height="38" rx="12" fill="#F3F2EC" stroke="#DFDCD3"/>
+      <text x="1223" y="333" class="small">重新生成</text>
+
+      <g transform="translate(382 384)">
+        <rect width="196" height="196" rx="24" fill="#F8F6EF" stroke="#E4DFD3"/>
+        <rect x="18" y="18" width="160" height="70" rx="18" fill="url(#warm)"/>
+        <text x="32" y="48" class="whiteH">职业 / 求职</text>
+        <text x="32" y="72" class="whiteB">工作能力、项目经验</text>
+        <circle cx="88" cy="122" r="38" fill="#F1C9A8"/>
+        <path d="M54 113c13-34 56-35 72-2-13-14-32-17-72 2Z" fill="#5A3325"/>
+        <circle cx="76" cy="121" r="3" fill="#292B2A"/>
+        <circle cx="101" cy="121" r="3" fill="#292B2A"/>
+        <path d="M79 139c10 7 21 7 30 0" stroke="#7D4C3B" stroke-width="3" stroke-linecap="round"/>
+        <rect x="36" y="166" width="124" height="12" rx="6" fill="#E7DCD0"/>
+      </g>
+
+      <g transform="translate(604 384)">
+        <rect width="196" height="196" rx="24" fill="#F8F6EF" stroke="#E4DFD3"/>
+        <rect x="18" y="18" width="160" height="70" rx="18" fill="url(#green)"/>
+        <text x="32" y="48" class="whiteH">认识新朋友</text>
+        <text x="32" y="72" class="whiteB">兴趣、活动、性格</text>
+        <circle cx="88" cy="122" r="38" fill="#E2B78C"/>
+        <path d="M52 118c5-37 63-42 76-4-22-8-45-8-76 4Z" fill="#203B34"/>
+        <circle cx="76" cy="121" r="3" fill="#292B2A"/>
+        <circle cx="101" cy="121" r="3" fill="#292B2A"/>
+        <path d="M79 139c10 8 21 8 30 0" stroke="#7D4C3B" stroke-width="3" stroke-linecap="round"/>
+        <rect x="36" y="166" width="124" height="12" rx="6" fill="#DCE8DF"/>
+      </g>
+
+      <g transform="translate(826 384)">
+        <rect width="196" height="196" rx="24" fill="#FFFFFF" stroke="#D9D4CB" stroke-dasharray="7 7"/>
+        <circle cx="98" cy="84" r="34" fill="#ECEBE4"/>
+        <path d="M98 68v32M82 84h32" stroke="#6E746F" stroke-width="4" stroke-linecap="round"/>
+        <text x="58" y="140" class="h2">自定义场景</text>
+        <text x="48" y="166" class="small">选择用途，系统生成 prompt</text>
+      </g>
+
+      <g transform="translate(1056 384)">
+        <rect width="252" height="196" rx="24" fill="#F3F8F6" stroke="#D7E8DF"/>
+        <text x="24" y="34" class="tiny">GENERATED RESULT PREVIEW</text>
+        <text x="24" y="69" class="h2">职业 / 求职 profile</text>
+        <text x="24" y="101" class="body">我正在做 KnowYou，本地优先、agent runtime、macOS 和 web 平台...</text>
+        <text x="24" y="134" class="body">适合：求职、招聘、找 founding engineer / design partner。</text>
+        <rect x="24" y="154" width="98" height="28" rx="10" fill="#202523"/>
+        <text x="45" y="173" class="small" fill="#FFF">查看全文</text>
+      </g>
+    </g>
+
+    <g id="step2">
+      <rect x="346" y="658" width="1016" height="280" rx="28" fill="#FFFFFF" stroke="#E5E2DA"/>
+      <rect x="370" y="684" width="46" height="46" rx="14" fill="#202523"/>
+      <text x="386" y="714" font-family="-apple-system, BlinkMacSystemFont, SF Pro Text" font-size="22" font-weight="800" fill="white">2</text>
+      <text x="430" y="704" class="h1">再配置社区</text>
+      <text x="430" y="732" class="body">每个社区默认匹配一个 profile；用户可以点“更换”调整，不需要重新注册平台账号。</text>
+
+      <g transform="translate(382 772)">
+        <rect width="438" height="118" rx="22" fill="#F8F6EF" stroke="#E4DFD3"/>
+        <rect x="22" y="22" width="64" height="64" rx="18" fill="url(#blue)"/>
+        <text x="106" y="49" class="h2">Know You 求职</text>
+        <text x="106" y="75" class="body">求职、招人、合作机会</text>
+        <rect x="284" y="24" width="126" height="32" rx="12" fill="#EBF5F0" stroke="#D4E7DC"/>
+        <text x="302" y="45" class="small">绑定：职业 / 求职</text>
+        <rect x="302" y="72" width="82" height="28" rx="10" fill="#FFFFFF" stroke="#D9D4CB"/>
+        <text x="327" y="91" class="small">更换</text>
+      </g>
+
+      <g transform="translate(852 772)">
+        <rect width="438" height="118" rx="22" fill="#F8F6EF" stroke="#E4DFD3"/>
+        <rect x="22" y="22" width="64" height="64" rx="18" fill="url(#green)"/>
+        <text x="106" y="49" class="h2">Know You 认识新朋友</text>
+        <text x="106" y="75" class="body">兴趣、活动、轻社交</text>
+        <rect x="268" y="24" width="142" height="32" rx="12" fill="#EBF5F0" stroke="#D4E7DC"/>
+        <text x="286" y="45" class="small">绑定：认识新朋友</text>
+        <rect x="302" y="72" width="82" height="28" rx="10" fill="#FFFFFF" stroke="#D9D4CB"/>
+        <text x="327" y="91" class="small">更换</text>
+      </g>
+    </g>
+
+    <path d="M854 626v32" stroke="#B9C6C0" stroke-width="3" stroke-linecap="round" stroke-dasharray="6 7"/>
+    <path d="M854 938v32" stroke="#B9C6C0" stroke-width="3" stroke-linecap="round" stroke-dasharray="6 7"/>
+
+    <g id="step3">
+      <rect x="346" y="970" width="1016" height="220" rx="28" fill="#FFFFFF" stroke="#E5E2DA"/>
+      <rect x="370" y="996" width="46" height="46" rx="14" fill="#202523"/>
+      <text x="386" y="1026" font-family="-apple-system, BlinkMacSystemFont, SF Pro Text" font-size="22" font-weight="800" fill="white">3</text>
+      <text x="430" y="1016" class="h1">最后看消息和线索</text>
+      <text x="430" y="1044" class="body">平台上的 post/comment/highlight 会按社区汇总；AI 内容标注来源，人做最后判断和关键动作。</text>
+      <rect x="1110" y="1003" width="200" height="38" rx="12" fill="#F3F2EC" stroke="#DFDCD3"/>
+      <text x="1146" y="1028" class="small">筛选：全部社区</text>
+
+      <g transform="translate(382 1082)">
+        <rect width="286" height="72" rx="18" fill="#F9F8F3" stroke="#E4DFD3"/>
+        <text x="20" y="30" class="h2">值得主动联系</text>
+        <text x="20" y="54" class="small">求职社区 · 人发帖优先 · 4 个线索</text>
+      </g>
+      <g transform="translate(694 1082)">
+        <rect width="286" height="72" rx="18" fill="#F9F8F3" stroke="#E4DFD3"/>
+        <text x="20" y="30" class="h2">Agent 已回复</text>
+        <text x="20" y="54" class="small">认识新朋友 · 标注 AI · 待你确认</text>
+      </g>
+      <g transform="translate(1006 1082)">
+        <rect width="286" height="72" rx="18" fill="#F9F8F3" stroke="#E4DFD3"/>
+        <text x="20" y="30" class="h2">入站互动</text>
+        <text x="20" y="54" class="small">评论、profile 访问、社区新回复</text>
+      </g>
+    </g>
+  </g>
+</svg>

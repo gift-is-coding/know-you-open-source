@@ -18,6 +18,33 @@ struct NetworkingProfileDraft: Codable, Equatable, Identifiable {
     let body: String
     let source: NetworkingProfileDraftSource
     let approvalStatus: NetworkingProfileApprovalStatus
+    var citations: [String] = []
+    var generatedAt: Date?
+    var updatedAt: Date?
+
+    init(
+        id: String,
+        personName: String,
+        profileLabel: String,
+        summary: String,
+        body: String,
+        source: NetworkingProfileDraftSource,
+        approvalStatus: NetworkingProfileApprovalStatus,
+        citations: [String] = [],
+        generatedAt: Date? = nil,
+        updatedAt: Date? = nil
+    ) {
+        self.id = id
+        self.personName = personName
+        self.profileLabel = profileLabel
+        self.summary = summary
+        self.body = body
+        self.source = source
+        self.approvalStatus = approvalStatus
+        self.citations = citations
+        self.generatedAt = generatedAt
+        self.updatedAt = updatedAt
+    }
 
     var canPublish: Bool {
         approvalStatus == .approved
@@ -30,8 +57,69 @@ struct NetworkingProfileDraft: Codable, Equatable, Identifiable {
             personName: personName,
             profileLabel: profileLabel,
             summary: summary,
-            body: body
+            body: body,
+            citations: citations
         )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case personName
+        case profileLabel
+        case summary
+        case body
+        case source
+        case approvalStatus
+        case citations
+        case generatedAt
+        case updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        personName = try container.decode(String.self, forKey: .personName)
+        profileLabel = try container.decode(String.self, forKey: .profileLabel)
+        summary = try container.decode(String.self, forKey: .summary)
+        body = try container.decode(String.self, forKey: .body)
+        source = try container.decode(NetworkingProfileDraftSource.self, forKey: .source)
+        approvalStatus = try container.decode(NetworkingProfileApprovalStatus.self, forKey: .approvalStatus)
+        citations = try container.decodeIfPresent([String].self, forKey: .citations) ?? []
+        generatedAt = try container.decodeIfPresent(Date.self, forKey: .generatedAt)
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
+    }
+}
+
+struct NetworkingCustomProfileConfiguration: Codable, Equatable, Identifiable {
+    let id: String
+    let label: String
+    let useCase: String
+    let imageDirection: String
+    let tone: String
+    let redactionNotes: String
+    let createdAt: Date
+
+    var prompt: String {
+        """
+        Generate a public networking profile from local My Wiki context.
+        Use case: \(useCase)
+        Profile image direction: \(imageDirection)
+        Public tone: \(tone)
+        Redaction notes: \(redactionNotes.isEmpty ? "Apply the default redaction rules." : redactionNotes)
+        """
+    }
+}
+
+struct NetworkingProfileUpdatePolicy: Equatable {
+    let dailyUpdateInterval: TimeInterval
+
+    init(dailyUpdateInterval: TimeInterval = 24 * 60 * 60) {
+        self.dailyUpdateInterval = dailyUpdateInterval
+    }
+
+    func shouldRunDailyUpdate(now: Date, lastCheckedAt: Date?) -> Bool {
+        guard let lastCheckedAt else { return true }
+        return now.timeIntervalSince(lastCheckedAt) >= dailyUpdateInterval
     }
 }
 
@@ -51,7 +139,8 @@ extension NetworkingProfileDraft {
             summary: summary,
             body: summary,
             source: source,
-            approvalStatus: approvalStatus
+            approvalStatus: approvalStatus,
+            citations: []
         )
     }
 }
@@ -284,6 +373,42 @@ struct NetworkingProfileSyncPayload: Codable, Equatable {
     let profileLabel: String
     let summary: String
     let body: String
+    var citations: [String] = []
+
+    init(
+        profileID: String,
+        personName: String,
+        profileLabel: String,
+        summary: String,
+        body: String,
+        citations: [String] = []
+    ) {
+        self.profileID = profileID
+        self.personName = personName
+        self.profileLabel = profileLabel
+        self.summary = summary
+        self.body = body
+        self.citations = citations
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case profileID
+        case personName
+        case profileLabel
+        case summary
+        case body
+        case citations
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        profileID = try container.decode(String.self, forKey: .profileID)
+        personName = try container.decode(String.self, forKey: .personName)
+        profileLabel = try container.decode(String.self, forKey: .profileLabel)
+        summary = try container.decode(String.self, forKey: .summary)
+        body = try container.decode(String.self, forKey: .body)
+        citations = try container.decodeIfPresent([String].self, forKey: .citations) ?? []
+    }
 }
 
 enum NetworkingContentKind: String, Codable, Equatable {

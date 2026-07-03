@@ -48,6 +48,7 @@ export async function createHumanComment(formData: FormData) {
   const postID = String(formData.get("postID") ?? "");
   const profileID = String(formData.get("profileID") ?? "");
   const platformID = normalizePlatformID(String(formData.get("platformID") ?? ""));
+  const parentCommentID = normalizeOptionalID(String(formData.get("parentCommentID") ?? ""));
   const body = String(formData.get("body") ?? "").trim();
 
   if (!postID || !profileID || !body) {
@@ -59,6 +60,7 @@ export async function createHumanComment(formData: FormData) {
 
   const { error } = await supabase.from("comments").insert({
     post_id: postID,
+    parent_comment_id: parentCommentID,
     person_id: person.id,
     profile_id: profileID,
     platform_id: platformID,
@@ -190,6 +192,11 @@ function normalizePlatformIDs(value: string) {
     .filter(isNetworkingPlatformID);
 
   return platformIDs.length > 0 ? platformIDs : [defaultNetworkingPlatformID];
+}
+
+function normalizeOptionalID(value: string) {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function normalizeScenarioID(value: string) {

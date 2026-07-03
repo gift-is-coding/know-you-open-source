@@ -104,6 +104,48 @@ final class CodexDirectSummarizerTests: XCTestCase {
         XCTAssertEqual(firstMessage["content"] as? String, "Incremental markdown")
     }
 
+    func testJSONSummaryRequestDoesNotUseDiaryPrefix() async throws {
+        CodexDirectStubURLProtocol.response = .success(
+            statusCode: 200,
+            body: Data("""
+            data: {"type":"response.completed","response":{"output_text":"{\\"summary\\":\\"Profile\\",\\"sections\\":[{\\"title\\":\\"Fit\\",\\"body\\":\\"Profile body\\"}]}"}}
+
+            """.utf8)
+        )
+        let summarizer = CodexDirectSummarizer(
+            credentialProvider: StubCodexCredentialProvider(
+                credential: CodexOAuthCredential(
+                    accessToken: "access-token",
+                    refreshToken: "refresh-token",
+                    expiresAt: Date(timeIntervalSince1970: 2_000_000_000),
+                    accountID: "account-id",
+                    source: .authFile(path: "/tmp/auth.json")
+                )
+            ),
+            session: CodexDirectStubURLProtocol.makeSession(),
+            instructions: "Default diary instructions."
+        )
+
+        let result = try await summarizer.summarizeJSON(
+            dayKey: "networking-jobs",
+            prompt: "Write a public profile from My Wiki memory.",
+            schema: #"{"type":"object","required":["summary","sections"]}"#,
+            context: .manualRefresh
+        )
+
+        XCTAssertTrue(result.contains(#""summary":"Profile""#))
+        let body = try XCTUnwrap(CodexDirectStubURLProtocol.lastBodyData)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let instructions = try XCTUnwrap(object["instructions"] as? String)
+        XCTAssertTrue(instructions.contains("Return only valid JSON"))
+        let input = try XCTUnwrap(object["input"] as? [[String: Any]])
+        let firstMessage = try XCTUnwrap(input.first)
+        let content = try XCTUnwrap(firstMessage["content"] as? String)
+        XCTAssertTrue(content.contains("JSON schema"))
+        XCTAssertTrue(content.contains("Write a public profile from My Wiki memory."))
+        XCTAssertFalse(content.contains("Summarize this day"))
+    }
+
     func testMyWikiCompletionReusesCodexAuthWithSystemInstructionsAndTranscript() async throws {
         CodexDirectStubURLProtocol.response = .success(
             statusCode: 200,

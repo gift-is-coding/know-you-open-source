@@ -111,3 +111,114 @@ struct NetworkingProfileApprovalStateStore {
         projectRoot.appending(path: ".knowyou/networking/profile-approval.json")
     }
 }
+
+struct NetworkingProfileDraftState: Codable, Equatable {
+    let draftsByProfileID: [String: NetworkingProfileDraft]
+    let customProfiles: [NetworkingCustomProfileConfiguration]
+    let lastDailyUpdateCheckAt: Date?
+
+    init(
+        draftsByProfileID: [String: NetworkingProfileDraft] = [:],
+        customProfiles: [NetworkingCustomProfileConfiguration] = [],
+        lastDailyUpdateCheckAt: Date? = nil
+    ) {
+        self.draftsByProfileID = draftsByProfileID
+        self.customProfiles = customProfiles
+        self.lastDailyUpdateCheckAt = lastDailyUpdateCheckAt
+    }
+
+    func storing(_ draft: NetworkingProfileDraft, forProfileID profileID: String) -> NetworkingProfileDraftState {
+        var nextDrafts = draftsByProfileID
+        nextDrafts[profileID] = draft
+        return NetworkingProfileDraftState(
+            draftsByProfileID: nextDrafts,
+            customProfiles: customProfiles,
+            lastDailyUpdateCheckAt: lastDailyUpdateCheckAt
+        )
+    }
+
+    func storingCustomProfile(_ customProfile: NetworkingCustomProfileConfiguration) -> NetworkingProfileDraftState {
+        var nextCustomProfiles = customProfiles.filter { $0.id != customProfile.id }
+        nextCustomProfiles.append(customProfile)
+        return NetworkingProfileDraftState(
+            draftsByProfileID: draftsByProfileID,
+            customProfiles: nextCustomProfiles,
+            lastDailyUpdateCheckAt: lastDailyUpdateCheckAt
+        )
+    }
+
+    func markingDailyUpdateChecked(at date: Date) -> NetworkingProfileDraftState {
+        NetworkingProfileDraftState(
+            draftsByProfileID: draftsByProfileID,
+            customProfiles: customProfiles,
+            lastDailyUpdateCheckAt: date
+        )
+    }
+
+    func fillingMissingDraftTimestamps(with fallbackDate: Date) -> NetworkingProfileDraftState {
+        var nextDrafts: [String: NetworkingProfileDraft] = [:]
+        for (profileID, draft) in draftsByProfileID {
+            var nextDraft = draft
+            if nextDraft.generatedAt == nil {
+                nextDraft.generatedAt = fallbackDate
+            }
+            if nextDraft.updatedAt == nil {
+                nextDraft.updatedAt = fallbackDate
+            }
+            nextDrafts[profileID] = nextDraft
+        }
+        return NetworkingProfileDraftState(
+            draftsByProfileID: nextDrafts,
+            customProfiles: customProfiles,
+            lastDailyUpdateCheckAt: lastDailyUpdateCheckAt
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case draftsByProfileID
+        case customProfiles
+        case lastDailyUpdateCheckAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        draftsByProfileID = try container.decodeIfPresent([String: NetworkingProfileDraft].self, forKey: .draftsByProfileID) ?? [:]
+        customProfiles = try container.decodeIfPresent([NetworkingCustomProfileConfiguration].self, forKey: .customProfiles) ?? []
+        lastDailyUpdateCheckAt = try container.decodeIfPresent(Date.self, forKey: .lastDailyUpdateCheckAt)
+    }
+}
+
+struct NetworkingProfileDraftStateStore {
+    let fileManager: FileManager
+
+    init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+    }
+
+    func load(projectRoot: URL) -> NetworkingProfileDraftState {
+        let url = stateURL(projectRoot: projectRoot)
+        guard fileManager.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url),
+              let state = try? JSONDecoder().decode(NetworkingProfileDraftState.self, from: data) else {
+            return NetworkingProfileDraftState()
+        }
+        let modifiedAt = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date()
+        return state.fillingMissingDraftTimestamps(with: modifiedAt)
+    }
+
+    func save(_ state: NetworkingProfileDraftState, projectRoot: URL) throws {
+        let url = stateURL(projectRoot: projectRoot)
+        try fileManager.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(state)
+        try data.write(to: url, options: .atomic)
+    }
+
+    func stateURL(projectRoot: URL) -> URL {
+        projectRoot.appending(path: ".knowyou/networking/profile-drafts.json")
+    }
+}

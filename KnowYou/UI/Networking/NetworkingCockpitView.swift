@@ -12,13 +12,16 @@ struct NetworkingCockpitView: View {
     @State private var generationStatus: NetworkingGenerationStatus = .idle
     @State private var approvedProfileIDs: Set<String> = []
     @State private var attemptedAutoGenerationProfileIDs: Set<String> = []
+    @State private var customProfileConfigurations: [NetworkingCustomProfileConfiguration] = []
+    @State private var isAddingCustomProfile = false
+    @State private var dailyUpdateStatus: NetworkingDailyUpdateStatus = .idle
     @State private var customUseCase = ""
     @State private var customImageDirection = ""
     @State private var customTone = "warm"
     @State private var customRedactionNotes = ""
 
     private let activePersonName = "Tianfu Wu"
-    private let profileGenerationTimeoutNanoseconds: UInt64 = 45_000_000_000
+    private let profileGenerationTimeoutNanoseconds: UInt64 = 120_000_000_000
 
     private var selectedProfile: NetworkingGeneratedProfile {
         profiles.first { $0.id == selectedProfileID } ?? profiles[0]
@@ -46,8 +49,10 @@ struct NetworkingCockpitView: View {
         .accessibilityIdentifier("networking-cockpit-native")
         .task {
             ensureActivationState()
+            loadDraftState()
             loadApprovalState()
             autoGenerateSelectedProfileIfNeeded()
+            runDailyProfileUpdateIfNeeded()
         }
         .onChange(of: selectedProfileID) { _, _ in
             autoGenerateSelectedProfileIfNeeded()
@@ -130,6 +135,7 @@ struct NetworkingCockpitView: View {
                         ForEach(profiles) { profile in
                             Button {
                                 selectedProfileID = profile.id
+                                isAddingCustomProfile = false
                             } label: {
                                 ProfileScenarioCard(
                                     profile: profile,
@@ -140,11 +146,18 @@ struct NetworkingCockpitView: View {
                             }
                             .buttonStyle(.plain)
                         }
+
+                        Button {
+                            startAddingCustomProfile()
+                        } label: {
+                            AddCustomProfileCard()
+                        }
+                        .buttonStyle(.plain)
                     }
                     .padding(.vertical, 2)
                 }
 
-                if selectedProfileID == "profile-custom" {
+                if isAddingCustomProfile {
                     CustomProfileEditor(
                         useCase: $customUseCase,
                         imageDirection: $customImageDirection,
@@ -152,23 +165,25 @@ struct NetworkingCockpitView: View {
                         redactionNotes: $customRedactionNotes,
                         redactionItems: Self.defaultRedactionItems,
                         onGenerate: {
-                            generateSelectedProfile()
+                            generateCustomProfile()
                         },
                         isGenerating: generationStatus.isGenerating
                     )
                 }
 
                 HStack(alignment: .top, spacing: 12) {
-                    Button {
-                        generateSelectedProfile()
-                    } label: {
-                        Label(
-                            generationStatus.isGenerating ? "Generating..." : refreshButtonTitle,
-                            systemImage: generationStatus.isGenerating ? "hourglass" : "arrow.triangle.2.circlepath"
-                        )
+                    if isAddingCustomProfile == false {
+                        Button {
+                            generateSelectedProfile()
+                        } label: {
+                            Label(
+                                generationStatus.isGenerating ? "Generating..." : generationButtonTitle,
+                                systemImage: generationStatus.isGenerating ? "hourglass" : "arrow.triangle.2.circlepath"
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(generationStatus.isGenerating)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(generationStatus.isGenerating)
 
                     GenerationStatusCard(
                         status: generationStatus,
@@ -176,16 +191,20 @@ struct NetworkingCockpitView: View {
                             generateSelectedProfile()
                         }
                     )
+
+                    DailyUpdateStatusCard(status: dailyUpdateStatus)
                 }
 
-                GeneratedResultPreview(
-                    profile: selectedProfile,
-                    draft: generatedDrafts[selectedProfile.id],
-                    isApproved: approvedProfileIDs.contains(selectedProfile.id),
-                    isGenerating: generationStatus.isGenerating,
-                    onApprove: approveSelectedProfile,
-                    onRegenerate: generateSelectedProfile
-                )
+                if isAddingCustomProfile == false {
+                    GeneratedResultPreview(
+                        profile: selectedProfile,
+                        draft: generatedDrafts[selectedProfile.id],
+                        isApproved: approvedProfileIDs.contains(selectedProfile.id),
+                        isGenerating: generationStatus.isGenerating,
+                        onApprove: approveSelectedProfile,
+                        onUpdate: generateSelectedProfile
+                    )
+                }
             }
         }
     }
@@ -223,8 +242,8 @@ struct NetworkingCockpitView: View {
         }
     }
 
-    private var refreshButtonTitle: String {
-        selectedProfileID == "profile-custom" ? "Generate custom profile" : "Refresh from My Wiki"
+    private var generationButtonTitle: String {
+        generatedDrafts[selectedProfileID] == nil ? "Generate from My Wiki" : "Update profile"
     }
 
     private var filteredInboxItems: [NetworkingCockpitItem] {
@@ -270,7 +289,7 @@ struct NetworkingCockpitView: View {
     }
 
     private var profiles: [NetworkingGeneratedProfile] {
-        [
+        let defaultProfiles = [
             NetworkingGeneratedProfile(
                 id: "profile-career",
                 personName: activePersonName,
@@ -309,31 +328,8 @@ struct NetworkingCockpitView: View {
                 lastUpdatedLabel: "Draft not generated",
                 platformIDs: ["knowyou-friends"]
             ),
-            NetworkingGeneratedProfile(
-                id: "profile-custom",
-                personName: activePersonName,
-                displayName: activePersonName,
-                label: "Custom profile",
-                englishLabel: "Custom",
-                scenarioID: "custom",
-                scenarioDescription: customUseCase.isEmpty ? "Create a scene-specific public profile with custom goals, image direction, tone, and redaction notes." : customUseCase,
-                prompt: customProfilePrompt,
-                avatar: NetworkingProfileAvatar(
-                    fallbackLetter: "T",
-                    backgroundHex: customImageDirection.isEmpty ? "#8A6B5F" : "#6B7C8D",
-                    avatarSeed: "tianfu-custom-\(customImageDirection)-\(customTone)",
-                    avatarStyle: "generated-face"
-                ),
-                summarySections: [
-                    NetworkingProfileSummarySection(title: "Draft not generated", body: "Fill the custom fields, then generate from My Wiki."),
-                    NetworkingProfileSummarySection(title: "Use case", body: customUseCase.isEmpty ? "A user-defined scene such as events, research collaborators, investors, or small communities." : customUseCase),
-                    NetworkingProfileSummarySection(title: "Public tone", body: customTone.capitalized),
-                ],
-                autoUpdate: false,
-                lastUpdatedLabel: "Draft not generated",
-                platformIDs: []
-            ),
         ]
+        return defaultProfiles + customProfileConfigurations.map(customGeneratedProfile)
     }
 
     private var platforms: [NetworkingPlatformConfiguration] {
@@ -364,6 +360,40 @@ struct NetworkingCockpitView: View {
         Profile image direction: \(customImageDirection.isEmpty ? "Scene-appropriate, recognizable, and not overly literal." : customImageDirection)
         Public tone: \(customTone)
         Redaction notes: \(customRedactionNotes.isEmpty ? "Apply the default redaction rules." : customRedactionNotes)
+        Default redaction rules: \(Self.defaultRedactionItems.joined(separator: ", "))
+        """
+    }
+
+    private func customGeneratedProfile(for configuration: NetworkingCustomProfileConfiguration) -> NetworkingGeneratedProfile {
+        NetworkingGeneratedProfile(
+            id: configuration.id,
+            personName: activePersonName,
+            displayName: activePersonName,
+            label: configuration.label,
+            englishLabel: "Custom",
+            scenarioID: "custom",
+            scenarioDescription: configuration.useCase,
+            prompt: customProfilePrompt(for: configuration),
+            avatar: NetworkingProfileAvatar(
+                fallbackLetter: "T",
+                backgroundHex: "#6B7C8D",
+                avatarSeed: "tianfu-\(configuration.id)-\(configuration.imageDirection)-\(configuration.tone)",
+                avatarStyle: "generated-face"
+            ),
+            summarySections: [
+                NetworkingProfileSummarySection(title: "Draft not generated", body: "Update this profile from My Wiki whenever new material is available."),
+                NetworkingProfileSummarySection(title: "Use case", body: configuration.useCase),
+                NetworkingProfileSummarySection(title: "Public tone", body: configuration.tone.capitalized),
+            ],
+            autoUpdate: true,
+            lastUpdatedLabel: "Draft not generated",
+            platformIDs: []
+        )
+    }
+
+    private func customProfilePrompt(for configuration: NetworkingCustomProfileConfiguration) -> String {
+        """
+        \(configuration.prompt)
         Default redaction rules: \(Self.defaultRedactionItems.joined(separator: ", "))
         """
     }
@@ -411,14 +441,137 @@ struct NetworkingCockpitView: View {
             .approvedProfileIDs
     }
 
+    private func loadDraftState() {
+        guard let projectRoot else { return }
+        let state = NetworkingProfileDraftStateStore()
+            .load(projectRoot: projectRoot)
+        generatedDrafts = state.draftsByProfileID
+        customProfileConfigurations = state.customProfiles
+    }
+
+    private func saveDraft(_ draft: NetworkingProfileDraft, forProfileID profileID: String) throws {
+        guard let projectRoot else { return }
+        let store = NetworkingProfileDraftStateStore()
+        let nextState = store.load(projectRoot: projectRoot)
+            .storing(draft, forProfileID: profileID)
+        try store.save(nextState, projectRoot: projectRoot)
+    }
+
+    private func saveCustomProfile(_ configuration: NetworkingCustomProfileConfiguration) throws {
+        guard let projectRoot else { return }
+        let store = NetworkingProfileDraftStateStore()
+        let nextState = store.load(projectRoot: projectRoot)
+            .storingCustomProfile(configuration)
+        try store.save(nextState, projectRoot: projectRoot)
+        customProfileConfigurations = nextState.customProfiles
+    }
+
+    private func markDailyUpdateChecked(at date: Date) throws {
+        guard let projectRoot else { return }
+        let store = NetworkingProfileDraftStateStore()
+        let nextState = store.load(projectRoot: projectRoot)
+            .markingDailyUpdateChecked(at: date)
+        try store.save(nextState, projectRoot: projectRoot)
+    }
+
     private func autoGenerateSelectedProfileIfNeeded() {
-        guard generatedDrafts[selectedProfileID] == nil,
+        guard isDefaultProfileID(selectedProfileID),
+              generatedDrafts[selectedProfileID] == nil,
               attemptedAutoGenerationProfileIDs.contains(selectedProfileID) == false,
               generationStatus.isGenerating == false else {
             return
         }
         attemptedAutoGenerationProfileIDs.insert(selectedProfileID)
         generateSelectedProfile()
+    }
+
+    private func startAddingCustomProfile() {
+        isAddingCustomProfile = true
+        customUseCase = ""
+        customImageDirection = ""
+        customTone = "warm"
+        customRedactionNotes = ""
+        generationStatus = .idle
+    }
+
+    private func runDailyProfileUpdateIfNeeded() {
+        guard let projectRoot,
+              let summarizer,
+              generationStatus.isGenerating == false else {
+            return
+        }
+        let store = NetworkingProfileDraftStateStore()
+        let state = store.load(projectRoot: projectRoot)
+        let now = Date()
+        let policy = NetworkingProfileUpdatePolicy()
+        guard policy.shouldRunDailyUpdate(now: now, lastCheckedAt: state.lastDailyUpdateCheckAt) else {
+            dailyUpdateStatus = .idle
+            return
+        }
+
+        do {
+            try markDailyUpdateChecked(at: now)
+        } catch {
+            dailyUpdateStatus = .failed("Could not save daily update checkpoint: \(error.localizedDescription)")
+            return
+        }
+
+        let updatableProfiles = profiles.filter { profile in
+            profile.autoUpdate && generatedDrafts[profile.id] != nil
+        }
+        guard updatableProfiles.isEmpty == false else {
+            dailyUpdateStatus = .succeeded("Daily update is ready. Profiles will update after their first approved draft exists.")
+            return
+        }
+
+        dailyUpdateStatus = .checking
+        Task {
+            var updatedCount = 0
+            var skippedCount = 0
+            for profile in updatableProfiles {
+                guard let existingDraft = generatedDrafts[profile.id],
+                      let changedAfter = existingDraft.updatedAt ?? existingDraft.generatedAt else {
+                    skippedCount += 1
+                    continue
+                }
+                do {
+                    let service = NetworkingProfileGenerationService(
+                        generator: NetworkingPromptProfileGenerator(summarizer: summarizer)
+                    )
+                    let draft = try await withProfileGenerationTimeout {
+                        try await service.generateDraft(
+                            scenario: scenario(for: profile),
+                            prompt: profile.prompt,
+                            personName: activePersonName,
+                            projectRoot: projectRoot,
+                            draftID: profile.id,
+                            existingDraft: existingDraft,
+                            changedAfter: changedAfter
+                        )
+                    }
+                    await MainActor.run {
+                        generatedDrafts[profile.id] = draft
+                        try? saveDraft(draft, forProfileID: profile.id)
+                    }
+                    updatedCount += 1
+                } catch NetworkingProfileGenerationError.noNewMyWikiMaterial {
+                    skippedCount += 1
+                } catch {
+                    await MainActor.run {
+                        dailyUpdateStatus = .failed("Daily update stopped: \(error.localizedDescription)")
+                    }
+                    return
+                }
+            }
+
+            await MainActor.run {
+                if updatedCount > 0 {
+                    dailyUpdateStatus = .succeeded("Daily update applied to \(updatedCount) profile\(updatedCount == 1 ? "" : "s").")
+                } else {
+                    dailyUpdateStatus = .succeeded("Daily update checked \(skippedCount) profile\(skippedCount == 1 ? "" : "s"); no new My Wiki material found.")
+                }
+            }
+        }
     }
 
     private func approveSelectedProfile() {
@@ -436,7 +589,57 @@ struct NetworkingCockpitView: View {
         }
     }
 
+    private func generateCustomProfile() {
+        let trimmedUseCase = customUseCase.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedUseCase.isEmpty == false else {
+            generationStatus = .failed("Add a use case before generating a custom profile.")
+            return
+        }
+
+        let configuration = NetworkingCustomProfileConfiguration(
+            id: "profile-custom-\(UUID().uuidString.prefix(8).lowercased())",
+            label: customProfileLabel(from: trimmedUseCase),
+            useCase: trimmedUseCase,
+            imageDirection: customImageDirection.trimmingCharacters(in: .whitespacesAndNewlines),
+            tone: customTone,
+            redactionNotes: customRedactionNotes.trimmingCharacters(in: .whitespacesAndNewlines),
+            createdAt: Date()
+        )
+
+        do {
+            try saveCustomProfile(configuration)
+            selectedProfileID = configuration.id
+            isAddingCustomProfile = false
+            generateProfile(
+                customGeneratedProfile(for: configuration),
+                existingDraft: nil,
+                changedAfter: nil,
+                successMessage: "Generated custom profile from My Wiki. Review and approve this draft before community automation can use it."
+            )
+        } catch {
+            generationStatus = .failed("Could not save custom profile settings: \(error.localizedDescription)")
+        }
+    }
+
     private func generateSelectedProfile() {
+        let existingDraft = generatedDrafts[selectedProfile.id]
+        let changedAfter = existingDraft.flatMap { $0.updatedAt ?? $0.generatedAt }
+        generateProfile(
+            selectedProfile,
+            existingDraft: existingDraft,
+            changedAfter: changedAfter,
+            successMessage: existingDraft == nil
+                ? "Generated from My Wiki. Review and approve this draft before community automation can use it."
+                : "Updated with new My Wiki material. Review the latest draft before approving or keeping automation active."
+        )
+    }
+
+    private func generateProfile(
+        _ profile: NetworkingGeneratedProfile,
+        existingDraft: NetworkingProfileDraft?,
+        changedAfter: Date?,
+        successMessage: String
+    ) {
         guard let projectRoot else {
             generationStatus = .failed("My Wiki project is not ready yet.")
             return
@@ -446,7 +649,6 @@ struct NetworkingCockpitView: View {
             return
         }
 
-        let profile = selectedProfile
         let scenario = scenario(for: profile)
         generationStatus = .generating(profile.id)
 
@@ -460,12 +662,24 @@ struct NetworkingCockpitView: View {
                         scenario: scenario,
                         prompt: scenario.prompt,
                         personName: activePersonName,
-                        projectRoot: projectRoot
+                        projectRoot: projectRoot,
+                        draftID: profile.id,
+                        existingDraft: existingDraft,
+                        changedAfter: changedAfter
                     )
                 }
                 await MainActor.run {
                     generatedDrafts[profile.id] = draft
-                    generationStatus = .succeeded("Generated from My Wiki. Review and approve this draft before community automation can use it.")
+                    do {
+                        try saveDraft(draft, forProfileID: profile.id)
+                        generationStatus = .succeeded(successMessage)
+                    } catch {
+                        generationStatus = .failed("Generated the draft, but could not save it locally: \(error.localizedDescription)")
+                    }
+                }
+            } catch NetworkingProfileGenerationError.noNewMyWikiMaterial {
+                await MainActor.run {
+                    generationStatus = .succeeded("No new My Wiki material since the last profile update.")
                 }
             } catch {
                 await MainActor.run {
@@ -502,12 +716,30 @@ struct NetworkingCockpitView: View {
         default:
             return NetworkingProfileScenario(
                 id: "custom",
-                label: "Custom profile",
-                prompt: customProfilePrompt,
+                label: profile.label,
+                prompt: profile.prompt,
                 platformID: "",
                 description: "A user-defined scene for KnowYou Networking."
             )
         }
+    }
+
+    private func customProfileLabel(from useCase: String) -> String {
+        let firstLine = useCase
+            .components(separatedBy: .newlines)
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard firstLine.isEmpty == false else { return "Custom profile" }
+        let words = firstLine
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { $0.isEmpty == false }
+            .prefix(4)
+            .joined(separator: " ")
+        return words.isEmpty ? "Custom profile" : words
+    }
+
+    private func isDefaultProfileID(_ profileID: String) -> Bool {
+        profileID == "profile-career" || profileID == "profile-friends"
     }
 
     private static let defaultRedactionItems = [
@@ -600,6 +832,64 @@ private enum NetworkingGenerationStatus: Equatable {
     }
 }
 
+private enum NetworkingDailyUpdateStatus: Equatable {
+    case idle
+    case checking
+    case succeeded(String)
+    case failed(String)
+
+    var message: String? {
+        switch self {
+        case .idle:
+            return nil
+        case .checking:
+            return "Daily update is checking new My Wiki material only."
+        case let .succeeded(message), let .failed(message):
+            return message
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .idle:
+            return .clear
+        case .checking:
+            return .blue
+        case .succeeded:
+            return .green
+        case .failed:
+            return .red
+        }
+    }
+}
+
+private struct DailyUpdateStatusCard: View {
+    let status: NetworkingDailyUpdateStatus
+
+    var body: some View {
+        if let message = status.message {
+            HStack(spacing: 8) {
+                if case .checking = status {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.caption)
+                }
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: 420, alignment: .leading)
+            .background(status.color.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+}
+
 private struct StepPanel<Content: View>: View {
     let index: Int
     let title: String
@@ -670,7 +960,7 @@ private struct ProfileScenarioCard: View {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
                     .font(.caption)
-                Text(profile.lastUpdatedLabel ?? "Draft not generated")
+                Text(freshnessTitle)
                     .font(.caption2)
                     .lineLimit(1)
             }
@@ -696,9 +986,57 @@ private struct ProfileScenarioCard: View {
         return profile.autoUpdate ? .blue : .gray
     }
 
+    private var freshnessTitle: String {
+        if isApproved { return "Approved profile" }
+        if hasDraft { return "Generated draft" }
+        return profile.lastUpdatedLabel ?? "Draft not generated"
+    }
+
     private var selectionStroke: some View {
         RoundedRectangle(cornerRadius: 8, style: .continuous)
             .stroke(isSelected ? Color.accentColor.opacity(0.78) : Color(nsColor: .separatorColor).opacity(0.5), lineWidth: isSelected ? 1.6 : 1)
+    }
+}
+
+private struct AddCustomProfileCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.12))
+                Image(systemName: "plus")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .frame(width: 56, height: 56)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Add custom profile")
+                    .font(.headline)
+                Text("Create another scene-specific profile from My Wiki, then approve it before use.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(4)
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: "plus.circle")
+                    .font(.caption)
+                Text("Custom profile")
+                    .font(.caption2)
+            }
+            .foregroundStyle(.secondary)
+        }
+        .frame(width: 246, alignment: .topLeading)
+        .frame(minHeight: 174, alignment: .topLeading)
+        .padding(14)
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                .foregroundStyle(Color.accentColor.opacity(0.48))
+        )
     }
 }
 
@@ -885,7 +1223,7 @@ private struct GeneratedResultPreview: View {
     let isApproved: Bool
     let isGenerating: Bool
     let onApprove: () -> Void
-    let onRegenerate: () -> Void
+    let onUpdate: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -905,6 +1243,19 @@ private struct GeneratedResultPreview: View {
                 Spacer()
                 StatusPill(text: "My Wiki + LLM", color: .green)
                 StatusPill(text: approvalTitle, color: approvalColor)
+                if draft != nil {
+                    if isApproved {
+                        Label("Approved", systemImage: "checkmark.circle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.green)
+                    } else {
+                        Button("Approve profile", action: onApprove)
+                            .buttonStyle(.borderedProminent)
+                    }
+                    Button("Update profile", action: onUpdate)
+                        .buttonStyle(.bordered)
+                        .disabled(isGenerating)
+                }
             }
 
             if let draft {
@@ -920,20 +1271,16 @@ private struct GeneratedResultPreview: View {
                 .background(Color(nsColor: .controlBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-                HStack(spacing: 10) {
-                    if isApproved {
-                        Label("Approved", systemImage: "checkmark.circle.fill")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.green)
-                    } else {
-                        Button("Approve profile", action: onApprove)
-                            .buttonStyle(.borderedProminent)
-                    }
-
-                    Button("Regenerate", action: onRegenerate)
-                        .buttonStyle(.bordered)
-                        .disabled(isGenerating)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Full profile draft")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    FullProfileDraftBody(text: draft.body)
                 }
+                .padding(12)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
             } else {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Draft not generated")
@@ -1091,9 +1438,17 @@ private struct SelectedCommunityDetail: View {
                     .background(Color(nsColor: .controlBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 270), spacing: 12)], spacing: 12) {
-                    ForEach(items) { item in
-                        InboxCard(item: item)
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(AgentHomeDisplaySection.sections(for: items)) { section in
+                        VStack(alignment: .leading, spacing: 9) {
+                            Text(section.title)
+                                .font(.subheadline.weight(.semibold))
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 270), spacing: 12)], spacing: 12) {
+                                ForEach(section.items) { item in
+                                    InboxCard(item: item)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1105,6 +1460,34 @@ private struct SelectedCommunityDetail: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(Color.accentColor.opacity(0.18))
         )
+    }
+}
+
+private struct AgentHomeDisplaySection: Identifiable {
+    let id: String
+    let title: String
+    let items: [NetworkingCockpitItem]
+
+    static func sections(for items: [NetworkingCockpitItem]) -> [AgentHomeDisplaySection] {
+        [
+            AgentHomeDisplaySection(
+                id: "needs-reply",
+                title: "Needs reply",
+                items: items.filter { $0.direction == .inbound }
+            ),
+            AgentHomeDisplaySection(
+                id: "potential-matches",
+                title: "Potential matches",
+                items: items.filter { $0.direction == .highlight }
+            ),
+            AgentHomeDisplaySection(
+                id: "saved-for-you",
+                title: "Saved for you",
+                items: items.filter { $0.direction == .outbound || $0.direction == .activity }
+            )
+        ].filter { section in
+            section.items.isEmpty == false
+        }
     }
 }
 
@@ -1374,6 +1757,62 @@ private struct PlatformStat: View {
         .padding(8)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+}
+
+private struct FullProfileDraftBody: View {
+    let text: String
+
+    @State private var isExpanded = false
+
+    private let collapsedHeight: CGFloat = 360
+
+    private var shouldCollapse: Bool {
+        text.count > 1800 || text.components(separatedBy: .newlines).count > 18
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ZStack(alignment: .bottom) {
+                Text(text)
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxHeight: shouldLimitHeight ? collapsedHeight : nil, alignment: .top)
+                    .clipped()
+
+                if shouldLimitHeight {
+                    LinearGradient(
+                        colors: [
+                            Color(nsColor: .controlBackgroundColor).opacity(0),
+                            Color(nsColor: .controlBackgroundColor)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 54)
+                    .allowsHitTesting(false)
+                }
+            }
+
+            if shouldCollapse {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    Label(isExpanded ? "Hide profile" : "Show full profile",
+                          systemImage: isExpanded ? "chevron.up" : "chevron.down")
+                }
+                .buttonStyle(.borderless)
+                .font(.callout.weight(.semibold))
+            }
+        }
+    }
+
+    private var shouldLimitHeight: Bool {
+        shouldCollapse && !isExpanded
     }
 }
 

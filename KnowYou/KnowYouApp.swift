@@ -116,6 +116,9 @@ struct KnowYouApp: App {
         if launchMode == .networkingMCP {
             Self.runNetworkingMCPCommandAndExit(arguments: CommandLine.arguments)
         }
+        if launchMode == .networkingProfileDraft {
+            Self.runNetworkingProfileDraftCommandAndExit(arguments: CommandLine.arguments)
+        }
         let didScheduleApplicationMove = Self.scheduleApplicationInstallAutoMoveIfNeeded(launchMode: launchMode)
 
         self.launchMode = launchMode
@@ -184,6 +187,7 @@ struct KnowYouApp: App {
             && launchMode != .myWikiContext
             && launchMode != .myWikiMCP
             && launchMode != .networkingMCP
+            && launchMode != .networkingProfileDraft
             && isRunningUnderXCTest == false
     }
 
@@ -242,6 +246,13 @@ struct KnowYouApp: App {
     private static func runNetworkingMCPCommandAndExit(arguments: [String]) -> Never {
         let exitCode = NetworkingMCPCommand.serve(arguments: arguments)
         Darwin.exit(exitCode)
+    }
+
+    private static func runNetworkingProfileDraftCommandAndExit(arguments: [String]) -> Never {
+        let result = NetworkingProfileDraftCommand.run(arguments: arguments)
+        write(result.stdout, to: .standardOutput)
+        write(result.stderr, to: .standardError)
+        Darwin.exit(result.exitCode)
     }
 
     private static func write(_ string: String, to fileHandle: FileHandle) {
@@ -451,6 +462,7 @@ enum LaunchMode: Equatable {
     case myWikiContext
     case myWikiMCP
     case networkingMCP
+    case networkingProfileDraft
 
     init(arguments: [String]) {
         if arguments.contains("--sync-memory-now") {
@@ -465,6 +477,8 @@ enum LaunchMode: Equatable {
             self = .myWikiMCP
         } else if arguments.contains(NetworkingMCPCommand.launchArgument) {
             self = .networkingMCP
+        } else if arguments.contains(NetworkingProfileDraftCommand.launchArgument) {
+            self = .networkingProfileDraft
         } else {
             self = .interactive
         }

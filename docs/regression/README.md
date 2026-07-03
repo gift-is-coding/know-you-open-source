@@ -15,6 +15,7 @@ Update this folder when a change touches any of these areas:
 - Other Source, Local Folder, Obsidian, Feishu/Lark, Notion, Google Drive, source scan, or prompt generation
 - diary engine selector, LLM API providers, CLI engines, Codex Auth, or engine status
 - Settings, Sync Memory, LaunchAgent-backed automation, evening reminder, or update sheet
+- Networking, profile generation, profile approval, community binding, local agent permission, or Networking Web agent APIs
 - clipboard, notification import, privacy filtering, SQLite, Markdown output, or release verification
 
 Every test case should keep these fields current:

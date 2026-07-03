@@ -1,5 +1,18 @@
 import { profilePageFixture, publicSquareFixture } from "./fixtures";
+import { buildAgentHome, type NetworkingAgentHome } from "./agent-home";
+import {
+  buildNetworkingE2EAgentHome,
+  getNetworkingE2EActivities,
+  getNetworkingE2EItems,
+  getNetworkingE2EProfilePage,
+  getNetworkingE2EProfiles,
+  isNetworkingE2EStoreEnabled,
+  readNetworkingE2EState
+} from "./e2e-store";
+import { getLocalDemoNetwork } from "./local-demo-state";
 import { defaultNetworkingPlatformID, isNetworkingPlatformID } from "./platforms";
+import type { NetworkingAgentActivity } from "./community-agent-loop";
+import type { NetworkingCommunityMembership, NetworkingInteractionEvent } from "./community-agent-loop";
 import type {
   NetworkingAvatarStyle,
   NetworkingComposerProfile,
@@ -38,15 +51,59 @@ type ContentRow = {
   created_at: string;
   person_id?: string;
   post_id?: string;
+  parent_comment_id?: string | null;
+  client_decision_id?: string | null;
   people: PersonRow | PersonRow[] | null;
   profiles: ProfileRow | ProfileRow[] | null;
+};
+
+type AgentActivityRow = {
+  id: string;
+  platform_id: string;
+  person_id: string;
+  profile_id: string;
+  activity_type: "auto_comment" | "skipped" | string;
+  public_reference_type: "post" | "comment" | string | null;
+  public_reference_id: string | null;
+  summary: string;
+  reason_code?: string | null;
+  metadata?: Record<string, string | number | boolean | null> | null;
+  created_at: string;
+};
+
+type MembershipRow = {
+  community_id: string;
+  person_id: string;
+  profile_id: string;
+  status: NetworkingCommunityMembership["status"];
+  policy?: NetworkingCommunityMembership["policy"] | null;
+  last_heartbeat_at?: string | null;
+  last_candidate_seen_at?: string | null;
+};
+
+type InteractionEventRow = {
+  id: string;
+  platform_id: string;
+  person_id: string;
+  profile_id: string;
+  event_type: NetworkingInteractionEvent["eventType"] | string;
+  post_id?: string | null;
+  comment_id?: string | null;
+  actor_person_id?: string | null;
+  actor_profile_id?: string | null;
+  read_at?: string | null;
+  created_at: string;
 };
 
 export async function getPublicSquareItems(platformID?: string): Promise<NetworkingContentItem[]> {
   const normalizedPlatformID = normalizePlatformID(platformID);
 
+  if (isNetworkingE2EStoreEnabled()) {
+    return getNetworkingE2EItems(normalizedPlatformID);
+  }
+
   if (!hasSupabaseEnv()) {
-    return publicSquareFixture.filter((item) => item.platformID === normalizedPlatformID);
+    return getLocalDemoNetwork().items.filter((item) => item.platformID === normalizedPlatformID);
   }
 
   try {
@@ -63,7 +120,7 @@ export async function getPublicSquareItems(platformID?: string): Promise<Network
     let commentsQuery = supabase
       .from("comments")
       .select(
-        "id, post_id, platform_id, body, author_type, created_at, people(id, display_name, handle), profiles(id, label, slug, scenario_id, scenario_description, avatar_seed, avatar_style, platform_ids, summary, is_published)"
+        "id, post_id, parent_comment_id, client_decision_id, platform_id, body, author_type, created_at, people(id, display_name, handle), profiles(id, label, slug, scenario_id, scenario_description, avatar_seed, avatar_style, platform_ids, summary, is_published)"
       )
       .eq("is_public", true)
       .order("created_at", { ascending: false })
@@ -90,8 +147,17 @@ export async function getPublicSquareItems(platformID?: string): Promise<Network
 }
 
 export async function getPublicProfilePage(handle: string): Promise<NetworkingProfilePage> {
+  if (isNetworkingE2EStoreEnabled()) {
+    return getNetworkingE2EProfilePage(handle);
+  }
+
   if (!hasSupabaseEnv()) {
-    return profilePageFixture;
+    const network = getLocalDemoNetwork();
+    const person = network.people.find((item) => item.handle === handle) ?? profilePageFixture.person;
+    return {
+      person,
+      profiles: network.profiles.filter((profile) => profile.personName === person.displayName)
+    };
   }
 
   try {
@@ -129,8 +195,16 @@ export async function getPublicProfilePage(handle: string): Promise<NetworkingPr
 export async function getComposerProfiles(platformID?: string): Promise<NetworkingComposerProfile[]> {
   const normalizedPlatformID = normalizePlatformID(platformID);
 
+  if (isNetworkingE2EStoreEnabled()) {
+    return getNetworkingE2EProfiles(normalizedPlatformID).map(({ id, label, platformIDs }) => ({
+      id,
+      label,
+      platformIDs
+    }));
+  }
+
   if (!hasSupabaseEnv()) {
-    return profilePageFixture.profiles
+    return getLocalDemoNetwork().profiles
       .filter((profile) => (profile.platformIDs ?? []).includes(normalizedPlatformID))
       .map(({ id, label, platformIDs }) => ({ id, label, platformIDs }));
   }
@@ -170,6 +244,132 @@ export async function getComposerProfiles(platformID?: string): Promise<Networki
     }));
   } catch {
     return [];
+  }
+}
+
+export async function getAgentActivities(platformID?: string): Promise<NetworkingAgentActivity[]> {
+  const normalizedPlatformID = normalizePlatformID(platformID);
+
+  if (isNetworkingE2EStoreEnabled()) {
+    return getNetworkingE2EActivities(normalizedPlatformID);
+  }
+
+  if (!hasSupabaseEnv()) {
+    return getLocalDemoNetwork().activities.filter((activity) => activity.platformID === normalizedPlatformID);
+  }
+
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("agent_activity")
+      .select("id, platform_id, person_id, profile_id, activity_type, public_reference_type, public_reference_id, summary, reason_code, metadata, created_at")
+      .eq("platform_id", normalizedPlatformID)
+      .order("created_at", { ascending: false })
+      .limit(12);
+
+    if (error) {
+      return [];
+    }
+
+    return (data ?? []).map((row) => mapAgentActivity(row as AgentActivityRow));
+  } catch {
+    return [];
+  }
+}
+
+export async function getAgentHomePreview(platformID?: string): Promise<NetworkingAgentHome | null> {
+  const normalizedPlatformID = normalizePlatformID(platformID);
+
+  if (isNetworkingE2EStoreEnabled()) {
+    const state = readNetworkingE2EState();
+    const membership = state.memberships.find((item) => item.communityID === normalizedPlatformID && item.personID === "person-shuhan");
+    if (!membership) {
+      return null;
+    }
+    return buildNetworkingE2EAgentHome({
+      token: `e2e-agent-${membership.profileID}`,
+      platformID: normalizedPlatformID,
+      profileID: membership.profileID
+    });
+  }
+
+  if (!hasSupabaseEnv()) {
+    const network = getLocalDemoNetwork();
+    const membership = network.memberships.find((item) => item.communityID === normalizedPlatformID && item.status === "active");
+    if (!membership) {
+      return null;
+    }
+    const person = network.people.find((item) => item.id === membership.personID);
+    const profile = network.profiles.find((item) => item.id === membership.profileID);
+    if (!person || !profile) {
+      return null;
+    }
+    return buildAgentHome({
+      now: new Date("2026-06-12T10:10:00.000Z"),
+      person,
+      profile,
+      membership,
+      items: network.items,
+      events: network.events,
+      recentActivities: network.activities
+    });
+  }
+
+  try {
+    const supabase = await createClient();
+    const { data: person } = await supabase.from("people").select("id, display_name, handle").eq("handle", "shuhan").single();
+    if (!person) {
+      return null;
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id, label, slug, scenario_id, scenario_description, avatar_seed, avatar_style, platform_ids, summary, is_published")
+      .eq("person_id", person.id)
+      .eq("is_published", true)
+      .contains("platform_ids", [normalizedPlatformID])
+      .limit(1)
+      .single();
+
+    if (!profile) {
+      return null;
+    }
+
+    const { data: membership } = await supabase
+      .from("community_memberships")
+      .select("community_id, person_id, profile_id, status, policy, last_heartbeat_at, last_candidate_seen_at")
+      .eq("community_id", normalizedPlatformID)
+      .eq("profile_id", profile.id)
+      .single();
+
+    if (!membership) {
+      return null;
+    }
+
+    const { data: events } = await supabase
+      .from("public_interaction_events")
+      .select("id, platform_id, person_id, profile_id, event_type, post_id, comment_id, actor_person_id, actor_profile_id, read_at, created_at")
+      .eq("platform_id", normalizedPlatformID)
+      .eq("profile_id", profile.id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    const [items, recentActivities] = await Promise.all([
+      getPublicSquareItems(normalizedPlatformID),
+      getAgentActivities(normalizedPlatformID)
+    ]);
+
+    return buildAgentHome({
+      now: new Date(),
+      person: mapPerson(person as PersonRow),
+      profile: mapProfile(profile as ProfileRow, person.display_name as string),
+      membership: mapMembership(membership as MembershipRow),
+      items,
+      events: (events ?? []).map((event) => mapInteractionEvent(event as InteractionEventRow)),
+      recentActivities
+    });
+  } catch {
+    return null;
   }
 }
 
@@ -251,7 +451,9 @@ function mapContentRow(row: ContentRow, kind: "post" | "comment"): NetworkingCon
     createdAt: row.created_at,
     person: mappedPerson,
     profile: mapProfile(profile, mappedPerson.displayName),
-    parentPostID: row.post_id
+    parentPostID: row.post_id,
+    parentCommentID: row.parent_comment_id ?? undefined,
+    clientDecisionID: row.client_decision_id ?? undefined
   };
 }
 
@@ -294,4 +496,73 @@ function first<T>(value: T | T[] | null): T | null {
 
 function normalizePlatformID(value?: string) {
   return value && isNetworkingPlatformID(value) ? value : defaultNetworkingPlatformID;
+}
+
+function mapAgentActivity(row: AgentActivityRow): NetworkingAgentActivity {
+  return {
+    id: row.id,
+    platformID: normalizePlatformID(row.platform_id),
+    profileID: row.profile_id,
+    personID: row.person_id,
+    activityType: normalizeActivityType(row.activity_type),
+    publicReferenceType: row.public_reference_type === "comment" ? "comment" : "post",
+    publicReferenceID: row.public_reference_id ?? "",
+    summary: row.summary,
+    createdAt: row.created_at,
+    reasonCode: row.reason_code ?? undefined,
+    metadata: row.metadata ?? undefined
+  };
+}
+
+function mapMembership(row: MembershipRow): NetworkingCommunityMembership {
+  return {
+    communityID: normalizePlatformID(row.community_id),
+    profileID: row.profile_id,
+    personID: row.person_id,
+    status: row.status,
+    policy: row.policy ?? undefined,
+    lastHeartbeatAt: row.last_heartbeat_at ?? undefined,
+    lastCandidateSeenAt: row.last_candidate_seen_at ?? undefined
+  };
+}
+
+function mapInteractionEvent(row: InteractionEventRow): NetworkingInteractionEvent {
+  return {
+    id: row.id,
+    platformID: normalizePlatformID(row.platform_id),
+    personID: row.person_id,
+    profileID: row.profile_id,
+    eventType: normalizeEventType(row.event_type),
+    postID: row.post_id ?? undefined,
+    commentID: row.comment_id ?? undefined,
+    actorPersonID: row.actor_person_id ?? undefined,
+    actorProfileID: row.actor_profile_id ?? undefined,
+    readAt: row.read_at ?? undefined,
+    createdAt: row.created_at
+  };
+}
+
+function normalizeEventType(value: string): NetworkingInteractionEvent["eventType"] {
+  const allowed: NetworkingInteractionEvent["eventType"][] = [
+    "new_comment_on_my_post",
+    "reply_to_my_comment",
+    "agent_commented",
+    "candidate_found",
+    "human_action_required",
+    "read"
+  ];
+  return allowed.includes(value as NetworkingInteractionEvent["eventType"]) ? (value as NetworkingInteractionEvent["eventType"]) : "candidate_found";
+}
+
+function normalizeActivityType(value: string): NetworkingAgentActivity["activityType"] {
+  const allowed: NetworkingAgentActivity["activityType"][] = [
+    "heartbeat",
+    "auto_comment",
+    "auto_reply",
+    "skipped",
+    "saved_for_human",
+    "rate_limited",
+    "safety_blocked"
+  ];
+  return allowed.includes(value as NetworkingAgentActivity["activityType"]) ? (value as NetworkingAgentActivity["activityType"]) : "auto_comment";
 }

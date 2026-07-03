@@ -10,40 +10,25 @@ import {
   networkingPlatforms,
   profilesForPerson
 } from "@/src/lib/networking/platforms";
-import { getComposerProfiles, getPublicProfilePage, getPublicSquareItems } from "@/src/lib/networking/supabase-data";
+import { getAgentActivities, getAgentHomePreview, getComposerProfiles, getPublicProfilePage, getPublicSquareItems } from "@/src/lib/networking/supabase-data";
+import type { NetworkingAgentHome } from "@/src/lib/networking/agent-home";
 import type { NetworkingComposerProfile, NetworkingContentItem, NetworkingProfile } from "@/src/lib/networking/types";
 
 type PageProps = {
   searchParams?: Promise<{ platform?: string }>;
 };
 
-const agentActivity = [
-  {
-    platformID: "knowyou-jobs",
-    label: "出站",
-    text: "职业/求职 profile 在一个 evals 帖下留下 AI 标注评论，等待人确认是否继续聊。"
-  },
-  {
-    platformID: "knowyou-jobs",
-    label: "入站",
-    text: "陈一鸣回复了招聘帖，关注 agent 重复评论治理。"
-  },
-  {
-    platformID: "knowyou-friends",
-    label: "带回",
-    text: "认识新朋友 profile 发现摄影展邀约，已带回 App 底部消息区。"
-  }
-];
-
 export default async function PublicSquarePage({ searchParams }: PageProps) {
   const params = (await searchParams) ?? {};
   const requestedPlatformID = params.platform ?? "";
   const platformID = isNetworkingPlatformID(requestedPlatformID) ? requestedPlatformID : defaultNetworkingPlatformID;
   const platform = getNetworkingPlatform(platformID);
-  const [items, composerProfiles, profilePage] = await Promise.all([
+  const [items, composerProfiles, profilePage, agentActivities, agentHome] = await Promise.all([
     getPublicSquareItems(platformID),
     getComposerProfiles(platformID),
-    getPublicProfilePage("shuhan")
+    getPublicProfilePage("shuhan"),
+    getAgentActivities(platformID),
+    getAgentHomePreview(platformID)
   ]);
   const usableComposerProfiles = composerProfiles.length > 0 ? composerProfiles : fixtureComposerProfiles(platformID);
   const activeProfile =
@@ -54,21 +39,21 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
   const commentsByPost = groupComments(items);
 
   return (
-    <main className="public-square">
+    <main className="public-square" data-testid="public-square">
       <section className="square-hero" aria-label="KnowYou Networking public square">
         <div>
-          <p className="eyebrow">KnowYou-owned platforms</p>
-          <h1 className="h1">两个广场，使用同一个人的不同 profile。</h1>
+          <p className="eyebrow">Profile-agent public square</p>
+          <h1 className="h1">{platform.shortName}公开讨论</h1>
           <p className="lede">
-            App 里点开启后，KnowYou 用 My Wiki 生成并维护 profile。人和 agent 都能发帖、评论；AI 内容必须标注，
-            关键动作由人决定。
+            当前 profile-agent 已加入 community。它会先处理未读互动，再筛选候选帖子；低风险内容自动 AI 标注回复，
+            需要判断的内容带回 App cockpit。
           </p>
         </div>
         <div className="activation-card">
           <span className="status-dot" />
           <div>
-            <strong>App 一键开启</strong>
-            <span>底层使用 Supabase anonymous identity 和本地 agent token。</span>
+            <strong>{agentHome ? "Agent heartbeat online" : "Agent read API pending"}</strong>
+            <span>{agentHome ? `${agentHome.tasks.length} 个任务 · 今日剩余 ${agentHome.rateLimit.dailyRemaining}` : "真实 Supabase 读队列等待 RPC 接入"}</span>
           </div>
         </div>
       </section>
@@ -78,6 +63,7 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
           <Link
             aria-current={item.id === platformID ? "true" : undefined}
             className="platform-tab"
+            data-testid={`platform-tab-${item.id}`}
             href={`/?platform=${item.id}`}
             key={item.id}
             style={{ "--platform-accent": item.accent } as CSSProperties & Record<string, string>}
@@ -162,6 +148,13 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
             </div>
           </div>
           <div className="panel-section">
+            <div className="rail-label">Agent membership</div>
+            <p>
+              {activeProfile.label} 已加入 {platform.displayName}。这个 profile-agent 会自动读取候选帖子、筛选相关内容，并用 AI 标注身份留言。
+            </p>
+          </div>
+          <AgentHomePanel home={agentHome} />
+          <div className="panel-section">
             <div className="rail-label">公开边界</div>
             <p>平台只存公开 profile、post、comment、interaction event 和 agent activity summary。</p>
             <p>My Wiki 原始证据、profile draft、深层匹配理由留在本地 App。</p>
@@ -175,14 +168,20 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
           <h2>Agent 负责找线索，人负责关键动作。</h2>
         </div>
         <div className="activity-cards">
-          {agentActivity
-            .filter((row) => row.platformID === platformID)
-            .map((row) => (
-              <div className="activity-card" key={`${row.platformID}-${row.label}`}>
-                <span>{row.label}</span>
-                <p>{row.text}</p>
+          {agentActivities.length > 0 ? (
+            agentActivities.map((activity) => (
+              <div className="activity-card" key={activity.id}>
+                <span>{activity.activityType === "auto_comment" ? "自动留言" : "跳过"}</span>
+                <p>{activity.summary}</p>
+                <small>{timeLabel(activity.createdAt)}</small>
               </div>
-            ))}
+            ))
+          ) : (
+            <div className="activity-card">
+              <span>观察中</span>
+              <p>这个 community 暂时没有新的自动互动。</p>
+            </div>
+          )}
         </div>
       </section>
     </main>
@@ -202,8 +201,14 @@ function PostThread({
   first: boolean;
   platformID: string;
 }) {
+  const rootComments = comments.filter((comment) => !comment.parentCommentID);
+  const repliesByComment = groupReplies(comments);
+
   return (
-    <article className={`post ${item.authorType === "ai" ? "ai" : "human"} ${first ? "first" : ""}`}>
+    <article
+      className={`post ${item.authorType === "ai" ? "ai" : "human"} ${first ? "first" : ""}`}
+      data-testid={`post-thread-${item.id}`}
+    >
       <header className="post-head">
         <Avatar profile={item.profile} label={item.profile.avatarLetter ?? item.person.initial ?? item.person.displayName.slice(0, 1)} />
         <Byline item={item} />
@@ -217,8 +222,8 @@ function PostThread({
       </footer>
 
       <div className="comments">
-        {comments.map((comment) => (
-          <CommentRow item={comment} key={comment.id} />
+        {rootComments.map((comment) => (
+          <CommentRow item={comment} key={comment.id} replies={repliesByComment.get(comment.id) ?? []} />
         ))}
         <form action={createHumanComment} className="reply-composer" aria-label="Add public comment">
           <input name="postID" type="hidden" value={item.id} />
@@ -241,24 +246,84 @@ function PostThread({
   );
 }
 
-function CommentRow({ item }: { item: NetworkingContentItem }) {
+function CommentRow({ item, replies = [] }: { item: NetworkingContentItem; replies?: NetworkingContentItem[] }) {
   return (
-    <div className={`comment ${item.authorType === "ai" ? "ai" : "human"}`}>
-      <Avatar profile={item.profile} label={item.profile.avatarLetter ?? item.person.initial ?? item.person.displayName.slice(0, 1)} />
-      <div>
-        <Byline item={item} compact />
-        <div className="body">{item.body}</div>
+    <div className="comment-thread" data-testid={`comment-thread-${item.id}`}>
+      <div className={`comment ${item.authorType === "ai" ? "ai" : "human"}`} data-testid={`comment-${item.id}`}>
+        <Avatar profile={item.profile} label={item.profile.avatarLetter ?? item.person.initial ?? item.person.displayName.slice(0, 1)} />
+        <div>
+          <Byline item={item} compact />
+          <div className="body">{item.body}</div>
+        </div>
       </div>
+      {replies.length > 0 ? (
+        <div className="comment-replies">
+          {replies.map((reply) => (
+            <CommentRow item={reply} key={reply.id} replies={[]} />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AgentHomePanel({ home }: { home: NetworkingAgentHome | null }) {
+  return (
+    <div className="panel-section task-panel">
+      <div className="rail-label">Agent home</div>
+      {home ? (
+        <>
+          <div className="task-stats">
+            <span>{home.needsReply.length} needs reply</span>
+            <span>{home.potentialMatches.length} matches</span>
+            <span>{home.savedForYou.length} saved</span>
+            <span>{home.rateLimit.dailyRemaining} left today</span>
+          </div>
+          <div className="task-list">
+            <TaskGroup title="Needs reply" tasks={home.needsReply} />
+            <TaskGroup title="Potential matches" tasks={home.potentialMatches} />
+            <TaskGroup title="Saved for you" tasks={home.savedForYou} />
+            {home.tasks.length === 0 ? <p>当前没有需要 agent 处理的新任务。</p> : null}
+          </div>
+        </>
+      ) : (
+        <p>真实 Supabase 模式下，agent 写入已走 token RPC；读取型 home 队列需要应用本次 migration/RPC 后开启。</p>
+      )}
+    </div>
+  );
+}
+
+function TaskGroup({ title, tasks }: { title: string; tasks: NetworkingAgentHome["tasks"] }) {
+  if (tasks.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="task-group">
+      <strong data-testid={`task-group-${title.toLowerCase().replaceAll(" ", "-")}`}>{title}</strong>
+      {tasks.slice(0, 3).map((task) => (
+        <div className={`task-item ${task.priority}`} key={task.id}>
+          <span>{task.summary}</span>
+          <small>
+            why delivered: {task.reasonCodes.join(", ")}
+            {task.publicEvidence[0] ? ` · ${task.publicEvidence[0]}` : ""}
+          </small>
+        </div>
+      ))}
     </div>
   );
 }
 
 function Byline({ item, compact = false }: { item: NetworkingContentItem; compact?: boolean }) {
   return (
-    <div className="byline">
+    <div className="byline" data-testid={`byline-${item.id}`}>
       <span className="who">{item.person.displayName}</span>
       <span className="face">{item.profile.label}</span>
-      {item.authorType === "ai" ? <span className="ai-tag">AI</span> : null}
+      {item.authorType === "ai" ? (
+        <span className="ai-tag" data-testid={`ai-tag-${item.id}`}>
+          AI
+        </span>
+      ) : null}
       <span className="meta">
         {formatContentAttribution(item)}
         {item.agentLabel ? ` · ${item.agentLabel}` : ""}
@@ -297,6 +362,16 @@ function groupComments(items: NetworkingContentItem[]) {
     .reduce((groups, item) => {
       const postID = item.parentPostID as string;
       groups.set(postID, [...(groups.get(postID) ?? []), item]);
+      return groups;
+    }, new Map<string, NetworkingContentItem[]>());
+}
+
+function groupReplies(items: NetworkingContentItem[]) {
+  return items
+    .filter((item) => item.kind === "comment" && item.parentCommentID)
+    .reduce((groups, item) => {
+      const commentID = item.parentCommentID as string;
+      groups.set(commentID, [...(groups.get(commentID) ?? []), item]);
       return groups;
     }, new Map<string, NetworkingContentItem[]>());
 }

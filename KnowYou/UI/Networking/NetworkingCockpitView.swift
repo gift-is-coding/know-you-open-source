@@ -6,8 +6,10 @@ struct NetworkingCockpitView: View {
     let summarizer: (any SummaryGenerating)?
 
     @State private var selectedProfileID = "profile-career"
-    @State private var selectedPlatformID = "knowyou-careers"
+    @State private var selectedPlatformID = "knowyou-jobs"
     @State private var activationStatus: NetworkingActivationViewStatus = .pending
+    @State private var activationState: NetworkingActivationState?
+    @State private var platformItems: [NetworkingCockpitItem] = []
     @State private var generatedDrafts: [String: NetworkingProfileDraft] = [:]
     @State private var generationStatus: NetworkingGenerationStatus = .idle
     @State private var approvedProfileIDs: Set<String> = []
@@ -48,14 +50,17 @@ struct NetworkingCockpitView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier("networking-cockpit-native")
         .task {
-            ensureActivationState()
             loadDraftState()
             loadApprovalState()
+            ensureActivationState()
             autoGenerateSelectedProfileIfNeeded()
             runDailyProfileUpdateIfNeeded()
         }
         .onChange(of: selectedProfileID) { _, _ in
             autoGenerateSelectedProfileIfNeeded()
+        }
+        .onChange(of: selectedPlatformID) { _, _ in
+            loadPlatformInbox()
         }
     }
 
@@ -247,13 +252,24 @@ struct NetworkingCockpitView: View {
     }
 
     private var filteredInboxItems: [NetworkingCockpitItem] {
-        let items = presentation.items(forPlatformID: selectedPlatformID)
-        guard items.isEmpty == false else {
-            return fallbackInboxItems.filter { item in
-                item.platformID == selectedPlatformID
-            }
+        let liveItems = platformItems.filter { $0.platformID == selectedPlatformID }
+        if liveItems.isEmpty == false {
+            return liveItems
         }
-        return items
+
+        let items = presentation.items(forPlatformID: selectedPlatformID)
+        if items.isEmpty == false {
+            return items
+        }
+
+        // Real platform mode shows the honest empty state instead of demo rows.
+        if activationState?.isPlatformConnected == true {
+            return []
+        }
+
+        return fallbackInboxItems.filter { item in
+            item.platformID == selectedPlatformID
+        }
     }
 
     private var fallbackInboxItems: [NetworkingCockpitItem] {
@@ -265,7 +281,7 @@ struct NetworkingCockpitView: View {
                 publicSummary: "A founder is looking for someone with local-first agent product experience in Know You Careers.",
                 privateReason: "My Wiki connects this to current KnowYou Networking and agent runtime work.",
                 publicReferenceID: "post-careers-1",
-                platformID: "knowyou-careers"
+                platformID: "knowyou-jobs"
             ),
             NetworkingCockpitItem(
                 id: "jobs-activity",
@@ -274,7 +290,7 @@ struct NetworkingCockpitView: View {
                 publicSummary: "The local agent drafted a labeled AI comment as Tianfu Wu · Career / Hiring · AI.",
                 privateReason: "Written through the local Networking MCP after activation and token permission.",
                 publicReferenceID: "comment-agent-1",
-                platformID: "knowyou-careers"
+                platformID: "knowyou-jobs"
             ),
             NetworkingCockpitItem(
                 id: "friends-inbound",
@@ -307,7 +323,7 @@ struct NetworkingCockpitView: View {
                 ],
                 autoUpdate: true,
                 lastUpdatedLabel: "Draft not generated",
-                platformIDs: ["knowyou-careers"]
+                platformIDs: ["knowyou-jobs"]
             ),
             NetworkingGeneratedProfile(
                 id: "profile-friends",
@@ -335,7 +351,7 @@ struct NetworkingCockpitView: View {
     private var platforms: [NetworkingPlatformConfiguration] {
         [
             NetworkingPlatformConfiguration(
-                id: "knowyou-careers",
+                id: "knowyou-jobs",
                 name: "Know You Careers",
                 subtitle: "Jobs, hiring, collaborators",
                 assignedProfileID: "profile-career",
@@ -411,10 +427,21 @@ struct NetworkingCockpitView: View {
 
         let store = NetworkingActivationStateStore()
         if let state = store.load(projectRoot: projectRoot), state.isEnabled {
+            activationState = state
             activationStatus = .ready
+            loadPlatformInbox()
             return
         }
 
+        guard let config = NetworkingPlatformConfigStore().load(projectRoot: projectRoot) else {
+            prepareLocalSandboxState(store: store, projectRoot: projectRoot)
+            return
+        }
+
+        runPlatformActivation(config: config, store: store, projectRoot: projectRoot)
+    }
+
+    private func prepareLocalSandboxState(store: NetworkingActivationStateStore, projectRoot: URL) {
         let safePersonID = activePersonName
             .lowercased()
             .replacingOccurrences(of: " ", with: "-")
@@ -423,14 +450,164 @@ struct NetworkingCockpitView: View {
             personID: "local-\(safePersonID)",
             agentTokenPlaintext: "knw_agent_local_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())",
             supabaseURL: URL(string: "https://local.knowyou.invalid")!,
-            publishableKey: "local-dev"
+            publishableKey: "local-dev",
+            mode: .localSandbox
         )
 
         do {
             try store.save(state, projectRoot: projectRoot)
+            activationState = state
             activationStatus = .ready
         } catch {
             activationStatus = .failed("Could not prepare local agent permission: \(error.localizedDescription)")
+        }
+    }
+
+    private func runPlatformActivation(
+        config: NetworkingPlatformConfig,
+        store: NetworkingActivationStateStore,
+        projectRoot: URL
+    ) {
+        activationStatus = .pending
+        let registrations = approvedProfileRegistrations()
+        let personName = activePersonName
+        let handle = personName.lowercased().replacingOccurrences(of: " ", with: "-")
+
+        Task {
+            do {
+                let state = try await Task.detached(priority: .userInitiated) {
+                    let runner = NetworkingActivationRunner(client: NetworkingPlatformClient(config: config))
+                    return try runner.activate(
+                        personName: personName,
+                        handle: handle,
+                        approvedProfiles: registrations
+                    )
+                }.value
+                try store.save(state, projectRoot: projectRoot)
+                await MainActor.run {
+                    activationState = state
+                    activationStatus = .ready
+                    loadPlatformInbox()
+                }
+            } catch {
+                await MainActor.run {
+                    activationStatus = .failed(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func loadPlatformInbox() {
+        guard let state = activationState, state.isPlatformConnected else { return }
+
+        let client = NetworkingPlatformClient(
+            config: NetworkingPlatformConfig(supabaseURL: state.supabaseURL, publishableKey: state.publishableKey)
+        )
+        let token = state.agentTokenPlaintext
+        let platformIDs = platforms.map(\.id)
+
+        Task {
+            let items = await Task.detached(priority: .utility) { () -> [NetworkingCockpitItem] in
+                var collected: [NetworkingCockpitItem] = []
+                for platformID in platformIDs {
+                    do {
+                        let home = try client.agentHome(token: token, platformID: platformID)
+                        collected.append(
+                            contentsOf: NetworkingCockpitPresentation.cockpitItems(fromAgentHome: home, platformID: platformID)
+                        )
+                    } catch {
+                        // Membership may not exist yet for this community; other
+                        // communities should still load.
+                        continue
+                    }
+                }
+                return collected
+            }.value
+            await MainActor.run {
+                platformItems = items
+            }
+        }
+    }
+
+    private func profileRegistration(for profile: NetworkingGeneratedProfile) -> NetworkingProfileRegistration? {
+        guard let draft = generatedDrafts[profile.id] else { return nil }
+        return NetworkingProfileRegistration(
+            localProfileID: profile.id,
+            slug: profile.id.replacingOccurrences(of: "profile-", with: ""),
+            label: profile.label,
+            scenarioID: profile.scenarioID,
+            scenarioDescription: profile.scenarioDescription,
+            summary: draft.summary,
+            body: draft.body,
+            platformIDs: profile.platformIDs
+        )
+    }
+
+    private func approvedProfileRegistrations() -> [NetworkingProfileRegistration] {
+        profiles
+            .filter { approvedProfileIDs.contains($0.id) }
+            .compactMap(profileRegistration(for:))
+    }
+
+    private func publishApprovedProfileToPlatform(_ profile: NetworkingGeneratedProfile) {
+        guard let projectRoot,
+              let state = activationState,
+              state.isPlatformConnected,
+              let refreshToken = state.refreshToken,
+              let registration = profileRegistration(for: profile) else {
+            return
+        }
+
+        let client = NetworkingPlatformClient(
+            config: NetworkingPlatformConfig(supabaseURL: state.supabaseURL, publishableKey: state.publishableKey)
+        )
+        let personID = state.personID
+
+        Task {
+            do {
+                let published = try await Task.detached(priority: .userInitiated) { () -> (profileID: String, refreshToken: String) in
+                    let session = try client.refreshSession(refreshToken: refreshToken)
+                    let platformProfileID = try client.upsertProfile(
+                        session: session,
+                        personID: personID,
+                        registration: registration
+                    )
+                    for communityID in registration.platformIDs {
+                        try client.activateMembership(
+                            session: session,
+                            personID: personID,
+                            profileID: platformProfileID,
+                            communityID: communityID
+                        )
+                    }
+                    return (platformProfileID, session.refreshToken)
+                }.value
+
+                var mapping = state.profileIDMapping
+                mapping[registration.localProfileID] = published.profileID
+                let nextState = NetworkingActivationState(
+                    isEnabled: state.isEnabled,
+                    personID: state.personID,
+                    agentTokenPlaintext: state.agentTokenPlaintext,
+                    supabaseURL: state.supabaseURL,
+                    publishableKey: state.publishableKey,
+                    mode: state.mode,
+                    userID: state.userID,
+                    refreshToken: published.refreshToken,
+                    profileIDMapping: mapping
+                )
+                try NetworkingActivationStateStore().save(nextState, projectRoot: projectRoot)
+                await MainActor.run {
+                    activationState = nextState
+                    loadPlatformInbox()
+                }
+            } catch {
+                await MainActor.run {
+                    activationStatus = .failed(
+                        "Profile approved locally, but publishing to the platform failed: \(error.localizedDescription)"
+                    )
+                }
+            }
         }
     }
 
@@ -584,6 +761,7 @@ struct NetworkingCockpitView: View {
         do {
             try NetworkingProfileApprovalStateStore().save(nextState, projectRoot: projectRoot)
             approvedProfileIDs = nextState.approvedProfileIDs
+            publishApprovedProfileToPlatform(selectedProfile)
         } catch {
             activationStatus = .failed("Could not save profile approval: \(error.localizedDescription)")
         }

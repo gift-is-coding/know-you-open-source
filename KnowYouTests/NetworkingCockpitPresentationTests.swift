@@ -62,7 +62,7 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
                     publicSummary: "Founding engineer opening",
                     privateReason: "Matches My Wiki evidence about local-first agent products.",
                     publicReferenceID: "post-1",
-                    platformID: "knowyou-careers"
+                    platformID: "knowyou-jobs"
                 ),
                 NetworkingCockpitItem(
                     id: "inbound",
@@ -91,7 +91,7 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
                     publicSummary: "A career post.",
                     privateReason: "Career private reason.",
                     publicReferenceID: "post-careers",
-                    platformID: "knowyou-careers"
+                    platformID: "knowyou-jobs"
                 ),
                 NetworkingCockpitItem(
                     id: "friends",
@@ -105,7 +105,7 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(presentation.items(forPlatformID: "knowyou-careers").map(\.id), ["jobs"])
+        XCTAssertEqual(presentation.items(forPlatformID: "knowyou-jobs").map(\.id), ["jobs"])
         XCTAssertEqual(presentation.items(forPlatformID: "knowyou-friends").map(\.id), ["friends"])
     }
 
@@ -785,13 +785,14 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertTrue(result.stdout.contains("permission required"))
     }
 
-    func testNetworkingMCPPublishPayloadContainsPlatformProfileAIAndToken() throws {
+    func testNetworkingMCPSandboxModeRefusesPublishingWithClearMessage() {
         let state = NetworkingActivationState(
             isEnabled: true,
-            personID: "person-1",
+            personID: "local-person",
             agentTokenPlaintext: "agent-token",
-            supabaseURL: URL(string: "https://example.supabase.co")!,
-            publishableKey: "sb_publishable_test"
+            supabaseURL: URL(string: "https://local.knowyou.invalid")!,
+            publishableKey: "local-dev",
+            mode: .localSandbox
         )
         let request = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"networking_publish_post","arguments":{"platform_id":"knowyou-jobs","profile_id":"profile-jobs","body":"hello"}}}"#
 
@@ -802,10 +803,84 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(result.exitCode, 0)
-        XCTAssertTrue(result.stdout.contains(#""platform_id":"knowyou-jobs""#))
-        XCTAssertTrue(result.stdout.contains(#""profile_id":"profile-jobs""#))
+        XCTAssertTrue(result.stdout.contains("local sandbox mode"))
+        XCTAssertFalse(result.stdout.contains("agent-token"))
+    }
+
+    func testNetworkingMCPPublishPostCallsPlatformRPCWithoutLeakingToken() throws {
+        let state = NetworkingActivationState(
+            isEnabled: true,
+            personID: "person-uuid",
+            agentTokenPlaintext: "agent-token",
+            supabaseURL: URL(string: "https://example.supabase.co")!,
+            publishableKey: "sb_publishable_test",
+            mode: .platform,
+            profileIDMapping: ["profile-jobs": "platform-profile-uuid"]
+        )
+        let capturedRequests = MCPRequestRecorder()
+        let transport: NetworkingPlatformTransport = { request in
+            capturedRequests.append(request)
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: nil
+            )!
+            return (Data("\"post-uuid\"".utf8), response)
+        }
+        let request = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"networking_publish_post","arguments":{"platform_id":"knowyou-jobs","profile_id":"profile-jobs","body":"hello"}}}"#
+
+        let result = NetworkingMCPCommand.run(
+            arguments: ["KnowYou", NetworkingMCPCommand.launchArgument, "--project-root", "/tmp/wiki"],
+            input: request,
+            activationState: state,
+            transport: transport
+        )
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(result.stdout.contains(#""post_id":"post-uuid""#))
         XCTAssertTrue(result.stdout.contains(#""author_type":"ai""#))
-        XCTAssertTrue(result.stdout.contains(#""token":"agent-token""#))
+        XCTAssertTrue(result.stdout.contains("platform-profile-uuid"))
+        XCTAssertFalse(result.stdout.contains("agent-token"), "the plaintext token must never appear in MCP output")
+
+        let rpcRequest = try XCTUnwrap(capturedRequests.requests.first)
+        XCTAssertEqual(rpcRequest.url?.path, "/rest/v1/rpc/networking_agent_create_post")
+        let bodyText = String(decoding: rpcRequest.httpBody ?? Data(), as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("agent-token"), "the token goes to the platform RPC, not to the MCP caller")
+    }
+
+    func testNetworkingMCPAgentHomeReturnsQueues() throws {
+        let state = NetworkingActivationState(
+            isEnabled: true,
+            personID: "person-uuid",
+            agentTokenPlaintext: "agent-token",
+            supabaseURL: URL(string: "https://example.supabase.co")!,
+            publishableKey: "sb_publishable_test",
+            mode: .platform
+        )
+        let transport: NetworkingPlatformTransport = { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: nil
+            )!
+            let home = #"{"needsReply":[],"potentialMatches":[{"id":"task-1"}],"savedForYou":[]}"#
+            return (Data(home.utf8), response)
+        }
+        let request = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"networking_agent_home","arguments":{"platform_id":"knowyou-jobs"}}}"#
+
+        let result = NetworkingMCPCommand.run(
+            arguments: ["KnowYou", NetworkingMCPCommand.launchArgument, "--project-root", "/tmp/wiki"],
+            input: request,
+            activationState: state,
+            transport: transport
+        )
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(result.stdout.contains(#""potentialMatches""#))
+        XCTAssertTrue(result.stdout.contains("task-1"))
+        XCTAssertFalse(result.stdout.contains("agent-token"))
     }
 
     func testPlatformConfigurationRequiresGeneratedProfileBeforeAutomation() {
@@ -934,6 +1009,59 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         )
     }
 
+    func testCockpitItemsFromAgentHomeMapThreeQueuesToDirections() {
+        let home: [String: Any] = [
+            "needsReply": [
+                [
+                    "id": "task-event-1",
+                    "summary": "回复别人对我内容的新互动",
+                    "publicReferenceID": "comment-1",
+                    "publicEvidence": ["reply_to_my_comment on post-1"],
+                    "reasonCodes": ["direct_inbox"],
+                ],
+            ],
+            "potentialMatches": [
+                [
+                    "id": "task-candidate-post-2",
+                    "summary": "候选帖子与当前公开 profile 相关",
+                    "publicReferenceID": "post-2",
+                    "publicEvidence": ["founding engineer / agent runtime"],
+                    "reasonCodes": ["watching_community"],
+                ],
+            ],
+            "savedForYou": [
+                [
+                    "id": "task-candidate-post-3",
+                    "summary": "候选内容需要人类处理",
+                    "publicReferenceID": "post-3",
+                    "publicEvidence": [],
+                    "reasonCodes": ["risky_content"],
+                ],
+            ],
+        ]
+
+        let items = NetworkingCockpitPresentation.cockpitItems(fromAgentHome: home, platformID: "knowyou-jobs")
+
+        XCTAssertEqual(items.map(\.direction), [.inbound, .highlight, .outbound])
+        XCTAssertEqual(items.map(\.platformID), Array(repeating: "knowyou-jobs", count: 3))
+        XCTAssertEqual(items[0].publicReferenceID, "comment-1")
+        XCTAssertEqual(items[0].id, "knowyou-jobs-task-event-1")
+        XCTAssertEqual(items[1].publicSummary, "founding engineer / agent runtime")
+        XCTAssertTrue(items[2].privateReason.contains("risky_content"))
+    }
+
+    func testCockpitItemsFromAgentHomeSkipsTasksWithoutIDs() {
+        let home: [String: Any] = [
+            "needsReply": [["summary": "missing id"]],
+            "potentialMatches": [],
+            "savedForYou": [],
+        ]
+
+        let items = NetworkingCockpitPresentation.cockpitItems(fromAgentHome: home, platformID: "knowyou-jobs")
+
+        XCTAssertTrue(items.isEmpty)
+    }
+
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appending(path: "knowyou-networking-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -1000,5 +1128,22 @@ private final class CapturingJSONSummaryGenerating: JSONSummaryGenerating, @unch
         capturedPrompt = prompt
         capturedSchema = schema
         return output
+    }
+}
+
+private final class MCPRequestRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [URLRequest] = []
+
+    var requests: [URLRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func append(_ request: URLRequest) {
+        lock.lock()
+        defer { lock.unlock() }
+        storage.append(request)
     }
 }

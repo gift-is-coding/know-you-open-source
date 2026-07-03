@@ -65,6 +65,40 @@ struct NetworkingCockpitPresentation {
         }
     }
 
+    /// Maps a platform Agent Home payload (the JSON returned by the
+    /// `networking_agent_home` RPC or `/api/agent/home`) into cockpit items.
+    /// Only public fields cross this boundary; private My Wiki reasoning never
+    /// appears in the payload.
+    static func cockpitItems(fromAgentHome home: [String: Any], platformID: String) -> [NetworkingCockpitItem] {
+        func tasks(_ key: String) -> [[String: Any]] {
+            home[key] as? [[String: Any]] ?? []
+        }
+
+        func item(
+            _ task: [String: Any],
+            direction: NetworkingCockpitDirection,
+            fallbackTitle: String
+        ) -> NetworkingCockpitItem? {
+            guard let taskID = task["id"] as? String else { return nil }
+            let evidence = (task["publicEvidence"] as? [String]) ?? []
+            let reasonCodes = (task["reasonCodes"] as? [String]) ?? []
+            return NetworkingCockpitItem(
+                id: "\(platformID)-\(taskID)",
+                direction: direction,
+                title: (task["summary"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? fallbackTitle,
+                publicSummary: evidence.isEmpty ? fallbackTitle : evidence.joined(separator: " · "),
+                privateReason: "Public reason codes: \(reasonCodes.joined(separator: ", "))",
+                publicReferenceID: task["publicReferenceID"] as? String,
+                platformID: platformID
+            )
+        }
+
+        let needsReply = tasks("needsReply").compactMap { item($0, direction: .inbound, fallbackTitle: "Needs reply") }
+        let potentialMatches = tasks("potentialMatches").compactMap { item($0, direction: .highlight, fallbackTitle: "Potential match") }
+        let savedForYou = tasks("savedForYou").compactMap { item($0, direction: .outbound, fallbackTitle: "Saved for you") }
+        return needsReply + potentialMatches + savedForYou
+    }
+
     static func cockpitItems(for agentActions: [NetworkingAgentAction]) -> [NetworkingCockpitItem] {
         agentActions.map { action in
             NetworkingCockpitItem(

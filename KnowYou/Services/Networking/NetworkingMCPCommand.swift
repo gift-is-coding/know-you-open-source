@@ -12,7 +12,8 @@ struct NetworkingMCPCommand {
     static func run(
         arguments: [String],
         input: String,
-        activationState: NetworkingActivationState? = nil
+        activationState: NetworkingActivationState? = nil,
+        transport: NetworkingPlatformTransport? = nil
     ) -> NetworkingMCPCommandResult {
         do {
             let projectRoot = try parseProjectRoot(arguments: arguments)
@@ -21,7 +22,7 @@ struct NetworkingMCPCommand {
                 .components(separatedBy: .newlines)
                 .compactMap { line -> String? in
                     guard line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else { return nil }
-                    return responseLine(for: line, activationState: storedState)
+                    return responseLine(for: line, activationState: storedState, transport: transport)
                 }
                 .joined(separator: "\n")
 
@@ -39,7 +40,8 @@ struct NetworkingMCPCommand {
         arguments: [String],
         input: @escaping () -> String? = { readLine() },
         outputHandle: FileHandle = .standardOutput,
-        errorHandle: FileHandle = .standardError
+        errorHandle: FileHandle = .standardError,
+        transport: NetworkingPlatformTransport? = nil
     ) -> Int32 {
         let projectRoot: URL
         do {
@@ -51,7 +53,7 @@ struct NetworkingMCPCommand {
 
         let activationState = NetworkingActivationStateStore().load(projectRoot: projectRoot)
         while let line = input() {
-            guard let response = responseLine(for: line, activationState: activationState) else { continue }
+            guard let response = responseLine(for: line, activationState: activationState, transport: transport) else { continue }
             write(response + "\n", to: outputHandle)
         }
         return 0
@@ -65,7 +67,11 @@ struct NetworkingMCPCommand {
         throw NetworkingMCPCommandError.missingProjectRoot
     }
 
-    private static func responseLine(for line: String, activationState: NetworkingActivationState?) -> String? {
+    private static func responseLine(
+        for line: String,
+        activationState: NetworkingActivationState?,
+        transport: NetworkingPlatformTransport? = nil
+    ) -> String? {
         guard let data = line.data(using: .utf8),
               let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return encode(response(id: nil, error: errorObject(code: -32700, message: "Parse error")))
@@ -83,7 +89,7 @@ struct NetworkingMCPCommand {
         case "tools/list":
             return encode(response(id: id, result: ["tools": toolDefinitions()]))
         case "tools/call":
-            return encode(toolCallResponse(id: id, request: request, activationState: activationState))
+            return encode(toolCallResponse(id: id, request: request, activationState: activationState, transport: transport))
         default:
             return encode(response(id: id, error: errorObject(code: -32601, message: "Method not found")))
         }
@@ -92,7 +98,8 @@ struct NetworkingMCPCommand {
     private static func toolCallResponse(
         id: Any?,
         request: [String: Any],
-        activationState: NetworkingActivationState?
+        activationState: NetworkingActivationState?,
+        transport: NetworkingPlatformTransport?
     ) -> [String: Any] {
         guard let params = request["params"] as? [String: Any],
               let name = params["name"] as? String else {
@@ -102,9 +109,13 @@ struct NetworkingMCPCommand {
         let arguments = params["arguments"] as? [String: Any] ?? [:]
         switch name {
         case "networking_publish_post":
-            return publishResponse(id: id, kind: "post", arguments: arguments, activationState: activationState)
+            return publishResponse(id: id, kind: "post", arguments: arguments, activationState: activationState, transport: transport)
         case "networking_publish_comment":
-            return publishResponse(id: id, kind: "comment", arguments: arguments, activationState: activationState)
+            return publishResponse(id: id, kind: "comment", arguments: arguments, activationState: activationState, transport: transport)
+        case "networking_agent_home":
+            return agentHomeResponse(id: id, arguments: arguments, activationState: activationState, transport: transport)
+        case "networking_record_decision":
+            return recordDecisionResponse(id: id, arguments: arguments, activationState: activationState, transport: transport)
         case "networking_fetch_public_square":
             return textToolResponse(id: id, text: "Networking public square fetch is available through the Web data API.")
         case "networking_record_highlight":
@@ -114,15 +125,43 @@ struct NetworkingMCPCommand {
         }
     }
 
+    private static func connectedContext(
+        activationState: NetworkingActivationState?,
+        transport: NetworkingPlatformTransport?
+    ) -> NetworkingMCPConnectedContext {
+        guard let state = activationState, state.isEnabled, state.agentTokenPlaintext.isEmpty == false else {
+            return .failure("permission required: enable Networking in KnowYou before publishing.")
+        }
+        guard state.isPlatformConnected else {
+            return .failure(
+                "permission required: Networking is in local sandbox mode. Configure .knowyou/networking/platform.json and reopen Networking in KnowYou to connect the public platform."
+            )
+        }
+
+        var client = NetworkingPlatformClient(
+            config: NetworkingPlatformConfig(supabaseURL: state.supabaseURL, publishableKey: state.publishableKey)
+        )
+        if let transport {
+            client.transport = transport
+        }
+        return .success((state, client))
+    }
+
     private static func publishResponse(
         id: Any?,
         kind: String,
         arguments: [String: Any],
-        activationState: NetworkingActivationState?
+        activationState: NetworkingActivationState?,
+        transport: NetworkingPlatformTransport?
     ) -> [String: Any] {
-        guard let state = activationState, state.isEnabled, state.agentTokenPlaintext.isEmpty == false else {
-            return textToolResponse(id: id, text: "permission required: enable Networking in KnowYou before publishing.")
+        let context: (state: NetworkingActivationState, client: NetworkingPlatformClient)
+        switch connectedContext(activationState: activationState, transport: transport) {
+        case let .failure(message):
+            return textToolResponse(id: id, text: message)
+        case let .success(resolved):
+            context = resolved
         }
+
         guard let platformID = arguments["platform_id"] as? String,
               let profileID = arguments["profile_id"] as? String,
               let body = arguments["body"] as? String,
@@ -130,32 +169,154 @@ struct NetworkingMCPCommand {
             return response(id: id, error: errorObject(code: -32602, message: "platform_id, profile_id, and body are required"))
         }
 
-        var payload: [String: Any] = [
-            "kind": kind,
-            "author_type": "ai",
-            "platform_id": platformID,
-            "profile_id": profileID,
-            "body": body.trimmingCharacters(in: .whitespacesAndNewlines),
-            "token": state.agentTokenPlaintext,
-        ]
-        if let postID = arguments["post_id"] as? String {
-            payload["post_id"] = postID
+        let platformProfileID = context.state.platformProfileID(forLocalProfileID: profileID) ?? profileID
+        let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        do {
+            if kind == "post" {
+                let postID = try context.client.createAgentPost(
+                    token: context.state.agentTokenPlaintext,
+                    profileID: platformProfileID,
+                    platformID: platformID,
+                    body: trimmedBody
+                )
+                return response(
+                    id: id,
+                    result: [
+                        "post_id": postID,
+                        "author_type": "ai",
+                        "platform_id": platformID,
+                        "profile_id": platformProfileID,
+                        "content": [
+                            ["type": "text", "text": "published AI-labeled post \(postID) on \(platformID)"],
+                        ],
+                        "isError": false,
+                    ]
+                )
+            }
+
+            guard let postID = arguments["post_id"] as? String else {
+                return response(id: id, error: errorObject(code: -32602, message: "post_id is required for comments"))
+            }
+            let parentCommentID = arguments["parent_comment_id"] as? String
+            let commentID = try context.client.createAgentComment(
+                token: context.state.agentTokenPlaintext,
+                postID: postID,
+                parentCommentID: parentCommentID,
+                profileID: platformProfileID,
+                platformID: platformID,
+                body: trimmedBody,
+                clientDecisionID: "\(platformProfileID):\(postID):\(parentCommentID ?? "root")"
+            )
+            return response(
+                id: id,
+                result: [
+                    "comment_id": commentID,
+                    "author_type": "ai",
+                    "platform_id": platformID,
+                    "profile_id": platformProfileID,
+                    "post_id": postID,
+                    "content": [
+                        ["type": "text", "text": "published AI-labeled comment \(commentID) on \(platformID)"],
+                    ],
+                    "isError": false,
+                ]
+            )
+        } catch {
+            return textToolResponse(id: id, text: "publish failed: \(error.localizedDescription)", isError: true)
+        }
+    }
+
+    private static func agentHomeResponse(
+        id: Any?,
+        arguments: [String: Any],
+        activationState: NetworkingActivationState?,
+        transport: NetworkingPlatformTransport?
+    ) -> [String: Any] {
+        let context: (state: NetworkingActivationState, client: NetworkingPlatformClient)
+        switch connectedContext(activationState: activationState, transport: transport) {
+        case let .failure(message):
+            return textToolResponse(id: id, text: message)
+        case let .success(resolved):
+            context = resolved
         }
 
-        return response(
-            id: id,
-            result: [
-                "payload": payload,
-                "rpc": kind == "post" ? "networking_agent_create_post" : "networking_agent_create_comment",
-                "content": [
-                    [
-                        "type": "text",
-                        "text": "ready to publish \(kind) as AI on \(platformID)",
+        guard let platformID = arguments["platform_id"] as? String else {
+            return response(id: id, error: errorObject(code: -32602, message: "platform_id is required"))
+        }
+
+        do {
+            let home = try context.client.agentHome(token: context.state.agentTokenPlaintext, platformID: platformID)
+            return response(
+                id: id,
+                result: [
+                    "home": home,
+                    "content": [
+                        ["type": "text", "text": "agent home queues loaded for \(platformID)"],
                     ],
-                ],
-                "isError": false,
-            ]
-        )
+                    "isError": false,
+                ]
+            )
+        } catch {
+            return textToolResponse(id: id, text: "agent home failed: \(error.localizedDescription)", isError: true)
+        }
+    }
+
+    private static func recordDecisionResponse(
+        id: Any?,
+        arguments: [String: Any],
+        activationState: NetworkingActivationState?,
+        transport: NetworkingPlatformTransport?
+    ) -> [String: Any] {
+        let context: (state: NetworkingActivationState, client: NetworkingPlatformClient)
+        switch connectedContext(activationState: activationState, transport: transport) {
+        case let .failure(message):
+            return textToolResponse(id: id, text: message)
+        case let .success(resolved):
+            context = resolved
+        }
+
+        guard let platformID = arguments["platform_id"] as? String,
+              let profileID = arguments["profile_id"] as? String,
+              let referenceType = arguments["public_reference_type"] as? String,
+              let referenceID = arguments["public_reference_id"] as? String,
+              let action = arguments["action"] as? String else {
+            return response(
+                id: id,
+                error: errorObject(
+                    code: -32602,
+                    message: "platform_id, profile_id, public_reference_type, public_reference_id, and action are required"
+                )
+            )
+        }
+
+        let platformProfileID = context.state.platformProfileID(forLocalProfileID: profileID) ?? profileID
+
+        do {
+            let decisionID = try context.client.recordAgentDecision(
+                token: context.state.agentTokenPlaintext,
+                profileID: platformProfileID,
+                platformID: platformID,
+                publicReferenceType: referenceType,
+                publicReferenceID: referenceID,
+                action: action,
+                publicSummary: (arguments["public_summary"] as? String) ?? "",
+                reasonCodes: (arguments["reason_codes"] as? [String]) ?? [],
+                clientDecisionID: "\(platformProfileID):\(referenceID):\(action)"
+            )
+            return response(
+                id: id,
+                result: [
+                    "decision_id": decisionID,
+                    "content": [
+                        ["type": "text", "text": "recorded agent decision \(action) for \(referenceID)"],
+                    ],
+                    "isError": false,
+                ]
+            )
+        } catch {
+            return textToolResponse(id: id, text: "record decision failed: \(error.localizedDescription)", isError: true)
+        }
     }
 
     private static func initializeResult() -> [String: Any] {
@@ -168,8 +329,10 @@ struct NetworkingMCPCommand {
 
     private static func toolDefinitions() -> [[String: Any]] {
         [
-            tool(name: "networking_publish_post", description: "Publish an AI-labeled post through the enabled local KnowYou Networking agent token."),
-            tool(name: "networking_publish_comment", description: "Publish an AI-labeled comment through the enabled local KnowYou Networking agent token."),
+            tool(name: "networking_publish_post", description: "Publish an AI-labeled post on the KnowYou Networking platform through the enabled local agent."),
+            tool(name: "networking_publish_comment", description: "Publish an AI-labeled comment or reply on the KnowYou Networking platform through the enabled local agent."),
+            tool(name: "networking_agent_home", description: "Fetch this profile-agent's Agent Home queues (needs reply, potential matches, saved for you) for one community."),
+            tool(name: "networking_record_decision", description: "Record an agent decision (skip, save_for_human, express_interest, comment_proposed, comment, reply) for a public candidate."),
             tool(name: "networking_fetch_public_square", description: "Fetch public square context for the enabled KnowYou platforms."),
             tool(name: "networking_record_highlight", description: "Record a public opportunity highlight in the local cockpit queue."),
         ]
@@ -185,18 +348,24 @@ struct NetworkingMCPCommand {
                     "platform_id": ["type": "string"],
                     "profile_id": ["type": "string"],
                     "post_id": ["type": "string"],
+                    "parent_comment_id": ["type": "string"],
                     "body": ["type": "string"],
+                    "public_reference_type": ["type": "string"],
+                    "public_reference_id": ["type": "string"],
+                    "action": ["type": "string"],
+                    "public_summary": ["type": "string"],
+                    "reason_codes": ["type": "array", "items": ["type": "string"]],
                 ],
             ],
         ]
     }
 
-    private static func textToolResponse(id: Any?, text: String) -> [String: Any] {
+    private static func textToolResponse(id: Any?, text: String, isError: Bool? = nil) -> [String: Any] {
         response(
             id: id,
             result: [
                 "content": [["type": "text", "text": text]],
-                "isError": text.contains("permission required"),
+                "isError": isError ?? text.contains("permission required"),
             ]
         )
     }
@@ -238,6 +407,11 @@ struct NetworkingMCPCommand {
         guard let data = string.data(using: .utf8), data.isEmpty == false else { return }
         fileHandle.write(data)
     }
+}
+
+private enum NetworkingMCPConnectedContext {
+    case success((state: NetworkingActivationState, client: NetworkingPlatformClient))
+    case failure(String)
 }
 
 private enum NetworkingMCPCommandError: LocalizedError {

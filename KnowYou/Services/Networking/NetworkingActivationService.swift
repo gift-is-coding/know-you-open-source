@@ -17,12 +17,78 @@ struct NetworkingActivationPlan: Codable, Equatable {
     let agentTokenLabel: String
 }
 
+enum NetworkingActivationMode: String, Codable, Equatable {
+    case platform
+    case localSandbox
+}
+
 struct NetworkingActivationState: Codable, Equatable {
     let isEnabled: Bool
     let personID: String
     let agentTokenPlaintext: String
     let supabaseURL: URL
     let publishableKey: String
+    var mode: NetworkingActivationMode = .localSandbox
+    var userID: String?
+    var refreshToken: String?
+    var profileIDMapping: [String: String] = [:]
+
+    init(
+        isEnabled: Bool,
+        personID: String,
+        agentTokenPlaintext: String,
+        supabaseURL: URL,
+        publishableKey: String,
+        mode: NetworkingActivationMode = .localSandbox,
+        userID: String? = nil,
+        refreshToken: String? = nil,
+        profileIDMapping: [String: String] = [:]
+    ) {
+        self.isEnabled = isEnabled
+        self.personID = personID
+        self.agentTokenPlaintext = agentTokenPlaintext
+        self.supabaseURL = supabaseURL
+        self.publishableKey = publishableKey
+        self.mode = mode
+        self.userID = userID
+        self.refreshToken = refreshToken
+        self.profileIDMapping = profileIDMapping
+    }
+
+    var isPlatformConnected: Bool {
+        mode == .platform
+    }
+
+    /// Maps an App-local profile identifier (for example "profile-career") to
+    /// the platform profile UUID created during activation.
+    func platformProfileID(forLocalProfileID localProfileID: String) -> String? {
+        profileIDMapping[localProfileID]
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case isEnabled
+        case personID
+        case agentTokenPlaintext
+        case supabaseURL
+        case publishableKey
+        case mode
+        case userID
+        case refreshToken
+        case profileIDMapping
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
+        personID = try container.decode(String.self, forKey: .personID)
+        agentTokenPlaintext = try container.decode(String.self, forKey: .agentTokenPlaintext)
+        supabaseURL = try container.decode(URL.self, forKey: .supabaseURL)
+        publishableKey = try container.decode(String.self, forKey: .publishableKey)
+        mode = try container.decodeIfPresent(NetworkingActivationMode.self, forKey: .mode) ?? .localSandbox
+        userID = try container.decodeIfPresent(String.self, forKey: .userID)
+        refreshToken = try container.decodeIfPresent(String.self, forKey: .refreshToken)
+        profileIDMapping = try container.decodeIfPresent([String: String].self, forKey: .profileIDMapping) ?? [:]
+    }
 }
 
 struct NetworkingActivationService {

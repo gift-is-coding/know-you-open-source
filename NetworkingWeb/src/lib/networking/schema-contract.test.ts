@@ -165,6 +165,64 @@ describe("networking schema contract", () => {
     ).not.toContain("security definer");
   });
 
+  it("restores owner write grants after the platform-wide revoke", () => {
+    const revokeStart = migrationSQL.indexOf("revoke insert, update, delete, truncate, references, trigger");
+    expect(revokeStart).toBeGreaterThan(-1);
+
+    const afterRevoke = migrationSQL.slice(revokeStart);
+    expect(afterRevoke).toContain("grant insert, update on public.people to authenticated");
+    expect(afterRevoke).toContain("grant insert, update on public.profiles to authenticated");
+    expect(afterRevoke).toContain("grant insert, update on public.posts to authenticated");
+    expect(afterRevoke).toContain("grant insert, update on public.comments to authenticated");
+    expect(afterRevoke).toContain("grant insert, update on public.community_memberships to authenticated");
+    expect(afterRevoke).toContain("grant insert, update on public.agent_tokens to authenticated");
+    expect(afterRevoke).toContain("grant select on public.agent_tokens to authenticated");
+  });
+
+  it("lets owners activate and update their own community memberships", () => {
+    expect(migrationSQL).toContain("owners can insert community memberships");
+    expect(migrationSQL).toContain("owners can update community memberships");
+    expect(migrationSQL).toContain("and profiles.id = community_memberships.profile_id");
+  });
+
+  it("fans out public posts to candidate edges at write time", () => {
+    expect(migrationSQL).toContain("create or replace function private.networking_fanout_candidate_edges");
+    expect(migrationSQL).toContain("create trigger networking_posts_candidate_fanout");
+    expect(migrationSQL).toContain("after insert on public.posts");
+    expect(migrationSQL).toContain(
+      "on conflict (profile_id, platform_id, public_reference_type, public_reference_id) do nothing"
+    );
+  });
+
+  it("returns the three agent home queues from candidate edges with a working cap", () => {
+    const homeImplStart = migrationSQL.lastIndexOf("create or replace function private.networking_agent_home_impl");
+    expect(homeImplStart).toBeGreaterThan(-1);
+
+    const homeImpl = migrationSQL.slice(homeImplStart);
+    expect(homeImpl).toContain("'needsReply'");
+    expect(homeImpl).toContain("'potentialMatches'");
+    expect(homeImpl).toContain("'savedForYou'");
+    expect(homeImpl).toContain("from public.candidate_edges");
+    expect(homeImpl).toContain("join public.profiles on profiles.person_id = agent_tokens.person_id");
+    expect(homeImpl).toContain("(agent_tokens.profile_id is null or agent_tokens.profile_id = profiles.id)");
+    expect(homeImpl).toContain("limit 20");
+    expect(homeImpl).toContain("'reply_slots_full'");
+    expect(homeImpl).toContain("'risky_content'");
+    expect(homeImpl).toContain("'daily_limit'");
+  });
+
+  it("enforces daily limits, reply slots, and self-comment rules server-side", () => {
+    const commentImplStart = migrationSQL.lastIndexOf(
+      "create or replace function private.networking_agent_create_comment_impl"
+    );
+    expect(commentImplStart).toBeGreaterThan(-1);
+
+    const commentImpl = migrationSQL.slice(commentImplStart);
+    expect(commentImpl).toContain("networking agent daily auto-comment limit reached");
+    expect(commentImpl).toContain("networking agent reply slots exhausted for this post");
+    expect(commentImpl).toContain("agent cannot comment on its own root post");
+  });
+
   it("keeps RLS and foreign-key indexes advisor-friendly for the public schema", () => {
     expect(migrationSQL).toContain("people.user_id = (select auth.uid())");
     expect(migrationSQL).toContain("posts_profile_id_idx on public.posts(profile_id)");

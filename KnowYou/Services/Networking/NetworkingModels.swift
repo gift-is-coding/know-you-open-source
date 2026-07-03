@@ -454,7 +454,7 @@ struct NetworkingCockpitItem: Codable, Equatable, Identifiable {
         publicSummary: String,
         privateReason: String,
         publicReferenceID: String?,
-        platformID: String = "knowyou-careers"
+        platformID: String = "knowyou-jobs"
     ) {
         self.id = id
         self.direction = direction

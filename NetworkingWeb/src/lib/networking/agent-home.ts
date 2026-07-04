@@ -108,7 +108,7 @@ export function buildAgentHome(input: AgentHeartbeatInput): NetworkingAgentHome 
     reasonCode: "direct_inbox",
     reasonCodes: ["direct_inbox", event.eventType],
     publicEvidence: [`${event.eventType} on ${event.postID ?? event.commentID ?? event.id}`],
-    summary: "回复别人对我内容的新互动"
+    summary: "Reply to a new interaction on my public content."
   }));
   const tasks: NetworkingAgentTask[] = [
     ...needsReply,
@@ -200,8 +200,8 @@ function candidateTasks(input: AgentHeartbeatInput, dailyRemaining: number) {
         reasonCodes: [...new Set([...task.reasonCodes, reasonCode])],
         summary:
           task.source === "exploration"
-            ? "探索样本可能有价值，先带回 App 给人判断"
-            : "候选内容需要人类处理"
+            ? "This exploration sample may be useful; save it for human review."
+            : "This candidate needs human review."
       });
     } else {
       potentialMatches.push(task);
@@ -237,7 +237,7 @@ function taskForCandidate(input: AgentHeartbeatInput, post: NetworkingContentIte
     score: relevance,
     reasonCodes,
     publicEvidence: evidence,
-    summary: exploration ? "平台给 agent 的少量探索样本" : "候选帖子与当前公开 profile 相关",
+    summary: exploration ? "A small exploration sample delivered by the platform." : "Candidate post matches this public profile.",
     item: post
   };
 }
@@ -292,7 +292,7 @@ export function runAgentHeartbeat(input: AgentHeartbeatInput): AgentHeartbeatRes
     return {
       items: [...input.items, reply],
       events: markTaskEventRead(input.events, replyTask, input.now),
-      activities: [heartbeat, activity(input, "auto_reply", "comment", reply.id, `自动回复了 ${target?.person.displayName ?? "对方"} 的评论。`)],
+      activities: [heartbeat, activity(input, "auto_reply", "comment", reply.id, `Auto-replied to ${target?.person.displayName ?? "the other person"}'s comment.`)],
       home
     };
   }
@@ -329,22 +329,22 @@ export function runAgentHeartbeat(input: AgentHeartbeatInput): AgentHeartbeatRes
         createdAt: input.now.toISOString()
       }
     ],
-    activities: [heartbeat, activity(input, "auto_comment", "comment", comment.id, "自动回应了一条相关候选帖子。")],
+    activities: [heartbeat, activity(input, "auto_comment", "comment", comment.id, "Auto-commented on a relevant candidate post.")],
     home
   };
 }
 
 function buildAgentComment(input: AgentHeartbeatInput, postID: string, parentCommentID?: string): NetworkingContentItem {
   const post = input.items.find((item) => item.id === postID);
-  const lead = parentCommentID ? "这个回复和我的公开朋友 profile 有重合" : "这个活动和我的公开朋友 profile 有重合";
+  const lead = parentCommentID ? "This reply overlaps with my public friends profile" : "This activity overlaps with my public friends profile";
   return {
     id: `agent-${input.profile.id}-${parentCommentID ?? postID}`,
     kind: "comment",
     platformID: input.membership.communityID,
     authorType: "ai",
-    body: `${lead}。我会把这条带回给主人；公开 profile 里相关的是：${input.profile.summary ?? "兴趣和当前话题有交集"}。`,
+    body: `${lead}. I will bring this back to the person for judgment; the relevant public profile context is: ${input.profile.summary ?? "shared interests and topic overlap"}.`,
     createdAt: input.now.toISOString(),
-    timestampLabel: "刚刚",
+    timestampLabel: "just now",
     agentLabel: `${input.person.displayName}'s KnowYou`,
     person: input.person,
     profile: input.profile,
@@ -373,7 +373,7 @@ function saveForHuman(input: AgentHeartbeatInput, home: NetworkingAgentHome, tas
     ],
     activities: [
       activity(input, "heartbeat", "post", input.membership.communityID, "Profile-agent heartbeat checked current tasks."),
-      activity(input, "saved_for_human", task.publicReferenceType, task.publicReferenceID, "候选内容需要人类处理。", reasonCode)
+      activity(input, "saved_for_human", task.publicReferenceType, task.publicReferenceID, "Candidate content needs human review.", reasonCode)
     ],
     home
   };

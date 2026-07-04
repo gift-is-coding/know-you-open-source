@@ -114,6 +114,34 @@ describe("networking schema contract", () => {
     expect(migrationSQL).toContain("if length(trim(coalesce(p_body, ''))) = 0 then");
   });
 
+  it("exposes the platform-scoped agent post RPC used by the web API", () => {
+    const publicCreatePostStart = migrationSQL.lastIndexOf(
+      "create or replace function public.networking_agent_create_post"
+    );
+    const privateCreatePostStart = migrationSQL.lastIndexOf(
+      "create or replace function private.networking_agent_create_post_impl"
+    );
+    expect(privateCreatePostStart).toBeGreaterThan(-1);
+    expect(publicCreatePostStart).toBeGreaterThan(-1);
+
+    const publicCreatePost = migrationSQL.slice(publicCreatePostStart, publicCreatePostStart + 520);
+    const privateCreatePost = migrationSQL.slice(privateCreatePostStart, publicCreatePostStart);
+    expect(publicCreatePost).toContain("p_token text");
+    expect(publicCreatePost).toContain("p_target_profile_id uuid");
+    expect(publicCreatePost).toContain("p_platform_id text");
+    expect(publicCreatePost).toContain("p_body text");
+    expect(publicCreatePost).toContain(
+      "private.networking_agent_create_post_impl(p_token, p_target_profile_id, p_platform_id, p_body)"
+    );
+    expect(privateCreatePost).toContain("p_platform_id = any(profiles.platform_ids)");
+    expect(privateCreatePost).toContain("join public.community_memberships");
+    expect(privateCreatePost).toContain("community_memberships.status = 'active'");
+    expect(privateCreatePost).toContain("dailyAutoPostLimit");
+    expect(privateCreatePost).toContain("networking agent daily auto-post limit reached");
+    expect(privateCreatePost).toContain("'auto_post'");
+    expect(migrationSQL).toContain("grant execute on function public.networking_agent_create_post(text, uuid, text, text)");
+  });
+
   it("models profile-agent community heartbeat and event state", () => {
     expect(migrationSQL).toContain("create table if not exists public.communities");
     expect(migrationSQL).toContain("insert into public.communities");

@@ -3,18 +3,18 @@ import type { NetworkingPlatform, NetworkingProfilePage } from "./types";
 export const networkingPlatforms: NetworkingPlatform[] = [
   {
     id: "knowyou-jobs",
-    displayName: "Know You 求职",
-    shortName: "求职",
+    displayName: "Know You Careers",
+    shortName: "Careers",
     scenarioID: "jobs",
-    description: "招聘、求职、项目合作和团队匹配，只使用职业场景 profile。",
+    description: "Jobs, hiring, project collaboration, and team matching through a career-facing profile.",
     accent: "#2f7d5a"
   },
   {
     id: "knowyou-friends",
-    displayName: "Know You 认识新朋友",
-    shortName: "朋友",
+    displayName: "Find Your Friends",
+    shortName: "Friends",
     scenarioID: "friends",
-    description: "认识新朋友、兴趣活动、轻社交和线下局，只使用个人场景 profile。",
+    description: "New friends, shared interests, small activities, and everyday social discovery through a personal profile.",
     accent: "#c46a4a"
   }
 ];

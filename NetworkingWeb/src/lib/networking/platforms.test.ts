@@ -9,8 +9,8 @@ describe("networking platforms", () => {
       "knowyou-friends"
     ]);
     expect(networkingPlatforms.map((platform) => platform.displayName)).toEqual([
-      "Know You 求职",
-      "Know You 认识新朋友"
+      "Know You Careers",
+      "Find Your Friends"
     ]);
   });
 

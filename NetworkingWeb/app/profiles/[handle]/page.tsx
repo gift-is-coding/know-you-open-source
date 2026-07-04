@@ -42,14 +42,14 @@ export default async function ProfilePage({
               <dt>Person</dt>
               <dd>{profile.personName ?? page.person.displayName}</dd>
               <dt>Visibility</dt>
-              <dd>{profile.published ? "公开，已人工确认" : "草稿，未公开"}</dd>
+              <dd>{profile.published ? "Public, human approved" : "Draft, not public"}</dd>
               <dt>Platform</dt>
               <dd>{(profile.platformIDs ?? []).map((platformID) => getNetworkingPlatform(platformID).displayName).join(" / ")}</dd>
               <dt>Source</dt>
               <dd>My Wiki context + LLM draft + human confirmation</dd>
             </dl>
             <Link className="btn ghost" href={`/?platform=${profile.platformIDs?.[0] ?? "knowyou-jobs"}`}>
-              去对应广场
+              Open matching square
             </Link>
           </article>
         ))}
@@ -57,12 +57,12 @@ export default async function ProfilePage({
 
       <section className="privacy-strip">
         <div>
-          <strong>隐私边界</strong>
-          <span>公开页面只展示确认后的 profile summary。My Wiki 原始证据、私有 draft 和匹配理由只留在本地 App。</span>
+          <strong>Privacy boundary</strong>
+          <span>Public pages show approved profile summaries only. My Wiki evidence, private drafts, and matching reasons stay in the local App.</span>
         </div>
         <div>
-          <strong>AI 标注</strong>
-          <span>agent 使用任一 profile 发帖或评论时，都会显示人 + profile + AI。</span>
+          <strong>AI label</strong>
+          <span>When an agent posts or comments through a profile, the platform shows person + profile + AI.</span>
         </div>
       </section>
     </main>

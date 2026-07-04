@@ -1,4 +1,4 @@
-import { profilePageFixture, publicSquareFixture } from "./fixtures";
+import { profilePageFixture } from "./fixtures";
 import { buildAgentHome, type NetworkingAgentHome } from "./agent-home";
 import {
   buildNetworkingE2EAgentHome,
@@ -132,7 +132,7 @@ export async function getPublicSquareItems(platformID?: string): Promise<Network
     const [postsResult, commentsResult] = await Promise.all([postsQuery, commentsQuery]);
 
     if (postsResult.error || commentsResult.error) {
-      return publicSquareFixture.filter((item) => item.platformID === normalizedPlatformID);
+      return [];
     }
 
     const items = [
@@ -140,9 +140,69 @@ export async function getPublicSquareItems(platformID?: string): Promise<Network
       ...(commentsResult.data ?? []).map((row) => mapContentRow(row as ContentRow, "comment"))
     ].filter((item): item is NetworkingContentItem => Boolean(item));
 
-    return items.length > 0 ? items : publicSquareFixture.filter((item) => item.platformID === normalizedPlatformID);
+    return items;
   } catch {
-    return publicSquareFixture.filter((item) => item.platformID === normalizedPlatformID);
+    return [];
+  }
+}
+
+export async function getPublicProfilePageForPlatform(platformID?: string): Promise<NetworkingProfilePage> {
+  const normalizedPlatformID = normalizePlatformID(platformID);
+
+  if (isNetworkingE2EStoreEnabled()) {
+    return getNetworkingE2EProfilePage("shuhan");
+  }
+
+  if (!hasSupabaseEnv()) {
+    const network = getLocalDemoNetwork();
+    const profile = network.profiles.find((item) => (item.platformIDs ?? []).includes(normalizedPlatformID)) ?? network.profiles[0];
+    const person = network.people.find((item) => item.displayName === profile.personName) ?? profilePageFixture.person;
+    return {
+      person,
+      profiles: network.profiles.filter((item) => item.personName === person.displayName)
+    };
+  }
+
+  try {
+    const supabase = await createClient();
+    const { data: firstProfiles, error } = await supabase
+      .from("profiles")
+      .select("id, person_id, label, slug, scenario_id, scenario_description, avatar_seed, avatar_style, platform_ids, summary, is_published, people(id, display_name, handle)")
+      .eq("is_published", true)
+      .contains("platform_ids", [normalizedPlatformID])
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (error || !firstProfiles || firstProfiles.length === 0) {
+      return emptyProfilePage(normalizedPlatformID);
+    }
+
+    const firstProfile = firstProfiles[0] as ProfileRow & { person_id?: string; people: PersonRow | PersonRow[] | null };
+    const person = first(firstProfile.people);
+    if (!person || !firstProfile.person_id) {
+      return emptyProfilePage(normalizedPlatformID);
+    }
+
+    const { data: profiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("id, label, slug, scenario_id, scenario_description, avatar_seed, avatar_style, platform_ids, summary, is_published")
+      .eq("person_id", firstProfile.person_id)
+      .eq("is_published", true)
+      .contains("platform_ids", [normalizedPlatformID])
+      .order("updated_at", { ascending: false });
+
+    if (profilesError) {
+      return emptyProfilePage(normalizedPlatformID);
+    }
+
+    return {
+      person: mapPerson(person),
+      profiles: profiles
+        .map((profile) => mapProfile(profile as ProfileRow, person.display_name))
+        .filter((profile) => (profile.platformIDs ?? []).includes(normalizedPlatformID))
+    };
+  } catch {
+    return emptyProfilePage(normalizedPlatformID);
   }
 }
 
@@ -169,7 +229,7 @@ export async function getPublicProfilePage(handle: string): Promise<NetworkingPr
       .single();
 
     if (personError || !person) {
-      return profilePageFixture;
+      return emptyProfilePage(defaultNetworkingPlatformID, handle);
     }
 
     const { data: profiles, error: profilesError } = await supabase
@@ -180,7 +240,7 @@ export async function getPublicProfilePage(handle: string): Promise<NetworkingPr
       .order("updated_at", { ascending: false });
 
     if (profilesError) {
-      return profilePageFixture;
+      return emptyProfilePage(defaultNetworkingPlatformID, handle);
     }
 
     return {
@@ -188,7 +248,7 @@ export async function getPublicProfilePage(handle: string): Promise<NetworkingPr
       profiles: (profiles ?? []).map((profile) => mapProfile(profile as ProfileRow, person.display_name as string))
     };
   } catch {
-    return profilePageFixture;
+    return emptyProfilePage(defaultNetworkingPlatformID, handle);
   }
 }
 
@@ -468,7 +528,7 @@ function mapPerson(row: PersonRow) {
 
 function mapProfile(row: ProfileRow, personName?: string) {
   const scenarioID = row.scenario_id ?? "jobs";
-  const fallbackLabel = scenarioID === "friends" ? "认识新朋友" : "职业/求职";
+  const fallbackLabel = scenarioID === "friends" ? "Friends / Social" : "Career / Hiring";
 
   return {
     id: row.id,
@@ -481,7 +541,7 @@ function mapProfile(row: ProfileRow, personName?: string) {
     scenarioDescription: row.scenario_description ?? "",
     avatarSeed: row.avatar_seed ?? row.slug,
     avatarStyle: row.avatar_style ?? "initials",
-    avatarLetter: scenarioID === "friends" ? "友" : "职",
+    avatarLetter: scenarioID === "friends" ? "F" : "C",
     avatarBg: scenarioID === "friends" ? "#c46a4a" : "#2f7d5a",
     platformIDs: row.platform_ids ?? [scenarioID === "friends" ? "knowyou-friends" : "knowyou-jobs"]
   };
@@ -565,4 +625,17 @@ function normalizeActivityType(value: string): NetworkingAgentActivity["activity
     "safety_blocked"
   ];
   return allowed.includes(value as NetworkingAgentActivity["activityType"]) ? (value as NetworkingAgentActivity["activityType"]) : "auto_comment";
+}
+
+function emptyProfilePage(platformID: string, handle = "platform"): NetworkingProfilePage {
+  const platform = platformID === "knowyou-friends" ? "friends" : "careers";
+  return {
+    person: {
+      id: `empty-${platform}`,
+      displayName: "No public profile yet",
+      handle,
+      initial: "N"
+    },
+    profiles: []
+  };
 }

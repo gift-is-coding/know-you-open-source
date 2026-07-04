@@ -12,10 +12,10 @@ export default async function MyProfilesPage() {
       <main className="page">
         <section className="center">
           <p className="eyebrow">Local profile cockpit</p>
-          <h1 className="h1">先在 App 里开启，再发布公开 profile。</h1>
-          <p className="lede">MVP 使用 Supabase anonymous sign-in 承接 App 一键开启；My Wiki 生成草稿仍然发生在本地。</p>
+          <h1 className="h1">Activate in the App before publishing public profiles.</h1>
+          <p className="lede">The MVP uses Supabase anonymous sign-in for App activation; My Wiki profile drafting still happens locally.</p>
           <Link className="btn primary" href="/auth">
-            开启
+            Activate
           </Link>
         </section>
       </main>
@@ -44,10 +44,10 @@ export default async function MyProfilesPage() {
       <section className="center">
         <header className="square-head">
           <div>
-            <p className="eyebrow">Profiles · My Wiki + LLM + 人工确认</p>
-            <h1 className="h1">每个场景一个 profile，平台绑定后长期使用。</h1>
+            <p className="eyebrow">Profiles · My Wiki + LLM + human approval</p>
+            <h1 className="h1">One profile per scene, then bind it to a community.</h1>
             <p className="lede">
-              Prompt 决定场景，My Wiki 提供上下文，LLM 生成草稿；只有确认后的公开 summary 会同步到平台。
+              The prompt defines the scene, My Wiki provides context, and the LLM drafts the profile. Only approved public summaries sync to the platform.
             </p>
           </div>
           <span className="kbd">local first</span>
@@ -56,13 +56,13 @@ export default async function MyProfilesPage() {
         <form action={saveProfile} className="draft-panel">
           <div className="draft-panel-head">
             <div>
-              <div className="title">发布 profile</div>
+              <div className="title">Publish profile</div>
               <div className="src">generated from prompt + My Wiki, human approved</div>
             </div>
             <label className="toggle">
               <input defaultChecked={firstProfile?.published ?? false} name="isPublished" type="checkbox" />
               <span className="track" />
-              <span>公开</span>
+              <span>Public</span>
             </label>
           </div>
           <div className="form-grid">
@@ -76,7 +76,7 @@ export default async function MyProfilesPage() {
             </label>
             <label>
               Profile label
-              <input defaultValue={firstProfile?.label ?? "职业/求职"} name="label" placeholder="Profile label" />
+              <input defaultValue={firstProfile?.label ?? "Career / Hiring"} name="label" placeholder="Profile label" />
             </label>
             <label>
               Slug
@@ -85,8 +85,8 @@ export default async function MyProfilesPage() {
             <label>
               Scenario
               <select defaultValue={firstProfile?.scenarioID ?? "jobs"} name="scenarioID">
-                <option value="jobs">职业/求职</option>
-                <option value="friends">认识新朋友</option>
+                <option value="jobs">Career / Hiring</option>
+                <option value="friends">Friends / Social</option>
               </select>
             </label>
             <label>
@@ -111,22 +111,22 @@ export default async function MyProfilesPage() {
             <label className="wide">
               Scenario description
               <textarea
-                defaultValue={firstProfile?.scenarioDescription ?? "面向招聘、求职、项目合作，强调正在做什么、能负责什么、想找谁。"}
+                defaultValue={firstProfile?.scenarioDescription ?? "For hiring, job search, project collaboration, and explaining what this person can own."}
                 name="scenarioDescription"
-                placeholder="这个 profile 用在哪个场景"
+                placeholder="Where this profile should be used"
               />
             </label>
             <label className="wide">
               Public summary
-              <textarea defaultValue={firstProfile?.summary ?? ""} name="summary" placeholder="短公开摘要" />
+              <textarea defaultValue={firstProfile?.summary ?? ""} name="summary" placeholder="Short public summary" />
             </label>
             <label className="wide">
               Long body
-              <textarea name="body" placeholder="更长的公开 profile 内容。MVP 可以为空。" />
+              <textarea name="body" placeholder="Longer public profile body. This can be empty in the MVP." />
             </label>
           </div>
           <div className="draft-actions">
-            {workspace.usesFixtureData ? <span className="hint">fixture preview · 未写入远端</span> : null}
+            {workspace.usesFixtureData ? <span className="hint">fixture preview · not written to the remote platform</span> : null}
             <button className="btn primary" type="submit">
               Save profile
             </button>

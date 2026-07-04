@@ -233,7 +233,7 @@ describe("profile-agent home and heartbeat", () => {
     const reply = result.items.find((item) => item.kind === "comment" && item.authorType === "ai" && item.parentCommentID === inboundComment.id);
 
     expect(reply?.parentPostID).toBe(post.id);
-    expect(reply?.body).toContain("我会把这条带回给主人");
+    expect(reply?.body).toContain("I will bring this back to the person for judgment");
     expect(result.activities.map((activity) => activity.activityType)).toContain("auto_reply");
     expect(result.events.find((item) => item.id === event.id)?.readAt).toBe(now.toISOString());
   });

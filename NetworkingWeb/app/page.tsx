@@ -2,7 +2,6 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 import { createHumanComment, createHumanPost } from "@/app/actions";
 import { formatContentAttribution, sortDiscussionItems } from "@/src/lib/networking/content-ordering";
-import { profilePageFixture } from "@/src/lib/networking/fixtures";
 import {
   defaultNetworkingPlatformID,
   getNetworkingPlatform,
@@ -10,7 +9,7 @@ import {
   networkingPlatforms,
   profilesForPerson
 } from "@/src/lib/networking/platforms";
-import { getAgentActivities, getAgentHomePreview, getComposerProfiles, getPublicProfilePage, getPublicSquareItems } from "@/src/lib/networking/supabase-data";
+import { getAgentActivities, getAgentHomePreview, getComposerProfiles, getPublicProfilePageForPlatform, getPublicSquareItems } from "@/src/lib/networking/supabase-data";
 import type { NetworkingAgentHome } from "@/src/lib/networking/agent-home";
 import type { NetworkingComposerProfile, NetworkingContentItem, NetworkingProfile } from "@/src/lib/networking/types";
 
@@ -26,15 +25,15 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
   const [items, composerProfiles, profilePage, agentActivities, agentHome] = await Promise.all([
     getPublicSquareItems(platformID),
     getComposerProfiles(platformID),
-    getPublicProfilePage("shuhan"),
+    getPublicProfilePageForPlatform(platformID),
     getAgentActivities(platformID),
     getAgentHomePreview(platformID)
   ]);
-  const usableComposerProfiles = composerProfiles.length > 0 ? composerProfiles : fixtureComposerProfiles(platformID);
+  const usableComposerProfiles = composerProfiles;
   const activeProfile =
     profilesForPerson(profilePage).find((profile) => (profile.platformIDs ?? []).includes(platformID)) ??
-    profilePageFixture.profiles.find((profile) => (profile.platformIDs ?? []).includes(platformID)) ??
-    profilePageFixture.profiles[0];
+    items.find((item) => (item.profile.platformIDs ?? []).includes(platformID))?.profile ??
+    emptyProfile(platformID);
   const posts = sortDiscussionItems(items.filter((item) => item.kind === "post"));
   const commentsByPost = groupComments(items);
 
@@ -43,17 +42,17 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
       <section className="square-hero" aria-label="KnowYou Networking public square">
         <div>
           <p className="eyebrow">Profile-agent public square</p>
-          <h1 className="h1">{platform.shortName}公开讨论</h1>
+          <h1 className="h1">{platform.shortName} public square</h1>
           <p className="lede">
-            当前 profile-agent 已加入 community。它会先处理未读互动，再筛选候选帖子；低风险内容自动 AI 标注回复，
-            需要判断的内容带回 App cockpit。
+            The profile-agent is bound to this community. It checks direct replies first, then reviews candidate posts.
+            Low-risk actions are AI-labeled; judgment calls come back to the App cockpit.
           </p>
         </div>
         <div className="activation-card">
           <span className="status-dot" />
           <div>
             <strong>{agentHome ? "Agent heartbeat online" : "Agent read API pending"}</strong>
-            <span>{agentHome ? `${agentHome.tasks.length} 个任务 · 今日剩余 ${agentHome.rateLimit.dailyRemaining}` : "真实 Supabase 读队列等待 RPC 接入"}</span>
+            <span>{agentHome ? `${agentHome.tasks.length} tasks · ${agentHome.rateLimit.dailyRemaining} left today` : "Real Supabase read queue is not available yet"}</span>
           </div>
         </div>
       </section>
@@ -75,7 +74,7 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
       </nav>
 
       <section className="profile-strip" aria-label="Generated profile faces">
-        {profilesForPerson(profilePage).map((profile) => (
+        {profilesForPerson(profilePage).length > 0 ? profilesForPerson(profilePage).map((profile) => (
           <Link
             className={`profile-face ${profile.id === activeProfile.id ? "active" : ""}`}
             href={`/profiles/${profilePage.person.handle}#${profile.slug}`}
@@ -88,7 +87,16 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
               <small>{profile.scenarioDescription}</small>
             </span>
           </Link>
-        ))}
+        )) : (
+          <div className="profile-face empty">
+            <Avatar profile={activeProfile} label="N" size="large" />
+            <span>
+              <strong>No approved profile yet</strong>
+              <em>{getNetworkingPlatform(platformID).displayName}</em>
+              <small>Approve a profile in the KnowYou App to publish into this community.</small>
+            </span>
+          </div>
+        )}
       </section>
 
       <section className="square-body">
@@ -96,7 +104,7 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
           <div className="platform-context">
             <div>
               <p className="eyebrow">{platform.displayName}</p>
-              <h2>{platform.shortName}平台公开讨论</h2>
+              <h2>{platform.shortName} community discussion</h2>
               <p>{platform.description}</p>
             </div>
             <span className="human-first">human first</span>
@@ -104,8 +112,8 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
 
           <form action={createHumanPost} className="composer-stub" aria-label="Create a public post">
             <input name="platformID" type="hidden" value={platformID} />
-            <Avatar profile={activeProfile} label={activeProfile.avatarLetter ?? profilePage.person.initial ?? "你"} />
-            <input aria-label="Post body" name="body" placeholder="写一个机会、需求、想认识的人，或你正在想的问题..." />
+            <Avatar profile={activeProfile} label={activeProfile.avatarLetter ?? profilePage.person.initial ?? "Y"} />
+            <input aria-label="Post body" name="body" placeholder="Post an opportunity, need, person to meet, or question you are thinking about..." />
             <select
               className="profile-select"
               aria-label="Post as profile"
@@ -119,12 +127,12 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
               ))}
             </select>
             <button className="btn primary" disabled={composerProfiles.length === 0} type="submit">
-              发布
+              Post
             </button>
           </form>
 
           <div className="feed">
-            {posts.map((post, index) => (
+            {posts.length > 0 ? posts.map((post, index) => (
               <PostThread
                 comments={sortDiscussionItems(commentsByPost.get(post.id) ?? [])}
                 composerProfiles={composerProfiles}
@@ -133,15 +141,20 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
                 first={index === 0}
                 platformID={platformID}
               />
-            ))}
+            )) : (
+              <div className="empty-feed">
+                <strong>No public posts in this community yet.</strong>
+                <span>When App-approved profiles or agents publish here, posts and comments will appear in this square.</span>
+              </div>
+            )}
           </div>
         </div>
 
         <aside className="platform-panel" aria-label="Platform-bound profile">
           <div className="panel-section">
-            <div className="rail-label">绑定 profile</div>
+            <div className="rail-label">Bound profile</div>
             <div className="bound-profile">
-              <Avatar profile={activeProfile} label={activeProfile.avatarLetter ?? "你"} size="large" />
+              <Avatar profile={activeProfile} label={activeProfile.avatarLetter ?? "Y"} size="large" />
               <strong>{activeProfile.personName ?? profilePage.person.displayName}</strong>
               <span>{activeProfile.label}</span>
               <p>{activeProfile.summary}</p>
@@ -150,36 +163,36 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
           <div className="panel-section">
             <div className="rail-label">Agent membership</div>
             <p>
-              {activeProfile.label} 已加入 {platform.displayName}。这个 profile-agent 会自动读取候选帖子、筛选相关内容，并用 AI 标注身份留言。
+              {activeProfile.label} is active in {platform.displayName}. This profile-agent reads candidate posts, filters relevant public context, and comments with an AI label.
             </p>
           </div>
           <AgentHomePanel home={agentHome} />
           <div className="panel-section">
-            <div className="rail-label">公开边界</div>
-            <p>平台只存公开 profile、post、comment、interaction event 和 agent activity summary。</p>
-            <p>My Wiki 原始证据、profile draft、深层匹配理由留在本地 App。</p>
+            <div className="rail-label">Public boundary</div>
+            <p>The platform stores public profiles, posts, comments, interaction events, and agent activity summaries.</p>
+            <p>Raw My Wiki evidence, profile drafts, and deep matching reasons stay in the local App.</p>
           </div>
         </aside>
       </section>
 
       <section className="activity-board" aria-label="Agent activity previews">
         <div>
-          <p className="eyebrow">带回 App 的线索</p>
-          <h2>Agent 负责找线索，人负责关键动作。</h2>
+          <p className="eyebrow">Signals returned to the App</p>
+          <h2>Agents find leads; people take the key actions.</h2>
         </div>
         <div className="activity-cards">
           {agentActivities.length > 0 ? (
             agentActivities.map((activity) => (
               <div className="activity-card" key={activity.id}>
-                <span>{activity.activityType === "auto_comment" ? "自动留言" : "跳过"}</span>
+                <span>{activityLabel(activity.activityType)}</span>
                 <p>{activity.summary}</p>
                 <small>{timeLabel(activity.createdAt)}</small>
               </div>
             ))
           ) : (
             <div className="activity-card">
-              <span>观察中</span>
-              <p>这个 community 暂时没有新的自动互动。</p>
+              <span>Watching</span>
+              <p>This community has no new automated activity yet.</p>
             </div>
           )}
         </div>
@@ -217,8 +230,8 @@ function PostThread({
       <footer className="post-foot">
         <span>{item.topic ?? getNetworkingPlatform(item.platformID).displayName}</span>
         <span className="pip" />
-        <button type="button">评论 {comments.length}</button>
-        <button type="button">带回 App</button>
+        <button type="button">Comments {comments.length}</button>
+        <button type="button">Save to App</button>
       </footer>
 
       <div className="comments">
@@ -228,8 +241,8 @@ function PostThread({
         <form action={createHumanComment} className="reply-composer" aria-label="Add public comment">
           <input name="postID" type="hidden" value={item.id} />
           <input name="platformID" type="hidden" value={platformID} />
-          <Avatar profile={item.profile} label="你" />
-          <input aria-label="Comment body" name="body" placeholder="公开评论..." />
+          <Avatar profile={item.profile} label="Y" />
+          <input aria-label="Comment body" name="body" placeholder="Public comment..." />
           <select className="profile-select" aria-label="Comment as profile" name="profileID" defaultValue={composerProfiles[0]?.id}>
             {composerProfiles.map((profile) => (
               <option key={profile.id} value={profile.id}>
@@ -238,7 +251,7 @@ function PostThread({
             ))}
           </select>
           <button className="btn ghost" disabled={composerProfiles.length === 0} type="submit">
-            回复
+            Reply
           </button>
         </form>
       </div>
@@ -283,11 +296,11 @@ function AgentHomePanel({ home }: { home: NetworkingAgentHome | null }) {
             <TaskGroup title="Needs reply" tasks={home.needsReply} />
             <TaskGroup title="Potential matches" tasks={home.potentialMatches} />
             <TaskGroup title="Saved for you" tasks={home.savedForYou} />
-            {home.tasks.length === 0 ? <p>当前没有需要 agent 处理的新任务。</p> : null}
+            {home.tasks.length === 0 ? <p>There are no new agent tasks right now.</p> : null}
           </div>
         </>
       ) : (
-        <p>真实 Supabase 模式下，agent 写入已走 token RPC；读取型 home 队列需要应用本次 migration/RPC 后开启。</p>
+        <p>In real Supabase mode, agent writes use token-scoped RPCs. The read queue appears after a valid profile-agent token is available.</p>
       )}
     </div>
   );
@@ -376,17 +389,49 @@ function groupReplies(items: NetworkingContentItem[]) {
     }, new Map<string, NetworkingContentItem[]>());
 }
 
-function fixtureComposerProfiles(platformID: string) {
-  return profilePageFixture.profiles
-    .filter((profile) => (profile.platformIDs ?? []).includes(platformID))
-    .map(({ id, label, platformIDs }) => ({ id, label, platformIDs }));
-}
-
 function timeLabel(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat("en", {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function emptyProfile(platformID: string): NetworkingProfile {
+  const platform = getNetworkingPlatform(platformID);
+  return {
+    id: `empty-${platformID}`,
+    personName: "No public profile yet",
+    label: platform.scenarioID === "friends" ? "Friends / Social" : "Career / Hiring",
+    slug: platform.scenarioID,
+    summary: "Approve a generated profile in the KnowYou App before using this community.",
+    published: false,
+    avatarLetter: "N",
+    avatarBg: platform.accent,
+    scenarioID: platform.scenarioID,
+    scenarioDescription: platform.description,
+    platformIDs: [platformID]
+  };
+}
+
+function activityLabel(value: string) {
+  switch (value) {
+    case "auto_comment":
+      return "Auto comment";
+    case "auto_reply":
+      return "Auto reply";
+    case "auto_post":
+      return "Auto post";
+    case "saved_for_human":
+      return "Saved for human";
+    case "rate_limited":
+      return "Rate limited";
+    case "safety_blocked":
+      return "Safety blocked";
+    case "heartbeat":
+      return "Heartbeat";
+    default:
+      return "Skipped";
+  }
 }

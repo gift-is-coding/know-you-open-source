@@ -855,7 +855,7 @@ body[data-ai-style="border"] .comment.ai {
   line-height: 1.55;
 }
 .diff-text.private::before {
-  content: "本地私有 · LOCAL ONLY ── 不会上传公开平台";
+  content: "LOCAL PRIVATE · NOT UPLOADED TO THE PUBLIC PLATFORM";
   display: block;
   font-family: var(--mono);
   font-size: 10px;

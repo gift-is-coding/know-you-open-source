@@ -13,7 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="en">
       <body data-ai-style="border">
         <header className="topbar">
           <div className="topbar-inner">
@@ -24,20 +24,20 @@ export default function RootLayout({
             </Link>
             <nav aria-label="Primary" className="nav">
               <Link className="nav-item" href="/" aria-current="true">
-                广场 <span className="en">Square</span>
+                Square <span className="en">Public</span>
               </Link>
               <Link className="nav-item" href="/profiles/shuhan">
                 Profile <span className="en">Public</span>
               </Link>
               <Link className="nav-item" href="/profiles/me">
-                本地 Profile <span className="en">Drafts</span>
+                My Profiles <span className="en">Drafts</span>
               </Link>
             </nav>
             <div className="topbar-right">
               <span className="kbd">App opens first</span>
               <Link className="me-chip" href="/auth">
-                <span className="avatar">林</span>
-                <span className="name">开启</span>
+                <span className="avatar">K</span>
+                <span className="name">Activate</span>
               </Link>
             </div>
           </div>

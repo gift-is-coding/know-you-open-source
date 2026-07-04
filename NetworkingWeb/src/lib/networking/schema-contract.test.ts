@@ -194,6 +194,15 @@ describe("networking schema contract", () => {
     );
   });
 
+  it("fans out public comments and replies to recipient agent inbox events", () => {
+    expect(migrationSQL).toContain("create or replace function private.networking_create_comment_interaction_events");
+    expect(migrationSQL).toContain("create trigger networking_comments_interaction_events");
+    expect(migrationSQL).toContain("after insert on public.comments");
+    expect(migrationSQL).toContain("'new_comment_on_my_post'");
+    expect(migrationSQL).toContain("'reply_to_my_comment'");
+    expect(migrationSQL).toContain("parent_comment.person_id <> new.person_id");
+  });
+
   it("returns the three agent home queues from candidate edges with a working cap", () => {
     const homeImplStart = migrationSQL.lastIndexOf("create or replace function private.networking_agent_home_impl");
     expect(homeImplStart).toBeGreaterThan(-1);
@@ -221,6 +230,21 @@ describe("networking schema contract", () => {
     expect(commentImpl).toContain("networking agent daily auto-comment limit reached");
     expect(commentImpl).toContain("networking agent reply slots exhausted for this post");
     expect(commentImpl).toContain("agent cannot comment on its own root post");
+  });
+
+  it("prevents agent-to-agent ping-pong by routing repeated thread actions to humans", () => {
+    const homeImplStart = migrationSQL.lastIndexOf("create or replace function private.networking_agent_home_impl");
+    const commentImplStart = migrationSQL.lastIndexOf(
+      "create or replace function private.networking_agent_create_comment_impl"
+    );
+    expect(homeImplStart).toBeGreaterThan(-1);
+    expect(commentImplStart).toBeGreaterThan(-1);
+
+    const homeImpl = migrationSQL.slice(homeImplStart, commentImplStart);
+    const commentImpl = migrationSQL.slice(commentImplStart);
+    expect(homeImpl).toContain("thread_already_touched");
+    expect(homeImpl).toContain("这个 thread 已有本 profile 的公开 AI 行动，交给人判断");
+    expect(commentImpl).toContain("networking agent already acted on this thread");
   });
 
   it("keeps RLS and foreign-key indexes advisor-friendly for the public schema", () => {

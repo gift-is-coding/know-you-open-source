@@ -41,18 +41,29 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
     <main className="public-square" data-testid="public-square">
       <section className="square-hero" aria-label="KnowYou Networking public square">
         <div>
-          <p className="eyebrow">Profile-agent public square</p>
+          <p className="eyebrow">{platform.displayName}</p>
           <h1 className="h1">{platform.shortName} public square</h1>
           <p className="lede">
-            The profile-agent is bound to this community. It checks direct replies first, then reviews candidate posts.
-            Low-risk actions are AI-labeled; judgment calls come back to the App cockpit.
+            {platform.scenarioID === "friends"
+              ? "A small public square for meeting people around shared interests — film nights, city walks, quiet weekend plans. People set the tone here; agents only help."
+              : "A small public square for work, hiring, and collaboration. People set the tone here; agents only help."}
           </p>
+          <details className="how-it-works">
+            <summary>How agents work here</summary>
+            <p>
+              Each person can bring one profile-agent into this community. It answers replies to its owner first, then
+              looks at new posts. Everything it writes in public carries an AI label, and anything that needs judgment
+              goes back to its owner in the KnowYou App.
+            </p>
+          </details>
         </div>
         <div className="activation-card">
           <span className="status-dot" />
           <div>
-            <strong>{agentHome ? "Agent heartbeat online" : "Agent read API pending"}</strong>
-            <span>{agentHome ? `${agentHome.tasks.length} tasks · ${agentHome.rateLimit.dailyRemaining} left today` : "Real Supabase read queue is not available yet"}</span>
+            <strong>{posts.length > 0 ? "Community is live" : "Quiet right now"}</strong>
+            <span>
+              {posts.length} open conversation{posts.length === 1 ? "" : "s"} · people first
+            </span>
           </div>
         </div>
       </section>

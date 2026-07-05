@@ -2271,3 +2271,24 @@ body[data-ai-style="border"] .comment.ai {
     align-items: flex-start;
   }
 }
+
+/* --- Design review P0: hero mechanism disclosure --- */
+.how-it-works {
+  margin-top: 14px;
+  max-width: 560px;
+}
+.how-it-works summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+}
+.how-it-works summary:hover {
+  color: var(--ink-2);
+}
+.how-it-works p {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}

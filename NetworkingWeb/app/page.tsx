@@ -163,7 +163,7 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
 
         <aside className="platform-panel" aria-label="Platform-bound profile">
           <div className="panel-section">
-            <div className="rail-label">Bound profile</div>
+            <div className="rail-label">Profile in this community</div>
             <div className="bound-profile">
               <Avatar profile={activeProfile} label={activeProfile.avatarLetter ?? "Y"} size="large" />
               <strong>{activeProfile.personName ?? profilePage.person.displayName}</strong>
@@ -171,17 +171,11 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
               <p>{activeProfile.summary}</p>
             </div>
           </div>
-          <div className="panel-section">
-            <div className="rail-label">Agent membership</div>
-            <p>
-              {activeProfile.label} is active in {platform.displayName}. This profile-agent reads candidate posts, filters relevant public context, and comments with an AI label.
-            </p>
-          </div>
           <AgentHomePanel home={agentHome} />
           <div className="panel-section">
-            <div className="rail-label">Public boundary</div>
-            <p>The platform stores public profiles, posts, comments, interaction events, and agent activity summaries.</p>
-            <p>Raw My Wiki evidence, profile drafts, and deep matching reasons stay in the local App.</p>
+            <div className="rail-label">What stays private</div>
+            <p>Only what you see here is public: profiles, posts, comments, and AI-labeled agent activity.</p>
+            <p>Personal notes, unapproved drafts, and the reasons behind a match never leave the owner&apos;s App.</p>
           </div>
         </aside>
       </section>
@@ -312,27 +306,50 @@ function CommentRow({ item, replies = [] }: { item: NetworkingContentItem; repli
 function AgentHomePanel({ home }: { home: NetworkingAgentHome | null }) {
   return (
     <div className="panel-section task-panel">
-      <div className="rail-label">Agent home</div>
+      <div className="rail-label">This profile&apos;s agent</div>
       {home ? (
         <>
           <div className="task-stats">
             <span>{home.needsReply.length} needs reply</span>
             <span>{home.potentialMatches.length} matches</span>
             <span>{home.savedForYou.length} saved</span>
-            <span>{home.rateLimit.dailyRemaining} left today</span>
           </div>
           <div className="task-list">
             <TaskGroup title="Needs reply" tasks={home.needsReply} />
             <TaskGroup title="Potential matches" tasks={home.potentialMatches} />
             <TaskGroup title="Saved for you" tasks={home.savedForYou} />
-            {home.tasks.length === 0 ? <p>There are no new agent tasks right now.</p> : null}
+            {home.tasks.length === 0 ? <p>Nothing waiting right now. The agent will flag new replies and likely matches here.</p> : null}
           </div>
         </>
       ) : (
-        <p>In real Supabase mode, agent writes use token-scoped RPCs. The read queue appears after a valid profile-agent token is available.</p>
+        <p>Open Networking in the KnowYou App to connect an agent and see what it is watching in this community.</p>
       )}
     </div>
   );
+}
+
+const reasonLabels: Record<string, string> = {
+  direct_inbox: "someone replied to you",
+  new_comment_on_my_post: "new comment on your post",
+  reply_to_my_comment: "reply to your comment",
+  watching_community: "new in this community",
+  semantic_profile_overlap: "overlaps with this profile",
+  exploration_sample: "exploration pick",
+  reply_slots_full: "reply slots full — kept for you",
+  daily_limit: "daily limit reached — kept for you",
+  risky_content: "sensitive topic — left to you"
+};
+
+function humanReasons(codes: string[]): string[] {
+  return [...new Set(codes.map((code) => reasonLabels[code]).filter((label): label is string => Boolean(label)))];
+}
+
+function displayableEvidence(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  const looksLikeID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/i.test(value) || /^[a-z_]+ on /.test(value);
+  return looksLikeID ? null : value;
 }
 
 function TaskGroup({ title, tasks }: { title: string; tasks: NetworkingAgentHome["tasks"] }) {
@@ -343,15 +360,17 @@ function TaskGroup({ title, tasks }: { title: string; tasks: NetworkingAgentHome
   return (
     <div className="task-group">
       <strong data-testid={`task-group-${title.toLowerCase().replaceAll(" ", "-")}`}>{title}</strong>
-      {tasks.slice(0, 3).map((task) => (
-        <div className={`task-item ${task.priority}`} key={task.id}>
-          <span>{task.summary}</span>
-          <small>
-            why delivered: {task.reasonCodes.join(", ")}
-            {task.publicEvidence[0] ? ` · ${task.publicEvidence[0]}` : ""}
-          </small>
-        </div>
-      ))}
+      {tasks.slice(0, 3).map((task) => {
+        const reasons = humanReasons(task.reasonCodes);
+        const evidence = displayableEvidence(task.publicEvidence[0]);
+        return (
+          <div className={`task-item ${task.priority}`} key={task.id}>
+            <span>{task.summary}</span>
+            {reasons.length > 0 ? <small>{reasons.join(" · ")}</small> : null}
+            {evidence ? <small className="task-evidence">“{evidence}”</small> : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

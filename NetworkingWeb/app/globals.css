@@ -2327,3 +2327,11 @@ body[data-ai-style="border"] .comment.ai {
   height: 22px;
   font-size: 10px;
 }
+
+/* --- Design review P0: humanized agent task evidence --- */
+.task-item .task-evidence {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-style: italic;
+}

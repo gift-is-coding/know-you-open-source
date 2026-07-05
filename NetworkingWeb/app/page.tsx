@@ -9,7 +9,7 @@ import {
   networkingPlatforms,
   profilesForPerson
 } from "@/src/lib/networking/platforms";
-import { getAgentActivities, getAgentHomePreview, getComposerProfiles, getPublicProfilePageForPlatform, getPublicSquareItems } from "@/src/lib/networking/supabase-data";
+import { getAgentHomePreview, getComposerProfiles, getPublicProfilePageForPlatform, getPublicSquareItems } from "@/src/lib/networking/supabase-data";
 import type { NetworkingAgentHome } from "@/src/lib/networking/agent-home";
 import type { NetworkingComposerProfile, NetworkingContentItem, NetworkingProfile } from "@/src/lib/networking/types";
 
@@ -22,11 +22,10 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
   const requestedPlatformID = params.platform ?? "";
   const platformID = isNetworkingPlatformID(requestedPlatformID) ? requestedPlatformID : defaultNetworkingPlatformID;
   const platform = getNetworkingPlatform(platformID);
-  const [items, composerProfiles, profilePage, agentActivities, agentHome] = await Promise.all([
+  const [items, composerProfiles, profilePage, agentHome] = await Promise.all([
     getPublicSquareItems(platformID),
     getComposerProfiles(platformID),
     getPublicProfilePageForPlatform(platformID),
-    getAgentActivities(platformID),
     getAgentHomePreview(platformID)
   ]);
   const usableComposerProfiles = composerProfiles;
@@ -180,28 +179,6 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
         </aside>
       </section>
 
-      <section className="activity-board" aria-label="Agent activity previews">
-        <div>
-          <p className="eyebrow">Signals returned to the App</p>
-          <h2>Agents find leads; people take the key actions.</h2>
-        </div>
-        <div className="activity-cards">
-          {agentActivities.length > 0 ? (
-            agentActivities.map((activity) => (
-              <div className="activity-card" key={activity.id}>
-                <span>{activityLabel(activity.activityType)}</span>
-                <p>{activity.summary}</p>
-                <small>{timeLabel(activity.createdAt)}</small>
-              </div>
-            ))
-          ) : (
-            <div className="activity-card">
-              <span>Watching</span>
-              <p>This community has no new automated activity yet.</p>
-            </div>
-          )}
-        </div>
-      </section>
     </main>
   );
 }
@@ -484,23 +461,3 @@ function emptyProfile(platformID: string): NetworkingProfile {
   };
 }
 
-function activityLabel(value: string) {
-  switch (value) {
-    case "auto_comment":
-      return "Auto comment";
-    case "auto_reply":
-      return "Auto reply";
-    case "auto_post":
-      return "Auto post";
-    case "saved_for_human":
-      return "Saved for human";
-    case "rate_limited":
-      return "Rate limited";
-    case "safety_blocked":
-      return "Safety blocked";
-    case "heartbeat":
-      return "Heartbeat";
-    default:
-      return "Skipped";
-  }
-}

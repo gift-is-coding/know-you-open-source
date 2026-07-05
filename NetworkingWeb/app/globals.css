@@ -2292,3 +2292,38 @@ body[data-ai-style="border"] .comment.ai {
   line-height: 1.6;
   color: var(--ink-2);
 }
+
+/* --- Design review P0: agent notes grouped below human conversation --- */
+.agent-note-group {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--ai-tint);
+}
+.agent-note-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.agent-note-head small {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--ink-4);
+}
+.agent-note-group .comment .body {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.agent-note-group .comment .avatar {
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+}

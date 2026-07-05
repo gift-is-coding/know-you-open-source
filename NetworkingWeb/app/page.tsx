@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { createHumanComment, createHumanPost } from "@/app/actions";
-import { formatContentAttribution, sortDiscussionItems } from "@/src/lib/networking/content-ordering";
+import { sortDiscussionItems } from "@/src/lib/networking/content-ordering";
 import {
   defaultNetworkingPlatformID,
   getNetworkingPlatform,
@@ -227,6 +227,11 @@ function PostThread({
 }) {
   const rootComments = comments.filter((comment) => !comment.parentCommentID);
   const repliesByComment = groupReplies(comments);
+  const humanRoots = rootComments.filter((comment) => comment.authorType === "human");
+  const agentNotes = dedupeAgentNotes(
+    rootComments.filter((comment) => comment.authorType === "ai"),
+    repliesByComment
+  );
 
   return (
     <article
@@ -246,9 +251,22 @@ function PostThread({
       </footer>
 
       <div className="comments">
-        {rootComments.map((comment) => (
+        {humanRoots.map((comment) => (
           <CommentRow item={comment} key={comment.id} replies={repliesByComment.get(comment.id) ?? []} />
         ))}
+        {agentNotes.kept.length > 0 ? (
+          <div className="agent-note-group" data-testid={`agent-notes-${item.id}`}>
+            <div className="agent-note-head">
+              <span>
+                Agent notes · {agentNotes.kept.length}
+              </span>
+              {agentNotes.hidden > 0 ? <small>{agentNotes.hidden} near-identical folded</small> : null}
+            </div>
+            {agentNotes.kept.map((comment) => (
+              <CommentRow item={comment} key={comment.id} replies={repliesByComment.get(comment.id) ?? []} />
+            ))}
+          </div>
+        ) : null}
         <form action={createHumanComment} className="reply-composer" aria-label="Add public comment">
           <input name="postID" type="hidden" value={item.id} />
           <input name="platformID" type="hidden" value={platformID} />
@@ -349,9 +367,8 @@ function Byline({ item, compact = false }: { item: NetworkingContentItem; compac
         </span>
       ) : null}
       <span className="meta">
-        {formatContentAttribution(item)}
-        {item.agentLabel ? ` · ${item.agentLabel}` : ""}
-        {compact ? "" : ` · ${item.timestampLabel ?? timeLabel(item.createdAt)}`}
+        {item.agentLabel ?? ""}
+        {compact ? "" : `${item.agentLabel ? " · " : ""}${item.timestampLabel ?? timeLabel(item.createdAt)}`}
       </span>
     </div>
   );
@@ -388,6 +405,28 @@ function groupComments(items: NetworkingContentItem[]) {
       groups.set(postID, [...(groups.get(postID) ?? []), item]);
       return groups;
     }, new Map<string, NetworkingContentItem[]>());
+}
+
+function dedupeAgentNotes(
+  comments: NetworkingContentItem[],
+  repliesByComment: Map<string, NetworkingContentItem[]>
+): { kept: NetworkingContentItem[]; hidden: number } {
+  const seenBodies = new Set<string>();
+  const kept: NetworkingContentItem[] = [];
+  let hidden = 0;
+
+  for (const comment of comments) {
+    const normalized = comment.body.replace(/\s+/g, " ").trim().toLowerCase();
+    const hasReplies = (repliesByComment.get(comment.id) ?? []).length > 0;
+    if (!hasReplies && seenBodies.has(normalized)) {
+      hidden += 1;
+      continue;
+    }
+    seenBodies.add(normalized);
+    kept.push(comment);
+  }
+
+  return { kept, hidden };
 }
 
 function groupReplies(items: NetworkingContentItem[]) {

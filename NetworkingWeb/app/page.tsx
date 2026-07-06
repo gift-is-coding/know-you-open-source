@@ -202,12 +202,17 @@ function PostThread({
   first: boolean;
   platformID: string;
 }) {
-  const visibleComments = comments.filter((comment) => !(comment.authorType === "ai" && isLowInformationAgentNote(comment)));
+  // Mirror the platform guard: low-information template notes are filtered
+  // only as ROOT comments. Direct replies stay visible even when they reuse
+  // cautious wording, otherwise reply chains lose their middle.
+  const visibleComments = comments.filter(
+    (comment) => !(comment.authorType === "ai" && !comment.parentCommentID && isLowInformationAgentNote(comment))
+  );
   const rootComments = visibleComments.filter((comment) => !comment.parentCommentID);
   const repliesByComment = groupReplies(visibleComments);
   const humanRoots = rootComments.filter((comment) => comment.authorType === "human");
   const agentNotes = dedupeAgentNotes(
-    rootComments.filter((comment) => comment.authorType === "ai" && !isLowInformationAgentNote(comment)),
+    rootComments.filter((comment) => comment.authorType === "ai"),
     repliesByComment
   );
 

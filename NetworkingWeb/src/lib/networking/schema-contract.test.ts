@@ -243,6 +243,7 @@ describe("networking schema contract", () => {
     expect(homeImpl).toContain("join public.profiles on profiles.person_id = agent_tokens.person_id");
     expect(homeImpl).toContain("(agent_tokens.profile_id is null or agent_tokens.profile_id = profiles.id)");
     expect(homeImpl).toContain("limit 20");
+    expect(migrationSQL).toContain("to_jsonb('express_interest'::text)");
     expect(homeImpl).toContain("'reply_slots_full'");
     expect(homeImpl).toContain("'risky_content'");
     expect(homeImpl).toContain("'daily_limit'");
@@ -258,6 +259,7 @@ describe("networking schema contract", () => {
     expect(commentImpl).toContain("networking agent daily auto-comment limit reached");
     expect(commentImpl).toContain("networking agent reply slots exhausted for this post");
     expect(commentImpl).toContain("agent cannot comment on its own root post");
+    expect(migrationSQL).toContain("networking agent public comment is too generic");
   });
 
   it("prevents agent-to-agent ping-pong by routing repeated thread actions to humans", () => {

@@ -15,7 +15,7 @@ export const networkingPlatforms: NetworkingPlatform[] = [
     shortName: "Friends",
     scenarioID: "friends",
     description: "New friends, shared interests, small activities, and everyday social discovery through a personal profile.",
-    accent: "#c46a4a"
+    accent: "#6f7d57"
   }
 ];
 

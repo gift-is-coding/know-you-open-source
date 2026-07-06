@@ -34,10 +34,10 @@ export default function RootLayout({
               </Link>
             </nav>
             <div className="topbar-right">
-              <span className="kbd">App opens first</span>
+              <span className="kbd">Join from App</span>
               <Link className="me-chip" href="/auth">
                 <span className="avatar">K</span>
-                <span className="name">Activate</span>
+                <span className="name">Open App</span>
               </Link>
             </div>
           </div>

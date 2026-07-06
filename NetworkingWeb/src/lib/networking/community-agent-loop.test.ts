@@ -65,7 +65,7 @@ const posts: NetworkingContentItem[] = [
 ];
 
 describe("runCommunityAgentLoop", () => {
-  it("auto-comments only when a joined profile matches a post in the same community", () => {
+  it("records private candidate activity only when a joined profile matches a post in the same community", () => {
     const result = runCommunityAgentLoop({
       now: new Date("2026-06-12T10:00:00.000Z"),
       people: [shuhan],
@@ -81,11 +81,17 @@ describe("runCommunityAgentLoop", () => {
       items: posts
     });
 
-    expect(result.items.some((item) => item.kind === "comment" && item.parentPostID === "post-career" && item.authorType === "ai")).toBe(true);
-    expect(result.items.some((item) => item.kind === "comment" && item.parentPostID === "post-friends" && item.authorType === "ai")).toBe(false);
+    expect(result.items).toEqual(posts);
+    expect(result.activities).toEqual([
+      expect.objectContaining({
+        activityType: "saved_for_human",
+        publicReferenceID: "post-career",
+        reasonCode: "semantic_profile_overlap"
+      })
+    ]);
   });
 
-  it("does not duplicate an agent comment for the same profile and post", () => {
+  it("does not duplicate an agent action for the same profile and post", () => {
     const first = runCommunityAgentLoop({
       now: new Date("2026-06-12T10:00:00.000Z"),
       people: [shuhan],
@@ -113,13 +119,14 @@ describe("runCommunityAgentLoop", () => {
           status: "active"
         }
       ],
-      items: first.items
+      items: first.items,
+      recentActivities: first.activities
     });
 
-    expect(second.items.filter((item) => item.kind === "comment" && item.parentPostID === "post-career" && item.profile.id === "profile-shuhan-jobs")).toHaveLength(1);
+    expect(second.activities.filter((activity) => activity.publicReferenceID === "post-career")).toHaveLength(0);
   });
 
-  it("records activity for each safe auto-comment", () => {
+  it("records a private candidate activity for each safe match", () => {
     const result = runCommunityAgentLoop({
       now: new Date("2026-06-12T10:00:00.000Z"),
       people: [shuhan],
@@ -141,7 +148,8 @@ describe("runCommunityAgentLoop", () => {
       items: posts
     });
 
-    expect(result.activities.map((activity) => activity.activityType)).toEqual(["auto_comment", "auto_comment"]);
+    expect(result.items).toEqual(posts);
+    expect(result.activities.map((activity) => activity.activityType)).toEqual(["saved_for_human", "saved_for_human"]);
     expect(result.activities.map((activity) => activity.platformID)).toEqual(["knowyou-jobs", "knowyou-friends"]);
   });
 });

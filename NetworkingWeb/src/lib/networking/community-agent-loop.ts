@@ -69,6 +69,7 @@ export interface CommunityAgentLoopInput {
   profiles: NetworkingProfile[];
   memberships: NetworkingCommunityMembership[];
   items: NetworkingContentItem[];
+  recentActivities?: NetworkingAgentActivity[];
 }
 
 export interface CommunityAgentLoopResult {
@@ -100,7 +101,7 @@ export function runCommunityAgentLoop(input: CommunityAgentLoopInput): Community
         continue;
       }
 
-      if (hasExistingAgentComment(nextItems, post.id, profile.id)) {
+      if (hasExistingAgentAction(nextItems, input.recentActivities ?? [], post.id, profile.id)) {
         continue;
       }
 
@@ -109,24 +110,21 @@ export function runCommunityAgentLoop(input: CommunityAgentLoopInput): Community
         continue;
       }
 
-      const comment = buildAgentComment({
-        now: input.now,
-        person,
-        profile,
-        post,
-        relevance
-      });
-      nextItems.push(comment);
       activities.push({
-        id: `activity-${comment.id}`,
+        id: `activity-candidate-${profile.id}-${post.id}`,
         platformID: post.platformID,
         profileID: profile.id,
         personID: person.id,
-        activityType: "auto_comment",
+        activityType: "saved_for_human",
         publicReferenceType: "post",
         publicReferenceID: post.id,
-        summary: `${profile.label} 自动回应了 ${post.person.displayName} 的帖子。`,
-        createdAt: input.now.toISOString()
+        summary: `Found a relevant public post from ${post.person.displayName}; keep it for human review before any public reply.`,
+        createdAt: input.now.toISOString(),
+        reasonCode: "semantic_profile_overlap",
+        metadata: {
+          relevance,
+          recommendedAction: "express_interest"
+        }
       });
     }
   }
@@ -134,46 +132,26 @@ export function runCommunityAgentLoop(input: CommunityAgentLoopInput): Community
   return { items: nextItems, activities };
 }
 
-function hasExistingAgentComment(items: NetworkingContentItem[], postID: string, profileID: string) {
+function hasExistingAgentAction(
+  items: NetworkingContentItem[],
+  activities: NetworkingAgentActivity[],
+  postID: string,
+  profileID: string
+) {
   return items.some(
     (item) =>
       item.kind === "comment" &&
       item.parentPostID === postID &&
       item.authorType === "ai" &&
       item.profile.id === profileID
-  );
-}
-
-function buildAgentComment({
-  now,
-  person,
-  profile,
-  post,
-  relevance
-}: {
-  now: Date;
-  person: NetworkingPerson;
-  profile: NetworkingProfile;
-  post: NetworkingContentItem;
-  relevance: number;
-}): NetworkingContentItem {
-  const lead = profile.scenarioID === "friends" ? "这个活动和我的公开朋友 profile 有重合" : "这个机会和我的公开职业 profile 有重合";
-  const summary = profile.summary ? `我会把这条带回给主人；公开 profile 里相关的是：${profile.summary}` : "我会把这条带回给主人继续判断。";
-
-  return {
-    id: `agent-${profile.id}-${post.id}`,
-    kind: "comment",
-    platformID: post.platformID,
-    authorType: "ai",
-    body: `${lead}。${summary}`,
-    createdAt: now.toISOString(),
-    timestampLabel: "刚刚",
-    agentLabel: `${person.displayName}'s KnowYou`,
-    person,
-    profile,
-    parentPostID: post.id,
-    topic: `auto relevance ${relevance}`
-  };
+  ) ||
+    activities.some(
+      (activity) =>
+        activity.profileID === profileID &&
+        activity.publicReferenceType === "post" &&
+        activity.publicReferenceID === postID &&
+        ["auto_comment", "auto_reply", "saved_for_human"].includes(activity.activityType)
+    );
 }
 
 export function scoreItemRelevance(profile: NetworkingProfile, item: NetworkingContentItem) {

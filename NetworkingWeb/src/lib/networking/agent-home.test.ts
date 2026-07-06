@@ -111,7 +111,7 @@ describe("profile-agent home and heartbeat", () => {
     expect(home.savedForYou.map((task) => task.publicReferenceID)).toEqual(["post-risky"]);
     expect(home.potentialMatches[0]).toMatchObject({
       source: "semantic_candidate",
-      recommendedAction: "comment",
+      recommendedAction: "express_interest",
       reasonCodes: expect.arrayContaining(["semantic_profile_overlap", "watching_community"])
     });
     expect(home.potentialMatches[0].publicEvidence.join(" ")).toContain("摄影展");
@@ -204,7 +204,30 @@ describe("profile-agent home and heartbeat", () => {
     });
   });
 
-  it("auto-replies to a safe unread comment with parentCommentID", () => {
+  it("keeps matching candidates private until a person decides to reply publicly", () => {
+    const result = runAgentHeartbeat(heartbeatInput());
+
+    expect(result.items.filter((item) => item.authorType === "ai")).toHaveLength(0);
+    expect(result.activities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          activityType: "saved_for_human",
+          publicReferenceID: post.id,
+          reasonCode: "public_comment_not_substantive"
+        })
+      ])
+    );
+    expect(result.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          eventType: "human_action_required",
+          postID: post.id
+        })
+      ])
+    );
+  });
+
+  it("auto-replies to a safe unread comment with parentCommentID in the source language", () => {
     const inboundComment: NetworkingContentItem = {
       id: "comment-question",
       kind: "comment",
@@ -233,7 +256,8 @@ describe("profile-agent home and heartbeat", () => {
     const reply = result.items.find((item) => item.kind === "comment" && item.authorType === "ai" && item.parentCommentID === inboundComment.id);
 
     expect(reply?.parentPostID).toBe(post.id);
-    expect(reply?.body).toContain("I will bring this back to the person for judgment");
+    expect(reply?.body).toContain("谢谢");
+    expect(reply?.body).toContain("公开 profile");
     expect(result.activities.map((activity) => activity.activityType)).toContain("auto_reply");
     expect(result.events.find((item) => item.id === event.id)?.readAt).toBe(now.toISOString());
   });

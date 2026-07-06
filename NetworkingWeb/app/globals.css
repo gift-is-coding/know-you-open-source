@@ -1467,32 +1467,50 @@ body[data-ai-style="border"] .comment.ai {
   box-shadow: 0 0 0 5px color-mix(in srgb, var(--ok) 14%, transparent);
 }
 
-.platform-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+.community-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   margin: 18px 0;
-}
-.platform-tab {
+  padding: 4px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: 999px;
   background: var(--surface);
-  padding: 14px 16px;
-  display: grid;
-  gap: 5px;
-  border-top: 4px solid var(--platform-accent, var(--accent));
 }
-.platform-tab[aria-current="true"] {
-  border-color: color-mix(in srgb, var(--platform-accent, var(--accent)) 52%, var(--line));
-  box-shadow: 0 16px 32px -28px var(--platform-accent, var(--accent));
+.community-switcher-label {
+  padding: 0 10px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
 }
-.platform-tab span {
-  font-weight: 650;
+.community-option {
+  min-height: 34px;
+  border-radius: 999px;
+  padding: 6px 12px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--ink-2);
+  border: 1px solid transparent;
+}
+.community-option:hover {
   color: var(--ink);
 }
-.platform-tab small {
-  color: var(--ink-2);
-  line-height: 1.45;
+.community-option[aria-current="true"] {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--platform-accent, var(--accent)) 10%, var(--paper));
+  border-color: color-mix(in srgb, var(--platform-accent, var(--accent)) 36%, var(--line));
+}
+.community-option span {
+  font-weight: 650;
+}
+.community-option small {
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
 }
 
 .profile-strip {
@@ -2261,11 +2279,13 @@ body[data-ai-style="border"] .comment.ai {
 }
 
 @media (max-width: 640px) {
-  .platform-tabs,
+  .community-switcher,
   .profile-strip,
   .activity-cards,
   .activation-steps {
+    display: grid;
     grid-template-columns: 1fr;
+    border-radius: var(--radius-lg);
   }
   .activation-card {
     align-items: flex-start;

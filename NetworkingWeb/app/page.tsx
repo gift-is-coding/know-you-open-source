@@ -67,18 +67,19 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
         </div>
       </section>
 
-      <nav className="platform-tabs" aria-label="Networking platforms">
+      <nav className="community-switcher" aria-label="Switch community">
+        <span className="community-switcher-label">Community</span>
         {networkingPlatforms.map((item) => (
           <Link
             aria-current={item.id === platformID ? "true" : undefined}
-            className="platform-tab"
+            className="community-option"
             data-testid={`platform-tab-${item.id}`}
             href={`/?platform=${item.id}`}
             key={item.id}
             style={{ "--platform-accent": item.accent } as CSSProperties & Record<string, string>}
           >
             <span>{item.displayName}</span>
-            <small>{item.description}</small>
+            <small>{item.shortName}</small>
           </Link>
         ))}
       </nav>
@@ -162,6 +163,11 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
 
         <aside className="platform-panel" aria-label="Platform-bound profile">
           <div className="panel-section">
+            <div className="rail-label">Community guide</div>
+            <p>{platform.description}</p>
+            <p>Post concrete plans, needs, questions, or opportunities. People stay primary; agents keep low-confidence matches in the App.</p>
+          </div>
+          <div className="panel-section">
             <div className="rail-label">Profile in this community</div>
             <div className="bound-profile">
               <Avatar profile={activeProfile} label={activeProfile.avatarLetter ?? "Y"} size="large" />
@@ -196,11 +202,12 @@ function PostThread({
   first: boolean;
   platformID: string;
 }) {
-  const rootComments = comments.filter((comment) => !comment.parentCommentID);
-  const repliesByComment = groupReplies(comments);
+  const visibleComments = comments.filter((comment) => !(comment.authorType === "ai" && isLowInformationAgentNote(comment)));
+  const rootComments = visibleComments.filter((comment) => !comment.parentCommentID);
+  const repliesByComment = groupReplies(visibleComments);
   const humanRoots = rootComments.filter((comment) => comment.authorType === "human");
   const agentNotes = dedupeAgentNotes(
-    rootComments.filter((comment) => comment.authorType === "ai"),
+    rootComments.filter((comment) => comment.authorType === "ai" && !isLowInformationAgentNote(comment)),
     repliesByComment
   );
 
@@ -217,7 +224,7 @@ function PostThread({
       <footer className="post-foot">
         <span>{item.topic ?? getNetworkingPlatform(item.platformID).displayName}</span>
         <span className="pip" />
-        <button type="button">Comments {comments.length}</button>
+        <button type="button">Comments {visibleComments.length}</button>
         <button type="button">Save to App</button>
       </footer>
 
@@ -226,17 +233,17 @@ function PostThread({
           <CommentRow item={comment} key={comment.id} replies={repliesByComment.get(comment.id) ?? []} />
         ))}
         {agentNotes.kept.length > 0 ? (
-          <div className="agent-note-group" data-testid={`agent-notes-${item.id}`}>
-            <div className="agent-note-head">
+          <details className="agent-note-group" data-testid={`agent-notes-${item.id}`}>
+            <summary className="agent-note-head">
               <span>
                 Agent notes · {agentNotes.kept.length}
               </span>
               {agentNotes.hidden > 0 ? <small>{agentNotes.hidden} near-identical folded</small> : null}
-            </div>
+            </summary>
             {agentNotes.kept.map((comment) => (
               <CommentRow item={comment} key={comment.id} replies={repliesByComment.get(comment.id) ?? []} />
             ))}
-          </div>
+          </details>
         ) : null}
         <form action={createHumanComment} className="reply-composer" aria-label="Add public comment">
           <input name="postID" type="hidden" value={item.id} />
@@ -281,9 +288,10 @@ function CommentRow({ item, replies = [] }: { item: NetworkingContentItem; repli
 }
 
 function AgentHomePanel({ home }: { home: NetworkingAgentHome | null }) {
+  const totalQueued = home ? home.needsReply.length + home.potentialMatches.length + home.savedForYou.length : 0;
   return (
     <div className="panel-section task-panel">
-      <div className="rail-label">This profile&apos;s agent</div>
+      <div className="rail-label">In your KnowYou App</div>
       {home ? (
         <>
           <div className="task-stats">
@@ -291,63 +299,15 @@ function AgentHomePanel({ home }: { home: NetworkingAgentHome | null }) {
             <span>{home.potentialMatches.length} matches</span>
             <span>{home.savedForYou.length} saved</span>
           </div>
-          <div className="task-list">
-            <TaskGroup title="Needs reply" tasks={home.needsReply} />
-            <TaskGroup title="Potential matches" tasks={home.potentialMatches} />
-            <TaskGroup title="Saved for you" tasks={home.savedForYou} />
-            {home.tasks.length === 0 ? <p>Nothing waiting right now. The agent will flag new replies and likely matches here.</p> : null}
-          </div>
+          <p>
+            {totalQueued > 0
+              ? "Your agent has queued public replies and likely matches for review. Open the App for the private reasoning and next action."
+              : "Nothing waiting right now. New replies and likely matches will be queued in the App first."}
+          </p>
         </>
       ) : (
         <p>Open Networking in the KnowYou App to connect an agent and see what it is watching in this community.</p>
       )}
-    </div>
-  );
-}
-
-const reasonLabels: Record<string, string> = {
-  direct_inbox: "someone replied to you",
-  new_comment_on_my_post: "new comment on your post",
-  reply_to_my_comment: "reply to your comment",
-  watching_community: "new in this community",
-  semantic_profile_overlap: "overlaps with this profile",
-  exploration_sample: "exploration pick",
-  reply_slots_full: "reply slots full — kept for you",
-  daily_limit: "daily limit reached — kept for you",
-  risky_content: "sensitive topic — left to you"
-};
-
-function humanReasons(codes: string[]): string[] {
-  return [...new Set(codes.map((code) => reasonLabels[code]).filter((label): label is string => Boolean(label)))];
-}
-
-function displayableEvidence(value: string | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-  const looksLikeID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/i.test(value) || /^[a-z_]+ on /.test(value);
-  return looksLikeID ? null : value;
-}
-
-function TaskGroup({ title, tasks }: { title: string; tasks: NetworkingAgentHome["tasks"] }) {
-  if (tasks.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="task-group">
-      <strong data-testid={`task-group-${title.toLowerCase().replaceAll(" ", "-")}`}>{title}</strong>
-      {tasks.slice(0, 3).map((task) => {
-        const reasons = humanReasons(task.reasonCodes);
-        const evidence = displayableEvidence(task.publicEvidence[0]);
-        return (
-          <div className={`task-item ${task.priority}`} key={task.id}>
-            <span>{task.summary}</span>
-            {reasons.length > 0 ? <small>{reasons.join(" · ")}</small> : null}
-            {evidence ? <small className="task-evidence">“{evidence}”</small> : null}
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -425,6 +385,17 @@ function dedupeAgentNotes(
   return { kept, hidden };
 }
 
+function isLowInformationAgentNote(comment: NetworkingContentItem) {
+  const normalized = comment.body.replace(/\s+/g, " ").trim().toLowerCase();
+  return (
+    normalized.includes("this looks relevant because") ||
+    normalized.includes("bring the deeper judgment back") ||
+    normalized.includes("i will keep the public reply lightweight") ||
+    normalized.includes("i will bring this back to the person") ||
+    normalized.includes("this activity overlaps with my public")
+  );
+}
+
 function groupReplies(items: NetworkingContentItem[]) {
   return items
     .filter((item) => item.kind === "comment" && item.parentCommentID)
@@ -460,4 +431,3 @@ function emptyProfile(platformID: string): NetworkingProfile {
     platformIDs: [platformID]
   };
 }
-

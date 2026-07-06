@@ -233,11 +233,13 @@ function taskForCandidate(input: AgentHeartbeatInput, post: NetworkingContentIte
     publicReferenceID: post.id,
     postID: post.id,
     source,
-    recommendedAction: exploration ? "save_for_human" : "comment",
+    recommendedAction: exploration ? "save_for_human" : "express_interest",
     score: relevance,
     reasonCodes,
     publicEvidence: evidence,
-    summary: exploration ? "A small exploration sample delivered by the platform." : "Candidate post matches this public profile.",
+    summary: exploration
+      ? "A small exploration sample delivered by the platform."
+      : "Likely match. Bring it back to the person before any public reply.",
     item: post
   };
 }
@@ -307,42 +309,19 @@ export function runAgentHeartbeat(input: AgentHeartbeatInput): AgentHeartbeatRes
     return { items: input.items, events: input.events, activities: [heartbeat], home };
   }
 
-  if (candidateTask.reasonCode === "risky_content") {
-    return saveForHuman(input, home, candidateTask, "risky_content");
-  }
-
-  const comment = buildAgentComment(input, candidateTask.postID);
-  return {
-    items: [...input.items, comment],
-    events: [
-      ...input.events,
-      {
-        id: `event-${comment.id}`,
-        platformID: input.membership.communityID,
-        personID: input.person.id,
-        profileID: input.profile.id,
-        eventType: "agent_commented",
-        postID: candidateTask.postID,
-        commentID: comment.id,
-        actorPersonID: input.person.id,
-        actorProfileID: input.profile.id,
-        createdAt: input.now.toISOString()
-      }
-    ],
-    activities: [heartbeat, activity(input, "auto_comment", "comment", comment.id, "Auto-commented on a relevant candidate post.")],
-    home
-  };
+  return saveForHuman(input, home, candidateTask, candidateTask.reasonCode ?? "public_comment_not_substantive");
 }
 
 function buildAgentComment(input: AgentHeartbeatInput, postID: string, parentCommentID?: string): NetworkingContentItem {
   const post = input.items.find((item) => item.id === postID);
-  const lead = parentCommentID ? "This reply overlaps with my public friends profile" : "This activity overlaps with my public friends profile";
+  const target = parentCommentID ? input.items.find((item) => item.id === parentCommentID) : post;
+  const body = replyBody(input, target);
   return {
     id: `agent-${input.profile.id}-${parentCommentID ?? postID}`,
     kind: "comment",
     platformID: input.membership.communityID,
     authorType: "ai",
-    body: `${lead}. I will bring this back to the person for judgment; the relevant public profile context is: ${input.profile.summary ?? "shared interests and topic overlap"}.`,
+    body,
     createdAt: input.now.toISOString(),
     timestampLabel: "just now",
     agentLabel: `${input.person.displayName}'s KnowYou`,
@@ -353,6 +332,29 @@ function buildAgentComment(input: AgentHeartbeatInput, postID: string, parentCom
     clientDecisionID: `${input.profile.id}:${postID}:${parentCommentID ?? "root"}`,
     topic: post?.topic ?? "agent heartbeat"
   };
+}
+
+function replyBody(input: AgentHeartbeatInput, target?: NetworkingContentItem) {
+  const summary = input.profile.summary ?? "shared interests and topic overlap";
+  const person = input.person.displayName;
+
+  if (target && containsCJK(target.body)) {
+    return [
+      "\u8c22\u8c22\uff0c\u8fd9\u6761\u56de\u590d\u548c\u6211\u7684\u516c\u5f00 profile \u6709\u91cd\u5408\u3002",
+      `\u516c\u5f00 profile \u91cc\u76f8\u5173\u7684\u662f\uff1a${summary}\u3002`,
+      `\u6211\u4f1a\u5148\u5e26\u56de\u7ed9${person}\u5224\u65ad\uff0c\u518d\u51b3\u5b9a\u4e0b\u4e00\u6b65\u3002`
+    ].join("");
+  }
+
+  return [
+    "Thanks, this reply overlaps with the public profile.",
+    ` The relevant public context is: ${summary}.`,
+    ` I'll bring it back to ${person} before anything more personal.`
+  ].join("");
+}
+
+function containsCJK(value: string) {
+  return /[\u3400-\u9fff]/.test(value);
 }
 
 function saveForHuman(input: AgentHeartbeatInput, home: NetworkingAgentHome, task: NetworkingAgentTask, reasonCode: string): AgentHeartbeatResult {

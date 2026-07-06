@@ -22,29 +22,34 @@ describe("local demo networking state", () => {
     expect(state.profiles.length).toBeGreaterThanOrEqual(4);
   });
 
-  it("returns a local network after agent loop writes visible AI comments", () => {
+  it("returns a local network after agent loop records private candidate actions", () => {
     const network = getLocalDemoNetwork();
 
-    const jobsAgentComment = network.items.find(
-      (item) =>
-        item.kind === "comment" &&
-        item.id.startsWith("agent-") &&
-        item.platformID === "knowyou-jobs" &&
-        item.authorType === "ai" &&
-        item.profile.id === "profile-shuhan-jobs"
+    expect(
+      network.items.some(
+        (item) =>
+          item.id.startsWith("agent-") &&
+          item.authorType === "ai" &&
+          !item.parentCommentID &&
+          ["p2", "p4"].includes(item.parentPostID ?? "")
+      )
+    ).toBe(false);
+    expect(network.activities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          activityType: "saved_for_human",
+          platformID: "knowyou-jobs",
+          publicReferenceID: "p2",
+          reasonCode: "semantic_profile_overlap"
+        }),
+        expect.objectContaining({
+          activityType: "saved_for_human",
+          platformID: "knowyou-friends",
+          publicReferenceID: "p4",
+          reasonCode: "semantic_profile_overlap"
+        })
+      ])
     );
-    const friendsAgentComment = network.items.find(
-      (item) =>
-        item.kind === "comment" &&
-        item.id.startsWith("agent-") &&
-        item.platformID === "knowyou-friends" &&
-        item.authorType === "ai" &&
-        item.profile.id === "profile-shuhan-friends"
-    );
-
-    expect(jobsAgentComment?.parentPostID).toBe("p2");
-    expect(friendsAgentComment?.parentPostID).toBe("p4");
-    expect(network.activities.map((activity) => activity.activityType)).toContain("auto_comment");
   });
 
   it("does not create cross-community agent comments", () => {

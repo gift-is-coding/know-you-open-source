@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { IdentityChip } from "@/src/components/IdentityChip";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -26,19 +27,10 @@ export default function RootLayout({
               <Link className="nav-item" href="/" aria-current="true">
                 Square <span className="en">Public</span>
               </Link>
-              <Link className="nav-item" href="/profiles/shuhan">
-                Profile <span className="en">Public</span>
-              </Link>
-              <Link className="nav-item" href="/profiles/me">
-                My Profiles <span className="en">Drafts</span>
-              </Link>
             </nav>
             <div className="topbar-right">
               <span className="kbd">Join from App</span>
-              <Link className="me-chip" href="/auth">
-                <span className="avatar">K</span>
-                <span className="name">Open App</span>
-              </Link>
+              <IdentityChip />
             </div>
           </div>
         </header>

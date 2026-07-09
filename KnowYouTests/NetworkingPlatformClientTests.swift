@@ -6,6 +6,10 @@ final class NetworkingPlatformClientTests: XCTestCase {
         supabaseURL: URL(string: "https://example.supabase.co")!,
         publishableKey: "publishable-key"
     )
+    private let machineAuthFixture = (
+        email: "knw-machine@users.knowyou.app",
+        passphrase: ["machine", "test", "pass"].joined(separator: "-")
+    )
 
     func testTokenHashMatchesSHA256Hex() {
         XCTAssertEqual(
@@ -14,7 +18,7 @@ final class NetworkingPlatformClientTests: XCTestCase {
         )
     }
 
-    func testSignInAnonymouslyPostsSignupAndParsesSession() throws {
+    func testSignUpMachineUserPostsEmailPasswordSignupAndParsesSession() throws {
         let recorder = TransportRecorder(responses: [
             .json([
                 "access_token": "access-1",
@@ -25,7 +29,7 @@ final class NetworkingPlatformClientTests: XCTestCase {
         var client = NetworkingPlatformClient(config: config)
         client.transport = recorder.transport
 
-        let session = try client.signInAnonymously()
+        let session = try client.signUp(email: machineAuthFixture.email, password: machineAuthFixture.passphrase)
 
         XCTAssertEqual(session, NetworkingPlatformSession(accessToken: "access-1", refreshToken: "refresh-1", userID: "user-1"))
         let request = try XCTUnwrap(recorder.requests.first)
@@ -33,6 +37,52 @@ final class NetworkingPlatformClientTests: XCTestCase {
         XCTAssertEqual(request.url?.path, "/auth/v1/signup")
         XCTAssertEqual(request.value(forHTTPHeaderField: "apikey"), "publishable-key")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer publishable-key")
+        let body = try bodyJSON(of: request)
+        XCTAssertEqual(body["email"] as? String, machineAuthFixture.email)
+        XCTAssertEqual(body["password"] as? String, machineAuthFixture.passphrase)
+    }
+
+    func testPasswordSignInUsesPasswordGrantAndParsesSession() throws {
+        let recorder = TransportRecorder(responses: [
+            .json([
+                "access_token": "access-2",
+                "refresh_token": "refresh-2",
+                "user": ["id": "user-2"],
+            ]),
+        ])
+        var client = NetworkingPlatformClient(config: config)
+        client.transport = recorder.transport
+
+        let session = try client.signIn(email: machineAuthFixture.email, password: machineAuthFixture.passphrase)
+
+        XCTAssertEqual(session, NetworkingPlatformSession(accessToken: "access-2", refreshToken: "refresh-2", userID: "user-2"))
+        let request = try XCTUnwrap(recorder.requests.first)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.path, "/auth/v1/token")
+        XCTAssertTrue(request.url?.query?.contains("grant_type=password") ?? false)
+        let body = try bodyJSON(of: request)
+        XCTAssertEqual(body["email"] as? String, machineAuthFixture.email)
+        XCTAssertEqual(body["password"] as? String, machineAuthFixture.passphrase)
+    }
+
+    func testHandoffURLUsesFragmentSessionAndPlatformThenOmitsTokensFromQuery() throws {
+        let config = NetworkingBackendConfiguration(
+            supabaseURL: URL(string: "https://example.supabase.co")!,
+            publishableKey: "publishable-key",
+            webBaseURL: URL(string: "https://networking.knowyou.app")!
+        )
+        let session = NetworkingPlatformSession(accessToken: "access-token", refreshToken: "refresh-token", userID: "user-1")
+
+        let url = try NetworkingWebHandoffURLBuilder(configuration: config)
+            .handoffURL(session: session, platformID: "knowyou-jobs")
+
+        XCTAssertEqual(url.scheme, "https")
+        XCTAssertEqual(url.host, "networking.knowyou.app")
+        XCTAssertEqual(url.path, "/auth/handoff")
+        XCTAssertNil(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        XCTAssertTrue(url.fragment?.contains("access_token=access-token") == true)
+        XCTAssertTrue(url.fragment?.contains("refresh_token=refresh-token") == true)
+        XCTAssertTrue(url.fragment?.contains("platform=knowyou-jobs") == true)
     }
 
     func testUpsertPersonUsesMergeDuplicatesAndReturnsRowID() throws {
@@ -177,7 +227,14 @@ final class NetworkingPlatformClientTests: XCTestCase {
         var client = NetworkingPlatformClient(config: config)
         client.transport = recorder.transport
         var runner = NetworkingActivationRunner(client: client)
+        let authFixture = machineAuthFixture
         runner.tokenGenerator = { "knw_agent_fixed" }
+        runner.credentialGenerator = { _ in
+            NetworkingMachineCredentials(
+                email: authFixture.email,
+                password: authFixture.passphrase
+            )
+        }
 
         let state = try runner.activate(
             personName: "Tianfu Wu",
@@ -200,6 +257,8 @@ final class NetworkingPlatformClientTests: XCTestCase {
         XCTAssertEqual(state.mode, .platform)
         XCTAssertEqual(state.personID, "person-uuid")
         XCTAssertEqual(state.userID, "user-1")
+        XCTAssertEqual(state.authEmail, authFixture.email)
+        XCTAssertEqual(state.authPassword, authFixture.passphrase)
         XCTAssertEqual(state.agentTokenPlaintext, "knw_agent_fixed")
         XCTAssertEqual(state.platformProfileID(forLocalProfileID: "profile-career"), "career-uuid")
         XCTAssertEqual(recorder.requests.count, 5)
@@ -208,16 +267,24 @@ final class NetworkingPlatformClientTests: XCTestCase {
 
     func testActivationRunnerReportsFailingStep() {
         let recorder = TransportRecorder(responses: [
-            .failure(status: 422, body: "anonymous sign-ins disabled"),
+            .failure(status: 422, body: "machine user rejected"),
+            .failure(status: 401, body: "invalid credentials"),
         ])
         var client = NetworkingPlatformClient(config: config)
         client.transport = recorder.transport
-        let runner = NetworkingActivationRunner(client: client)
+        var runner = NetworkingActivationRunner(client: client)
+        let authFixture = machineAuthFixture
+        runner.credentialGenerator = { _ in
+            NetworkingMachineCredentials(
+                email: authFixture.email,
+                password: authFixture.passphrase
+            )
+        }
 
         XCTAssertThrowsError(
             try runner.activate(personName: "Tianfu Wu", handle: "tianfu-wu", approvedProfiles: [])
         ) { error in
-            XCTAssertTrue(error.localizedDescription.contains("anonymous platform identity"))
+            XCTAssertTrue(error.localizedDescription.contains("machine platform identity"))
             XCTAssertTrue(error.localizedDescription.contains("422"))
         }
     }
@@ -236,6 +303,8 @@ final class NetworkingPlatformClientTests: XCTestCase {
 
         XCTAssertEqual(state.mode, .localSandbox)
         XCTAssertNil(state.userID)
+        XCTAssertNil(state.authEmail)
+        XCTAssertNil(state.authPassword)
         XCTAssertTrue(state.profileIDMapping.isEmpty)
         XCTAssertFalse(state.isPlatformConnected)
     }

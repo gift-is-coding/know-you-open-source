@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct NetworkingCockpitView: View {
@@ -13,6 +14,7 @@ struct NetworkingCockpitView: View {
     @State private var generatedDrafts: [String: NetworkingProfileDraft] = [:]
     @State private var generationStatus: NetworkingGenerationStatus = .idle
     @State private var approvedProfileIDs: Set<String> = []
+    @State private var profileApprovalState = NetworkingProfileApprovalState()
     @State private var attemptedAutoGenerationProfileIDs: Set<String> = []
     @State private var customProfileConfigurations: [NetworkingCustomProfileConfiguration] = []
     @State private var isAddingCustomProfile = false
@@ -229,7 +231,11 @@ struct NetworkingCockpitView: View {
                             profile: profile,
                             isSelected: platform.id == selectedPlatformID,
                             isAgentReady: activationStatus.isReady,
-                            isProfileApproved: approvedProfileIDs.contains(profile.id)
+                            isProfileApproved: approvedProfileIDs.contains(profile.id),
+                            canOpenSquare: canOpenSquare(platform: platform, profile: profile),
+                            onOpenSquare: {
+                                openSquare(platformID: platform.id)
+                            }
                         ) {
                             selectedPlatformID = platform.id
                         }
@@ -241,6 +247,13 @@ struct NetworkingCockpitView: View {
                     profile: selectedPlatform.assignedProfile(in: profiles) ?? profiles[0],
                     isAgentReady: activationStatus.isReady,
                     isProfileApproved: approvedProfileIDs.contains(selectedPlatform.assignedProfileID),
+                    canOpenSquare: canOpenSquare(
+                        platform: selectedPlatform,
+                        profile: selectedPlatform.assignedProfile(in: profiles) ?? profiles[0]
+                    ),
+                    onOpenSquare: {
+                        openSquare(platformID: selectedPlatform.id)
+                    },
                     items: filteredInboxItems
                 )
             }
@@ -262,46 +275,7 @@ struct NetworkingCockpitView: View {
             return items
         }
 
-        // Real platform mode shows the honest empty state instead of demo rows.
-        if activationState?.isPlatformConnected == true {
-            return []
-        }
-
-        return fallbackInboxItems.filter { item in
-            item.platformID == selectedPlatformID
-        }
-    }
-
-    private var fallbackInboxItems: [NetworkingCockpitItem] {
-        [
-            NetworkingCockpitItem(
-                id: "jobs-highlight",
-                direction: .highlight,
-                title: "Worth reaching out",
-                publicSummary: "A founder is looking for someone with local-first agent product experience in Know You Careers.",
-                privateReason: "My Wiki connects this to current KnowYou Networking and agent runtime work.",
-                publicReferenceID: "post-careers-1",
-                platformID: "knowyou-jobs"
-            ),
-            NetworkingCockpitItem(
-                id: "jobs-activity",
-                direction: .activity,
-                title: "Agent prepared a reply",
-                publicSummary: "The local agent drafted a labeled AI comment as Tianfu Wu · Career / Hiring · AI.",
-                privateReason: "Written through the local Networking MCP after activation and token permission.",
-                publicReferenceID: "comment-agent-1",
-                platformID: "knowyou-jobs"
-            ),
-            NetworkingCockpitItem(
-                id: "friends-inbound",
-                direction: .inbound,
-                title: "Inbound interaction",
-                publicSummary: "Someone replied to the Friends profile with hiking, film photography, and small weekend gatherings.",
-                privateReason: "Lifestyle overlap is high; source evidence stays local.",
-                publicReferenceID: "comment-friends-1",
-                platformID: "knowyou-friends"
-            ),
-        ]
+        return []
     }
 
     private var profiles: [NetworkingGeneratedProfile] {
@@ -433,34 +407,15 @@ struct NetworkingCockpitView: View {
             return
         }
 
-        guard let config = NetworkingPlatformConfigStore().load(projectRoot: projectRoot) else {
-            prepareLocalSandboxState(store: store, projectRoot: projectRoot)
+        let storedConfig = NetworkingPlatformConfigStore().load(projectRoot: projectRoot)
+        guard let backendConfiguration = NetworkingBackendConfiguration.resolved(fallbackPlatformConfig: storedConfig) else {
+            activationStatus = .failed(
+                "Networking platform is not configured. Set KNOWYOU_NETWORKING_SUPABASE_URL and KNOWYOU_NETWORKING_SUPABASE_PUBLISHABLE_KEY, or save a platform config for this My Wiki root."
+            )
             return
         }
 
-        runPlatformActivation(config: config, store: store, projectRoot: projectRoot)
-    }
-
-    private func prepareLocalSandboxState(store: NetworkingActivationStateStore, projectRoot: URL) {
-        let safePersonID = activePersonName
-            .lowercased()
-            .replacingOccurrences(of: " ", with: "-")
-        let state = NetworkingActivationState(
-            isEnabled: true,
-            personID: "local-\(safePersonID)",
-            agentTokenPlaintext: "knw_agent_local_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())",
-            supabaseURL: URL(string: "https://local.knowyou.invalid")!,
-            publishableKey: "local-dev",
-            mode: .localSandbox
-        )
-
-        do {
-            try store.save(state, projectRoot: projectRoot)
-            activationState = state
-            activationStatus = .ready
-        } catch {
-            activationStatus = .failed("Could not prepare local agent permission: \(error.localizedDescription)")
-        }
+        runPlatformActivation(config: backendConfiguration.platformConfig, store: store, projectRoot: projectRoot)
     }
 
     private func runPlatformActivation(
@@ -505,23 +460,15 @@ struct NetworkingCockpitView: View {
         )
         let token = state.agentTokenPlaintext
         let platformIDs = platforms.map(\.id)
+        guard let projectRoot else { return }
 
         Task {
             let items = await Task.detached(priority: .utility) { () -> [NetworkingCockpitItem] in
-                var collected: [NetworkingCockpitItem] = []
-                for platformID in platformIDs {
-                    do {
-                        let home = try client.agentHome(token: token, platformID: platformID)
-                        collected.append(
-                            contentsOf: NetworkingCockpitPresentation.cockpitItems(fromAgentHome: home, platformID: platformID)
-                        )
-                    } catch {
-                        // Membership may not exist yet for this community; other
-                        // communities should still load.
-                        continue
-                    }
-                }
-                return collected
+                NetworkingInboxService(client: client).loadInbox(
+                    projectRoot: projectRoot,
+                    token: token,
+                    platformIDs: platformIDs
+                )
             }.value
             await MainActor.run {
                 platformItems = items
@@ -591,14 +538,23 @@ struct NetworkingCockpitView: View {
                     agentTokenPlaintext: state.agentTokenPlaintext,
                     supabaseURL: state.supabaseURL,
                     publishableKey: state.publishableKey,
+                    authEmail: state.authEmail,
+                    authPassword: state.authPassword,
                     mode: state.mode,
                     userID: state.userID,
                     refreshToken: published.refreshToken,
                     profileIDMapping: mapping
                 )
                 try NetworkingActivationStateStore().save(nextState, projectRoot: projectRoot)
+                let nextApprovalState = profileApprovalState.recordingSync(
+                    localProfileID: registration.localProfileID,
+                    serverProfileID: published.profileID
+                )
+                try NetworkingProfileApprovalStateStore().save(nextApprovalState, projectRoot: projectRoot)
                 await MainActor.run {
                     activationState = nextState
+                    profileApprovalState = nextApprovalState
+                    approvedProfileIDs = nextApprovalState.approvedProfileIDs
                     loadPlatformInbox()
                 }
             } catch {
@@ -613,9 +569,10 @@ struct NetworkingCockpitView: View {
 
     private func loadApprovalState() {
         guard let projectRoot else { return }
-        approvedProfileIDs = NetworkingProfileApprovalStateStore()
+        let state = NetworkingProfileApprovalStateStore()
             .load(projectRoot: projectRoot)
-            .approvedProfileIDs
+        profileApprovalState = state
+        approvedProfileIDs = state.approvedProfileIDs
     }
 
     private func loadDraftState() {
@@ -756,14 +713,66 @@ struct NetworkingCockpitView: View {
               generatedDrafts[selectedProfile.id] != nil else {
             return
         }
-        let nextState = NetworkingProfileApprovalState(approvedProfileIDs: approvedProfileIDs)
-            .approving(selectedProfile.id)
+        let nextState = profileApprovalState.approving(selectedProfile.id)
         do {
             try NetworkingProfileApprovalStateStore().save(nextState, projectRoot: projectRoot)
+            profileApprovalState = nextState
             approvedProfileIDs = nextState.approvedProfileIDs
             publishApprovedProfileToPlatform(selectedProfile)
         } catch {
             activationStatus = .failed("Could not save profile approval: \(error.localizedDescription)")
+        }
+    }
+
+    private func canOpenSquare(
+        platform: NetworkingPlatformConfiguration,
+        profile: NetworkingGeneratedProfile
+    ) -> Bool {
+        guard activationStatus.isReady,
+              activationState?.isPlatformConnected == true,
+              approvedProfileIDs.contains(profile.id) else {
+            return false
+        }
+        return activationState?.platformProfileID(forLocalProfileID: profile.id) != nil
+            || profileApprovalState.syncRecordsByProfileID[profile.id] != nil
+    }
+
+    private func openSquare(platformID: String) {
+        guard let state = activationState,
+              state.isPlatformConnected,
+              let email = state.authEmail,
+              let password = state.authPassword else {
+            activationStatus = .failed("Open Square needs a platform identity from the latest Networking activation.")
+            return
+        }
+
+        let backendConfiguration = NetworkingBackendConfiguration.resolved(
+            fallbackPlatformConfig: NetworkingPlatformConfig(
+                supabaseURL: state.supabaseURL,
+                publishableKey: state.publishableKey
+            )
+        ) ?? NetworkingBackendConfiguration(
+            supabaseURL: state.supabaseURL,
+            publishableKey: state.publishableKey,
+            webBaseURL: URL(string: "http://127.0.0.1:3028")!
+        )
+        let client = NetworkingPlatformClient(config: backendConfiguration.platformConfig)
+        let builder = NetworkingWebHandoffURLBuilder(configuration: backendConfiguration)
+
+        Task {
+            do {
+                let url = try await Task.detached(priority: .userInitiated) {
+                    let session = try client.signIn(email: email, password: password)
+                    return try builder.handoffURL(session: session, platformID: platformID)
+                }.value
+                await MainActor.run {
+                    _ = NSWorkspace.shared.open(url)
+                }
+            } catch {
+                await MainActor.run {
+                    activationStatus = .failed("Could not open Networking Square: \(error.localizedDescription)")
+                }
+            }
         }
     }
 
@@ -1498,6 +1507,8 @@ private struct CommunityBindingCard: View {
     let isSelected: Bool
     let isAgentReady: Bool
     let isProfileApproved: Bool
+    let canOpenSquare: Bool
+    let onOpenSquare: () -> Void
     let onSelect: () -> Void
 
     var body: some View {
@@ -1539,10 +1550,21 @@ private struct CommunityBindingCard: View {
                     PlatformStat(title: "Highlights", value: platform.activity.highlights)
                 }
 
-                Text(statusMessage)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .center, spacing: 10) {
+                    Text(statusMessage)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button {
+                        onOpenSquare()
+                    } label: {
+                        Label("Open Square", systemImage: "arrow.up.right.square")
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+                    .disabled(canOpenSquare == false)
+                }
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1563,6 +1585,9 @@ private struct CommunityBindingCard: View {
         guard isProfileApproved else {
             return "Approve the matched profile before agent automation starts."
         }
+        guard canOpenSquare else {
+            return "Profile is approved locally; platform sync is still catching up."
+        }
         return "Agent can use this approved profile through local MCP."
     }
 }
@@ -1572,6 +1597,8 @@ private struct SelectedCommunityDetail: View {
     let profile: NetworkingGeneratedProfile
     let isAgentReady: Bool
     let isProfileApproved: Bool
+    let canOpenSquare: Bool
+    let onOpenSquare: () -> Void
     let items: [NetworkingCockpitItem]
 
     var body: some View {
@@ -1588,6 +1615,13 @@ private struct SelectedCommunityDetail: View {
                 Spacer()
                 StatusPill(text: isAgentReady ? "Agent ready locally" : "Agent pending", color: isAgentReady ? .green : .orange)
                 StatusPill(text: isProfileApproved ? "Approved profile" : "Needs approval", color: isProfileApproved ? .green : .orange)
+                Button {
+                    onOpenSquare()
+                } label: {
+                    Label("Open Square", systemImage: "arrow.up.right.square")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(canOpenSquare == false)
             }
 
             HStack(spacing: 8) {

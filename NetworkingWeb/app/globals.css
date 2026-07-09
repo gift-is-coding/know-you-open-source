@@ -786,6 +786,34 @@ body[data-ai-style="border"] .comment.ai {
   border-radius: var(--radius-lg);
   background: var(--paper);
 }
+.readonly-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+.readonly-profile-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  padding: 18px;
+}
+.readonly-profile-card p {
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+.readonly-platforms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+.readonly-platforms span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 12px;
+  padding: 5px 8px;
+}
 .draft-panel-head {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -1494,6 +1522,9 @@ body[data-ai-style="border"] .comment.ai {
   gap: 8px;
   color: var(--ink-2);
   border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
 }
 .community-option:hover {
   color: var(--ink);
@@ -1511,6 +1542,14 @@ body[data-ai-style="border"] .comment.ai {
   font-family: var(--mono);
   font-size: 10.5px;
   letter-spacing: 0.04em;
+}
+
+.community-panel {
+  display: none;
+}
+.community-panels[data-active-platform="knowyou-jobs"] [data-platform-panel="knowyou-jobs"],
+.community-panels[data-active-platform="knowyou-friends"] [data-platform-panel="knowyou-friends"] {
+  display: block;
 }
 
 .profile-strip {

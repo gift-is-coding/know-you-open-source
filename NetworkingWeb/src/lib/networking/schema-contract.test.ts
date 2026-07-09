@@ -166,10 +166,10 @@ describe("networking schema contract", () => {
     expect(migrationSQL).not.toContain("my_wiki_evidence");
   });
 
-  it("documents anonymous App activation as authenticated owner writes", () => {
-    expect(networkingSchemaContract.authModes).toEqual(["supabaseAnonymous"]);
+  it("documents machine-user App activation as authenticated owner writes", () => {
+    expect(networkingSchemaContract.authModes).toEqual(["supabaseMachineUser"]);
     expect(networkingSchemaContract.policySummary).toContain(
-      "App activation uses Supabase anonymous sign-in, which writes as authenticated owner."
+      "App activation uses a Supabase machine user, which writes as authenticated owner."
     );
     expect(migrationSQL).toContain("knowyou-jobs");
     expect(migrationSQL).toContain("knowyou-friends");

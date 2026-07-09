@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-struct NetworkingPlatformConfig: Codable, Equatable {
+struct NetworkingPlatformConfig: Codable, Equatable, Sendable {
     let supabaseURL: URL
     let publishableKey: String
 }
@@ -29,7 +29,68 @@ struct NetworkingPlatformConfigStore {
     }
 }
 
-struct NetworkingPlatformSession: Codable, Equatable {
+struct NetworkingBackendConfiguration: Equatable, Sendable {
+    let supabaseURL: URL
+    let publishableKey: String
+    let webBaseURL: URL
+
+    static func resolved(
+        processInfo: ProcessInfo = .processInfo,
+        fallbackPlatformConfig: NetworkingPlatformConfig? = nil
+    ) -> NetworkingBackendConfiguration? {
+        let environment = processInfo.environment
+        let supabaseURL = environment["KNOWYOU_NETWORKING_SUPABASE_URL"]
+            .flatMap(URL.init(string:))
+            ?? fallbackPlatformConfig?.supabaseURL
+        let publishableKey = environment["KNOWYOU_NETWORKING_SUPABASE_PUBLISHABLE_KEY"]
+            ?? fallbackPlatformConfig?.publishableKey
+        let webBaseURL = environment["KNOWYOU_NETWORKING_WEB_BASE_URL"]
+            .flatMap(URL.init(string:))
+            ?? URL(string: "http://127.0.0.1:3028")
+
+        guard let supabaseURL,
+              let publishableKey,
+              publishableKey.isEmpty == false,
+              let webBaseURL else {
+            return nil
+        }
+
+        return NetworkingBackendConfiguration(
+            supabaseURL: supabaseURL,
+            publishableKey: publishableKey,
+            webBaseURL: webBaseURL
+        )
+    }
+
+    var platformConfig: NetworkingPlatformConfig {
+        NetworkingPlatformConfig(supabaseURL: supabaseURL, publishableKey: publishableKey)
+    }
+}
+
+struct NetworkingWebHandoffURLBuilder: Sendable {
+    let configuration: NetworkingBackendConfiguration
+
+    func handoffURL(session: NetworkingPlatformSession, platformID: String) throws -> URL {
+        var components = URLComponents(
+            url: configuration.webBaseURL.appending(path: "auth/handoff"),
+            resolvingAgainstBaseURL: false
+        )
+        var fragment = URLComponents()
+        fragment.queryItems = [
+            URLQueryItem(name: "access_token", value: session.accessToken),
+            URLQueryItem(name: "refresh_token", value: session.refreshToken),
+            URLQueryItem(name: "platform", value: platformID),
+        ]
+        components?.fragment = fragment.percentEncodedQuery
+
+        guard let url = components?.url else {
+            throw NetworkingPlatformClientError.invalidResponse
+        }
+        return url
+    }
+}
+
+struct NetworkingPlatformSession: Codable, Equatable, Sendable {
     let accessToken: String
     let refreshToken: String
     let userID: String
@@ -67,12 +128,29 @@ struct NetworkingPlatformClient: Sendable {
 
     // MARK: - Auth
 
-    func signInAnonymously() throws -> NetworkingPlatformSession {
+    func signUp(email: String, password: String) throws -> NetworkingPlatformSession {
         let data = try send(
             path: "auth/v1/signup",
             method: "POST",
             bearer: config.publishableKey,
-            body: [:]
+            body: [
+                "email": email,
+                "password": password,
+            ]
+        )
+        return try decodeSession(from: data)
+    }
+
+    func signIn(email: String, password: String) throws -> NetworkingPlatformSession {
+        let data = try send(
+            path: "auth/v1/token",
+            query: [URLQueryItem(name: "grant_type", value: "password")],
+            method: "POST",
+            bearer: config.publishableKey,
+            body: [
+                "email": email,
+                "password": password,
+            ]
         )
         return try decodeSession(from: data)
     }
@@ -88,7 +166,7 @@ struct NetworkingPlatformClient: Sendable {
         return try decodeSession(from: data)
     }
 
-    // MARK: - Owner writes (authenticated anonymous user, gated by RLS)
+    // MARK: - Owner writes (authenticated machine user, gated by RLS)
 
     func upsertPerson(session: NetworkingPlatformSession, displayName: String, handle: String) throws -> String {
         let data = try send(
@@ -268,6 +346,25 @@ struct NetworkingPlatformClient: Sendable {
         return try scalarString(from: data, context: "agent decision")
     }
 
+    func fetchPublicSquare(platformID: String, limit: Int = 50) throws -> [[String: Any]] {
+        let data = try send(
+            path: "rest/v1/posts",
+            query: [
+                URLQueryItem(name: "select", value: "id,platform_id,body,author_type,created_at"),
+                URLQueryItem(name: "platform_id", value: "eq.\(platformID)"),
+                URLQueryItem(name: "is_public", value: "eq.true"),
+                URLQueryItem(name: "order", value: "created_at.desc"),
+                URLQueryItem(name: "limit", value: "\(limit)"),
+            ],
+            method: "GET",
+            bearer: config.publishableKey
+        )
+        guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            throw NetworkingPlatformClientError.invalidResponse
+        }
+        return rows
+    }
+
     // MARK: - Request plumbing
 
     private func send(
@@ -276,7 +373,7 @@ struct NetworkingPlatformClient: Sendable {
         method: String,
         bearer: String,
         preferHeader: String? = nil,
-        body: [String: Any]
+        body: [String: Any]? = nil
     ) throws -> Data {
         var components = URLComponents(
             url: config.supabaseURL.appending(path: path),
@@ -293,11 +390,13 @@ struct NetworkingPlatformClient: Sendable {
         request.httpMethod = method
         request.setValue(config.publishableKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let preferHeader {
             request.setValue(preferHeader, forHTTPHeaderField: "Prefer")
         }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+        }
 
         let (data, response) = try transport(request)
         guard (200 ..< 300).contains(response.statusCode) else {

@@ -184,6 +184,7 @@
 		BB0000010000000000000008 /* NetworkingPlatformClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000008 /* NetworkingPlatformClient.swift */; };
 		BB0000010000000000000009 /* NetworkingActivationRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000009 /* NetworkingActivationRunner.swift */; };
 		BB000001000000000000000A /* NetworkingPlatformClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000101000000000000000A /* NetworkingPlatformClientTests.swift */; };
+		BB000001000000000000000B /* NetworkingInboxService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000101000000000000000B /* NetworkingInboxService.swift */; };
 		F30000010000000000000001 /* MyWikiProjectExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F30001010000000000000001 /* MyWikiProjectExporterTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -374,6 +375,7 @@
 		BB0001010000000000000008 /* NetworkingPlatformClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingPlatformClient.swift; sourceTree = "<group>"; };
 		BB0001010000000000000009 /* NetworkingActivationRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingActivationRunner.swift; sourceTree = "<group>"; };
 		BB000101000000000000000A /* NetworkingPlatformClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingPlatformClientTests.swift; sourceTree = "<group>"; };
+		BB000101000000000000000B /* NetworkingInboxService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingInboxService.swift; sourceTree = "<group>"; };
 		CC65D0D6C87D9610C4CF1873 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = KnowYou/Assets.xcassets; sourceTree = "<group>"; };
 		E7177E38EFF3DA333280EFBA /* KnowledgeOntologyPanel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = KnowledgeOntologyPanel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -453,6 +455,7 @@
 				BB0001010000000000000005 /* NetworkingMCPCommand.swift */,
 				BB0001010000000000000008 /* NetworkingPlatformClient.swift */,
 				BB0001010000000000000009 /* NetworkingActivationRunner.swift */,
+				BB000101000000000000000B /* NetworkingInboxService.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -1091,6 +1094,7 @@
 				BB0000010000000000000005 /* NetworkingMCPCommand.swift in Sources */,
 				BB0000010000000000000008 /* NetworkingPlatformClient.swift in Sources */,
 				BB0000010000000000000009 /* NetworkingActivationRunner.swift in Sources */,
+				BB000001000000000000000B /* NetworkingInboxService.swift in Sources */,
 				850000010000000000000002 /* MyWikiNavigationResolver.swift in Sources */,
 				860000010000000000000001 /* MyWikiIngestProgressStore.swift in Sources */,
 				870000010000000000000001 /* MyWikiSourceLibrary.swift in Sources */,

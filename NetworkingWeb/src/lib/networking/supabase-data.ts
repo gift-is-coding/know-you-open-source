@@ -377,34 +377,34 @@ export async function getAgentHomePreview(platformID?: string): Promise<Networki
 
   try {
     const supabase = await createClient();
-    const { data: person } = await supabase.from("people").select("id, display_name, handle").eq("handle", "shuhan").single();
-    if (!person) {
-      return null;
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id, label, slug, scenario_id, scenario_description, avatar_seed, avatar_style, platform_ids, summary, is_published")
-      .eq("person_id", person.id)
-      .eq("is_published", true)
-      .contains("platform_ids", [normalizedPlatformID])
-      .limit(1)
-      .single();
-
-    if (!profile) {
-      return null;
-    }
-
     const { data: membership } = await supabase
       .from("community_memberships")
       .select("community_id, person_id, profile_id, status, policy, last_heartbeat_at, last_candidate_seen_at")
       .eq("community_id", normalizedPlatformID)
-      .eq("profile_id", profile.id)
-      .single();
+      .eq("status", "active")
+      .limit(1)
+      .maybeSingle();
 
     if (!membership) {
       return null;
     }
+
+    const [personResult, profileResult] = await Promise.all([
+      supabase.from("people").select("id, display_name, handle").eq("id", membership.person_id).maybeSingle(),
+      supabase
+        .from("profiles")
+        .select("id, label, slug, scenario_id, scenario_description, avatar_seed, avatar_style, platform_ids, summary, is_published")
+        .eq("id", membership.profile_id)
+        .eq("is_published", true)
+        .contains("platform_ids", [normalizedPlatformID])
+        .maybeSingle()
+    ]);
+
+    if (!personResult.data || !profileResult.data) {
+      return null;
+    }
+    const person = personResult.data as PersonRow;
+    const profile = profileResult.data as ProfileRow;
 
     const { data: events } = await supabase
       .from("public_interaction_events")
@@ -421,8 +421,8 @@ export async function getAgentHomePreview(platformID?: string): Promise<Networki
 
     return buildAgentHome({
       now: new Date(),
-      person: mapPerson(person as PersonRow),
-      profile: mapProfile(profile as ProfileRow, person.display_name as string),
+      person: mapPerson(person),
+      profile: mapProfile(profile, person.display_name),
       membership: mapMembership(membership as MembershipRow),
       items,
       events: (events ?? []).map((event) => mapInteractionEvent(event as InteractionEventRow)),

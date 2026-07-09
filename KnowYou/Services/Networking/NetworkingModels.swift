@@ -345,15 +345,29 @@ struct NetworkingPlatformConfiguration: Codable, Equatable, Identifiable {
     }
 }
 
+struct NetworkingProfileSyncRecord: Codable, Equatable {
+    let serverProfileID: String
+    let syncedAt: Date
+}
+
 struct NetworkingProfileApprovalState: Codable, Equatable {
     let approvedProfileIDs: Set<String>
+    let syncRecordsByProfileID: [String: NetworkingProfileSyncRecord]
 
-    init(approvedProfileIDs: Set<String> = []) {
+    init(
+        approvedProfileIDs: Set<String> = [],
+        syncRecordsByProfileID: [String: NetworkingProfileSyncRecord] = [:]
+    ) {
         self.approvedProfileIDs = approvedProfileIDs
+        self.syncRecordsByProfileID = syncRecordsByProfileID
     }
 
-    init(approvedProfileIDs: [String]) {
+    init(
+        approvedProfileIDs: [String],
+        syncRecordsByProfileID: [String: NetworkingProfileSyncRecord] = [:]
+    ) {
         self.approvedProfileIDs = Set(approvedProfileIDs)
+        self.syncRecordsByProfileID = syncRecordsByProfileID
     }
 
     func contains(_ profileID: String) -> Bool {
@@ -363,7 +377,42 @@ struct NetworkingProfileApprovalState: Codable, Equatable {
     func approving(_ profileID: String) -> NetworkingProfileApprovalState {
         var nextIDs = approvedProfileIDs
         nextIDs.insert(profileID)
-        return NetworkingProfileApprovalState(approvedProfileIDs: nextIDs)
+        return NetworkingProfileApprovalState(
+            approvedProfileIDs: nextIDs,
+            syncRecordsByProfileID: syncRecordsByProfileID
+        )
+    }
+
+    func recordingSync(
+        localProfileID: String,
+        serverProfileID: String,
+        syncedAt: Date = Date()
+    ) -> NetworkingProfileApprovalState {
+        var nextIDs = approvedProfileIDs
+        nextIDs.insert(localProfileID)
+        var nextRecords = syncRecordsByProfileID
+        nextRecords[localProfileID] = NetworkingProfileSyncRecord(
+            serverProfileID: serverProfileID,
+            syncedAt: syncedAt
+        )
+        return NetworkingProfileApprovalState(
+            approvedProfileIDs: nextIDs,
+            syncRecordsByProfileID: nextRecords
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case approvedProfileIDs
+        case syncRecordsByProfileID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        approvedProfileIDs = try container.decodeIfPresent(Set<String>.self, forKey: .approvedProfileIDs) ?? []
+        syncRecordsByProfileID = try container.decodeIfPresent(
+            [String: NetworkingProfileSyncRecord].self,
+            forKey: .syncRecordsByProfileID
+        ) ?? [:]
     }
 }
 
@@ -431,14 +480,14 @@ struct NetworkingPublicContent: Codable, Equatable, Identifiable {
     let createdAt: Date
 }
 
-enum NetworkingCockpitDirection: String, Codable, Equatable, CaseIterable {
+enum NetworkingCockpitDirection: String, Codable, Equatable, CaseIterable, Sendable {
     case highlight
     case inbound
     case outbound
     case activity
 }
 
-struct NetworkingCockpitItem: Codable, Equatable, Identifiable {
+struct NetworkingCockpitItem: Codable, Equatable, Identifiable, Sendable {
     let id: String
     let direction: NetworkingCockpitDirection
     let title: String

@@ -22,7 +22,12 @@ enum NetworkingActivationRunnerError: LocalizedError {
     }
 }
 
-/// Executes a real platform activation: anonymous sign-in, person/profile sync,
+struct NetworkingMachineCredentials: Equatable, Sendable {
+    let email: String
+    let password: String
+}
+
+/// Executes a real platform activation: machine-user sign-in, person/profile sync,
 /// agent token registration (hash only reaches the platform), and community
 /// membership activation. The plaintext token stays in local activation state.
 struct NetworkingActivationRunner: Sendable {
@@ -30,18 +35,46 @@ struct NetworkingActivationRunner: Sendable {
     var tokenGenerator: @Sendable () -> String = {
         "knw_agent_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
     }
+    var credentialGenerator: @Sendable (_ handle: String) -> NetworkingMachineCredentials = { handle in
+        let safeHandle = handle
+            .lowercased()
+            .unicodeScalars
+            .map { CharacterSet.alphanumerics.contains($0) ? Character($0) : "-" }
+            .reduce(into: "") { $0.append($1) }
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        let prefix = safeHandle.isEmpty ? "person" : safeHandle
+        let suffix = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let credentialValue = [
+            "knw",
+            UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
+        ].joined(separator: "_")
+        return NetworkingMachineCredentials(
+            email: "knw-\(prefix)-\(suffix)@users.knowyou.app",
+            password: credentialValue
+        )
+    }
 
     func activate(
         personName: String,
         handle: String,
         approvedProfiles: [NetworkingProfileRegistration]
     ) throws -> NetworkingActivationState {
+        let credentials = credentialGenerator(handle)
         let session: NetworkingPlatformSession
         do {
-            session = try client.signInAnonymously()
+            session = try client.signUp(email: credentials.email, password: credentials.password)
+        } catch let signUpError as NetworkingPlatformClientError {
+            do {
+                session = try client.signIn(email: credentials.email, password: credentials.password)
+            } catch let signInError {
+                throw NetworkingActivationRunnerError.activationFailed(
+                    step: "creating the machine platform identity",
+                    underlying: "signup failed: \(signUpError.localizedDescription); sign-in failed: \(signInError.localizedDescription)"
+                )
+            }
         } catch {
             throw NetworkingActivationRunnerError.activationFailed(
-                step: "creating the anonymous platform identity",
+                step: "creating the machine platform identity",
                 underlying: error.localizedDescription
             )
         }
@@ -113,6 +146,8 @@ struct NetworkingActivationRunner: Sendable {
             agentTokenPlaintext: tokenPlaintext,
             supabaseURL: client.config.supabaseURL,
             publishableKey: client.config.publishableKey,
+            authEmail: credentials.email,
+            authPassword: credentials.password,
             mode: .platform,
             userID: session.userID,
             refreshToken: session.refreshToken,

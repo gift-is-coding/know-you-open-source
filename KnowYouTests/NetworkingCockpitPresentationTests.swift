@@ -628,7 +628,7 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertFalse(context.summary.contains("Old Career Context"))
     }
 
-    func testActivationPayloadUsesAnonymousIdentityAndAgentToken() throws {
+    func testActivationPayloadUsesMachineIdentityAndAgentToken() throws {
         let activation = NetworkingActivationService().activationPlan(
             personName: "林书涵",
             handle: "shuhan",
@@ -643,7 +643,7 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(activation.authMode, .supabaseAnonymous)
+        XCTAssertEqual(activation.authMode, .supabaseMachineUser)
         XCTAssertEqual(activation.peoplePayload.displayName, "林书涵")
         XCTAssertEqual(activation.profilePayloads.map(\.profileID), ["profile-jobs"])
         XCTAssertFalse(activation.agentTokenPlaintext.isEmpty)
@@ -658,13 +658,37 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
             personID: "person-real-user",
             agentTokenPlaintext: "knw_agent_real_user",
             supabaseURL: URL(string: "https://local.knowyou.invalid")!,
-            publishableKey: "local-dev"
+            publishableKey: "local-dev",
+            authEmail: "knw-person@users.knowyou.app",
+            authPassword: "machine-secret"
         )
 
         let store = NetworkingActivationStateStore()
         try store.save(state, projectRoot: projectRoot)
 
         XCTAssertEqual(store.load(projectRoot: projectRoot), state)
+    }
+
+    func testApprovalStateStorePersistsServerProfileSyncMapping() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouContext", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
+        let store = NetworkingProfileApprovalStateStore()
+        let syncedAt = Date(timeIntervalSince1970: 1_779_926_400)
+
+        try store.save(
+            NetworkingProfileApprovalState(
+                approvedProfileIDs: ["profile-career"],
+                syncRecordsByProfileID: [
+                    "profile-career": NetworkingProfileSyncRecord(serverProfileID: "server-profile-uuid", syncedAt: syncedAt)
+                ]
+            ),
+            projectRoot: projectRoot
+        )
+
+        let loaded = store.load(projectRoot: projectRoot)
+        XCTAssertTrue(loaded.contains("profile-career"))
+        XCTAssertEqual(loaded.syncRecordsByProfileID["profile-career"]?.serverProfileID, "server-profile-uuid")
+        XCTAssertEqual(loaded.syncRecordsByProfileID["profile-career"]?.syncedAt, syncedAt)
     }
 
     func testApprovalStateStorePersistsApprovedProfiles() throws {
@@ -881,6 +905,111 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertTrue(result.stdout.contains(#""potentialMatches""#))
         XCTAssertTrue(result.stdout.contains("task-1"))
         XCTAssertFalse(result.stdout.contains("agent-token"))
+    }
+
+    func testNetworkingMCPFetchPublicSquareReturnsPlatformRows() throws {
+        let state = NetworkingActivationState(
+            isEnabled: true,
+            personID: "person-uuid",
+            agentTokenPlaintext: "agent-token",
+            supabaseURL: URL(string: "https://example.supabase.co")!,
+            publishableKey: "sb_publishable_test",
+            mode: .platform
+        )
+        let capturedRequests = MCPRequestRecorder()
+        let transport: NetworkingPlatformTransport = { request in
+            capturedRequests.append(request)
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: nil
+            )!
+            let payload = #"[{"id":"post-1","platform_id":"knowyou-jobs","body":"Hiring a local-first AI builder","author_type":"human","created_at":"2026-07-09T00:00:00Z"}]"#
+            return (Data(payload.utf8), response)
+        }
+        let request = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"networking_fetch_public_square","arguments":{"platform_id":"knowyou-jobs"}}}"#
+
+        let result = NetworkingMCPCommand.run(
+            arguments: ["KnowYou", NetworkingMCPCommand.launchArgument, "--project-root", "/tmp/wiki"],
+            input: request,
+            activationState: state,
+            transport: transport
+        )
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(result.stdout.contains("post-1"))
+        XCTAssertTrue(result.stdout.contains("Hiring a local-first AI builder"))
+        XCTAssertEqual(capturedRequests.requests.first?.url?.path, "/rest/v1/posts")
+        XCTAssertFalse(result.stdout.contains("agent-token"))
+    }
+
+    func testNetworkingMCPRecordHighlightPersistsInboxState() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouContext", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
+        let state = NetworkingActivationState(
+            isEnabled: true,
+            personID: "person-uuid",
+            agentTokenPlaintext: "agent-token",
+            supabaseURL: URL(string: "https://example.supabase.co")!,
+            publishableKey: "sb_publishable_test",
+            mode: .platform
+        )
+        let request = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"networking_record_highlight","arguments":{"platform_id":"knowyou-jobs","title":"Strong opportunity","public_summary":"A founder is hiring.","private_reason":"Matches My Wiki product work.","public_reference_id":"post-1"}}}"#
+
+        let result = NetworkingMCPCommand.run(
+            arguments: ["KnowYou", NetworkingMCPCommand.launchArgument, "--project-root", projectRoot.path],
+            input: request,
+            activationState: state
+        )
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(result.stdout.contains("highlight recorded"))
+        let inbox = NetworkingInboxStateStore().load(projectRoot: projectRoot)
+        XCTAssertEqual(inbox.items.map(\.id), ["highlight-post-1"])
+        XCTAssertEqual(inbox.items.first?.direction, .highlight)
+        XCTAssertEqual(inbox.items.first?.platformID, "knowyou-jobs")
+    }
+
+    func testInboxServiceMergesLocalHighlightsWithPlatformAgentHome() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouContext", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
+        let localItem = NetworkingCockpitItem(
+            id: "local-highlight",
+            direction: .highlight,
+            title: "Local highlight",
+            publicSummary: "Saved by the local agent.",
+            privateReason: "Stored locally for cockpit review.",
+            publicReferenceID: "post-local",
+            platformID: "knowyou-jobs"
+        )
+        try NetworkingInboxStateStore().save(NetworkingInboxState(items: [localItem]), projectRoot: projectRoot)
+
+        var client = NetworkingPlatformClient(
+            config: NetworkingPlatformConfig(
+                supabaseURL: URL(string: "https://example.supabase.co")!,
+                publishableKey: "sb_publishable_test"
+            )
+        )
+        client.transport = { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: nil
+            )!
+            let home = #"{"needsReply":[{"id":"remote-reply","summary":"Reply requested","publicEvidence":["A public reply needs attention"],"reasonCodes":["reply_needed"],"publicReferenceID":"comment-1"}],"potentialMatches":[],"savedForYou":[]}"#
+            return (Data(home.utf8), response)
+        }
+
+        let items = NetworkingInboxService(client: client).loadInbox(
+            projectRoot: projectRoot,
+            token: "agent-token",
+            platformIDs: ["knowyou-jobs"]
+        )
+
+        XCTAssertEqual(items.map(\.id), ["local-highlight", "knowyou-jobs-remote-reply"])
+        XCTAssertEqual(items.last?.direction, .inbound)
     }
 
     func testPlatformConfigurationRequiresGeneratedProfileBeforeAutomation() {

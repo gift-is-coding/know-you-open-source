@@ -1,6 +1,6 @@
 import Link from "next/link";
-import type { CSSProperties } from "react";
 import { createHumanComment, createHumanPost } from "@/app/actions";
+import { SquareTabs } from "@/src/components/SquareTabs";
 import { sortDiscussionItems } from "@/src/lib/networking/content-ordering";
 import {
   defaultNetworkingPlatformID,
@@ -21,13 +21,46 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
   const params = (await searchParams) ?? {};
   const requestedPlatformID = params.platform ?? "";
   const platformID = isNetworkingPlatformID(requestedPlatformID) ? requestedPlatformID : defaultNetworkingPlatformID;
-  const platform = getNetworkingPlatform(platformID);
+  const platformIDs = ["knowyou-jobs", "knowyou-friends"];
+  const platformData = await Promise.all(platformIDs.map((id) => loadPlatformSquareData(id)));
+
+  return (
+    <main className="public-square" data-testid="public-square">
+      <SquareTabs
+        initialPlatformID={platformID}
+        platforms={networkingPlatforms}
+        switcherClassName="community-switcher"
+      >
+        {platformData.map((data) => (
+          <section className="community-panel" data-platform-panel={data.platformID} key={data.platformID}>
+            <SquarePanel data={data} />
+          </section>
+        ))}
+      </SquareTabs>
+    </main>
+  );
+}
+
+async function loadPlatformSquareData(platformID: string) {
   const [items, composerProfiles, profilePage, agentHome] = await Promise.all([
     getPublicSquareItems(platformID),
     getComposerProfiles(platformID),
     getPublicProfilePageForPlatform(platformID),
     getAgentHomePreview(platformID)
   ]);
+
+  return {
+    platformID,
+    platform: getNetworkingPlatform(platformID),
+    items,
+    composerProfiles,
+    profilePage,
+    agentHome
+  };
+}
+
+function SquarePanel({ data }: { data: Awaited<ReturnType<typeof loadPlatformSquareData>> }) {
+  const { platformID, platform, items, composerProfiles, profilePage, agentHome } = data;
   const usableComposerProfiles = composerProfiles;
   const activeProfile =
     profilesForPerson(profilePage).find((profile) => (profile.platformIDs ?? []).includes(platformID)) ??
@@ -37,7 +70,7 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
   const commentsByPost = groupComments(items);
 
   return (
-    <main className="public-square" data-testid="public-square">
+    <>
       <section className="square-hero" aria-label="KnowYou Networking public square">
         <div>
           <p className="eyebrow">{platform.displayName}</p>
@@ -66,23 +99,6 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
           </div>
         </div>
       </section>
-
-      <nav className="community-switcher" aria-label="Switch community">
-        <span className="community-switcher-label">Community</span>
-        {networkingPlatforms.map((item) => (
-          <Link
-            aria-current={item.id === platformID ? "true" : undefined}
-            className="community-option"
-            data-testid={`platform-tab-${item.id}`}
-            href={`/?platform=${item.id}`}
-            key={item.id}
-            style={{ "--platform-accent": item.accent } as CSSProperties & Record<string, string>}
-          >
-            <span>{item.displayName}</span>
-            <small>{item.shortName}</small>
-          </Link>
-        ))}
-      </nav>
 
       <section className="profile-strip" aria-label="Generated profile faces">
         {profilesForPerson(profilePage).length > 0 ? profilesForPerson(profilePage).map((profile) => (
@@ -185,7 +201,7 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
         </aside>
       </section>
 
-    </main>
+    </>
   );
 }
 

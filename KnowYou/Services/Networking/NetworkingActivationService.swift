@@ -1,7 +1,7 @@
 import Foundation
 
 enum NetworkingAuthMode: String, Codable, Equatable {
-    case supabaseAnonymous
+    case supabaseMachineUser
 }
 
 struct NetworkingPeopleSyncPayload: Codable, Equatable {
@@ -15,6 +15,8 @@ struct NetworkingActivationPlan: Codable, Equatable {
     let profilePayloads: [NetworkingProfileSyncPayload]
     let agentTokenPlaintext: String
     let agentTokenLabel: String
+    let authEmail: String?
+    let authPassword: String?
 }
 
 enum NetworkingActivationMode: String, Codable, Equatable {
@@ -31,6 +33,8 @@ struct NetworkingActivationState: Codable, Equatable {
     var mode: NetworkingActivationMode = .localSandbox
     var userID: String?
     var refreshToken: String?
+    var authEmail: String?
+    var authPassword: String?
     var profileIDMapping: [String: String] = [:]
 
     init(
@@ -39,6 +43,8 @@ struct NetworkingActivationState: Codable, Equatable {
         agentTokenPlaintext: String,
         supabaseURL: URL,
         publishableKey: String,
+        authEmail: String? = nil,
+        authPassword: String? = nil,
         mode: NetworkingActivationMode = .localSandbox,
         userID: String? = nil,
         refreshToken: String? = nil,
@@ -52,6 +58,8 @@ struct NetworkingActivationState: Codable, Equatable {
         self.mode = mode
         self.userID = userID
         self.refreshToken = refreshToken
+        self.authEmail = authEmail
+        self.authPassword = authPassword
         self.profileIDMapping = profileIDMapping
     }
 
@@ -74,6 +82,8 @@ struct NetworkingActivationState: Codable, Equatable {
         case mode
         case userID
         case refreshToken
+        case authEmail
+        case authPassword
         case profileIDMapping
     }
 
@@ -87,6 +97,8 @@ struct NetworkingActivationState: Codable, Equatable {
         mode = try container.decodeIfPresent(NetworkingActivationMode.self, forKey: .mode) ?? .localSandbox
         userID = try container.decodeIfPresent(String.self, forKey: .userID)
         refreshToken = try container.decodeIfPresent(String.self, forKey: .refreshToken)
+        authEmail = try container.decodeIfPresent(String.self, forKey: .authEmail)
+        authPassword = try container.decodeIfPresent(String.self, forKey: .authPassword)
         profileIDMapping = try container.decodeIfPresent([String: String].self, forKey: .profileIDMapping) ?? [:]
     }
 }
@@ -102,11 +114,13 @@ struct NetworkingActivationService {
         approvedProfiles: [NetworkingProfileSyncPayload]
     ) -> NetworkingActivationPlan {
         NetworkingActivationPlan(
-            authMode: .supabaseAnonymous,
+            authMode: .supabaseMachineUser,
             peoplePayload: NetworkingPeopleSyncPayload(displayName: personName, handle: handle),
             profilePayloads: approvedProfiles,
             agentTokenPlaintext: tokenGenerator(),
-            agentTokenLabel: "Local KnowYou Networking agent"
+            agentTokenLabel: "Local KnowYou Networking agent",
+            authEmail: nil,
+            authPassword: nil
         )
     }
 }
@@ -141,6 +155,52 @@ struct NetworkingActivationStateStore {
 
     func stateURL(projectRoot: URL) -> URL {
         projectRoot.appending(path: ".knowyou/networking/activation.json")
+    }
+}
+
+struct NetworkingInboxState: Codable, Equatable, Sendable {
+    let items: [NetworkingCockpitItem]
+
+    init(items: [NetworkingCockpitItem] = []) {
+        self.items = items
+    }
+
+    func recording(_ item: NetworkingCockpitItem) -> NetworkingInboxState {
+        NetworkingInboxState(items: [item] + items.filter { $0.id != item.id })
+    }
+}
+
+struct NetworkingInboxStateStore {
+    let fileManager: FileManager
+
+    init(fileManager: FileManager = .default) {
+        self.fileManager = fileManager
+    }
+
+    func load(projectRoot: URL) -> NetworkingInboxState {
+        let url = stateURL(projectRoot: projectRoot)
+        guard fileManager.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url),
+              let state = try? JSONDecoder().decode(NetworkingInboxState.self, from: data) else {
+            return NetworkingInboxState()
+        }
+        return state
+    }
+
+    func save(_ state: NetworkingInboxState, projectRoot: URL) throws {
+        let url = stateURL(projectRoot: projectRoot)
+        try fileManager.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(state)
+        try data.write(to: url, options: .atomic)
+    }
+
+    func stateURL(projectRoot: URL) -> URL {
+        projectRoot.appending(path: ".knowyou/networking/inbox-state.json")
     }
 }
 

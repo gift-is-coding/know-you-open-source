@@ -22,7 +22,12 @@ struct NetworkingMCPCommand {
                 .components(separatedBy: .newlines)
                 .compactMap { line -> String? in
                     guard line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else { return nil }
-                    return responseLine(for: line, activationState: storedState, transport: transport)
+                    return responseLine(
+                        for: line,
+                        projectRoot: projectRoot,
+                        activationState: storedState,
+                        transport: transport
+                    )
                 }
                 .joined(separator: "\n")
 
@@ -53,7 +58,12 @@ struct NetworkingMCPCommand {
 
         let activationState = NetworkingActivationStateStore().load(projectRoot: projectRoot)
         while let line = input() {
-            guard let response = responseLine(for: line, activationState: activationState, transport: transport) else { continue }
+            guard let response = responseLine(
+                for: line,
+                projectRoot: projectRoot,
+                activationState: activationState,
+                transport: transport
+            ) else { continue }
             write(response + "\n", to: outputHandle)
         }
         return 0
@@ -69,6 +79,7 @@ struct NetworkingMCPCommand {
 
     private static func responseLine(
         for line: String,
+        projectRoot: URL,
         activationState: NetworkingActivationState?,
         transport: NetworkingPlatformTransport? = nil
     ) -> String? {
@@ -89,7 +100,15 @@ struct NetworkingMCPCommand {
         case "tools/list":
             return encode(response(id: id, result: ["tools": toolDefinitions()]))
         case "tools/call":
-            return encode(toolCallResponse(id: id, request: request, activationState: activationState, transport: transport))
+            return encode(
+                toolCallResponse(
+                    id: id,
+                    request: request,
+                    projectRoot: projectRoot,
+                    activationState: activationState,
+                    transport: transport
+                )
+            )
         default:
             return encode(response(id: id, error: errorObject(code: -32601, message: "Method not found")))
         }
@@ -98,6 +117,7 @@ struct NetworkingMCPCommand {
     private static func toolCallResponse(
         id: Any?,
         request: [String: Any],
+        projectRoot: URL,
         activationState: NetworkingActivationState?,
         transport: NetworkingPlatformTransport?
     ) -> [String: Any] {
@@ -117,9 +137,9 @@ struct NetworkingMCPCommand {
         case "networking_record_decision":
             return recordDecisionResponse(id: id, arguments: arguments, activationState: activationState, transport: transport)
         case "networking_fetch_public_square":
-            return textToolResponse(id: id, text: "Networking public square fetch is available through the Web data API.")
+            return fetchPublicSquareResponse(id: id, arguments: arguments, activationState: activationState, transport: transport)
         case "networking_record_highlight":
-            return textToolResponse(id: id, text: "Networking highlight recorded locally for cockpit review.")
+            return recordHighlightResponse(id: id, arguments: arguments, projectRoot: projectRoot, activationState: activationState)
         default:
             return response(id: id, error: errorObject(code: -32602, message: "Unknown tool: \(name)"))
         }
@@ -319,6 +339,102 @@ struct NetworkingMCPCommand {
         }
     }
 
+    private static func fetchPublicSquareResponse(
+        id: Any?,
+        arguments: [String: Any],
+        activationState: NetworkingActivationState?,
+        transport: NetworkingPlatformTransport?
+    ) -> [String: Any] {
+        let context: (state: NetworkingActivationState, client: NetworkingPlatformClient)
+        switch connectedContext(activationState: activationState, transport: transport) {
+        case let .failure(message):
+            return textToolResponse(id: id, text: message)
+        case let .success(resolved):
+            context = resolved
+        }
+
+        guard let platformID = arguments["platform_id"] as? String else {
+            return response(id: id, error: errorObject(code: -32602, message: "platform_id is required"))
+        }
+
+        do {
+            let rows = try context.client.fetchPublicSquare(platformID: platformID)
+            let preview = rows.prefix(5).compactMap { row -> String? in
+                guard let rowID = row["id"] as? String else { return nil }
+                let body = (row["body"] as? String) ?? ""
+                return "\(rowID): \(body)"
+            }.joined(separator: "\n")
+            return response(
+                id: id,
+                result: [
+                    "platform_id": platformID,
+                    "items": rows,
+                    "content": [
+                        [
+                            "type": "text",
+                            "text": preview.isEmpty
+                                ? "No public square rows found for \(platformID)."
+                                : "Fetched public square rows for \(platformID):\n\(preview)",
+                        ],
+                    ],
+                    "isError": false,
+                ]
+            )
+        } catch {
+            return textToolResponse(id: id, text: "public square fetch failed: \(error.localizedDescription)", isError: true)
+        }
+    }
+
+    private static func recordHighlightResponse(
+        id: Any?,
+        arguments: [String: Any],
+        projectRoot: URL,
+        activationState: NetworkingActivationState?
+    ) -> [String: Any] {
+        guard let state = activationState, state.isEnabled, state.agentTokenPlaintext.isEmpty == false else {
+            return textToolResponse(id: id, text: "permission required: enable Networking in KnowYou before recording highlights.")
+        }
+        guard state.isPlatformConnected else {
+            return textToolResponse(
+                id: id,
+                text: "permission required: Networking is in local sandbox mode. Connect the public platform before recording highlights."
+            )
+        }
+        guard let platformID = arguments["platform_id"] as? String,
+              let title = arguments["title"] as? String,
+              let publicSummary = arguments["public_summary"] as? String else {
+            return response(id: id, error: errorObject(code: -32602, message: "platform_id, title, and public_summary are required"))
+        }
+
+        let publicReferenceID = arguments["public_reference_id"] as? String
+        let item = NetworkingCockpitItem(
+            id: "highlight-\(publicReferenceID ?? UUID().uuidString)",
+            direction: .highlight,
+            title: title,
+            publicSummary: publicSummary,
+            privateReason: (arguments["private_reason"] as? String) ?? "Recorded by the local Networking agent.",
+            publicReferenceID: publicReferenceID,
+            platformID: platformID
+        )
+
+        do {
+            let store = NetworkingInboxStateStore()
+            try store.save(store.load(projectRoot: projectRoot).recording(item), projectRoot: projectRoot)
+            return response(
+                id: id,
+                result: [
+                    "highlight_id": item.id,
+                    "content": [
+                        ["type": "text", "text": "highlight recorded locally for cockpit review."],
+                    ],
+                    "isError": false,
+                ]
+            )
+        } catch {
+            return textToolResponse(id: id, text: "highlight record failed: \(error.localizedDescription)", isError: true)
+        }
+    }
+
     private static func initializeResult() -> [String: Any] {
         [
             "protocolVersion": "2025-06-18",
@@ -349,11 +465,13 @@ struct NetworkingMCPCommand {
                     "profile_id": ["type": "string"],
                     "post_id": ["type": "string"],
                     "parent_comment_id": ["type": "string"],
+                    "title": ["type": "string"],
                     "body": ["type": "string"],
                     "public_reference_type": ["type": "string"],
                     "public_reference_id": ["type": "string"],
                     "action": ["type": "string"],
                     "public_summary": ["type": "string"],
+                    "private_reason": ["type": "string"],
                     "reason_codes": ["type": "array", "items": ["type": "string"]],
                 ],
             ],

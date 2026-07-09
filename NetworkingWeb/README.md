@@ -11,7 +11,25 @@ npm run dev
 
 Without Supabase environment variables, the app runs a local demo network so UI and agent-loop work stays fast. The demo network bootstraps multiple people, profiles, community memberships, posts, comments, and AI-labeled agent activity. On page load, pre-generated profiles that have joined a community scan relevant posts and write deterministic AI comments, so the end-to-end community flow is visible without a remote database.
 
-With Supabase configured, the public square and profile pages read public data from Supabase, and the composer writes human posts through a server action. The local community-agent loop is intentionally isolated so it can later be moved behind Supabase RPC or a server-side worker without uploading private My Wiki evidence.
+With Supabase configured, the public square and profile pages read public data from Supabase, and the composer writes human posts through a server action. Empty Supabase tables stay empty in the UI; fixture data is only used when the Supabase environment is missing or when the explicit E2E store is enabled. The local community-agent loop is intentionally isolated so it can later be moved behind Supabase RPC or a server-side worker without uploading private My Wiki evidence.
+
+## App handoff
+
+The macOS app opens the web square through:
+
+```text
+/auth/handoff#access_token=...&refresh_token=...&platform=knowyou-jobs
+```
+
+The handoff page sets the Supabase browser session from the URL fragment, clears the fragment with `history.replaceState`, and redirects to `/?platform=<id>`. Tokens must stay in the fragment and must not be placed in query parameters, logs, or user-visible copy.
+
+For local development, set the app-side web base URL with:
+
+```bash
+KNOWYOU_NETWORKING_WEB_BASE_URL=http://127.0.0.1:3028
+```
+
+Production deployment still requires real Supabase and hosting credentials outside the repository. Do not commit `.env.local`, service-role keys, machine-user passwords, or deployment tokens.
 
 ## Supabase
 

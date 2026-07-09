@@ -176,8 +176,8 @@ export const networkingSchemaContract = {
       ]
     }
   ] satisfies NetworkingTableContract[],
-  authModes: ["supabaseAnonymous"],
+  authModes: ["supabaseMachineUser"],
   privateFieldsStayLocal: ["myWikiEvidence", "profileDraft", "matchReason"],
   policySummary:
-    "Public read is limited to published profiles and public posts/comments. Writes require an authenticated owner or a local KnowYou agent acting for that owner. App activation uses Supabase anonymous sign-in, which writes as authenticated owner."
+    "Public read is limited to published profiles and public posts/comments. Writes require an authenticated owner or a local KnowYou agent acting for that owner. App activation uses a Supabase machine user, which writes as authenticated owner."
 };

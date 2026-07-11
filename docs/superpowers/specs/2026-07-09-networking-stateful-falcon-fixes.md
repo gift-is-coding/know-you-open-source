@@ -162,3 +162,8 @@ Acceptance: click Open Square while offline → agent status pill stays "ready",
 5. Production hosting: deploy the Next.js App Router application through the Cloudflare OpenNext adapter
    to `networking.giiift.site`; desktop/mobile HTML and the first CSS chunk return 200, while
    `/api/e2e/networking/state` and `/api/e2e/networking/reset` return 404 in production.
+6. Machine signup: the dedicated Networking Supabase project has password-signup email confirmation
+   disabled so non-inbox machine identities receive an immediate session. A signup response containing a
+   user but no access token throws `machineEmailConfirmationRequired` with an actionable configuration
+   message. Production verification covers App activation, authenticated Web handoff, a real MCP post, and
+   reading the same post back from the live public square.

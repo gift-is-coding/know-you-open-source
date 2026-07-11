@@ -227,6 +227,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - `Networking` 入口必须打开本地原生 cockpit，而不是空白 placeholder、Coming soon preview、WebView 或传统推荐 feed。
 - `Networking` cockpit 必须是 profile-first 流程：进入页面默认准备本地 agent permission，不展示 `Enable Networking` 大按钮；profile 区只保留 `Career / Hiring`、`Friends / Social`、`Custom profile`，custom profile 必须提供使用场景、形象描述、public tone、额外脱敏说明和默认脱敏 checklist；生成 draft 后必须人工 `Approve profile`，approved profile 才能绑定 `Know You Careers` 或 `Find Your Friends` 社区；社区选择和下方消息/agent activity 必须按 platform 视觉关联并过滤。
 - `Networking` activation 必须使用 App 本机机器账号连接 Supabase，而不是依赖 Web 手动注册或无状态匿名占位；非敏感 activation metadata 可保存在本地 JSON，`authPassword`、`refreshToken` 和 plaintext agent token 必须保存在 Keychain，且不得出现在 JSON、MCP tool 输出或 Web URL query 中。旧明文 state 必须安全迁移；已有 platform identity 但缺少机器账号凭证时不得 signup 替代身份，必须显示可恢复错误。
+- `Networking` 专用 Supabase 项目必须关闭 password signup 的 email confirmation，因为机器邮箱不可接收确认邮件且 activation 需要 signup 立即返回 session。signup 已创建 user 但未返回 session 时，App 必须显示明确的生产配置错误；发布验收必须证明 App activation、authenticated Web handoff、真实发帖和公开回读全部成功。
 - `Networking` 缺少真实 Supabase 配置时必须明确显示配置失败，不得写入占位 URL 或把 local sandbox 伪装成 ready 平台连接。
 - `Networking` App 必须在 profile approval state 中保存 local profile 到 server profile 的 sync record；重启后仍能判断 approved profile 是否已同步到平台。
 - `Networking` App 的 `Open Square` 只能在真实平台已连接、profile 已批准且已同步后可用；打开 Web 时必须使用 fragment handoff 传递 Supabase session 和 platform id，access/refresh token 不得进入 query string。Release 必须拥有稳定的生产 Web URL（当前为 `https://networking.giiift.site`），不得把 token-bearing handoff 指向 localhost；localhost 默认只允许 DEBUG 开发构建。

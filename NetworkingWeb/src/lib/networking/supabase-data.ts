@@ -22,6 +22,7 @@ import type {
 } from "./types";
 import { hasSupabaseEnv } from "@/src/lib/supabase/env";
 import { createClient } from "@/src/lib/supabase/server";
+import { cache } from "react";
 
 type PersonRow = {
   id: string;
@@ -271,21 +272,8 @@ export async function getComposerProfiles(platformID?: string): Promise<Networki
 
   try {
     const supabase = await createClient();
-    const {
-      data: { user }
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return [];
-    }
-
-    const { data: person } = await supabase
-      .from("people")
-      .select("id")
-      .eq("user_id", user.id)
-      .single();
-
-    if (!person) {
+    const workspace = await getMyProfileWorkspace();
+    if (!workspace.person) {
       return [];
     }
 
@@ -293,27 +281,21 @@ export async function getComposerProfiles(platformID?: string): Promise<Networki
       .from("community_memberships")
       .select("profile_id")
       .eq("community_id", normalizedPlatformID)
-      .eq("person_id", person.id)
+      .eq("person_id", workspace.person.id)
       .eq("status", "active");
     const activeProfileIDs = (memberships ?? []).map((membership) => membership.profile_id as string);
     if (activeProfileIDs.length === 0) {
       return [];
     }
 
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, label, platform_ids")
-      .eq("person_id", person.id)
-      .eq("is_published", true)
-      .contains("platform_ids", [normalizedPlatformID])
-      .in("id", activeProfileIDs)
-      .order("updated_at", { ascending: false });
-
-    return (profiles ?? []).map((profile) => ({
-      id: profile.id as string,
-      label: profile.label as string,
-      platformIDs: (profile.platform_ids as string[] | null) ?? [normalizedPlatformID]
-    }));
+    return workspace.profiles
+      .filter(
+        (profile) =>
+          profile.published !== false &&
+          activeProfileIDs.includes(profile.id) &&
+          (profile.platformIDs ?? []).includes(normalizedPlatformID)
+      )
+      .map(({ id, label, platformIDs }) => ({ id, label, platformIDs }));
   } catch {
     return [];
   }
@@ -413,21 +395,8 @@ export async function getAgentHomePreview(platformID?: string): Promise<Networki
 
   try {
     const supabase = await createClient();
-    const {
-      data: { user }
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return null;
-    }
-
-    const { data: person } = await supabase
-      .from("people")
-      .select("id, display_name, handle")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (!person) {
+    const workspace = await getMyProfileWorkspace();
+    if (!workspace.person) {
       return null;
     }
 
@@ -435,7 +404,7 @@ export async function getAgentHomePreview(platformID?: string): Promise<Networki
       .from("community_memberships")
       .select("community_id, person_id, profile_id, status, policy, last_heartbeat_at, last_candidate_seen_at")
       .eq("community_id", normalizedPlatformID)
-      .eq("person_id", person.id)
+      .eq("person_id", workspace.person.id)
       .eq("status", "active")
       .maybeSingle();
 
@@ -443,18 +412,15 @@ export async function getAgentHomePreview(platformID?: string): Promise<Networki
       return null;
     }
 
-    const profileResult = await supabase
-        .from("profiles")
-        .select("id, label, slug, scenario_id, scenario_description, avatar_seed, avatar_style, platform_ids, summary, is_published")
-        .eq("id", membership.profile_id)
-        .eq("is_published", true)
-        .contains("platform_ids", [normalizedPlatformID])
-        .maybeSingle();
-
-    if (!profileResult.data) {
+    const profile = workspace.profiles.find(
+      (item) =>
+        item.id === membership.profile_id &&
+        item.published !== false &&
+        (item.platformIDs ?? []).includes(normalizedPlatformID)
+    );
+    if (!profile) {
       return null;
     }
-    const profile = profileResult.data as ProfileRow;
 
     const { data: events } = await supabase
       .from("public_interaction_events")
@@ -471,8 +437,8 @@ export async function getAgentHomePreview(platformID?: string): Promise<Networki
 
     return buildAgentHome({
       now: new Date(),
-      person: mapPerson(person as PersonRow),
-      profile: mapProfile(profile, person.display_name),
+      person: workspace.person,
+      profile,
       membership: mapMembership(membership as MembershipRow),
       items,
       events: (events ?? []).map((event) => mapInteractionEvent(event as InteractionEventRow)),
@@ -483,7 +449,7 @@ export async function getAgentHomePreview(platformID?: string): Promise<Networki
   }
 }
 
-export async function getMyProfileWorkspace(): Promise<NetworkingProfileWorkspace> {
+async function loadMyProfileWorkspace(): Promise<NetworkingProfileWorkspace> {
   if (!hasSupabaseEnv()) {
     return {
       person: profilePageFixture.person,
@@ -541,6 +507,8 @@ export async function getMyProfileWorkspace(): Promise<NetworkingProfileWorkspac
     };
   }
 }
+
+export const getMyProfileWorkspace = cache(loadMyProfileWorkspace);
 
 function mapContentRow(row: ContentRow, kind: "post" | "comment"): NetworkingContentItem | null {
   const person = first(row.people);

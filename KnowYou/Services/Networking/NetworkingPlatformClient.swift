@@ -120,6 +120,7 @@ struct NetworkingPlatformSession: Codable, Equatable, Sendable {
 
 enum NetworkingPlatformClientError: LocalizedError, Equatable {
     case invalidResponse
+    case machineEmailConfirmationRequired
     case httpError(status: Int, body: String)
     case emptyResult(String)
 
@@ -127,6 +128,8 @@ enum NetworkingPlatformClientError: LocalizedError, Equatable {
         switch self {
         case .invalidResponse:
             return "The Networking platform returned an unreadable response."
+        case .machineEmailConfirmationRequired:
+            return "Supabase email confirmation is enabled, but KnowYou machine identities use non-inbox addresses and need an immediate session. Disable Confirm email for this dedicated Networking project, then retry."
         case let .httpError(status, body):
             return "Networking platform request failed (\(status)): \(body)"
         case let .emptyResult(context):
@@ -160,7 +163,7 @@ struct NetworkingPlatformClient: Sendable {
                 "password": password,
             ]
         )
-        return try decodeSession(from: data)
+        return try decodeSession(from: data, isMachineSignup: true)
     }
 
     func signIn(email: String, password: String) throws -> NetworkingPlatformSession {
@@ -430,8 +433,16 @@ struct NetworkingPlatformClient: Sendable {
         return data
     }
 
-    private func decodeSession(from data: Data) throws -> NetworkingPlatformSession {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+    private func decodeSession(from data: Data, isMachineSignup: Bool = false) throws -> NetworkingPlatformSession {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NetworkingPlatformClientError.invalidResponse
+        }
+        if isMachineSignup,
+           object["access_token"] == nil,
+           (object["user"] as? [String: Any])?["id"] is String {
+            throw NetworkingPlatformClientError.machineEmailConfirmationRequired
+        }
+        guard
               let accessToken = object["access_token"] as? String,
               let refreshToken = object["refresh_token"] as? String,
               let user = object["user"] as? [String: Any],

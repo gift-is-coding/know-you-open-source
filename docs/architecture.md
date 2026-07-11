@@ -186,6 +186,8 @@ Networking Web 的端到端验证不能只依赖 unit/API contract/build。`NETW
 
 Networking Web 生产环境通过 Cloudflare Workers 托管在 `networking.giiift.site`。`@opennextjs/cloudflare` 将 Next.js App Router、SSR、Server Actions 和静态资源构建为 `.open-next` Worker bundle；`wrangler.jsonc` 声明自定义域名路由、Node.js compatibility 和 observability。部署必须从 `NetworkingWeb` 执行 `npm run deploy:cloudflare`，并在发布后验证页面、CSS、鉴权跳转和 production-only E2E endpoint 隔离。
 
+Networking 使用非收件箱形式的本机机器邮箱创建 Supabase password identity，因此专用生产 Supabase 项目必须关闭 email confirmation，使 signup 同步返回 session。若 Supabase 返回已创建 user 但没有 access/refresh token，App 将其识别为 `machineEmailConfirmationRequired` 配置错误，而不是模糊的解析失败；生产验收必须覆盖 App activation、Web handoff、真实写入与公开回读。
+
 Networking Web 的两个社区是同一 KnowYou 身份体系下的两个独立 destination，而不是 tab。`SquareTabs` 保留 server-rendered query URL 和真实 link，在 client 侧切换整页 theme、hidden panel、可访问 announcement 与 heading focus。Careers 使用职业身份优先的结构化机会 feed；Friends 使用 composer/time-line 优先的轻量对话结构。两者共用 Supabase 权限、App handoff、AI 标签和隐私边界，但拥有独立的 layout/theme token 与 responsive treatment。
 
 ### 3.6 Unified Todo

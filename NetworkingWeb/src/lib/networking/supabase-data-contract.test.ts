@@ -37,14 +37,13 @@ describe("networking Supabase data contract", () => {
 
   it("scopes the agent home preview to the signed-in viewer instead of any active member", () => {
     const agentHomeStart = source.indexOf("export async function getAgentHomePreview");
-    const agentHomeEnd = source.indexOf("export async function getMyProfileWorkspace");
+    const agentHomeEnd = source.indexOf("async function loadMyProfileWorkspace");
     expect(agentHomeStart).toBeGreaterThan(-1);
     expect(agentHomeEnd).toBeGreaterThan(agentHomeStart);
 
     const agentHomeSource = source.slice(agentHomeStart, agentHomeEnd);
-    expect(agentHomeSource).toContain("supabase.auth.getUser");
-    expect(agentHomeSource).toContain(".eq(\"user_id\", user.id)");
-    expect(agentHomeSource).toContain(".eq(\"person_id\", person.id)");
+    expect(agentHomeSource).toContain("getMyProfileWorkspace()");
+    expect(agentHomeSource).toContain(".eq(\"person_id\", workspace.person.id)");
     expect(agentHomeSource).toContain(".eq(\"community_id\", normalizedPlatformID)");
     expect(agentHomeSource).not.toContain(".eq(\"status\", \"active\")\n      .limit(1)");
   });
@@ -55,9 +54,16 @@ describe("networking Supabase data contract", () => {
     const composerSource = source.slice(start, end);
 
     expect(composerSource).toContain('.from("community_memberships")');
+    expect(composerSource).toContain("getMyProfileWorkspace()");
     expect(composerSource).toContain('.eq("community_id", normalizedPlatformID)');
-    expect(composerSource).toContain('.eq("person_id", person.id)');
+    expect(composerSource).toContain('.eq("person_id", workspace.person.id)');
     expect(composerSource).toContain('.eq("status", "active")');
-    expect(composerSource).toContain('.in("id", activeProfileIDs)');
+    expect(composerSource).toContain('activeProfileIDs.includes(profile.id)');
+  });
+
+  it("memoizes the signed-in workspace once per server render", () => {
+    expect(source).toContain('import { cache } from "react"');
+    expect(source).toContain("async function loadMyProfileWorkspace");
+    expect(source).toContain("export const getMyProfileWorkspace = cache(loadMyProfileWorkspace)");
   });
 });

@@ -12,3 +12,5 @@
 4. UX 修复：cockpit 顶部增加三步条，空 inbox 文案指向当前未完成步骤；SquareTabs 用 `window.history.replaceState` 同步 URL，避免 RSC refetch。
 5. 验证：运行 Swift networking targeted tests、`xcodebuild build`、NetworkingWeb `npm test -- --run`、`npm run lint`、`npm run build`；重启当前 worktree 的 web server 并检查 HTML + 首个 CSS chunk 均为 200。
 6. 生产发布：通过 `@opennextjs/cloudflare` 构建 Next.js Worker，使用 Wrangler 发布并绑定 `networking.giiift.site`；验证桌面/移动端页面与 CSS，确认 production E2E state/reset endpoint 均返回 404。
+7. 机器身份生产闭环：先用测试固定 signup 返回 user 但无 session 的 Supabase 行为，再给 App 增加明确配置错误；确认专用 Supabase 项目关闭 email confirmation，重新构建安装 App，并用 GUI + MCP 验证 activation、handoff、真实发帖和 Web 回读。
+8. 完成后运行本地 Claude CLI，从代码功能、App/Web 用户体验和生产连通性三个视角 review；逐条验证并修复所有 P0/P1/P2，再重跑完整验证。

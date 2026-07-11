@@ -42,6 +42,27 @@ final class NetworkingPlatformClientTests: XCTestCase {
         XCTAssertEqual(body["password"] as? String, machineAuthFixture.passphrase)
     }
 
+    func testSignUpWithoutSessionExplainsMachineEmailConfirmationMismatch() {
+        let recorder = TransportRecorder(responses: [
+            .json([
+                "user": ["id": "pending-user"],
+                "confirmation_sent_at": "2026-07-11T14:24:26Z",
+            ]),
+        ])
+        var client = NetworkingPlatformClient(config: config)
+        client.transport = recorder.transport
+
+        XCTAssertThrowsError(
+            try client.signUp(email: machineAuthFixture.email, password: machineAuthFixture.passphrase)
+        ) { error in
+            guard case NetworkingPlatformClientError.machineEmailConfirmationRequired = error else {
+                return XCTFail("unexpected error \(error)")
+            }
+            XCTAssertTrue(error.localizedDescription.contains("email confirmation"))
+            XCTAssertTrue(error.localizedDescription.contains("machine identities"))
+        }
+    }
+
     func testPasswordSignInUsesPasswordGrantAndParsesSession() throws {
         let recorder = TransportRecorder(responses: [
             .json([

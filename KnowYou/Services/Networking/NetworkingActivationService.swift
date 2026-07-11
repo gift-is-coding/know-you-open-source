@@ -134,9 +134,17 @@ struct NetworkingActivationService {
 
 struct NetworkingActivationStateStore {
     let fileManager: FileManager
+    let keychain: KeychainStoring
+    let keychainService: String
 
-    init(fileManager: FileManager = .default) {
+    init(
+        fileManager: FileManager = .default,
+        keychain: KeychainStoring = KeychainHelper.shared,
+        keychainService: String = KeychainHelper.service
+    ) {
         self.fileManager = fileManager
+        self.keychain = keychain
+        self.keychainService = keychainService
     }
 
     func load(projectRoot: URL) -> NetworkingActivationState? {
@@ -145,7 +153,16 @@ struct NetworkingActivationStateStore {
               let data = try? Data(contentsOf: url) else {
             return nil
         }
-        return try? JSONDecoder().decode(NetworkingActivationState.self, from: data)
+        guard let persisted = try? JSONDecoder().decode(NetworkingActivationState.self, from: data) else { return nil }
+        let keys = secretKeys(projectRoot: projectRoot)
+        if persisted.agentTokenPlaintext.isEmpty == false { keychain.save(persisted.agentTokenPlaintext, forKey: keys.agentToken, service: keychainService) }
+        if let value = persisted.refreshToken, value.isEmpty == false { keychain.save(value, forKey: keys.refreshToken, service: keychainService) }
+        if let value = persisted.authPassword, value.isEmpty == false { keychain.save(value, forKey: keys.authPassword, service: keychainService) }
+        let state = hydrated(persisted, keys: keys)
+        if persisted.agentTokenPlaintext.isEmpty == false || persisted.refreshToken != nil || persisted.authPassword != nil {
+            try? save(state, projectRoot: projectRoot)
+        }
+        return state
     }
 
     func save(_ state: NetworkingActivationState, projectRoot: URL) throws {
@@ -154,14 +171,55 @@ struct NetworkingActivationStateStore {
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
+        let keys = secretKeys(projectRoot: projectRoot)
+        try persistSecret(state.agentTokenPlaintext, key: keys.agentToken)
+        try persistSecret(state.refreshToken, key: keys.refreshToken)
+        try persistSecret(state.authPassword, key: keys.authPassword)
+        let persisted = NetworkingActivationState(
+            isEnabled: state.isEnabled, personID: state.personID, agentTokenPlaintext: "",
+            supabaseURL: state.supabaseURL, publishableKey: state.publishableKey,
+            authEmail: state.authEmail, authPassword: nil, mode: state.mode,
+            userID: state.userID, refreshToken: nil, profileIDMapping: state.profileIDMapping
+        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(state)
+        let data = try encoder.encode(persisted)
         try data.write(to: url, options: .atomic)
     }
 
     func stateURL(projectRoot: URL) -> URL {
         projectRoot.appending(path: ".knowyou/networking/activation.json")
+    }
+
+    private func secretKeys(projectRoot: URL) -> (agentToken: String, refreshToken: String, authPassword: String) {
+        let prefix = "networking.\(NetworkingPlatformClient.tokenHash(projectRoot.standardizedFileURL.path))"
+        return ("\(prefix).agent-token", "\(prefix).refresh-token", "\(prefix).auth-password")
+    }
+
+    private func hydrated(_ state: NetworkingActivationState, keys: (agentToken: String, refreshToken: String, authPassword: String)) -> NetworkingActivationState {
+        NetworkingActivationState(
+            isEnabled: state.isEnabled, personID: state.personID,
+            agentTokenPlaintext: keychain.load(forKey: keys.agentToken, service: keychainService) ?? state.agentTokenPlaintext,
+            supabaseURL: state.supabaseURL, publishableKey: state.publishableKey,
+            authEmail: state.authEmail,
+            authPassword: keychain.load(forKey: keys.authPassword, service: keychainService) ?? state.authPassword,
+            mode: state.mode, userID: state.userID,
+            refreshToken: keychain.load(forKey: keys.refreshToken, service: keychainService) ?? state.refreshToken,
+            profileIDMapping: state.profileIDMapping
+        )
+    }
+
+    private func persistSecret(_ value: String?, key: String) throws {
+        guard let value, value.isEmpty == false else {
+            keychain.delete(forKey: key, service: keychainService)
+            return
+        }
+        keychain.save(value, forKey: key, service: keychainService)
+        guard keychain.load(forKey: key, service: keychainService) == value else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [
+                NSLocalizedDescriptionKey: "Networking could not securely save credentials in Keychain."
+            ])
+        }
     }
 }
 

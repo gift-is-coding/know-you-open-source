@@ -15,4 +15,4 @@ exec >> "$log_file" 2>&1
 
 source "$web_env_script"
 cd "$repo_root/NetworkingWeb"
-exec npm run dev -- --hostname 127.0.0.1 --port "$port"
+exec npm start -- --hostname 127.0.0.1 --port "$port"

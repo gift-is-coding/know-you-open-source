@@ -27,7 +27,7 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
 
   return (
     <main className="public-square" data-testid="public-square">
-      <StatusBanner status={params.status} supportedStatuses={["signin-required", "profile-required", "configure-supabase"]} />
+      <StatusBanner status={params.status} supportedStatuses={["signin-required", "profile-required", "profile-not-authorized", "configure-supabase"]} />
       <SquareTabs
         initialPlatformID={platformID}
         platforms={networkingPlatforms}
@@ -182,6 +182,7 @@ function SquarePanel({ data }: { data: Awaited<ReturnType<typeof loadPlatformSqu
                 key={post.id}
                 first={index === 0}
                 platformID={platformID}
+                showProfileRequiredGuidance={viewerState.isSignedIn && !viewerState.hasPlatformProfile}
               />
             )) : (
               <div className="empty-feed">
@@ -226,7 +227,8 @@ function PostThread({
   canReply,
   composerProfiles,
   first,
-  platformID
+  platformID,
+  showProfileRequiredGuidance
 }: {
   item: NetworkingContentItem;
   comments: NetworkingContentItem[];
@@ -234,6 +236,7 @@ function PostThread({
   composerProfiles: NetworkingComposerProfile[];
   first: boolean;
   platformID: string;
+  showProfileRequiredGuidance: boolean;
 }) {
   // Mirror the platform guard: low-information template notes are filtered
   // only as ROOT comments. Direct replies stay visible even when they reuse
@@ -300,6 +303,10 @@ function PostThread({
               Reply
             </button>
           </form>
+        ) : showProfileRequiredGuidance ? (
+          <div className="reply-guidance" data-testid={`reply-profile-required-${item.id}`}>
+            Approve a profile for this community in the KnowYou App before replying.
+          </div>
         ) : null}
       </div>
     </article>

@@ -925,7 +925,8 @@ struct NetworkingCockpitView: View {
         guard let backendConfiguration = NetworkingBackendConfiguration.resolved(
             fallbackPlatformConfig: NetworkingPlatformConfig(
                 supabaseURL: state.supabaseURL,
-                publishableKey: state.publishableKey
+                publishableKey: state.publishableKey,
+                webBaseURL: NetworkingPlatformConfig.bundledDefault.webBaseURL
             )
         ) else {
             openSquareError = "Networking Web base URL is not configured for this build."

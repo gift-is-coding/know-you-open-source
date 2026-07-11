@@ -912,10 +912,14 @@ final class AppState {
             keychain: keychain,
             keychainService: keychainService
         )
-        self.syncMemoryConfig = Self.bootstrapSyncMemoryConfigIfNeeded(
-            startingFrom: SyncMemoryConfig.load(from: resolvedUserDefaults),
-            userDefaults: resolvedUserDefaults
-        )
+        let loadedSyncMemoryConfig = SyncMemoryConfig.load(from: resolvedUserDefaults)
+        let shouldDetectSyncMemoryPaths = bootstrapServices && Self.isRunningUnderXCTest == false
+        self.syncMemoryConfig = shouldDetectSyncMemoryPaths
+            ? Self.bootstrapSyncMemoryConfigIfNeeded(
+                startingFrom: loadedSyncMemoryConfig,
+                userDefaults: resolvedUserDefaults
+            )
+            : loadedSyncMemoryConfig
         self.knowledgeImportConfig = KnowledgeImportConfig.load(from: resolvedUserDefaults)
         self.endOfDayReminderConfig = EndOfDayReminderConfig.load(from: resolvedUserDefaults)
         self.dayReviewStates = Self.loadDayReviewStates(from: resolvedUserDefaults)
@@ -2850,6 +2854,11 @@ final class AppState {
             config.save(to: userDefaults)
         }
         return config
+    }
+
+    private static var isRunningUnderXCTest: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || CommandLine.arguments.contains { $0.contains(".xctest") || $0.contains("xctestconfiguration") }
     }
 
     func runAutomation(now: Date = Date()) async {

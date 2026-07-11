@@ -13,11 +13,14 @@ struct NetworkingProfileRegistration: Codable, Equatable {
 
 enum NetworkingActivationRunnerError: LocalizedError {
     case activationFailed(step: String, underlying: String)
+    case missingStoredIdentityCredentials
 
     var errorDescription: String? {
         switch self {
         case let .activationFailed(step, underlying):
             return "Networking activation failed while \(step): \(underlying)"
+        case .missingStoredIdentityCredentials:
+            return "This Networking identity is already connected, but its secure credentials are unavailable. Restore the Keychain credentials before reconnecting."
         }
     }
 }
@@ -60,6 +63,9 @@ struct NetworkingActivationRunner: Sendable {
         approvedProfiles: [NetworkingProfileRegistration],
         previousState: NetworkingActivationState? = nil
     ) throws -> NetworkingActivationState {
+        if previousState?.isPlatformConnected == true, previousState?.machineCredentials == nil {
+            throw NetworkingActivationRunnerError.missingStoredIdentityCredentials
+        }
         let credentials = previousState?.machineCredentials ?? credentialGenerator(handle)
         let session: NetworkingPlatformSession
         if previousState?.machineCredentials != nil {

@@ -10,4 +10,6 @@ docs/reviews/
 *.xcuserstate
 **/xcuserdata/
 .DS_Store
+.knowyou/networking/activation.json
+*.profraw
 !KnowYou/Config/Secrets.example.xcconfig

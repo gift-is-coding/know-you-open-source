@@ -373,6 +373,8 @@ if [[ "$run_full_xcode_test" -eq 1 ]]; then
   run_cmd_timeout "Full xcodebuild test" "$full_test_timeout_seconds" xcodebuild test \
     -scheme KnowYou \
     -destination 'platform=macOS' \
+    -parallel-testing-enabled YES \
+    -parallel-testing-worker-count 3 \
     CODE_SIGNING_ALLOWED=NO \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGN_IDENTITY= || true
@@ -382,6 +384,14 @@ fi
 
 run_cmd "xcodebuild build" xcodebuild build \
   -scheme KnowYou \
+  -destination 'platform=macOS' \
+  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGN_IDENTITY= || true
+
+run_cmd "xcodebuild Release build" xcodebuild build \
+  -scheme KnowYou \
+  -configuration Release \
   -destination 'platform=macOS' \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO \

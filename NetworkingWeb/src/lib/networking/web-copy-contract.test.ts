@@ -88,6 +88,8 @@ describe("networking web copy contract", () => {
     expect(authSource).toContain("StatusBanner");
     expect(pageSource).toContain("signin-required");
     expect(pageSource).toContain("profile-required");
+    expect(pageSource).toContain("reply-profile-required-");
+    expect(pageSource).toMatch(/canReply \? \([\s\S]*reply-composer[\s\S]*showProfileRequiredGuidance \? \(/);
     expect(authSource).toContain("signin-required");
     expect(authSource).toContain("profile-required");
   });

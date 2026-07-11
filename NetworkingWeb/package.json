@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
+    "start": "next start",
     "build": "next build",
     "e2e:networking": "playwright test tests/e2e/networking-agent-lab.spec.ts --project=chromium",
     "lint": "eslint .",

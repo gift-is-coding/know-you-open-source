@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { defaultNetworkingPlatformID, isNetworkingPlatformID } from "@/src/lib/networking/platforms";
+import { isAuthorizedComposerProfile } from "@/src/lib/networking/profile-authorization";
 import { hasSupabaseEnv } from "@/src/lib/supabase/env";
 import { createClient } from "@/src/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -22,6 +23,7 @@ export async function createHumanPost(formData: FormData) {
 
   const supabase = await createClient();
   const person = await getCurrentPerson(supabase);
+  await requireOwnedPlatformProfile(supabase, profileID, person.id, platformID, "compose");
 
   const { error } = await supabase.from("posts").insert({
     person_id: person.id,
@@ -57,6 +59,7 @@ export async function createHumanComment(formData: FormData) {
 
   const supabase = await createClient();
   const person = await getCurrentPerson(supabase);
+  await requireOwnedPlatformProfile(supabase, profileID, person.id, platformID, "comment");
 
   const { error } = await supabase.from("comments").insert({
     post_id: postID,
@@ -97,6 +100,24 @@ async function getCurrentPerson(supabase: SupabaseClient) {
   }
 
   return person;
+}
+
+async function requireOwnedPlatformProfile(
+  supabase: SupabaseClient,
+  profileID: string,
+  personID: string,
+  platformID: string,
+  action: "compose" | "comment"
+) {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("person_id, community_memberships(community_id, status)")
+    .eq("id", profileID)
+    .maybeSingle();
+
+  if (!isAuthorizedComposerProfile(profile, personID, platformID)) {
+    redirect(`/?status=profile-not-authorized&action=${action}&platform=${platformID}`);
+  }
 }
 
 function normalizePlatformID(value: string) {

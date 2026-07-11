@@ -104,6 +104,16 @@ final class NetworkingPlatformClientTests: XCTestCase {
         XCTAssertEqual(resolved.webBaseURL, URL(string: "https://networking.knowyou.app"))
     }
 
+    func testBackendConfigurationResolvedUsesPlatformFileWebBaseURLWithoutEnvironment() throws {
+        var platformConfig = config
+        platformConfig.webBaseURL = URL(string: "https://networking.giiift.site")!
+        let resolved = try XCTUnwrap(NetworkingBackendConfiguration.resolved(
+            processInfo: StubProcessInfo(environment: [:]),
+            fallbackPlatformConfig: platformConfig
+        ))
+        XCTAssertEqual(resolved.webBaseURL, URL(string: "https://networking.giiift.site"))
+    }
+
     func testBackendConfigurationResolvedFallsBackToLocalhostOnlyInDebugBuilds() {
         let processInfo = StubProcessInfo(environment: [:])
         let resolved = NetworkingBackendConfiguration.resolved(
@@ -116,6 +126,28 @@ final class NetworkingPlatformClientTests: XCTestCase {
         #else
         XCTAssertNil(resolved)
         #endif
+    }
+
+    func testBundledPlatformConfigProvidesProductionBackendAndReleaseWebURL() {
+        XCTAssertEqual(NetworkingPlatformConfig.bundledDefault.supabaseURL.host, "jevgtiamxlkucjqpbekn.supabase.co")
+        XCTAssertFalse(NetworkingPlatformConfig.bundledDefault.publishableKey.isEmpty)
+        #if DEBUG
+        XCTAssertNil(NetworkingPlatformConfig.bundledDefault.webBaseURL)
+        #else
+        XCTAssertEqual(NetworkingPlatformConfig.bundledDefault.webBaseURL, URL(string: "https://networking.giiift.site"))
+        #endif
+    }
+
+    func testPlatformConfigStoreFallsBackToBundledDefaultWhenFileIsCorrupt() throws {
+        let projectRoot = FileManager.default.temporaryDirectory
+            .appending(path: "networking-config-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: projectRoot) }
+        let store = NetworkingPlatformConfigStore()
+        let configURL = store.configURL(projectRoot: projectRoot)
+        try FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("{not-json".utf8).write(to: configURL)
+
+        XCTAssertEqual(store.load(projectRoot: projectRoot), .bundledDefault)
     }
 
     func testUpsertPersonUsesMergeDuplicatesAndReturnsRowID() throws {
@@ -365,6 +397,24 @@ final class NetworkingPlatformClientTests: XCTestCase {
             XCTAssertFalse(error.localizedDescription.contains("sign-in failed"))
         }
         XCTAssertEqual(recorder.requests.count, 1)
+    }
+
+    func testActivationRunnerDoesNotCreateReplacementIdentityWhenStoredCredentialsAreMissing() {
+        let recorder = TransportRecorder(responses: [])
+        var client = NetworkingPlatformClient(config: config)
+        client.transport = recorder.transport
+        let runner = NetworkingActivationRunner(client: client)
+        let previousState = NetworkingActivationState(
+            isEnabled: true, personID: "existing-person", agentTokenPlaintext: "",
+            supabaseURL: config.supabaseURL, publishableKey: config.publishableKey, mode: .platform
+        )
+
+        XCTAssertThrowsError(try runner.activate(
+            personName: "Tianfu Wu", handle: "tianfu-wu", approvedProfiles: [], previousState: previousState
+        )) { error in
+            XCTAssertTrue(error.localizedDescription.contains("secure credentials are unavailable"))
+        }
+        XCTAssertTrue(recorder.requests.isEmpty)
     }
 
     func testActivationStateDecodesLegacyJSONWithoutNewFields() throws {

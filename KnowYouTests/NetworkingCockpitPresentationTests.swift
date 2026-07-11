@@ -1,6 +1,26 @@
 import XCTest
 @testable import KnowYou
 
+private final class NetworkingTestKeychain: KeychainStoring, @unchecked Sendable {
+    private var values: [String: String] = [:]
+    private let lock = NSLock()
+
+    func save(_ value: String, forKey key: String, service: String) {
+        lock.lock(); defer { lock.unlock() }
+        values["\(service):\(key)"] = value
+    }
+
+    func load(forKey key: String, service: String) -> String? {
+        lock.lock(); defer { lock.unlock() }
+        return values["\(service):\(key)"]
+    }
+
+    func delete(forKey key: String, service: String) {
+        lock.lock(); defer { lock.unlock() }
+        values.removeValue(forKey: "\(service):\(key)")
+    }
+}
+
 final class NetworkingCockpitPresentationTests: XCTestCase {
     func testProfileDraftRequiresHumanApprovalBeforePublicSync() {
         let draft = NetworkingProfileDraft(
@@ -663,10 +683,39 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
             authPassword: Self.machinePassphrase
         )
 
-        let store = NetworkingActivationStateStore()
+        let keychain = NetworkingTestKeychain()
+        let store = NetworkingActivationStateStore(keychain: keychain, keychainService: "networking-tests")
         try store.save(state, projectRoot: projectRoot)
 
         XCTAssertEqual(store.load(projectRoot: projectRoot), state)
+        let disk = try String(contentsOf: store.stateURL(projectRoot: projectRoot), encoding: .utf8)
+        XCTAssertFalse(disk.contains("knw_agent_real_user"))
+        XCTAssertFalse(disk.contains(Self.machinePassphrase))
+    }
+
+    func testActivationStateStoreDoesNotResurrectClearedKeychainSecrets() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouClearedSecrets", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
+        let keychain = NetworkingTestKeychain()
+        let store = NetworkingActivationStateStore(keychain: keychain, keychainService: "networking-tests")
+        let original = NetworkingActivationState(
+            isEnabled: true, personID: "person-real-user", agentTokenPlaintext: "agent-token",
+            supabaseURL: URL(string: "https://local.knowyou.invalid")!, publishableKey: "local-dev",
+            authEmail: "machine@users.knowyou.app", authPassword: Self.machinePassphrase,
+            mode: .platform, refreshToken: "refresh-token"
+        )
+        try store.save(original, projectRoot: projectRoot)
+        let cleared = NetworkingActivationState(
+            isEnabled: true, personID: original.personID, agentTokenPlaintext: "",
+            supabaseURL: original.supabaseURL, publishableKey: original.publishableKey,
+            authEmail: original.authEmail, authPassword: nil, mode: .platform, refreshToken: nil
+        )
+
+        try store.save(cleared, projectRoot: projectRoot)
+        let loaded = try XCTUnwrap(store.load(projectRoot: projectRoot))
+        XCTAssertTrue(loaded.agentTokenPlaintext.isEmpty)
+        XCTAssertNil(loaded.authPassword)
+        XCTAssertNil(loaded.refreshToken)
     }
 
     func testActivationStateRequiresPlatformCredentialsBeforeReadyHandoff() {

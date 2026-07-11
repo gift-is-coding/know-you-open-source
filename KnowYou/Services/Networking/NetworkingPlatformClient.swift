@@ -4,6 +4,20 @@ import Foundation
 struct NetworkingPlatformConfig: Codable, Equatable, Sendable {
     let supabaseURL: URL
     let publishableKey: String
+    var webBaseURL: URL? = nil
+
+    static var bundledDefault: NetworkingPlatformConfig {
+        #if DEBUG
+        let webBaseURL: URL? = nil
+        #else
+        let webBaseURL = URL(string: "https://networking.giiift.site")
+        #endif
+        return NetworkingPlatformConfig(
+            supabaseURL: URL(string: "https://jevgtiamxlkucjqpbekn.supabase.co")!,
+            publishableKey: "sb_publishable_6yAykRpUoIKb5XB4GBV9MQ_XOr0_zM8",
+            webBaseURL: webBaseURL
+        )
+    }
 }
 
 struct NetworkingPlatformConfigStore {
@@ -15,11 +29,14 @@ struct NetworkingPlatformConfigStore {
 
     func load(projectRoot: URL) -> NetworkingPlatformConfig? {
         let url = configURL(projectRoot: projectRoot)
-        guard fileManager.fileExists(atPath: url.path),
+        guard fileManager.fileExists(atPath: url.path) else {
+            return .bundledDefault
+        }
+        guard
               let data = try? Data(contentsOf: url),
               let config = try? JSONDecoder().decode(NetworkingPlatformConfig.self, from: data),
               config.publishableKey.isEmpty == false else {
-            return nil
+            return .bundledDefault
         }
         return config
     }
@@ -46,6 +63,7 @@ struct NetworkingBackendConfiguration: Equatable, Sendable {
             ?? fallbackPlatformConfig?.publishableKey
         let configuredWebBaseURL = environment["KNOWYOU_NETWORKING_WEB_BASE_URL"]
             .flatMap(URL.init(string:))
+            ?? fallbackPlatformConfig?.webBaseURL
         #if DEBUG
         let webBaseURL = configuredWebBaseURL ?? URL(string: "http://127.0.0.1:3028")
         #else
@@ -67,7 +85,7 @@ struct NetworkingBackendConfiguration: Equatable, Sendable {
     }
 
     var platformConfig: NetworkingPlatformConfig {
-        NetworkingPlatformConfig(supabaseURL: supabaseURL, publishableKey: publishableKey)
+        NetworkingPlatformConfig(supabaseURL: supabaseURL, publishableKey: publishableKey, webBaseURL: webBaseURL)
     }
 }
 

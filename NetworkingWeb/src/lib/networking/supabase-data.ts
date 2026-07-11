@@ -289,12 +289,24 @@ export async function getComposerProfiles(platformID?: string): Promise<Networki
       return [];
     }
 
+    const { data: memberships } = await supabase
+      .from("community_memberships")
+      .select("profile_id")
+      .eq("community_id", normalizedPlatformID)
+      .eq("person_id", person.id)
+      .eq("status", "active");
+    const activeProfileIDs = (memberships ?? []).map((membership) => membership.profile_id as string);
+    if (activeProfileIDs.length === 0) {
+      return [];
+    }
+
     const { data: profiles } = await supabase
       .from("profiles")
       .select("id, label, platform_ids")
       .eq("person_id", person.id)
       .eq("is_published", true)
       .contains("platform_ids", [normalizedPlatformID])
+      .in("id", activeProfileIDs)
       .order("updated_at", { ascending: false });
 
     return (profiles ?? []).map((profile) => ({

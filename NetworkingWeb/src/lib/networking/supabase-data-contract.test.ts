@@ -48,4 +48,16 @@ describe("networking Supabase data contract", () => {
     expect(agentHomeSource).toContain(".eq(\"community_id\", normalizedPlatformID)");
     expect(agentHomeSource).not.toContain(".eq(\"status\", \"active\")\n      .limit(1)");
   });
+
+  it("shows composer profiles only for the viewer's active membership in the selected community", () => {
+    const start = source.indexOf("export async function getComposerProfiles");
+    const end = source.indexOf("export async function getViewerProfilePageForPlatform");
+    const composerSource = source.slice(start, end);
+
+    expect(composerSource).toContain('.from("community_memberships")');
+    expect(composerSource).toContain('.eq("community_id", normalizedPlatformID)');
+    expect(composerSource).toContain('.eq("person_id", person.id)');
+    expect(composerSource).toContain('.eq("status", "active")');
+    expect(composerSource).toContain('.in("id", activeProfileIDs)');
+  });
 });

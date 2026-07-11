@@ -22,8 +22,10 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
   const params = (await searchParams) ?? {};
   const requestedPlatformID = params.platform ?? "";
   const platformID = isNetworkingPlatformID(requestedPlatformID) ? requestedPlatformID : defaultNetworkingPlatformID;
-  const platformIDs = ["knowyou-jobs", "knowyou-friends"];
-  const platformData = await Promise.all(platformIDs.map((id) => loadPlatformSquareData(id)));
+  const workspace = await getMyProfileWorkspace();
+  const platformData = await Promise.all(
+    networkingPlatforms.map((platform) => loadPlatformSquareData(platform.id, workspace))
+  );
 
   return (
     <main className="public-square" data-testid="public-square">
@@ -31,10 +33,14 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
       <SquareTabs
         initialPlatformID={platformID}
         platforms={networkingPlatforms}
-        switcherClassName="community-switcher"
       >
         {platformData.map((data) => (
-          <section className="community-panel" data-platform-panel={data.platformID} key={data.platformID}>
+          <section
+            aria-label={`${data.platform.displayName} network`}
+            className={`community-panel square-site ${data.platform.scenarioID === "friends" ? "square-site-friends" : "square-site-careers"}`}
+            data-platform-panel={data.platformID}
+            key={data.platformID}
+          >
             <SquarePanel data={data} />
           </section>
         ))}
@@ -43,13 +49,15 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
   );
 }
 
-async function loadPlatformSquareData(platformID: string) {
-  const [items, composerProfiles, profilePage, agentHome, workspace] = await Promise.all([
+async function loadPlatformSquareData(
+  platformID: string,
+  workspace: Awaited<ReturnType<typeof getMyProfileWorkspace>>
+) {
+  const [items, composerProfiles, profilePage, agentHome] = await Promise.all([
     getPublicSquareItems(platformID),
     getComposerProfiles(platformID),
     getViewerProfilePageForPlatform(platformID),
-    getAgentHomePreview(platformID),
-    getMyProfileWorkspace()
+    getAgentHomePreview(platformID)
   ]);
 
   return {
@@ -76,17 +84,18 @@ function SquarePanel({ data }: { data: Awaited<ReturnType<typeof loadPlatformSqu
     emptyProfile(platformID);
   const posts = sortDiscussionItems(items.filter((item) => item.kind === "post"));
   const commentsByPost = groupComments(items);
+  const isFriends = platform.scenarioID === "friends";
 
   return (
     <>
-      <section className="square-hero" aria-label="KnowYou Networking public square">
+      <section className="square-hero" aria-label={`${platform.displayName} overview`}>
         <div>
-          <p className="eyebrow">{platform.displayName}</p>
-          <h1 className="h1">{platform.shortName} public square</h1>
+          <p className="eyebrow">{isFriends ? "Friends timeline" : "Careers identity and opportunities"}</p>
+          <h1 className="h1" tabIndex={-1}>{isFriends ? "Meet around what you enjoy" : "Build the next chapter of your work"}</h1>
           <p className="lede">
-            {platform.scenarioID === "friends"
-              ? "A small public square for meeting people around shared interests — film nights, city walks, quiet weekend plans. People set the tone here; agents only help."
-              : "A small public square for work, hiring, and collaboration. People set the tone here; agents only help."}
+            {isFriends
+              ? "A live, people-first timeline for film nights, city walks, quiet weekend plans, and the small interests that start real friendships."
+              : "A professional network for useful introductions, open roles, project collaborators, and concrete questions worth solving together."}
           </p>
           <details className="how-it-works">
             <summary>How agents work here</summary>
@@ -100,7 +109,7 @@ function SquarePanel({ data }: { data: Awaited<ReturnType<typeof loadPlatformSqu
         <div className="activation-card">
           <span className="status-dot" />
           <div>
-            <strong>{posts.length > 0 ? "Community is live" : "Quiet right now"}</strong>
+            <strong>{posts.length > 0 ? (isFriends ? "The timeline is moving" : "Opportunities are live") : "Quiet right now"}</strong>
             <span>
               {posts.length} open conversation{posts.length === 1 ? "" : "s"} · people first
             </span>
@@ -108,7 +117,7 @@ function SquarePanel({ data }: { data: Awaited<ReturnType<typeof loadPlatformSqu
         </div>
       </section>
 
-      <section className="profile-strip" aria-label="Generated profile faces">
+      <section className="profile-strip" aria-label={isFriends ? "Your social profile" : "Your professional identity"}>
         {profilesForPerson(profilePage).length > 0 ? profilesForPerson(profilePage).map((profile) => (
           <Link
             className={`profile-face ${profile.id === activeProfile.id ? "active" : ""}`}
@@ -134,13 +143,13 @@ function SquarePanel({ data }: { data: Awaited<ReturnType<typeof loadPlatformSqu
         )}
       </section>
 
-      <section className="square-body">
+      <section className={`square-body ${isFriends ? "friends-layout" : "careers-layout"}`}>
         <div className="square-main">
           <div className="platform-context">
             <div>
               <p className="eyebrow">{platform.displayName}</p>
-              <h2>{platform.shortName} community discussion</h2>
-              <p>{platform.description}</p>
+              <h2>{isFriends ? "What people are talking about" : "Opportunity network"}</h2>
+              <p>{isFriends ? "Short updates, concrete plans, and easy ways into the conversation." : "Professional updates, open needs, and collaboration with enough context to act."}</p>
             </div>
             <span className="human-first">human first</span>
           </div>
@@ -149,7 +158,11 @@ function SquarePanel({ data }: { data: Awaited<ReturnType<typeof loadPlatformSqu
             <form action={createHumanPost} className="composer-stub" aria-label="Create a public post">
               <input name="platformID" type="hidden" value={platformID} />
               <Avatar profile={activeProfile} label={activeProfile.avatarLetter ?? profilePage.person.initial ?? "Y"} />
-              <input aria-label="Post body" name="body" placeholder="Post an opportunity, need, person to meet, or question you are thinking about..." />
+              <input
+                aria-label="Post body"
+                name="body"
+                placeholder={isFriends ? "What are you into, planning, or curious about?" : "Share an opportunity, ask, role, or collaboration..."}
+              />
               <select
                 className="profile-select"
                 aria-label="Post as profile"
@@ -182,6 +195,7 @@ function SquarePanel({ data }: { data: Awaited<ReturnType<typeof loadPlatformSqu
                 key={post.id}
                 first={index === 0}
                 platformID={platformID}
+                scenarioID={platform.scenarioID}
                 showProfileRequiredGuidance={viewerState.isSignedIn && !viewerState.hasPlatformProfile}
               />
             )) : (
@@ -195,9 +209,9 @@ function SquarePanel({ data }: { data: Awaited<ReturnType<typeof loadPlatformSqu
 
         <aside className="platform-panel" aria-label="Platform-bound profile">
           <div className="panel-section">
-            <div className="rail-label">Community guide</div>
+            <div className="rail-label">{isFriends ? "Timeline pulse" : "Network guide"}</div>
             <p>{platform.description}</p>
-            <p>Post concrete plans, needs, questions, or opportunities. People stay primary; agents keep low-confidence matches in the App.</p>
+            <p>{isFriends ? "Share a real plan or interest. Easy specifics give other people a natural way to join." : "Lead with concrete roles, needs, questions, and outcomes. Useful context beats a polished announcement."}</p>
           </div>
           <div className="panel-section">
             <div className="rail-label">Profile in this community</div>
@@ -228,6 +242,7 @@ function PostThread({
   composerProfiles,
   first,
   platformID,
+  scenarioID,
   showProfileRequiredGuidance
 }: {
   item: NetworkingContentItem;
@@ -236,6 +251,7 @@ function PostThread({
   composerProfiles: NetworkingComposerProfile[];
   first: boolean;
   platformID: string;
+  scenarioID: string;
   showProfileRequiredGuidance: boolean;
 }) {
   // Mirror the platform guard: low-information template notes are filtered
@@ -254,7 +270,7 @@ function PostThread({
 
   return (
     <article
-      className={`post ${item.authorType === "ai" ? "ai" : "human"} ${first ? "first" : ""}`}
+      className={`post post-${scenarioID} ${item.authorType === "ai" ? "ai" : "human"} ${first ? "first" : ""}`}
       data-testid={`post-thread-${item.id}`}
     >
       <header className="post-head">
@@ -265,8 +281,7 @@ function PostThread({
       <footer className="post-foot">
         <span>{item.topic ?? getNetworkingPlatform(item.platformID).displayName}</span>
         <span className="pip" />
-        <button type="button">Comments {visibleComments.length}</button>
-        <button type="button">Save to App</button>
+        <span>{visibleComments.length} {visibleComments.length === 1 ? "reply" : "replies"}</span>
       </footer>
 
       <div className="comments">
@@ -412,8 +427,10 @@ function Avatar({
       aria-hidden="true"
       className={`avatar avatar-${size}`}
       style={{
-        background: profile.avatarBg ?? "var(--surface-2)",
-        color: "white"
+        background: profile.avatarBg
+          ? `color-mix(in srgb, ${profile.avatarBg} 72%, #16231f)`
+          : "var(--site-accent)",
+        color: "var(--avatar-ink)"
       }}
     >
       {label}
@@ -493,7 +510,6 @@ function emptyProfile(platformID: string): NetworkingProfile {
     summary: "Approve a generated profile in the KnowYou App before using this community.",
     published: false,
     avatarLetter: "N",
-    avatarBg: platform.accent,
     scenarioID: platform.scenarioID,
     scenarioDescription: platform.description,
     platformIDs: [platformID]

@@ -25,13 +25,22 @@ describe("networking web copy contract", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("uses one compact community switcher instead of duplicate platform cards", () => {
+  it("presents communities as distinct destinations instead of compact tabs", () => {
     const pageSource = readFileSync(join(process.cwd(), "app/page.tsx"), "utf8");
+    const switcherSource = readFileSync(join(process.cwd(), "src/components/SquareTabs.tsx"), "utf8");
     const cssSource = readFileSync(join(process.cwd(), "app/globals.css"), "utf8");
 
-    expect(pageSource).toContain("community-switcher");
+    expect(switcherSource).toContain("destination-switcher");
     expect(pageSource).not.toContain("platform-tabs");
-    expect(cssSource).toContain(".community-switcher");
+    expect(switcherSource).toContain("destination-link");
+    expect(switcherSource).toContain("href=");
+    expect(switcherSource).toContain("hidden=");
+    expect(switcherSource).toContain('aria-current={platform.id === activePlatformID ? "page"');
+    expect(switcherSource).toContain('aria-live="polite"');
+    expect(switcherSource).toContain("heading?.focus()");
+    expect(cssSource).toContain(".destination-switcher");
+    expect(cssSource).toContain(".networking-destinations {");
+    expect(cssSource).toContain('[data-active-platform="knowyou-friends"]');
     expect(cssSource).not.toContain(".platform-tabs");
   });
 
@@ -62,12 +71,41 @@ describe("networking web copy contract", () => {
 
     expect(pageSource).toContain("SquareTabs");
     expect(pageSource).toContain("Promise.all");
-    expect(pageSource).toContain("knowyou-jobs");
-    expect(pageSource).toContain("knowyou-friends");
+    expect(pageSource).toContain("networkingPlatforms.map");
+    expect(pageSource).toContain("loadPlatformSquareData(platform.id, workspace)");
+    expect(pageSource).toContain("const workspace = await getMyProfileWorkspace()");
+    expect(pageSource).not.toContain('const platformIDs = ["knowyou-jobs", "knowyou-friends"]');
     expect(squareTabsSource).toContain('"use client"');
     expect(squareTabsSource).toContain("window.history.replaceState");
     expect(squareTabsSource).not.toContain("router.replace");
-    expect(squareTabsSource).not.toContain("<Link");
+    expect(squareTabsSource).toContain("<a");
+  });
+
+  it("gives Careers and Friends different structure and feed treatments", () => {
+    const pageSource = readFileSync(join(process.cwd(), "app/page.tsx"), "utf8");
+    const cssSource = readFileSync(join(process.cwd(), "app/globals.css"), "utf8");
+
+    expect(pageSource).toContain("square-site-careers");
+    expect(pageSource).toContain("square-site-friends");
+    expect(pageSource).toContain("Careers identity and opportunities");
+    expect(pageSource).toContain("Friends timeline");
+    expect(cssSource).toContain("--site-accent");
+    expect(cssSource).toContain(".square-site-careers .post");
+    expect(cssSource).toContain(".square-site-friends .post");
+    expect(cssSource).toContain(".square-site-careers .square-hero .h1");
+    expect(cssSource).toContain(".community-panel-frame:not([hidden])");
+    expect(cssSource).toContain("@media (prefers-reduced-motion: reduce)");
+  });
+
+  it("keeps mobile composing usable and removes dead feed controls", () => {
+    const pageSource = readFileSync(join(process.cwd(), "app/page.tsx"), "utf8");
+    const cssSource = readFileSync(join(process.cwd(), "app/globals.css"), "utf8");
+
+    expect(pageSource).not.toContain("Save to App");
+    expect(pageSource).not.toContain('<button type="button">Comments');
+    expect(pageSource).toContain('color: "var(--avatar-ink)"');
+    expect(cssSource).toContain("grid-template-areas");
+    expect(cssSource).toContain(":focus-visible");
   });
 
   it("replaces signed-out post and reply controls with App-first guidance", () => {

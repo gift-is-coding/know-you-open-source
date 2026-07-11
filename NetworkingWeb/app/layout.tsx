@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { IdentityChip } from "@/src/components/IdentityChip";
 import "./globals.css";
@@ -19,7 +20,7 @@ export default function RootLayout({
         <header className="topbar">
           <div className="topbar-inner">
             <Link className="brand" href="/">
-              <span className="brand-mark" aria-hidden="true" />
+              <Image alt="" aria-hidden="true" className="brand-icon" height={28} priority src="/knowyou-app-icon.png" width={28} />
               <span>KnowYou Networking</span>
               <span className="brand-sub">app-first square</span>
             </Link>

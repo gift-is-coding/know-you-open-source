@@ -11,6 +11,7 @@
     "deploy:cloudflare": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "e2e:networking": "playwright test tests/e2e/networking-agent-lab.spec.ts --project=chromium",
+    "e2e:destinations": "playwright test tests/e2e/networking-destinations.spec.ts --project=chromium",
     "lint": "eslint .",
     "test": "vitest",
     "typecheck": "tsc --noEmit"
@@ -18,6 +19,7 @@
   "dependencies": {
     "@supabase/ssr": "0.10.3",
     "@supabase/supabase-js": "2.106.2",
+    "lucide-react": "0.468.0",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6"

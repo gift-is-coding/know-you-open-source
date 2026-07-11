@@ -41,7 +41,7 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
             data-platform-panel={data.platformID}
             key={data.platformID}
           >
-            <SquarePanel data={data} />
+            {data.platform.scenarioID === "friends" ? <FriendsSquare data={data} /> : <CareersSquare data={data} />}
           </section>
         ))}
       </SquareTabs>
@@ -74,165 +74,184 @@ async function loadPlatformSquareData(
   };
 }
 
-function SquarePanel({ data }: { data: Awaited<ReturnType<typeof loadPlatformSquareData>> }) {
+type DestinationData = Awaited<ReturnType<typeof loadPlatformSquareData>>;
+
+function prepareSquareData(data: DestinationData) {
   const { platformID, platform, items, composerProfiles, profilePage, agentHome, viewerState } = data;
-  const usableComposerProfiles = composerProfiles;
   const canPost = viewerState.isSignedIn && viewerState.hasPlatformProfile;
-  const canReply = canPost;
   const activeProfile =
     profilesForPerson(profilePage).find((profile) => (profile.platformIDs ?? []).includes(platformID)) ??
     emptyProfile(platformID);
   const posts = sortDiscussionItems(items.filter((item) => item.kind === "post"));
   const commentsByPost = groupComments(items);
-  const isFriends = platform.scenarioID === "friends";
+
+  return { platformID, platform, items, composerProfiles, profilePage, agentHome, viewerState, canPost, activeProfile, posts, commentsByPost };
+}
+
+function CareersSquare({ data }: { data: DestinationData }) {
+  const square = prepareSquareData(data);
 
   return (
-    <>
-      <section className="square-hero" aria-label={`${platform.displayName} overview`}>
-        <div>
-          <p className="eyebrow">{isFriends ? "Friends timeline" : "Careers identity and opportunities"}</p>
-          <h1 className="h1" tabIndex={-1}>{isFriends ? "Meet around what you enjoy" : "Build the next chapter of your work"}</h1>
-          <p className="lede">
-            {isFriends
-              ? "A live, people-first timeline for film nights, city walks, quiet weekend plans, and the small interests that start real friendships."
-              : "A professional network for useful introductions, open roles, project collaborators, and concrete questions worth solving together."}
-          </p>
-          <details className="how-it-works">
-            <summary>How agents work here</summary>
-            <p>
-              Each person can bring one profile-agent into this community. It answers replies to its owner first, then
-              looks at new posts. Everything it writes in public carries an AI label, and anything that needs judgment
-              goes back to its owner in the KnowYou App.
-            </p>
-          </details>
+    <section className="careers-network" data-layout="professional-network">
+      <aside aria-label="Professional identity" className="career-identity-rail">
+        <ProfileIdentity square={square} />
+        <div className="career-rail-section">
+          <span className="rail-label">Public positioning</span>
+          <p>{square.activeProfile.scenarioDescription}</p>
         </div>
-        <div className="activation-card">
-          <span className="status-dot" />
-          <div>
-            <strong>{posts.length > 0 ? (isFriends ? "The timeline is moving" : "Opportunities are live") : "Quiet right now"}</strong>
-            <span>
-              {posts.length} open conversation{posts.length === 1 ? "" : "s"} · people first
-            </span>
-          </div>
+        <div className="career-rail-section privacy-compact">
+          <span className="rail-label">Privacy</span>
+          <p>Only your approved profile and public activity appear here.</p>
         </div>
-      </section>
-
-      <section className="profile-strip" aria-label={isFriends ? "Your social profile" : "Your professional identity"}>
-        {profilesForPerson(profilePage).length > 0 ? profilesForPerson(profilePage).map((profile) => (
-          <Link
-            className={`profile-face ${profile.id === activeProfile.id ? "active" : ""}`}
-            href={`/profiles/${profilePage.person.handle}#${profile.slug}`}
-            key={profile.id}
-          >
-            <Avatar profile={profile} label={profile.avatarLetter ?? profile.label.slice(0, 1)} size="large" />
-            <span>
-              <strong>{profile.personName ?? profilePage.person.displayName}</strong>
-              <em>{profile.label}</em>
-              <small>{profile.scenarioDescription}</small>
-            </span>
-          </Link>
-        )) : (
-          <div className="profile-face empty">
-            <Avatar profile={activeProfile} label="N" size="large" />
-            <span>
-              <strong>No approved profile yet</strong>
-              <em>{getNetworkingPlatform(platformID).displayName}</em>
-              <small>Approve a profile in the KnowYou App to publish into this community.</small>
-            </span>
-          </div>
-        )}
-      </section>
-
-      <section className={`square-body ${isFriends ? "friends-layout" : "careers-layout"}`}>
-        <div className="square-main">
-          <div className="platform-context">
-            <div>
-              <p className="eyebrow">{platform.displayName}</p>
-              <h2>{isFriends ? "What people are talking about" : "Opportunity network"}</h2>
-              <p>{isFriends ? "Short updates, concrete plans, and easy ways into the conversation." : "Professional updates, open needs, and collaboration with enough context to act."}</p>
-            </div>
-            <span className="human-first">human first</span>
-          </div>
-
-          {canPost ? (
-            <form action={createHumanPost} className="composer-stub" aria-label="Create a public post">
-              <input name="platformID" type="hidden" value={platformID} />
-              <Avatar profile={activeProfile} label={activeProfile.avatarLetter ?? profilePage.person.initial ?? "Y"} />
-              <input
-                aria-label="Post body"
-                name="body"
-                placeholder={isFriends ? "What are you into, planning, or curious about?" : "Share an opportunity, ask, role, or collaboration..."}
-              />
-              <select
-                className="profile-select"
-                aria-label="Post as profile"
-                name="profileID"
-                defaultValue={usableComposerProfiles[0]?.id}
-              >
-                {usableComposerProfiles.map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.label}
-                  </option>
-                ))}
-              </select>
-              <button className="btn primary" type="submit">
-                Post
-              </button>
-            </form>
-          ) : viewerState.isSignedIn ? (
-            <ProfileRequiredGuidance platformID={platformID} />
-          ) : (
-            <SignedOutComposerGuidance />
-          )}
-
-          <div className="feed">
-            {posts.length > 0 ? posts.map((post, index) => (
-              <PostThread
-                comments={sortDiscussionItems(commentsByPost.get(post.id) ?? [])}
-                canReply={canReply}
-                composerProfiles={composerProfiles}
-                item={post}
-                key={post.id}
-                first={index === 0}
-                platformID={platformID}
-                scenarioID={platform.scenarioID}
-                showProfileRequiredGuidance={viewerState.isSignedIn && !viewerState.hasPlatformProfile}
-              />
-            )) : (
-              <div className="empty-feed">
-                <strong>No public posts in this community yet.</strong>
-                <span>When App-approved profiles or agents publish here, posts and comments will appear in this square.</span>
-              </div>
-            )}
-          </div>
+      </aside>
+      <main className="career-feed-column">
+        <header className="career-page-head">
+          <p className="eyebrow">KnowYou Careers</p>
+          <h1 tabIndex={-1}>Build the next chapter of your work</h1>
+          <p>Professional updates, open roles, useful introductions, and collaboration with enough context to act.</p>
+        </header>
+        <Composer square={square} variant="careers" />
+        <Feed square={square} />
+      </main>
+      <aside aria-label="Career agent and privacy" className="career-agent-rail">
+        <AgentHomePanel home={square.agentHome} />
+        <div className="career-side-card">
+          <span className="rail-label">Network guide</span>
+          <strong>Lead with concrete outcomes</strong>
+          <p>Roles, asks, questions, and specific collaboration needs make the strongest introductions.</p>
         </div>
-
-        <aside className="platform-panel" aria-label="Platform-bound profile">
-          <div className="panel-section">
-            <div className="rail-label">{isFriends ? "Timeline pulse" : "Network guide"}</div>
-            <p>{platform.description}</p>
-            <p>{isFriends ? "Share a real plan or interest. Easy specifics give other people a natural way to join." : "Lead with concrete roles, needs, questions, and outcomes. Useful context beats a polished announcement."}</p>
-          </div>
-          <div className="panel-section">
-            <div className="rail-label">Profile in this community</div>
-            <div className="bound-profile">
-              <Avatar profile={activeProfile} label={activeProfile.avatarLetter ?? "Y"} size="large" />
-              <strong>{activeProfile.personName ?? profilePage.person.displayName}</strong>
-              <span>{activeProfile.label}</span>
-              <p>{activeProfile.summary}</p>
-            </div>
-          </div>
-          <AgentHomePanel home={agentHome} />
-          <div className="panel-section">
-            <div className="rail-label">What stays private</div>
-            <p>Only what you see here is public: profiles, posts, comments, and AI-labeled agent activity.</p>
-            <p>Personal notes, unapproved drafts, and the reasons behind a match never leave the owner&apos;s App.</p>
-          </div>
-        </aside>
-      </section>
-
-    </>
+        <PrivacyPanel />
+      </aside>
+    </section>
   );
+}
+
+function FriendsSquare({ data }: { data: DestinationData }) {
+  const square = prepareSquareData(data);
+
+  return (
+    <section className="friends-network" data-layout="people-discovery">
+      <header className="friends-page-head">
+        <div>
+          <p className="eyebrow">Find your people</p>
+          <h1 tabIndex={-1}>Meet around what you enjoy</h1>
+          <p>Real interests, easy plans, and small moments that make it natural to say hello.</p>
+        </div>
+        <span className="friends-pulse">{square.posts.length} conversations alive</span>
+      </header>
+      <PeopleDiscovery square={square} />
+      <div className="friends-content-grid">
+        <main className="friends-feed-column">
+          <Composer square={square} variant="friends" />
+          <Feed square={square} />
+        </main>
+        <aside aria-label="Friends plans, agent, and privacy" className="friends-side-rail">
+          <div className="friends-side-card plans-card">
+            <span className="rail-label">Conversation starters</span>
+            <strong>Make the next plan specific</strong>
+            <p>A film, a walk, a playlist, or a place gives people an easy way into the conversation.</p>
+          </div>
+          <AgentHomePanel home={square.agentHome} />
+          <PrivacyPanel />
+        </aside>
+      </div>
+      </section>
+  );
+}
+
+type SquareData = ReturnType<typeof prepareSquareData>;
+
+function ProfileIdentity({ square }: { square: SquareData }) {
+  return (
+    <div className="career-profile-card">
+      <Avatar profile={square.activeProfile} label={square.activeProfile.avatarLetter ?? square.profilePage.person.initial ?? "Y"} size="large" />
+      <strong>{square.activeProfile.personName ?? square.profilePage.person.displayName}</strong>
+      <span>{square.activeProfile.label}</span>
+      <p>{square.activeProfile.summary}</p>
+      {square.activeProfile.published !== false ? (
+        <Link href={`/profiles/${square.profilePage.person.handle}#${square.activeProfile.slug}`}>View public profile</Link>
+      ) : <small>Approve this profile in the KnowYou App.</small>}
+    </div>
+  );
+}
+
+function PeopleDiscovery({ square }: { square: SquareData }) {
+  const people = uniquePublicPeople(square.items, square.profilePage.person.id).slice(0, 7);
+  return (
+    <section aria-label="People you may vibe with" className="friends-discovery">
+      <div className="discovery-heading">
+        <strong>People you may vibe with</strong>
+        <span>From public conversations in this space</span>
+      </div>
+      <div className="discovery-people">
+        {people.length > 0 ? people.map((item, index) => (
+          <Link className={`vibe-person vibe-color-${(index % 5) + 1}`} href={`/profiles/${item.person.handle}#${item.profile.slug}`} key={`${item.person.id}-${item.profile.id}`}>
+            <Avatar profile={item.profile} label={item.profile.avatarLetter ?? item.person.initial ?? "F"} size="large" />
+            <strong>{item.person.displayName}</strong>
+            <span>{item.profile.label}</span>
+          </Link>
+        )) : <p className="discovery-empty">Public profiles will appear here when people join the conversation.</p>}
+      </div>
+    </section>
+  );
+}
+
+function Composer({ square, variant }: { square: SquareData; variant: "careers" | "friends" }) {
+  if (!square.canPost) {
+    return square.viewerState.isSignedIn ? <ProfileRequiredGuidance platformID={square.platformID} /> : <SignedOutComposerGuidance />;
+  }
+  return (
+    <form action={createHumanPost} className={`composer-stub ${variant === "friends" ? "friends-composer" : "career-composer"}`} aria-label="Create a public post">
+      <input name="platformID" type="hidden" value={square.platformID} />
+      <Avatar profile={square.activeProfile} label={square.activeProfile.avatarLetter ?? square.profilePage.person.initial ?? "Y"} />
+      <input aria-label="Post body" name="body" placeholder={variant === "friends" ? "What are you into, planning, or curious about?" : "Share an opportunity, role, ask, or collaboration..."} />
+      <select className="profile-select" aria-label="Post as profile" name="profileID" defaultValue={square.composerProfiles[0]?.id}>
+        {square.composerProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>)}
+      </select>
+      <button className="btn primary" type="submit">Post</button>
+    </form>
+  );
+}
+
+function Feed({ square }: { square: SquareData }) {
+  return (
+    <div className="feed">
+      {square.posts.length > 0 ? square.posts.map((post, index) => (
+        <PostThread
+          comments={sortDiscussionItems(square.commentsByPost.get(post.id) ?? [])}
+          canReply={square.canPost}
+          composerProfiles={square.composerProfiles}
+          item={post}
+          key={post.id}
+          first={index === 0}
+          platformID={square.platformID}
+          scenarioID={square.platform.scenarioID}
+          showProfileRequiredGuidance={square.viewerState.isSignedIn && !square.viewerState.hasPlatformProfile}
+        />
+      )) : <div className="empty-feed"><strong>No public posts here yet.</strong><span>Approved profiles and public agent activity will appear here.</span></div>}
+    </div>
+  );
+}
+
+function PrivacyPanel() {
+  return (
+    <div className="privacy-panel">
+      <span className="rail-label">Privacy center</span>
+      <strong>Your context stays yours</strong>
+      <p>Only approved profiles, public posts, comments, and AI-labeled activity leave the App.</p>
+    </div>
+  );
+}
+
+function uniquePublicPeople(items: NetworkingContentItem[], viewerPersonID: string) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (item.authorType !== "human" || item.person.id === viewerPersonID) return false;
+    const key = `${item.person.id}:${item.profile.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function PostThread({

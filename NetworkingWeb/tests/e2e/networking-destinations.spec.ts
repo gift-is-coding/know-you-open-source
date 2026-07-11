@@ -4,6 +4,8 @@ test("switches between visually distinct Careers and Friends destinations", asyn
   await page.goto("/?platform=knowyou-jobs");
 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Build the next chapter of your work");
+  await expect(page.locator('[data-layout="professional-network"]')).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Professional identity" })).toBeVisible();
   await expect(page.locator(".community-panels > div[hidden]")).toHaveCount(1);
   const careersTheme = await themeTokens(page);
 
@@ -11,6 +13,8 @@ test("switches between visually distinct Careers and Friends destinations", asyn
 
   await expect(page).toHaveURL(/platform=knowyou-friends/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Meet around what you enjoy");
+  await expect(page.locator('[data-layout="people-discovery"]')).toBeVisible();
+  await expect(page.getByRole("region", { name: "People you may vibe with" })).toBeVisible();
   await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
   await expect(page.getByRole("link", { name: /Friends Network/ })).toHaveAttribute("aria-current", "page");
   await expect(page.locator(".community-panels > div[hidden]")).toHaveCount(1);
@@ -27,6 +31,15 @@ test("keeps the destination and feed inside a narrow mobile viewport", async ({ 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
   await expect(page.getByRole("link", { name: /Careers Network/ })).toBeVisible();
+});
+
+test("keeps the Careers grid inside a narrow desktop viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await page.goto("/?platform=knowyou-jobs");
+
+  await expect(page.locator('[data-layout="professional-network"]')).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
 });
 
 test("renders the requested destination without JavaScript", async ({ browser, baseURL }) => {

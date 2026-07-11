@@ -39,6 +39,8 @@ describe("networking web copy contract", () => {
     expect(switcherSource).toContain('aria-live="polite"');
     expect(switcherSource).toContain("heading?.focus()");
     expect(cssSource).toContain(".destination-switcher");
+    expect(cssSource).toContain('.destination-link[aria-current="page"]');
+    expect(cssSource).not.toContain('.destination-link[aria-current="true"]');
     expect(cssSource).toContain(".networking-destinations {");
     expect(cssSource).toContain('[data-active-platform="knowyou-friends"]');
     expect(cssSource).not.toContain(".platform-tabs");
@@ -87,14 +89,38 @@ describe("networking web copy contract", () => {
 
     expect(pageSource).toContain("square-site-careers");
     expect(pageSource).toContain("square-site-friends");
-    expect(pageSource).toContain("Careers identity and opportunities");
-    expect(pageSource).toContain("Friends timeline");
+    expect(pageSource).toContain("CareersSquare");
+    expect(pageSource).toContain("FriendsSquare");
+    expect(pageSource).toContain("PeopleDiscovery");
+    expect(pageSource).toContain('data-layout="professional-network"');
+    expect(pageSource).toContain('data-layout="people-discovery"');
+    expect(pageSource).toContain("Professional identity");
+    expect(pageSource).toContain("People you may vibe with");
     expect(cssSource).toContain("--site-accent");
     expect(cssSource).toContain(".square-site-careers .post");
     expect(cssSource).toContain(".square-site-friends .post");
     expect(cssSource).toContain(".square-site-careers .square-hero .h1");
+    expect(cssSource).toContain("@media (max-width: 1140px) {\n  .careers-network");
     expect(cssSource).toContain(".community-panel-frame:not([hidden])");
     expect(cssSource).toContain("@media (prefers-reduced-motion: reduce)");
+  });
+
+  it("does not advertise social controls that the product cannot perform", () => {
+    const pageSource = readFileSync(join(process.cwd(), "app/page.tsx"), "utf8");
+
+    expect(pageSource).not.toContain(">Photo<");
+    expect(pageSource).not.toContain(">Poll<");
+    expect(pageSource).not.toContain(">Voice<");
+    expect(pageSource).not.toContain(">Stories<");
+    expect(pageSource).not.toContain(">RSVP<");
+  });
+
+  it("keeps Friends discovery human-first and excludes the current viewer", () => {
+    const pageSource = readFileSync(join(process.cwd(), "app/page.tsx"), "utf8");
+
+    expect(pageSource).toContain('item.authorType !== "human"');
+    expect(pageSource).toContain("item.person.id === viewerPersonID");
+    expect(pageSource).toContain("uniquePublicPeople(square.items, square.profilePage.person.id)");
   });
 
   it("keeps mobile composing usable and removes dead feed controls", () => {

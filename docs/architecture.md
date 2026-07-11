@@ -190,6 +190,8 @@ Networking 使用非收件箱形式的本机机器邮箱创建 Supabase password
 
 Networking Web 的两个社区是同一 KnowYou 身份体系下的两个独立 destination，而不是 tab。`SquareTabs` 保留 server-rendered query URL 和真实 link，在 client 侧切换整页 theme、hidden panel、可访问 announcement 与 heading focus。Careers 使用职业身份优先的结构化机会 feed；Friends 使用 composer/time-line 优先的轻量对话结构。两者共用 Supabase 权限、App handoff、AI 标签和隐私边界，但拥有独立的 layout/theme token 与 responsive treatment。
 
+双目的地视觉实现进一步使用独立 DOM 架构：Careers 渲染职业 identity、中心动态和 Agent/privacy 三栏；Friends 渲染公开人物发现带、明亮动态流和计划/Agent/privacy 侧栏。人物发现仅由公开 post/profile 去重生成，不推断年龄、距离或匹配分数；两个目的地复用同一套 server-side composer、reply ownership、Agent Home 和 handoff 契约，不为视觉模仿增加无后端能力的控件。
+
 ### 3.6 Unified Todo
 
 统一 Todo inbox 的权威状态在 `Vault/Todo.md`，不是每日 Markdown 的派生状态。每日 `# 待办事项` 只保留“候选待办”的叙事职责，`Todo.md` 记录 open/completed、来源日期、来源事件、创建/完成时间、完成证据、归集方式与完成方式。旧 SQLite `todo_items` 表保留为兼容和首次 seed 来源：当 `Todo.md` 不存在但 SQLite 里已有 todo 时，`TodoStore` 会先写出 Markdown 文件。

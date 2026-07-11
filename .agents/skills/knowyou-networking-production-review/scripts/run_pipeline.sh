@@ -370,14 +370,8 @@ run_cmd "Swift networking targeted tests" xcodebuild test \
   CODE_SIGN_IDENTITY= || true
 
 if [[ "$run_full_xcode_test" -eq 1 ]]; then
-  run_cmd_timeout "Full xcodebuild test" "$full_test_timeout_seconds" xcodebuild test \
-    -scheme KnowYou \
-    -destination 'platform=macOS' \
-    -parallel-testing-enabled YES \
-    -parallel-testing-worker-count 3 \
-    CODE_SIGNING_ALLOWED=NO \
-    CODE_SIGNING_REQUIRED=NO \
-    CODE_SIGN_IDENTITY= || true
+  run_cmd_timeout "Full xcodebuild test" "$full_test_timeout_seconds" \
+    bash "$skill_dir/scripts/run_full_xcode_test.sh" || true
 else
   skip_cmd "Full xcodebuild test" 1
 fi

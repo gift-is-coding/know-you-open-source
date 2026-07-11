@@ -307,6 +307,30 @@ export async function getComposerProfiles(platformID?: string): Promise<Networki
   }
 }
 
+export async function getViewerProfilePageForPlatform(platformID?: string): Promise<NetworkingProfilePage> {
+  const normalizedPlatformID = normalizePlatformID(platformID);
+
+  if (isNetworkingE2EStoreEnabled()) {
+    return getNetworkingE2EProfilePage("shuhan");
+  }
+
+  if (!hasSupabaseEnv()) {
+    return getPublicProfilePageForPlatform(normalizedPlatformID);
+  }
+
+  const workspace = await getMyProfileWorkspace();
+  if (!workspace.person) {
+    return emptyProfilePage(normalizedPlatformID);
+  }
+
+  return {
+    person: workspace.person,
+    profiles: workspace.profiles.filter(
+      (profile) => profile.published !== false && (profile.platformIDs ?? []).includes(normalizedPlatformID)
+    )
+  };
+}
+
 export async function getAgentActivities(platformID?: string): Promise<NetworkingAgentActivity[]> {
   const normalizedPlatformID = normalizePlatformID(platformID);
 
@@ -377,33 +401,47 @@ export async function getAgentHomePreview(platformID?: string): Promise<Networki
 
   try {
     const supabase = await createClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return null;
+    }
+
+    const { data: person } = await supabase
+      .from("people")
+      .select("id, display_name, handle")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!person) {
+      return null;
+    }
+
     const { data: membership } = await supabase
       .from("community_memberships")
       .select("community_id, person_id, profile_id, status, policy, last_heartbeat_at, last_candidate_seen_at")
       .eq("community_id", normalizedPlatformID)
+      .eq("person_id", person.id)
       .eq("status", "active")
-      .limit(1)
       .maybeSingle();
 
     if (!membership) {
       return null;
     }
 
-    const [personResult, profileResult] = await Promise.all([
-      supabase.from("people").select("id, display_name, handle").eq("id", membership.person_id).maybeSingle(),
-      supabase
+    const profileResult = await supabase
         .from("profiles")
         .select("id, label, slug, scenario_id, scenario_description, avatar_seed, avatar_style, platform_ids, summary, is_published")
         .eq("id", membership.profile_id)
         .eq("is_published", true)
         .contains("platform_ids", [normalizedPlatformID])
-        .maybeSingle()
-    ]);
+        .maybeSingle();
 
-    if (!personResult.data || !profileResult.data) {
+    if (!profileResult.data) {
       return null;
     }
-    const person = personResult.data as PersonRow;
     const profile = profileResult.data as ProfileRow;
 
     const { data: events } = await supabase
@@ -421,7 +459,7 @@ export async function getAgentHomePreview(platformID?: string): Promise<Networki
 
     return buildAgentHome({
       now: new Date(),
-      person: mapPerson(person),
+      person: mapPerson(person as PersonRow),
       profile: mapProfile(profile, person.display_name),
       membership: mapMembership(membership as MembershipRow),
       items,

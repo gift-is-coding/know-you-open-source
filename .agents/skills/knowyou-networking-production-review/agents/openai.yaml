@@ -1,0 +1,4 @@
+interface:
+  display_name: "KnowYou Networking Production Review"
+  short_description: "Review Networking for production readiness"
+  default_prompt: "Use $knowyou-networking-production-review to verify the current Networking diff and run Claude production review."

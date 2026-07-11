@@ -65,8 +65,31 @@ describe("networking web copy contract", () => {
     expect(pageSource).toContain("knowyou-jobs");
     expect(pageSource).toContain("knowyou-friends");
     expect(squareTabsSource).toContain('"use client"');
-    expect(squareTabsSource).toContain("router.replace");
+    expect(squareTabsSource).toContain("window.history.replaceState");
+    expect(squareTabsSource).not.toContain("router.replace");
     expect(squareTabsSource).not.toContain("<Link");
+  });
+
+  it("replaces signed-out post and reply controls with App-first guidance", () => {
+    const pageSource = readFileSync(join(process.cwd(), "app/page.tsx"), "utf8");
+
+    expect(pageSource).toContain("SignedOutComposerGuidance");
+    expect(pageSource).toContain("ProfileRequiredGuidance");
+    expect(pageSource).toContain("canPost");
+    expect(pageSource).toContain("canReply");
+    expect(pageSource).toContain("Open a square from the KnowYou App");
+  });
+
+  it("renders status banners on the square and auth pages for redirected user actions", () => {
+    const pageSource = readFileSync(join(process.cwd(), "app/page.tsx"), "utf8");
+    const authSource = readFileSync(join(process.cwd(), "app/auth/page.tsx"), "utf8");
+
+    expect(pageSource).toContain("StatusBanner");
+    expect(authSource).toContain("StatusBanner");
+    expect(pageSource).toContain("signin-required");
+    expect(pageSource).toContain("profile-required");
+    expect(authSource).toContain("signin-required");
+    expect(authSource).toContain("profile-required");
   });
 
   it("implements App handoff auth by setting the Supabase session from a URL fragment and clearing it", () => {

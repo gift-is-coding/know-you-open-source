@@ -67,6 +67,13 @@ struct NetworkingActivationState: Codable, Equatable {
         mode == .platform
     }
 
+    var isReadyForPlatformHandoff: Bool {
+        isEnabled &&
+            isPlatformConnected &&
+            authEmail?.isEmpty == false &&
+            authPassword?.isEmpty == false
+    }
+
     /// Maps an App-local profile identifier (for example "profile-career") to
     /// the platform profile UUID created during activation.
     func platformProfileID(forLocalProfileID localProfileID: String) -> String? {

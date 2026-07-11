@@ -1,6 +1,15 @@
-export default function AuthPage() {
+import { StatusBanner } from "@/src/components/StatusBanner";
+
+type AuthPageProps = {
+  searchParams?: Promise<{ status?: string }>;
+};
+
+export default async function AuthPage({ searchParams }: AuthPageProps) {
+  const params = (await searchParams) ?? {};
+
   return (
     <main className="auth-page">
+      <StatusBanner status={params.status} supportedStatuses={["signin-required", "profile-required", "configure-supabase"]} />
       <section className="auth-panel">
         <p className="eyebrow">App activation</p>
         <h1 className="h1">No Web registration flow. Activate from the KnowYou App.</h1>

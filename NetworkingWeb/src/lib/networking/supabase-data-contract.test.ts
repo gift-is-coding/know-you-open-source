@@ -34,4 +34,18 @@ describe("networking Supabase data contract", () => {
     expect(source).toContain(".eq(\"person_id\", firstProfile.person_id)");
     expect(source).toContain("emptyProfilePage(normalizedPlatformID)");
   });
+
+  it("scopes the agent home preview to the signed-in viewer instead of any active member", () => {
+    const agentHomeStart = source.indexOf("export async function getAgentHomePreview");
+    const agentHomeEnd = source.indexOf("export async function getMyProfileWorkspace");
+    expect(agentHomeStart).toBeGreaterThan(-1);
+    expect(agentHomeEnd).toBeGreaterThan(agentHomeStart);
+
+    const agentHomeSource = source.slice(agentHomeStart, agentHomeEnd);
+    expect(agentHomeSource).toContain("supabase.auth.getUser");
+    expect(agentHomeSource).toContain(".eq(\"user_id\", user.id)");
+    expect(agentHomeSource).toContain(".eq(\"person_id\", person.id)");
+    expect(agentHomeSource).toContain(".eq(\"community_id\", normalizedPlatformID)");
+    expect(agentHomeSource).not.toContain(".eq(\"status\", \"active\")\n      .limit(1)");
+  });
 });

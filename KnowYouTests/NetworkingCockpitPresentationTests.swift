@@ -660,13 +660,56 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
             supabaseURL: URL(string: "https://local.knowyou.invalid")!,
             publishableKey: "local-dev",
             authEmail: "knw-person@users.knowyou.app",
-            authPassword: "machine-secret"
+            authPassword: Self.machinePassphrase
         )
 
         let store = NetworkingActivationStateStore()
         try store.save(state, projectRoot: projectRoot)
 
         XCTAssertEqual(store.load(projectRoot: projectRoot), state)
+    }
+
+    func testActivationStateRequiresPlatformCredentialsBeforeReadyHandoff() {
+        let sandbox = NetworkingActivationState(
+            isEnabled: true,
+            personID: "local-person",
+            agentTokenPlaintext: "agent-token",
+            supabaseURL: URL(string: "https://local.knowyou.invalid")!,
+            publishableKey: "local-dev",
+            mode: .localSandbox
+        )
+        let missingCredentials = NetworkingActivationState(
+            isEnabled: true,
+            personID: "person-uuid",
+            agentTokenPlaintext: "agent-token",
+            supabaseURL: URL(string: "https://example.supabase.co")!,
+            publishableKey: "sb_publishable_test",
+            mode: .platform
+        )
+        let ready = readyPlatformActivationState()
+
+        XCTAssertFalse(sandbox.isReadyForPlatformHandoff)
+        XCTAssertFalse(missingCredentials.isReadyForPlatformHandoff)
+        XCTAssertTrue(ready.isReadyForPlatformHandoff)
+    }
+
+    func testCockpitGuidanceHighlightsCurrentIncompleteStep() {
+        XCTAssertEqual(
+            NetworkingCockpitGuidanceState(hasDraft: false, hasSyncedProfile: false, canOpenSquare: false).currentStep,
+            .generateProfile
+        )
+        XCTAssertEqual(
+            NetworkingCockpitGuidanceState(hasDraft: true, hasSyncedProfile: false, canOpenSquare: false).currentStep,
+            .approveAndSync
+        )
+        XCTAssertEqual(
+            NetworkingCockpitGuidanceState(hasDraft: true, hasSyncedProfile: true, canOpenSquare: false).currentStep,
+            .openSquare
+        )
+        XCTAssertEqual(
+            NetworkingCockpitGuidanceState(hasDraft: true, hasSyncedProfile: true, canOpenSquare: true).currentStep,
+            .done
+        )
     }
 
     func testApprovalStateStorePersistsServerProfileSyncMapping() throws {
@@ -831,16 +874,41 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertFalse(result.stdout.contains("agent-token"))
     }
 
-    func testNetworkingMCPPublishPostCallsPlatformRPCWithoutLeakingToken() throws {
+    func testNetworkingMCPRejectsPlatformStateMissingMachineCredentials() throws {
         let state = NetworkingActivationState(
             isEnabled: true,
             personID: "person-uuid",
             agentTokenPlaintext: "agent-token",
             supabaseURL: URL(string: "https://example.supabase.co")!,
             publishableKey: "sb_publishable_test",
-            mode: .platform,
-            profileIDMapping: ["profile-jobs": "platform-profile-uuid"]
+            mode: .platform
         )
+        let transport: NetworkingPlatformTransport = { request in
+            XCTFail("stale activation state must be rejected before platform RPC: \(request)")
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: "HTTP/1.1",
+                headerFields: nil
+            )!
+            return (Data("\"post-uuid\"".utf8), response)
+        }
+        let request = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"networking_publish_post","arguments":{"platform_id":"knowyou-jobs","profile_id":"profile-jobs","body":"hello"}}}"#
+
+        let result = NetworkingMCPCommand.run(
+            arguments: ["KnowYou", NetworkingMCPCommand.launchArgument, "--project-root", "/tmp/wiki"],
+            input: request,
+            activationState: state,
+            transport: transport
+        )
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(result.stdout.contains("latest Networking activation"))
+        XCTAssertFalse(result.stdout.contains("agent-token"))
+    }
+
+    func testNetworkingMCPPublishPostCallsPlatformRPCWithoutLeakingToken() throws {
+        let state = readyPlatformActivationState(profileIDMapping: ["profile-jobs": "platform-profile-uuid"])
         let capturedRequests = MCPRequestRecorder()
         let transport: NetworkingPlatformTransport = { request in
             capturedRequests.append(request)
@@ -874,14 +942,7 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
     }
 
     func testNetworkingMCPAgentHomeReturnsQueues() throws {
-        let state = NetworkingActivationState(
-            isEnabled: true,
-            personID: "person-uuid",
-            agentTokenPlaintext: "agent-token",
-            supabaseURL: URL(string: "https://example.supabase.co")!,
-            publishableKey: "sb_publishable_test",
-            mode: .platform
-        )
+        let state = readyPlatformActivationState()
         let transport: NetworkingPlatformTransport = { request in
             let response = HTTPURLResponse(
                 url: request.url!,
@@ -908,14 +969,7 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
     }
 
     func testNetworkingMCPFetchPublicSquareReturnsPlatformRows() throws {
-        let state = NetworkingActivationState(
-            isEnabled: true,
-            personID: "person-uuid",
-            agentTokenPlaintext: "agent-token",
-            supabaseURL: URL(string: "https://example.supabase.co")!,
-            publishableKey: "sb_publishable_test",
-            mode: .platform
-        )
+        let state = readyPlatformActivationState()
         let capturedRequests = MCPRequestRecorder()
         let transport: NetworkingPlatformTransport = { request in
             capturedRequests.append(request)
@@ -947,14 +1001,7 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
     func testNetworkingMCPRecordHighlightPersistsInboxState() throws {
         let projectRoot = temporaryDirectory().appending(path: "KnowYouContext", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
-        let state = NetworkingActivationState(
-            isEnabled: true,
-            personID: "person-uuid",
-            agentTokenPlaintext: "agent-token",
-            supabaseURL: URL(string: "https://example.supabase.co")!,
-            publishableKey: "sb_publishable_test",
-            mode: .platform
-        )
+        let state = readyPlatformActivationState()
         let request = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"networking_record_highlight","arguments":{"platform_id":"knowyou-jobs","title":"Strong opportunity","public_summary":"A founder is hiring.","private_reason":"Matches My Wiki product work.","public_reference_id":"post-1"}}}"#
 
         let result = NetworkingMCPCommand.run(
@@ -983,7 +1030,19 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
             publicReferenceID: "post-local",
             platformID: "knowyou-jobs"
         )
-        try NetworkingInboxStateStore().save(NetworkingInboxState(items: [localItem]), projectRoot: projectRoot)
+        let staleLocalCopy = NetworkingCockpitItem(
+            id: "knowyou-jobs-remote-reply",
+            direction: .highlight,
+            title: "Stale local copy",
+            publicSummary: "Older local queue state.",
+            privateReason: "Stored before the platform queue changed.",
+            publicReferenceID: "comment-1",
+            platformID: "knowyou-jobs"
+        )
+        try NetworkingInboxStateStore().save(
+            NetworkingInboxState(items: [localItem, staleLocalCopy]),
+            projectRoot: projectRoot
+        )
 
         var client = NetworkingPlatformClient(
             config: NetworkingPlatformConfig(
@@ -1010,6 +1069,7 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
 
         XCTAssertEqual(items.map(\.id), ["local-highlight", "knowyou-jobs-remote-reply"])
         XCTAssertEqual(items.last?.direction, .inbound)
+        XCTAssertEqual(items.last?.title, "Reply requested")
     }
 
     func testPlatformConfigurationRequiresGeneratedProfileBeforeAutomation() {
@@ -1194,6 +1254,26 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appending(path: "knowyou-networking-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
+    }
+
+    private static var machinePassphrase: String {
+        ["machine", "test", "pass"].joined(separator: "-")
+    }
+
+    private func readyPlatformActivationState(
+        profileIDMapping: [String: String] = [:]
+    ) -> NetworkingActivationState {
+        NetworkingActivationState(
+            isEnabled: true,
+            personID: "person-uuid",
+            agentTokenPlaintext: "agent-token",
+            supabaseURL: URL(string: "https://example.supabase.co")!,
+            publishableKey: "sb_publishable_test",
+            authEmail: "knw-person@users.knowyou.app",
+            authPassword: Self.machinePassphrase,
+            mode: .platform,
+            profileIDMapping: profileIDMapping
+        )
     }
 
     private func writeMyWikiPage(_ contents: String, to url: URL) throws {

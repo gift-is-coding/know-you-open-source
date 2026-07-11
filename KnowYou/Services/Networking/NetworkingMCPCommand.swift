@@ -157,6 +157,11 @@ struct NetworkingMCPCommand {
                 "permission required: Networking is in local sandbox mode. Configure .knowyou/networking/platform.json and reopen Networking in KnowYou to connect the public platform."
             )
         }
+        guard state.isReadyForPlatformHandoff else {
+            return .failure(
+                "permission required: Open Networking in KnowYou to refresh the latest Networking activation before using the public platform."
+            )
+        }
 
         var client = NetworkingPlatformClient(
             config: NetworkingPlatformConfig(supabaseURL: state.supabaseURL, publishableKey: state.publishableKey)
@@ -398,6 +403,12 @@ struct NetworkingMCPCommand {
             return textToolResponse(
                 id: id,
                 text: "permission required: Networking is in local sandbox mode. Connect the public platform before recording highlights."
+            )
+        }
+        guard state.isReadyForPlatformHandoff else {
+            return textToolResponse(
+                id: id,
+                text: "permission required: Open Networking in KnowYou to refresh the latest Networking activation before recording highlights."
             )
         }
         guard let platformID = arguments["platform_id"] as? String,

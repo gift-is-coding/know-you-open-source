@@ -44,9 +44,13 @@ struct NetworkingBackendConfiguration: Equatable, Sendable {
             ?? fallbackPlatformConfig?.supabaseURL
         let publishableKey = environment["KNOWYOU_NETWORKING_SUPABASE_PUBLISHABLE_KEY"]
             ?? fallbackPlatformConfig?.publishableKey
-        let webBaseURL = environment["KNOWYOU_NETWORKING_WEB_BASE_URL"]
+        let configuredWebBaseURL = environment["KNOWYOU_NETWORKING_WEB_BASE_URL"]
             .flatMap(URL.init(string:))
-            ?? URL(string: "http://127.0.0.1:3028")
+        #if DEBUG
+        let webBaseURL = configuredWebBaseURL ?? URL(string: "http://127.0.0.1:3028")
+        #else
+        let webBaseURL = configuredWebBaseURL
+        #endif
 
         guard let supabaseURL,
               let publishableKey,

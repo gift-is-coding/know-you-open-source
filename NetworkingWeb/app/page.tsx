@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createHumanComment, createHumanPost } from "@/app/actions";
 import { SquareTabs } from "@/src/components/SquareTabs";
+import { StatusBanner } from "@/src/components/StatusBanner";
 import { sortDiscussionItems } from "@/src/lib/networking/content-ordering";
 import {
   defaultNetworkingPlatformID,
@@ -9,12 +10,12 @@ import {
   networkingPlatforms,
   profilesForPerson
 } from "@/src/lib/networking/platforms";
-import { getAgentHomePreview, getComposerProfiles, getPublicProfilePageForPlatform, getPublicSquareItems } from "@/src/lib/networking/supabase-data";
+import { getAgentHomePreview, getComposerProfiles, getMyProfileWorkspace, getPublicSquareItems, getViewerProfilePageForPlatform } from "@/src/lib/networking/supabase-data";
 import type { NetworkingAgentHome } from "@/src/lib/networking/agent-home";
 import type { NetworkingComposerProfile, NetworkingContentItem, NetworkingProfile } from "@/src/lib/networking/types";
 
 type PageProps = {
-  searchParams?: Promise<{ platform?: string }>;
+  searchParams?: Promise<{ platform?: string; status?: string }>;
 };
 
 export default async function PublicSquarePage({ searchParams }: PageProps) {
@@ -26,6 +27,7 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
 
   return (
     <main className="public-square" data-testid="public-square">
+      <StatusBanner status={params.status} supportedStatuses={["signin-required", "profile-required", "configure-supabase"]} />
       <SquareTabs
         initialPlatformID={platformID}
         platforms={networkingPlatforms}
@@ -42,11 +44,12 @@ export default async function PublicSquarePage({ searchParams }: PageProps) {
 }
 
 async function loadPlatformSquareData(platformID: string) {
-  const [items, composerProfiles, profilePage, agentHome] = await Promise.all([
+  const [items, composerProfiles, profilePage, agentHome, workspace] = await Promise.all([
     getPublicSquareItems(platformID),
     getComposerProfiles(platformID),
-    getPublicProfilePageForPlatform(platformID),
-    getAgentHomePreview(platformID)
+    getViewerProfilePageForPlatform(platformID),
+    getAgentHomePreview(platformID),
+    getMyProfileWorkspace()
   ]);
 
   return {
@@ -55,16 +58,21 @@ async function loadPlatformSquareData(platformID: string) {
     items,
     composerProfiles,
     profilePage,
-    agentHome
+    agentHome,
+    viewerState: {
+      isSignedIn: workspace.needsSignIn === false,
+      hasPlatformProfile: composerProfiles.length > 0
+    }
   };
 }
 
 function SquarePanel({ data }: { data: Awaited<ReturnType<typeof loadPlatformSquareData>> }) {
-  const { platformID, platform, items, composerProfiles, profilePage, agentHome } = data;
+  const { platformID, platform, items, composerProfiles, profilePage, agentHome, viewerState } = data;
   const usableComposerProfiles = composerProfiles;
+  const canPost = viewerState.isSignedIn && viewerState.hasPlatformProfile;
+  const canReply = canPost;
   const activeProfile =
     profilesForPerson(profilePage).find((profile) => (profile.platformIDs ?? []).includes(platformID)) ??
-    items.find((item) => (item.profile.platformIDs ?? []).includes(platformID))?.profile ??
     emptyProfile(platformID);
   const posts = sortDiscussionItems(items.filter((item) => item.kind === "post"));
   const commentsByPost = groupComments(items);
@@ -137,31 +145,38 @@ function SquarePanel({ data }: { data: Awaited<ReturnType<typeof loadPlatformSqu
             <span className="human-first">human first</span>
           </div>
 
-          <form action={createHumanPost} className="composer-stub" aria-label="Create a public post">
-            <input name="platformID" type="hidden" value={platformID} />
-            <Avatar profile={activeProfile} label={activeProfile.avatarLetter ?? profilePage.person.initial ?? "Y"} />
-            <input aria-label="Post body" name="body" placeholder="Post an opportunity, need, person to meet, or question you are thinking about..." />
-            <select
-              className="profile-select"
-              aria-label="Post as profile"
-              name="profileID"
-              defaultValue={usableComposerProfiles[0]?.id}
-            >
-              {usableComposerProfiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.label}
-                </option>
-              ))}
-            </select>
-            <button className="btn primary" disabled={composerProfiles.length === 0} type="submit">
-              Post
-            </button>
-          </form>
+          {canPost ? (
+            <form action={createHumanPost} className="composer-stub" aria-label="Create a public post">
+              <input name="platformID" type="hidden" value={platformID} />
+              <Avatar profile={activeProfile} label={activeProfile.avatarLetter ?? profilePage.person.initial ?? "Y"} />
+              <input aria-label="Post body" name="body" placeholder="Post an opportunity, need, person to meet, or question you are thinking about..." />
+              <select
+                className="profile-select"
+                aria-label="Post as profile"
+                name="profileID"
+                defaultValue={usableComposerProfiles[0]?.id}
+              >
+                {usableComposerProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.label}
+                  </option>
+                ))}
+              </select>
+              <button className="btn primary" type="submit">
+                Post
+              </button>
+            </form>
+          ) : viewerState.isSignedIn ? (
+            <ProfileRequiredGuidance platformID={platformID} />
+          ) : (
+            <SignedOutComposerGuidance />
+          )}
 
           <div className="feed">
             {posts.length > 0 ? posts.map((post, index) => (
               <PostThread
                 comments={sortDiscussionItems(commentsByPost.get(post.id) ?? [])}
+                canReply={canReply}
                 composerProfiles={composerProfiles}
                 item={post}
                 key={post.id}
@@ -208,12 +223,14 @@ function SquarePanel({ data }: { data: Awaited<ReturnType<typeof loadPlatformSqu
 function PostThread({
   item,
   comments,
+  canReply,
   composerProfiles,
   first,
   platformID
 }: {
   item: NetworkingContentItem;
   comments: NetworkingContentItem[];
+  canReply: boolean;
   composerProfiles: NetworkingComposerProfile[];
   first: boolean;
   platformID: string;
@@ -266,24 +283,47 @@ function PostThread({
             ))}
           </details>
         ) : null}
-        <form action={createHumanComment} className="reply-composer" aria-label="Add public comment">
-          <input name="postID" type="hidden" value={item.id} />
-          <input name="platformID" type="hidden" value={platformID} />
-          <Avatar profile={item.profile} label="Y" />
-          <input aria-label="Comment body" name="body" placeholder="Public comment..." />
-          <select className="profile-select" aria-label="Comment as profile" name="profileID" defaultValue={composerProfiles[0]?.id}>
-            {composerProfiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.label}
-              </option>
-            ))}
-          </select>
-          <button className="btn ghost" disabled={composerProfiles.length === 0} type="submit">
-            Reply
-          </button>
-        </form>
+        {canReply ? (
+          <form action={createHumanComment} className="reply-composer" aria-label="Add public comment">
+            <input name="postID" type="hidden" value={item.id} />
+            <input name="platformID" type="hidden" value={platformID} />
+            <Avatar profile={item.profile} label="Y" />
+            <input aria-label="Comment body" name="body" placeholder="Public comment..." />
+            <select className="profile-select" aria-label="Comment as profile" name="profileID" defaultValue={composerProfiles[0]?.id}>
+              {composerProfiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.label}
+                </option>
+              ))}
+            </select>
+            <button className="btn ghost" type="submit">
+              Reply
+            </button>
+          </form>
+        ) : null}
       </div>
     </article>
+  );
+}
+
+function SignedOutComposerGuidance() {
+  return (
+    <div className="composer-guidance" data-testid="signed-out-composer-guidance">
+      <strong>Open a square from the KnowYou App to post here.</strong>
+      <span>Profiles are generated and approved in the App. Opening this square from the App signs this browser in without a Web registration flow.</span>
+      <Link className="btn ghost" href="/auth">
+        Learn how App activation works
+      </Link>
+    </div>
+  );
+}
+
+function ProfileRequiredGuidance({ platformID }: { platformID: string }) {
+  return (
+    <div className="composer-guidance" data-testid="profile-required-guidance">
+      <strong>Approve a profile for {getNetworkingPlatform(platformID).displayName} in the KnowYou App.</strong>
+      <span>This browser is signed in, but no published profile is bound to this community yet.</span>
+    </div>
   );
 }
 

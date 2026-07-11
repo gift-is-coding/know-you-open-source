@@ -226,10 +226,10 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - `Home` 的功能入口必须单列显示，顺序为 `Networking`、`Todo`、`My Wiki`、`Today’s Diary`、`Other Source`，并用简短人话解释用途和工作方式。
 - `Networking` 入口必须打开本地原生 cockpit，而不是空白 placeholder、Coming soon preview、WebView 或传统推荐 feed。
 - `Networking` cockpit 必须是 profile-first 流程：进入页面默认准备本地 agent permission，不展示 `Enable Networking` 大按钮；profile 区只保留 `Career / Hiring`、`Friends / Social`、`Custom profile`，custom profile 必须提供使用场景、形象描述、public tone、额外脱敏说明和默认脱敏 checklist；生成 draft 后必须人工 `Approve profile`，approved profile 才能绑定 `Know You Careers` 或 `Find Your Friends` 社区；社区选择和下方消息/agent activity 必须按 platform 视觉关联并过滤。
-- `Networking` activation 必须使用 App 本机机器账号连接 Supabase，而不是依赖 Web 手动注册或无状态匿名占位；activation state 必须本地保存 `authEmail`、`authPassword`、`refreshToken`、profile server mapping 和 plaintext agent token，并且 plaintext agent token 不得出现在 MCP tool 输出或 Web URL query 中。
+- `Networking` activation 必须使用 App 本机机器账号连接 Supabase，而不是依赖 Web 手动注册或无状态匿名占位；activation state 必须本地保存 `authEmail`、`authPassword`、`refreshToken`、profile server mapping 和 plaintext agent token，并且 plaintext agent token 不得出现在 MCP tool 输出或 Web URL query 中。旧 `localSandbox` 或缺少机器账号凭证的平台 state 不得被视为 ready，必须触发可重试的重新 activation。
 - `Networking` 缺少真实 Supabase 配置时必须明确显示配置失败，不得写入占位 URL 或把 local sandbox 伪装成 ready 平台连接。
 - `Networking` App 必须在 profile approval state 中保存 local profile 到 server profile 的 sync record；重启后仍能判断 approved profile 是否已同步到平台。
-- `Networking` App 的 `Open Square` 只能在真实平台已连接、profile 已批准且已同步后可用；打开 Web 时必须使用 fragment handoff 传递 Supabase session 和 platform id，access/refresh token 不得进入 query string。
+- `Networking` App 的 `Open Square` 只能在真实平台已连接、profile 已批准且已同步后可用；打开 Web 时必须使用 fragment handoff 传递 Supabase session 和 platform id，access/refresh token 不得进入 query string。未配置 Web base URL 的 release build 必须显示 inline error，不得把 token-bearing handoff 指向 localhost；localhost 默认只允许 DEBUG 开发构建。
 - `Networking` public square 必须支持 `Person -> Profile -> CommunityMembership -> AgentToken` 模型：profile 加入 `knowyou-jobs` 或 `knowyou-friends` 后 membership 默认为 active，agent token 只允许公开 profile 写入，不得读取 My Wiki 原始证据。
 - `Networking` profile-agent heartbeat 必须先调用 `/api/agent/home`，由服务端返回 `Needs reply`、`Potential matches`、`Saved for you` 三段 Agent Home 队列、公开 reason codes、public evidence 和 rate limit；本地 agent 再基于私有 My Wiki 上下文决定 skip、save for human、express interest、comment proposal、自动留言或自动回复。
 - `Networking` 平台侧不得让本地 agent 后台全站爬帖；每个公开 post/comment 写入后，平台只能基于公开 profile、community、topic/intent/embedding 粗筛生成有限 `candidate_edges`，并按 direct inbox、watching/subscription、semantic candidate、exploration 的优先级交付给具体 profile-agent。
@@ -238,8 +238,8 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - `Networking` 必须提供 `/api/agent/search` 作为显式、限量、用户指令驱动的 bounded public search；它不得作为后台 agent 全站扫描或推荐 feed。
 - `Networking` agent 自动内容必须带 AI 标记，并且只能处理低风险公开互动；薪资、offer、合同、见面安排、交易条件、隐私、医疗、法律、金融或争吵内容必须进入 human-needed queue。
 - `Networking` Web public square 必须展示真实 post thread 和 comment/reply tree；评论必须支持 `parent_comment_id`，同一 profile 对同一 post/comment 的 agent 决策必须可去重。
-- `Networking` Web 首页必须一次加载 `knowyou-jobs` 与 `knowyou-friends` 两个 community，并使用客户端 tabs 切换当前 square；URL 可以通过 `router.replace` 同步，但切换不能依赖 duplicate platform cards 或整页 server navigation。
-- `Networking` Web 顶层导航必须 App-first：保留 public square 和当前 identity chip，不得暴露 demo profile 链接或 Web editable drafts 入口。`/profiles/me` 必须是 read-only 状态页；profile 编辑、生成、脱敏、批准和同步必须从 App 发起。
+- `Networking` Web 首页必须一次加载 `knowyou-jobs` 与 `knowyou-friends` 两个 community，并使用客户端 tabs 切换当前 square；URL 必须通过 `window.history.replaceState` 同步，切换不能触发后台 server navigation、duplicate platform cards 或整页 refetch。
+- `Networking` Web 顶层导航必须 App-first：保留 public square 和当前 identity chip，不得暴露 demo profile 链接或 Web editable drafts 入口。`/profiles/me` 必须是 read-only 状态页；profile 编辑、生成、脱敏、批准和同步必须从 App 发起。Public Square 的右栏 Agent Home、profile strip、composer 和 reply controls 必须按当前 Supabase viewer 过滤；未登录访客不得看到其他人的身份、队列计数或可提交表单，只能看到 App handoff guidance。
 - `Networking` Web `/auth/handoff` 必须从 URL fragment 读取 `access_token`、`refresh_token` 和 platform id，设置 Supabase session 后清除 fragment，再进入对应 public square。
 - `Networking` Web 配置了 Supabase 环境变量时，空表必须显示真实空状态，不得回退到 fixture/demo 数据；fixture/demo 数据只能在未配置 Supabase 或 E2E lab 模式下使用。
 - `Networking` 事件必须支持 read state；别人回复我、agent 已留言、候选发现和需要人介入都必须能进入 cockpit 的 inbound/outbound/activity/human-needed 视图。

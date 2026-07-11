@@ -85,6 +85,39 @@ final class NetworkingPlatformClientTests: XCTestCase {
         XCTAssertTrue(url.fragment?.contains("platform=knowyou-jobs") == true)
     }
 
+    func testBackendConfigurationResolvedUsesConfiguredWebBaseURL() throws {
+        let processInfo = StubProcessInfo(
+            environment: [
+                "KNOWYOU_NETWORKING_WEB_BASE_URL": "https://networking.knowyou.app",
+            ]
+        )
+
+        let resolved = try XCTUnwrap(
+            NetworkingBackendConfiguration.resolved(
+                processInfo: processInfo,
+                fallbackPlatformConfig: config
+            )
+        )
+
+        XCTAssertEqual(resolved.supabaseURL, config.supabaseURL)
+        XCTAssertEqual(resolved.publishableKey, config.publishableKey)
+        XCTAssertEqual(resolved.webBaseURL, URL(string: "https://networking.knowyou.app"))
+    }
+
+    func testBackendConfigurationResolvedFallsBackToLocalhostOnlyInDebugBuilds() {
+        let processInfo = StubProcessInfo(environment: [:])
+        let resolved = NetworkingBackendConfiguration.resolved(
+            processInfo: processInfo,
+            fallbackPlatformConfig: config
+        )
+
+        #if DEBUG
+        XCTAssertEqual(resolved?.webBaseURL, URL(string: "http://127.0.0.1:3028"))
+        #else
+        XCTAssertNil(resolved)
+        #endif
+    }
+
     func testUpsertPersonUsesMergeDuplicatesAndReturnsRowID() throws {
         let recorder = TransportRecorder(responses: [
             .json([["id": "person-uuid"]]),
@@ -265,10 +298,53 @@ final class NetworkingPlatformClientTests: XCTestCase {
         XCTAssertEqual(recorder.requests.last?.url?.path, "/rest/v1/community_memberships")
     }
 
+    func testActivationRunnerReusesStoredMachineCredentialsWithSignIn() throws {
+        let recorder = TransportRecorder(responses: [
+            .json([
+                "access_token": "access-existing",
+                "refresh_token": "refresh-existing",
+                "user": ["id": "user-existing"],
+            ]),
+            .json([["id": "person-uuid"]]),
+            .json([]),
+        ])
+        var client = NetworkingPlatformClient(config: config)
+        client.transport = recorder.transport
+        var runner = NetworkingActivationRunner(client: client)
+        let unusedCredential = ["unused"].joined()
+        runner.credentialGenerator = { _ in
+            XCTFail("stored credentials should be used instead of generating a fresh machine user")
+            return NetworkingMachineCredentials(email: "unused@example.com", password: unusedCredential)
+        }
+        let previousState = NetworkingActivationState(
+            isEnabled: true,
+            personID: "person-uuid",
+            agentTokenPlaintext: "old-agent-token",
+            supabaseURL: config.supabaseURL,
+            publishableKey: config.publishableKey,
+            authEmail: machineAuthFixture.email,
+            authPassword: machineAuthFixture.passphrase,
+            mode: .platform
+        )
+
+        let state = try runner.activate(
+            personName: "Tianfu Wu",
+            handle: "tianfu-wu",
+            approvedProfiles: [],
+            previousState: previousState
+        )
+
+        XCTAssertEqual(state.authEmail, machineAuthFixture.email)
+        XCTAssertEqual(state.authPassword, machineAuthFixture.passphrase)
+        XCTAssertEqual(state.userID, "user-existing")
+        XCTAssertEqual(recorder.requests.first?.url?.path, "/auth/v1/token")
+        XCTAssertTrue(recorder.requests.first?.url?.query?.contains("grant_type=password") ?? false)
+        XCTAssertFalse(recorder.requests.contains { $0.url?.path == "/auth/v1/signup" })
+    }
+
     func testActivationRunnerReportsFailingStep() {
         let recorder = TransportRecorder(responses: [
             .failure(status: 422, body: "machine user rejected"),
-            .failure(status: 401, body: "invalid credentials"),
         ])
         var client = NetworkingPlatformClient(config: config)
         client.transport = recorder.transport
@@ -286,7 +362,9 @@ final class NetworkingPlatformClientTests: XCTestCase {
         ) { error in
             XCTAssertTrue(error.localizedDescription.contains("machine platform identity"))
             XCTAssertTrue(error.localizedDescription.contains("422"))
+            XCTAssertFalse(error.localizedDescription.contains("sign-in failed"))
         }
+        XCTAssertEqual(recorder.requests.count, 1)
     }
 
     func testActivationStateDecodesLegacyJSONWithoutNewFields() throws {
@@ -312,6 +390,19 @@ final class NetworkingPlatformClientTests: XCTestCase {
     private func bodyJSON(of request: URLRequest) throws -> [String: Any] {
         let data = try XCTUnwrap(request.httpBody)
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+}
+
+private final class StubProcessInfo: ProcessInfo, @unchecked Sendable {
+    private let stubEnvironment: [String: String]
+
+    init(environment: [String: String]) {
+        self.stubEnvironment = environment
+        super.init()
+    }
+
+    override var environment: [String: String] {
+        stubEnvironment
     }
 }
 

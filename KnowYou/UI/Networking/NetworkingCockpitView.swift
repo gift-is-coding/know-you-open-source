@@ -1,6 +1,150 @@
 import AppKit
 import SwiftUI
 
+enum NetworkingCockpitGuidanceStep: String, CaseIterable, Identifiable, Equatable {
+    case generateProfile
+    case approveAndSync
+    case openSquare
+    case done
+
+    var id: String { rawValue }
+
+    static let userSteps: [NetworkingCockpitGuidanceStep] = [.generateProfile, .approveAndSync, .openSquare]
+
+    var number: String {
+        switch self {
+        case .generateProfile: return "1"
+        case .approveAndSync: return "2"
+        case .openSquare: return "3"
+        case .done: return "OK"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .generateProfile: return "Generate profile"
+        case .approveAndSync: return "Approve & sync"
+        case .openSquare: return "Open your square"
+        case .done: return "Networking square ready"
+        }
+    }
+
+    var actionHint: String {
+        switch self {
+        case .generateProfile:
+            return "Generate the selected profile from My Wiki before publishing anything."
+        case .approveAndSync:
+            return "Review the draft, approve it, and let the App sync the public profile."
+        case .openSquare:
+            return "Open the community square from the App to sign this browser in."
+        case .done:
+            return "Your profile is synced and the square can be opened from this App."
+        }
+    }
+}
+
+struct NetworkingCockpitGuidanceState: Equatable {
+    let hasDraft: Bool
+    let hasSyncedProfile: Bool
+    let canOpenSquare: Bool
+
+    var currentStep: NetworkingCockpitGuidanceStep {
+        if hasDraft == false { return .generateProfile }
+        if hasSyncedProfile == false { return .approveAndSync }
+        if canOpenSquare == false { return .openSquare }
+        return .done
+    }
+
+    var emptyInboxMessage: String {
+        switch currentStep {
+        case .generateProfile:
+            return "No messages yet. Generate this profile first so the App knows what public context can be shared."
+        case .approveAndSync:
+            return "No messages yet. Approve and sync this profile before the agent watches this community."
+        case .openSquare:
+            return "No messages yet. Open your square once the profile sync is ready to connect the browser session."
+        case .done:
+            return "No messages for this community yet. New replies and likely matches will appear here first."
+        }
+    }
+
+    func isComplete(_ step: NetworkingCockpitGuidanceStep) -> Bool {
+        switch step {
+        case .generateProfile: return hasDraft
+        case .approveAndSync: return hasSyncedProfile
+        case .openSquare: return canOpenSquare
+        case .done: return currentStep == .done
+        }
+    }
+}
+
+private struct NetworkingCockpitGuidanceStrip: View {
+    let state: NetworkingCockpitGuidanceState
+
+    var body: some View {
+        if state.currentStep == .done {
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(NetworkingCockpitGuidanceStep.done.title)
+                        .font(.headline)
+                    Text(NetworkingCockpitGuidanceStep.done.actionHint)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(14)
+            .background(Color.green.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        } else {
+            HStack(alignment: .top, spacing: 10) {
+                ForEach(NetworkingCockpitGuidanceStep.userSteps) { step in
+                    NetworkingCockpitGuidanceStepCard(
+                        step: step,
+                        isComplete: state.isComplete(step),
+                        isCurrent: state.currentStep == step
+                    )
+                }
+            }
+        }
+    }
+}
+
+private struct NetworkingCockpitGuidanceStepCard: View {
+    let step: NetworkingCockpitGuidanceStep
+    let isComplete: Bool
+    let isCurrent: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(isComplete ? "OK" : step.number)
+                    .font(.caption.weight(.bold))
+                    .frame(width: 22, height: 22)
+                    .background(isCurrent ? Color.accentColor : (isComplete ? Color.green : Color.gray.opacity(0.2)))
+                    .foregroundStyle(isCurrent || isComplete ? .white : .secondary)
+                    .clipShape(Circle())
+                Text(step.title)
+                    .font(.subheadline.weight(.semibold))
+            }
+            Text(isCurrent ? step.actionHint : (isComplete ? "Complete." : "Waiting for the previous step."))
+                .font(.caption)
+                .foregroundStyle(isCurrent ? .primary : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(isCurrent ? Color.accentColor.opacity(0.6) : Color(nsColor: .separatorColor).opacity(0.4), lineWidth: isCurrent ? 1.5 : 1)
+        )
+    }
+}
+
 struct NetworkingCockpitView: View {
     let presentation: NetworkingCockpitPresentation
     let projectRoot: URL?
@@ -23,6 +167,7 @@ struct NetworkingCockpitView: View {
     @State private var customImageDirection = ""
     @State private var customTone = "warm"
     @State private var customRedactionNotes = ""
+    @State private var openSquareError: String?
 
     private let activePersonName = "Tianfu Wu"
     private let profileGenerationTimeoutNanoseconds: UInt64 = 120_000_000_000
@@ -40,6 +185,7 @@ struct NetworkingCockpitView: View {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 privacyNotice
+                cockpitGuidanceStrip
                 generateProfilesStep
                 communitiesAndMessagesStep
             }
@@ -62,6 +208,7 @@ struct NetworkingCockpitView: View {
             autoGenerateSelectedProfileIfNeeded()
         }
         .onChange(of: selectedPlatformID) { _, _ in
+            openSquareError = nil
             loadPlatformInbox()
         }
     }
@@ -217,7 +364,8 @@ struct NetworkingCockpitView: View {
     }
 
     private var communitiesAndMessagesStep: some View {
-        StepPanel(
+        let guidance = guidanceState
+        return StepPanel(
             index: 2,
             title: "Communities and messages",
             subtitle: "Each community is linked to one approved profile. Choose a community above and the inbox below follows that source."
@@ -254,10 +402,29 @@ struct NetworkingCockpitView: View {
                     onOpenSquare: {
                         openSquare(platformID: selectedPlatform.id)
                     },
+                    openSquareError: openSquareError,
+                    emptyInboxMessage: guidance.emptyInboxMessage,
                     items: filteredInboxItems
                 )
             }
         }
+    }
+
+    private var cockpitGuidanceStrip: some View {
+        NetworkingCockpitGuidanceStrip(state: guidanceState)
+    }
+
+    private var guidanceState: NetworkingCockpitGuidanceState {
+        let profile = selectedProfile
+        let platform = selectedPlatform
+        let hasSyncedProfile =
+            activationState?.platformProfileID(forLocalProfileID: profile.id) != nil ||
+            profileApprovalState.syncRecordsByProfileID[profile.id] != nil
+        return NetworkingCockpitGuidanceState(
+            hasDraft: generatedDrafts[profile.id] != nil,
+            hasSyncedProfile: hasSyncedProfile,
+            canOpenSquare: canOpenSquare(platform: platform, profile: profile)
+        )
     }
 
     private var generationButtonTitle: String {
@@ -400,7 +567,8 @@ struct NetworkingCockpitView: View {
         }
 
         let store = NetworkingActivationStateStore()
-        if let state = store.load(projectRoot: projectRoot), state.isEnabled {
+        let storedState = store.load(projectRoot: projectRoot)
+        if let state = storedState, state.isReadyForPlatformHandoff {
             activationState = state
             activationStatus = .ready
             loadPlatformInbox()
@@ -415,13 +583,19 @@ struct NetworkingCockpitView: View {
             return
         }
 
-        runPlatformActivation(config: backendConfiguration.platformConfig, store: store, projectRoot: projectRoot)
+        runPlatformActivation(
+            config: backendConfiguration.platformConfig,
+            store: store,
+            projectRoot: projectRoot,
+            previousState: storedState
+        )
     }
 
     private func runPlatformActivation(
         config: NetworkingPlatformConfig,
         store: NetworkingActivationStateStore,
-        projectRoot: URL
+        projectRoot: URL,
+        previousState: NetworkingActivationState? = nil
     ) {
         activationStatus = .pending
         let registrations = approvedProfileRegistrations()
@@ -435,7 +609,8 @@ struct NetworkingCockpitView: View {
                     return try runner.activate(
                         personName: personName,
                         handle: handle,
-                        approvedProfiles: registrations
+                        approvedProfiles: registrations,
+                        previousState: previousState
                     )
                 }.value
                 try store.save(state, projectRoot: projectRoot)
@@ -738,24 +913,24 @@ struct NetworkingCockpitView: View {
     }
 
     private func openSquare(platformID: String) {
+        openSquareError = nil
         guard let state = activationState,
-              state.isPlatformConnected,
+              state.isReadyForPlatformHandoff,
               let email = state.authEmail,
               let password = state.authPassword else {
-            activationStatus = .failed("Open Square needs a platform identity from the latest Networking activation.")
+            openSquareError = "Open Square needs a refreshed platform identity from the latest Networking activation."
             return
         }
 
-        let backendConfiguration = NetworkingBackendConfiguration.resolved(
+        guard let backendConfiguration = NetworkingBackendConfiguration.resolved(
             fallbackPlatformConfig: NetworkingPlatformConfig(
                 supabaseURL: state.supabaseURL,
                 publishableKey: state.publishableKey
             )
-        ) ?? NetworkingBackendConfiguration(
-            supabaseURL: state.supabaseURL,
-            publishableKey: state.publishableKey,
-            webBaseURL: URL(string: "http://127.0.0.1:3028")!
-        )
+        ) else {
+            openSquareError = "Networking Web base URL is not configured for this build."
+            return
+        }
         let client = NetworkingPlatformClient(config: backendConfiguration.platformConfig)
         let builder = NetworkingWebHandoffURLBuilder(configuration: backendConfiguration)
 
@@ -770,7 +945,7 @@ struct NetworkingCockpitView: View {
                 }
             } catch {
                 await MainActor.run {
-                    activationStatus = .failed("Could not open Networking Square: \(error.localizedDescription)")
+                    openSquareError = "Could not open Networking Square: \(error.localizedDescription)"
                 }
             }
         }
@@ -1599,6 +1774,8 @@ private struct SelectedCommunityDetail: View {
     let isProfileApproved: Bool
     let canOpenSquare: Bool
     let onOpenSquare: () -> Void
+    let openSquareError: String?
+    let emptyInboxMessage: String
     let items: [NetworkingCockpitItem]
 
     var body: some View {
@@ -1615,13 +1792,24 @@ private struct SelectedCommunityDetail: View {
                 Spacer()
                 StatusPill(text: isAgentReady ? "Agent ready locally" : "Agent pending", color: isAgentReady ? .green : .orange)
                 StatusPill(text: isProfileApproved ? "Approved profile" : "Needs approval", color: isProfileApproved ? .green : .orange)
-                Button {
-                    onOpenSquare()
-                } label: {
-                    Label("Open Square", systemImage: "arrow.up.right.square")
+                VStack(alignment: .trailing, spacing: 4) {
+                    Button {
+                        onOpenSquare()
+                    } label: {
+                        Label("Open Square", systemImage: "arrow.up.right.square")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(canOpenSquare == false)
+
+                    if let openSquareError {
+                        Text(openSquareError)
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.trailing)
+                            .frame(maxWidth: 240, alignment: .trailing)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(canOpenSquare == false)
             }
 
             HStack(spacing: 8) {
@@ -1642,7 +1830,7 @@ private struct SelectedCommunityDetail: View {
             }
 
             if items.isEmpty {
-                Text("No messages for this community yet.")
+                Text(emptyInboxMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(12)

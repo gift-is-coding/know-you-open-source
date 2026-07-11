@@ -57,26 +57,29 @@ struct NetworkingActivationRunner: Sendable {
     func activate(
         personName: String,
         handle: String,
-        approvedProfiles: [NetworkingProfileRegistration]
+        approvedProfiles: [NetworkingProfileRegistration],
+        previousState: NetworkingActivationState? = nil
     ) throws -> NetworkingActivationState {
-        let credentials = credentialGenerator(handle)
+        let credentials = previousState?.machineCredentials ?? credentialGenerator(handle)
         let session: NetworkingPlatformSession
-        do {
-            session = try client.signUp(email: credentials.email, password: credentials.password)
-        } catch let signUpError as NetworkingPlatformClientError {
+        if previousState?.machineCredentials != nil {
             do {
                 session = try client.signIn(email: credentials.email, password: credentials.password)
             } catch let signInError {
                 throw NetworkingActivationRunnerError.activationFailed(
-                    step: "creating the machine platform identity",
-                    underlying: "signup failed: \(signUpError.localizedDescription); sign-in failed: \(signInError.localizedDescription)"
+                    step: "signing in the machine platform identity",
+                    underlying: signInError.localizedDescription
                 )
             }
-        } catch {
-            throw NetworkingActivationRunnerError.activationFailed(
-                step: "creating the machine platform identity",
-                underlying: error.localizedDescription
-            )
+        } else {
+            do {
+                session = try client.signUp(email: credentials.email, password: credentials.password)
+            } catch {
+                throw NetworkingActivationRunnerError.activationFailed(
+                    step: "creating the machine platform identity",
+                    underlying: error.localizedDescription
+                )
+            }
         }
 
         let personID: String
@@ -153,5 +156,17 @@ struct NetworkingActivationRunner: Sendable {
             refreshToken: session.refreshToken,
             profileIDMapping: profileIDMapping
         )
+    }
+}
+
+private extension NetworkingActivationState {
+    var machineCredentials: NetworkingMachineCredentials? {
+        guard let authEmail,
+              authEmail.isEmpty == false,
+              let authPassword,
+              authPassword.isEmpty == false else {
+            return nil
+        }
+        return NetworkingMachineCredentials(email: authEmail, password: authPassword)
     }
 }

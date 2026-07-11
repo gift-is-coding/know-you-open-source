@@ -2,7 +2,6 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import type { NetworkingPlatform } from "@/src/lib/networking/types";
 
 type SquareTabsProps = {
@@ -18,12 +17,13 @@ export function SquareTabs({
   platforms,
   switcherClassName = "community-switcher"
 }: SquareTabsProps) {
-  const router = useRouter();
   const [activePlatformID, setActivePlatformID] = useState(initialPlatformID);
 
   function selectPlatform(platformID: string) {
     setActivePlatformID(platformID);
-    router.replace(`/?platform=${platformID}`, { scroll: false });
+    const url = new URL(window.location.href);
+    url.searchParams.set("platform", platformID);
+    window.history.replaceState(null, "", `${url.pathname}?${url.searchParams.toString()}${url.hash}`);
   }
 
   return (

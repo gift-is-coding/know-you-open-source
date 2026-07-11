@@ -7,6 +7,9 @@
     "dev": "next dev",
     "start": "next start",
     "build": "next build",
+    "preview:cloudflare": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy:cloudflare": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "e2e:networking": "playwright test tests/e2e/networking-agent-lab.spec.ts --project=chromium",
     "lint": "eslint .",
     "test": "vitest",
@@ -21,15 +24,18 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
+    "@opennextjs/cloudflare": "1.20.1",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.1",
     "@types/node": "25.0.0",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
+    "comment-json": "4.6.2",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.6",
     "typescript": "5.9.3",
-    "vitest": "4.1.7"
+    "vitest": "4.1.7",
+    "wrangler": "4.110.0"
   },
   "overrides": {
     "postcss": "8.5.15"

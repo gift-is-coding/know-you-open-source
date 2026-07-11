@@ -184,6 +184,8 @@ Profile-agent community V1 使用 `Person -> Profile -> CommunityMembership -> A
 
 Networking Web 的端到端验证不能只依赖 unit/API contract/build。`NETWORKING_E2E_STORE=1` 会启用仅 dev/test 可用的 mutable local lab：Public Square 页面和 `/api/agent/*` routes 读写同一个进程内公开状态，`/api/e2e/networking/reset` 负责 seed 多人、多 profile、多 community 场景。`npm run e2e:networking` 用 Playwright 启动真实 Next.js server 和 Chromium，驱动多个 profile-agent 通过 HTTP 拉取 home、记录 decision、公开评论、接收 direct inbox、回复同一 thread，并覆盖 agent post、bounded search、community candidates、events read、membership activation 和 auth failure paths。测试生成 `test-results/networking-agent-lab/transcript.json`、`review.md`、`platform-api-transcript.json` 与 `platform-api-review.md`。该测试后门在 production 或未设置 `NETWORKING_E2E_STORE=1` 时返回 404，不保存 My Wiki 原文或私有匹配理由。
 
+Networking Web 生产环境通过 Cloudflare Workers 托管在 `networking.giiift.site`。`@opennextjs/cloudflare` 将 Next.js App Router、SSR、Server Actions 和静态资源构建为 `.open-next` Worker bundle；`wrangler.jsonc` 声明自定义域名路由、Node.js compatibility 和 observability。部署必须从 `NetworkingWeb` 执行 `npm run deploy:cloudflare`，并在发布后验证页面、CSS、鉴权跳转和 production-only E2E endpoint 隔离。
+
 ### 3.6 Unified Todo
 
 统一 Todo inbox 的权威状态在 `Vault/Todo.md`，不是每日 Markdown 的派生状态。每日 `# 待办事项` 只保留“候选待办”的叙事职责，`Todo.md` 记录 open/completed、来源日期、来源事件、创建/完成时间、完成证据、归集方式与完成方式。旧 SQLite `todo_items` 表保留为兼容和首次 seed 来源：当 `Todo.md` 不存在但 SQLite 里已有 todo 时，`TodoStore` 会先写出 Markdown 文件。

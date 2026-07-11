@@ -159,3 +159,6 @@ Acceptance: click Open Square while offline → agent status pill stays "ready",
    works (joint C1+S1 acceptance).
 4. Security greps: localhost fallback only under DEBUG; MCP responses contain no plaintext token (fixed
    last round — keep it that way).
+5. Production hosting: deploy the Next.js App Router application through the Cloudflare OpenNext adapter
+   to `networking.giiift.site`; desktop/mobile HTML and the first CSS chunk return 200, while
+   `/api/e2e/networking/state` and `/api/e2e/networking/reset` return 404 in production.

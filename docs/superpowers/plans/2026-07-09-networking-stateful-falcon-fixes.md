@@ -11,3 +11,4 @@
 3. Web 修复：`getAgentHomePreview` 先读取当前 Supabase user，再按 `person_id + community_id` 查 membership；Square 页面只向登录且有平台 profile 的用户显示 composer/reply；补 `/` 与 `/auth` 的 status banner。
 4. UX 修复：cockpit 顶部增加三步条，空 inbox 文案指向当前未完成步骤；SquareTabs 用 `window.history.replaceState` 同步 URL，避免 RSC refetch。
 5. 验证：运行 Swift networking targeted tests、`xcodebuild build`、NetworkingWeb `npm test -- --run`、`npm run lint`、`npm run build`；重启当前 worktree 的 web server 并检查 HTML + 首个 CSS chunk 均为 200。
+6. 生产发布：通过 `@opennextjs/cloudflare` 构建 Next.js Worker，使用 Wrangler 发布并绑定 `networking.giiift.site`；验证桌面/移动端页面与 CSS，确认 production E2E state/reset endpoint 均返回 404。

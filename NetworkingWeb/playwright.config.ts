@@ -22,7 +22,7 @@ export default defineConfig({
     }
   ],
   webServer: {
-    command: `NETWORKING_E2E_STORE=1 npm run dev -- --hostname 127.0.0.1 --port ${port}`,
+    command: `NETWORKING_E2E_STORE=1 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=local-e2e-only npm run dev -- --hostname 127.0.0.1 --port ${port}`,
     url: `http://127.0.0.1:${port}`,
     reuseExistingServer: false,
     timeout: 120_000

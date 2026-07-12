@@ -1300,6 +1300,40 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertTrue(items.isEmpty)
     }
 
+    func testCockpitItemsFromAgentHomeMapsUsefulReturnsToAgentActivity() {
+        let home: [String: Any] = [
+            "needsReply": [],
+            "potentialMatches": [],
+            "savedForYou": [],
+            "usefulReturns": [[
+                "id": "return-comment-1",
+                "signal": "A relevant reply revealed a concrete collaboration opportunity.",
+                "evidence": ["comment-1", "post-1"],
+                "value": "The person may want to continue this conversation.",
+                "relationship": "reciprocal",
+                "nextAction": "person_decision",
+                "confidence": "high",
+            ]],
+        ]
+
+        let items = NetworkingCockpitPresentation.cockpitItems(fromAgentHome: home, platformID: "knowyou-jobs")
+
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items[0].direction, .activity)
+        XCTAssertEqual(items[0].title, "A relevant reply revealed a concrete collaboration opportunity.")
+        XCTAssertEqual(items[0].publicSummary, "The person may want to continue this conversation.")
+        XCTAssertEqual(items[0].publicReferenceID, "comment-1")
+        XCTAssertTrue(items[0].privateReason.contains("person_decision"))
+    }
+
+    func testAutonomyModeReadsServerAgentHomeAndRejectsUnknownValues() {
+        XCTAssertEqual(
+            NetworkingCockpitPresentation.autonomyMode(fromAgentHome: ["autonomyMode": "active"]),
+            "active"
+        )
+        XCTAssertNil(NetworkingCockpitPresentation.autonomyMode(fromAgentHome: ["autonomyMode": "unbounded"]))
+    }
+
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appending(path: "knowyou-networking-tests-\(UUID().uuidString)", directoryHint: .isDirectory)

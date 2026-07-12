@@ -28,6 +28,22 @@ enum NetworkingActivationRunnerError: LocalizedError {
 struct NetworkingMachineCredentials: Equatable, Sendable {
     let email: String
     let password: String
+
+    static func generate(handle: String) -> NetworkingMachineCredentials {
+        let safeHandle = handle
+            .lowercased()
+            .unicodeScalars
+            .map { CharacterSet.alphanumerics.contains($0) ? Character($0) : "-" }
+            .reduce(into: "") { $0.append($1) }
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        let prefix = safeHandle.isEmpty ? "person" : safeHandle
+        let suffix = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let credentialValue = "knw_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+        return NetworkingMachineCredentials(
+            email: "knw-\(prefix)-\(suffix)@users.knowyou.app",
+            password: credentialValue
+        )
+    }
 }
 
 /// Executes a real platform activation: machine-user sign-in, person/profile sync,
@@ -38,24 +54,7 @@ struct NetworkingActivationRunner: Sendable {
     var tokenGenerator: @Sendable () -> String = {
         "knw_agent_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
     }
-    var credentialGenerator: @Sendable (_ handle: String) -> NetworkingMachineCredentials = { handle in
-        let safeHandle = handle
-            .lowercased()
-            .unicodeScalars
-            .map { CharacterSet.alphanumerics.contains($0) ? Character($0) : "-" }
-            .reduce(into: "") { $0.append($1) }
-            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-        let prefix = safeHandle.isEmpty ? "person" : safeHandle
-        let suffix = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        let credentialValue = [
-            "knw",
-            UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased(),
-        ].joined(separator: "_")
-        return NetworkingMachineCredentials(
-            email: "knw-\(prefix)-\(suffix)@users.knowyou.app",
-            password: credentialValue
-        )
-    }
+    var credentialGenerator: @Sendable (_ handle: String) -> NetworkingMachineCredentials = NetworkingMachineCredentials.generate
 
     func activate(
         personName: String,
@@ -68,7 +67,10 @@ struct NetworkingActivationRunner: Sendable {
         }
         let credentials = previousState?.machineCredentials ?? credentialGenerator(handle)
         let session: NetworkingPlatformSession
-        if previousState?.machineCredentials != nil {
+        let hasCompletedStoredIdentity = previousState?.userID != nil || (
+            previousState?.isPlatformConnected == true && previousState?.personID.isEmpty == false
+        )
+        if previousState?.machineCredentials != nil, hasCompletedStoredIdentity {
             do {
                 session = try client.signIn(email: credentials.email, password: credentials.password)
             } catch let signInError {
@@ -165,7 +167,7 @@ struct NetworkingActivationRunner: Sendable {
     }
 }
 
-private extension NetworkingActivationState {
+extension NetworkingActivationState {
     var machineCredentials: NetworkingMachineCredentials? {
         guard let authEmail,
               authEmail.isEmpty == false,

@@ -18,8 +18,9 @@ final class NetworkingPlatformClientTests: XCTestCase {
         )
     }
 
-    func testSignUpMachineUserPostsEmailPasswordSignupAndParsesSession() throws {
+    func testSignUpMachineUserUsesRestrictedFunctionThenPasswordSignIn() throws {
         let recorder = TransportRecorder(responses: [
+            .json(["created": true]),
             .json([
                 "access_token": "access-1",
                 "refresh_token": "refresh-1",
@@ -32,35 +33,19 @@ final class NetworkingPlatformClientTests: XCTestCase {
         let session = try client.signUp(email: machineAuthFixture.email, password: machineAuthFixture.passphrase)
 
         XCTAssertEqual(session, NetworkingPlatformSession(accessToken: "access-1", refreshToken: "refresh-1", userID: "user-1"))
-        let request = try XCTUnwrap(recorder.requests.first)
-        XCTAssertEqual(request.httpMethod, "POST")
-        XCTAssertEqual(request.url?.path, "/auth/v1/signup")
-        XCTAssertEqual(request.value(forHTTPHeaderField: "apikey"), "publishable-key")
-        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer publishable-key")
-        let body = try bodyJSON(of: request)
+        XCTAssertEqual(recorder.requests.count, 2)
+        let createRequest = recorder.requests[0]
+        XCTAssertEqual(createRequest.httpMethod, "POST")
+        XCTAssertEqual(createRequest.url?.path, "/functions/v1/networking-machine-signup")
+        XCTAssertEqual(createRequest.value(forHTTPHeaderField: "apikey"), "publishable-key")
+        XCTAssertEqual(createRequest.value(forHTTPHeaderField: "Authorization"), "Bearer publishable-key")
+        let body = try bodyJSON(of: createRequest)
         XCTAssertEqual(body["email"] as? String, machineAuthFixture.email)
         XCTAssertEqual(body["password"] as? String, machineAuthFixture.passphrase)
-    }
-
-    func testSignUpWithoutSessionExplainsMachineEmailConfirmationMismatch() {
-        let recorder = TransportRecorder(responses: [
-            .json([
-                "user": ["id": "pending-user"],
-                "confirmation_sent_at": "2026-07-11T14:24:26Z",
-            ]),
-        ])
-        var client = NetworkingPlatformClient(config: config)
-        client.transport = recorder.transport
-
-        XCTAssertThrowsError(
-            try client.signUp(email: machineAuthFixture.email, password: machineAuthFixture.passphrase)
-        ) { error in
-            guard case NetworkingPlatformClientError.machineEmailConfirmationRequired = error else {
-                return XCTFail("unexpected error \(error)")
-            }
-            XCTAssertTrue(error.localizedDescription.contains("email confirmation"))
-            XCTAssertTrue(error.localizedDescription.contains("machine identities"))
-        }
+        let signInRequest = recorder.requests[1]
+        XCTAssertEqual(signInRequest.url?.path, "/auth/v1/token")
+        XCTAssertTrue(signInRequest.url?.query?.contains("grant_type=password") ?? false)
+        XCTAssertFalse(recorder.requests.contains { $0.url?.path == "/auth/v1/signup" })
     }
 
     func testPasswordSignInUsesPasswordGrantAndParsesSession() throws {
@@ -238,6 +223,28 @@ final class NetworkingPlatformClientTests: XCTestCase {
         XCTAssertTrue(body["p_parent_comment_id"] is NSNull)
     }
 
+    func testUpdateMembershipAutonomyModeCallsOwnerValidatedRPC() throws {
+        let recorder = TransportRecorder(responses: [.rawJSON("null")])
+        var client = NetworkingPlatformClient(config: config)
+        client.transport = recorder.transport
+        let session = NetworkingPlatformSession(accessToken: "access-1", refreshToken: "refresh-1", userID: "user-1")
+
+        try client.updateMembershipAutonomyMode(
+            session: session,
+            profileID: "profile-uuid",
+            communityID: "knowyou-friends",
+            mode: "active"
+        )
+
+        let request = try XCTUnwrap(recorder.requests.first)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.path, "/rest/v1/rpc/networking_update_autonomy_mode")
+        let body = try bodyJSON(of: request)
+        XCTAssertEqual(body["p_profile_id"] as? String, "profile-uuid")
+        XCTAssertEqual(body["p_platform_id"] as? String, "knowyou-friends")
+        XCTAssertEqual(body["p_mode"] as? String, "active")
+    }
+
     func testAgentHomeReturnsDecodedObject() throws {
         let recorder = TransportRecorder(responses: [
             .json([
@@ -300,6 +307,7 @@ final class NetworkingPlatformClientTests: XCTestCase {
 
     func testActivationRunnerHappyPathBuildsPlatformState() throws {
         let recorder = TransportRecorder(responses: [
+            .json(["created": true]),
             .json([
                 "access_token": "access-1",
                 "refresh_token": "refresh-1",
@@ -347,7 +355,7 @@ final class NetworkingPlatformClientTests: XCTestCase {
         XCTAssertEqual(state.authPassword, authFixture.passphrase)
         XCTAssertEqual(state.agentTokenPlaintext, "knw_agent_fixed")
         XCTAssertEqual(state.platformProfileID(forLocalProfileID: "profile-career"), "career-uuid")
-        XCTAssertEqual(recorder.requests.count, 5)
+        XCTAssertEqual(recorder.requests.count, 6)
         XCTAssertEqual(recorder.requests.last?.url?.path, "/rest/v1/community_memberships")
     }
 
@@ -393,6 +401,43 @@ final class NetworkingPlatformClientTests: XCTestCase {
         XCTAssertEqual(recorder.requests.first?.url?.path, "/auth/v1/token")
         XCTAssertTrue(recorder.requests.first?.url?.query?.contains("grant_type=password") ?? false)
         XCTAssertFalse(recorder.requests.contains { $0.url?.path == "/auth/v1/signup" })
+    }
+
+    func testActivationRunnerRetriesPendingStoredCredentialsThroughIdempotentSignup() throws {
+        let recorder = TransportRecorder(responses: [
+            .json(["created": false, "alreadyExists": true]),
+            .json([
+                "access_token": "access-retry",
+                "refresh_token": "refresh-retry",
+                "user": ["id": "user-retry"],
+            ]),
+            .json([["id": "person-retry"]]),
+            .json([]),
+        ])
+        var client = NetworkingPlatformClient(config: config)
+        client.transport = recorder.transport
+        let runner = NetworkingActivationRunner(client: client)
+        let pendingState = NetworkingActivationState(
+            isEnabled: false,
+            personID: "",
+            agentTokenPlaintext: "",
+            supabaseURL: config.supabaseURL,
+            publishableKey: config.publishableKey,
+            authEmail: machineAuthFixture.email,
+            authPassword: machineAuthFixture.passphrase,
+            mode: .localSandbox
+        )
+
+        let state = try runner.activate(
+            personName: "Tianfu Wu",
+            handle: "tianfu-wu",
+            approvedProfiles: [],
+            previousState: pendingState
+        )
+
+        XCTAssertEqual(recorder.requests.first?.url?.path, "/functions/v1/networking-machine-signup")
+        XCTAssertEqual(state.authEmail, machineAuthFixture.email)
+        XCTAssertEqual(state.userID, "user-retry")
     }
 
     func testActivationRunnerReportsFailingStep() {

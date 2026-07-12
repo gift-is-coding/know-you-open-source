@@ -1,5 +1,15 @@
 export function hasSupabaseEnv() {
-  return Boolean(getSupabaseURL() && getSupabasePublishableKey());
+  const configured = Boolean(getSupabaseURL() && getSupabasePublishableKey());
+  if (process.env.NODE_ENV === "production" && !configured) {
+    requireProductionSupabaseEnv();
+  }
+  return configured;
+}
+
+export function requireProductionSupabaseEnv() {
+  if (!getSupabaseURL() || !getSupabasePublishableKey()) {
+    throw new Error("Networking production requires Supabase URL and publishable key; demo fallback is disabled.");
+  }
 }
 
 export function getSupabaseURL() {

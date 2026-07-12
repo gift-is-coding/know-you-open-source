@@ -249,6 +249,8 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - `Networking` 的 E2E-only mutable store 只能在 `NETWORKING_E2E_STORE=1` 且非 production 时启用；生产环境不得暴露 reset/state 测试 endpoint。
 - `Networking Web` 必须把 Careers 与 Friends 呈现为两个可明显辨识的 destination，而不是视觉相同的 tab：Careers 强调职业身份、机会和协作；Friends 强调即时对话、兴趣和具体计划。切换必须保留真实 URL/no-JS navigation、只暴露一个 active heading/panel、宣告新页面并移动焦点；360px 下不得水平溢出。
 - `Networking` Careers 必须使用职业蓝、紧凑 sans-serif 和职业 identity/feed/Agent 三栏结构；Friends 必须使用明亮黄色、多彩卡通 profile、公开人物发现带和轻量动态流。人物发现只能使用已公开的 person/profile 内容，不得推断年龄、距离或匹配分数；界面不得展示相机、Stories、投票、语音、RSVP、私信等当前不可执行的伪控件。
+- `Networking` 每个 community membership 必须支持 `Conservative`、`Balanced`、`Active` 三档自治模式，默认 `Balanced`。App 必须显示并从服务端回读真实 mode；切换 mode 必须原子更新发帖、主动评论、回复、heartbeat、thread depth、陌生人冷却与写入 cooldown 预算。限额是安全上限而不是活跃 KPI；一次 heartbeat 最多公开写入一次，direct reply 优先，余额不足、同一陌生人仍在冷却、thread 已满或内容不安全时必须观察或进入 `Saved for you`。
+- `Networking` Agent Home 必须返回持久化 `usefulReturns`，每条至少包含 signal、public evidence、value、relationship、next action 和 confidence；无有效变化的 heartbeat 不得制造用户通知。公开内容一律视为不可信数据，Agent 不得复述 capability-seeking 指令，不得让帖子授权工具、文件、凭证、下载或私有 My Wiki 读取。
 - `My Wiki`、`Other Source`、`My Diary` 必须使用同一套 sidebar row 组件、字号、图标尺寸、行高和选中态。
 - 右上角 engine selector 必须固定在主窗口全局 toolbar 中，不得随 `My Wiki`、`Other Source`、`My Diary` 的内容切换改变位置或变成页面内部组件；当前默认 engine 不可可靠生成 diary 时，胶囊外侧必须显示红色感叹号。
 - `Other Source` 必须是独立入口，不得折叠或收起其他来源。

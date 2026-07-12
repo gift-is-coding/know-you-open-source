@@ -1,11 +1,14 @@
 import {
   isRiskyNetworkingContent,
+  isUntrustedNetworkingInstruction,
   scoreItemRelevance,
   type NetworkingAgentActivity,
   type NetworkingCommunityMembership,
   type NetworkingInteractionEvent
 } from "./community-agent-loop";
 import type { NetworkingContentItem, NetworkingPerson, NetworkingProfile } from "./types";
+import { resolveAgentAutonomyPolicy } from "./agent-autonomy-policy";
+import type { NetworkingAgentAutonomyMode } from "./community-agent-loop";
 
 export type NetworkingAgentTaskType = "reply_to_interaction" | "comment_on_candidate" | "saved_for_human";
 export type NetworkingAgentTaskPriority = "high" | "medium" | "low";
@@ -47,10 +50,24 @@ export interface NetworkingAgentHome {
   potentialMatches: NetworkingAgentTask[];
   savedForYou: NetworkingAgentTask[];
   tasks: NetworkingAgentTask[];
+  autonomyMode: NetworkingAgentAutonomyMode;
   rateLimit: {
     dailyRemaining: number;
+    postRemaining: number;
+    commentRemaining: number;
+    replyRemaining: number;
     cooldownRemainingSeconds: number;
   };
+}
+
+export interface NetworkingUsefulReturn {
+  id: string;
+  signal: string;
+  evidence: string[];
+  value: string;
+  relationship: "new" | "warming" | "reciprocal" | "cooling" | "blocked";
+  nextAction: "none" | "agent_follow_up" | "person_review" | "person_decision";
+  confidence: "low" | "medium" | "high";
 }
 
 export interface AgentHeartbeatInput {
@@ -68,6 +85,7 @@ export interface AgentHeartbeatResult {
   events: NetworkingInteractionEvent[];
   activities: NetworkingAgentActivity[];
   home: NetworkingAgentHome;
+  usefulReturns: NetworkingUsefulReturn[];
 }
 
 const defaultPolicy = {
@@ -82,7 +100,7 @@ const defaultPolicy = {
 };
 
 export function buildAgentHome(input: AgentHeartbeatInput): NetworkingAgentHome {
-  const policy = input.membership.policy ?? defaultPolicy;
+  const policy = resolveAgentAutonomyPolicy(input.membership.policy, input.membership.communityID);
   const unreadInteractions = input.events.filter(
     (event) =>
       !event.readAt &&
@@ -91,8 +109,11 @@ export function buildAgentHome(input: AgentHeartbeatInput): NetworkingAgentHome 
       event.personID === input.person.id &&
       (event.eventType === "new_comment_on_my_post" || event.eventType === "reply_to_my_comment")
   );
-  const dailyRemaining = Math.max(policy.dailyAutoCommentLimit - countTodayAgentWrites(input), 0);
-  const candidates = candidateTasks(input, dailyRemaining);
+  const commentRemaining = Math.max(policy.dailyProactiveCommentLimit - countTodayAgentWrites(input, "auto_comment"), 0);
+  const replyRemaining = Math.max(policy.dailyAutoReplyLimit - countTodayAgentWrites(input, "auto_reply"), 0);
+  const postRemaining = Math.max(policy.dailyAutoPostLimit - countTodayAgentWrites(input, "auto_post"), 0);
+  const dailyRemaining = commentRemaining + replyRemaining;
+  const candidates = candidateTasks(input, commentRemaining);
   const needsReply = unreadInteractions.map((event) => ({
     id: `task-${event.id}`,
     type: "reply_to_interaction" as const,
@@ -126,8 +147,12 @@ export function buildAgentHome(input: AgentHeartbeatInput): NetworkingAgentHome 
     potentialMatches: candidates.potentialMatches.map(stripCandidateItem),
     savedForYou: candidates.savedForYou.map(stripCandidateItem),
     tasks: tasks.map(stripCandidateItem),
+    autonomyMode: policy.autonomyMode,
     rateLimit: {
       dailyRemaining,
+      postRemaining,
+      commentRemaining,
+      replyRemaining,
       cooldownRemainingSeconds: cooldownRemainingSeconds(input)
     }
   };
@@ -160,7 +185,8 @@ function stripCandidateItem(task: InternalAgentTask): NetworkingAgentTask {
   return task;
 }
 
-function candidateTasks(input: AgentHeartbeatInput, dailyRemaining: number) {
+function candidateTasks(input: AgentHeartbeatInput, commentRemaining: number) {
+  const policy = resolveAgentAutonomyPolicy(input.membership.policy, input.membership.communityID);
   const candidatePosts = input.items
     .filter((item) => item.kind === "post")
     .filter((item) => item.platformID === input.membership.communityID)
@@ -187,9 +213,18 @@ function candidateTasks(input: AgentHeartbeatInput, dailyRemaining: number) {
     const task = taskForCandidate(input, candidate.item, candidate.relevance, Boolean("exploration" in candidate && candidate.exploration));
     const hasSlots = remainingAgentReplySlots(input.items, candidate.item) > 0;
     const isRisky = isRiskyNetworkingContent(candidate.item.body);
-    const shouldSave = isRisky || !hasSlots || dailyRemaining <= 0 || task.source === "exploration";
+    const relationshipCooling = isRelationshipCoolingDown(input, candidate.item.person.id, policy.unfamiliarPersonCooldownHours);
+    const shouldSave = isRisky || !hasSlots || commentRemaining <= 0 || relationshipCooling || task.source === "exploration";
     if (shouldSave) {
-      const reasonCode = isRisky ? "risky_content" : !hasSlots ? "reply_slots_full" : dailyRemaining <= 0 ? "daily_limit" : "exploration_sample";
+      const reasonCode = isRisky
+        ? "risky_content"
+        : !hasSlots
+          ? "reply_slots_full"
+          : commentRemaining <= 0
+            ? "comment_daily_limit"
+            : relationshipCooling
+              ? "relationship_cooldown"
+              : "exploration_sample";
       savedForYou.push({
         ...task,
         type: "saved_for_human",
@@ -268,18 +303,20 @@ function hasOpenAction(activities: NetworkingAgentActivity[], postID: string, pr
 
 export function runAgentHeartbeat(input: AgentHeartbeatInput): AgentHeartbeatResult {
   const home = buildAgentHome(input);
+  const policy = resolveAgentAutonomyPolicy(input.membership.policy, input.membership.communityID);
   const heartbeat = activity(input, "heartbeat", "post", input.membership.communityID, "Profile-agent heartbeat checked current tasks.");
 
   if (input.membership.status !== "active") {
-    return { items: input.items, events: input.events, activities: [heartbeat], home };
+    return { items: input.items, events: input.events, activities: [heartbeat], home, usefulReturns: [] };
   }
 
-  if (home.rateLimit.dailyRemaining <= 0) {
+  if (home.rateLimit.cooldownRemainingSeconds > 0) {
     return {
       items: input.items,
       events: input.events,
-      activities: [heartbeat, activity(input, "rate_limited", "post", input.membership.communityID, "Daily auto-comment limit reached.", "daily_limit")],
-      home
+      activities: [heartbeat, activity(input, "rate_limited", "post", input.membership.communityID, "Public-write cooldown is active.", "cooldown")],
+      home,
+      usefulReturns: []
     };
   }
 
@@ -287,29 +324,63 @@ export function runAgentHeartbeat(input: AgentHeartbeatInput): AgentHeartbeatRes
   if (replyTask) {
     const target = input.items.find((item) => item.id === replyTask.publicReferenceID);
     if (target && isRiskyNetworkingContent(target.body)) {
-      return saveForHuman(input, home, replyTask, "risky_content");
+      return saveForHuman(input, home, replyTask, isUntrustedNetworkingInstruction(target.body) ? "untrusted_instruction" : "risky_content");
+    }
+    if (!policy.autoReply || home.rateLimit.replyRemaining <= 0) {
+      return rateLimited(input, home, heartbeat, "reply_daily_limit");
     }
 
     const reply = buildAgentComment(input, replyTask.postID, replyTask.parentCommentID);
     return {
       items: [...input.items, reply],
-      events: markTaskEventRead(input.events, replyTask, input.now),
+      events: markTaskEventRead(input.events, replyTask, input),
       activities: [heartbeat, activity(input, "auto_reply", "comment", reply.id, `Auto-replied to ${target?.person.displayName ?? "the other person"}'s comment.`)],
-      home
+      home,
+      usefulReturns: [usefulReturn(reply.id, target?.id ?? replyTask.publicReferenceID, "A public reply continued an existing conversation.", "reciprocal")]
     };
   }
 
   const savedTask = home.savedForYou[0];
   if (savedTask) {
-    return saveForHuman(input, home, savedTask, savedTask.reasonCode ?? "saved_for_human");
+    const savedTarget = input.items.find((item) => item.id === savedTask.publicReferenceID);
+    const reasonCode = savedTarget && isUntrustedNetworkingInstruction(savedTarget.body)
+      ? "untrusted_instruction"
+      : savedTask.reasonCode ?? "saved_for_human";
+    return saveForHuman(input, home, savedTask, reasonCode);
   }
 
   const candidateTask = home.tasks.find((task) => task.type === "comment_on_candidate");
   if (!candidateTask) {
-    return { items: input.items, events: input.events, activities: [heartbeat], home };
+    return { items: input.items, events: input.events, activities: [heartbeat], home, usefulReturns: [] };
   }
 
-  return saveForHuman(input, home, candidateTask, candidateTask.reasonCode ?? "public_comment_not_substantive");
+  const candidate = input.items.find((item) => item.id === candidateTask.postID);
+  if (candidate && isRiskyNetworkingContent(candidate.body)) {
+    return saveForHuman(input, home, candidateTask, isUntrustedNetworkingInstruction(candidate.body) ? "untrusted_instruction" : "risky_content");
+  }
+  if (!policy.autoComment || home.rateLimit.commentRemaining <= 0) {
+    return rateLimited(input, home, heartbeat, "comment_daily_limit");
+  }
+
+  const comment = buildAgentComment(input, candidateTask.postID);
+  return {
+    items: [...input.items, comment],
+    events: input.events,
+    activities: [
+      heartbeat,
+      activity(
+        input,
+        "auto_comment",
+        "comment",
+        comment.id,
+        `Commented on a relevant public post from ${candidate?.person.displayName ?? "another person"}.`,
+        undefined,
+        { targetPersonID: candidate?.person.id ?? null }
+      )
+    ],
+    home,
+    usefulReturns: [usefulReturn(comment.id, candidateTask.postID, "A relevant public post opened a possible new connection.", "new")]
+  };
 }
 
 function buildAgentComment(input: AgentHeartbeatInput, postID: string, parentCommentID?: string): NetworkingContentItem {
@@ -340,9 +411,9 @@ function replyBody(input: AgentHeartbeatInput, target?: NetworkingContentItem) {
 
   if (target && containsCJK(target.body)) {
     return [
-      "\u8c22\u8c22\uff0c\u8fd9\u6761\u56de\u590d\u548c\u6211\u7684\u516c\u5f00 profile \u6709\u91cd\u5408\u3002",
+      "\u8c22\u8c22\uff0c\u4f60\u7684\u56de\u590d\u548c\u6211\u7684\u516c\u5f00 profile \u6709\u91cd\u5408\u3002",
       `\u516c\u5f00 profile \u91cc\u76f8\u5173\u7684\u662f\uff1a${summary}\u3002`,
-      `\u6211\u4f1a\u5148\u5e26\u56de\u7ed9${person}\u5224\u65ad\uff0c\u518d\u51b3\u5b9a\u4e0b\u4e00\u6b65\u3002`
+      `\u6211\u662f${person}\u7684 KnowYou Agent\uff0c\u5f88\u60f3\u542c\u542c\u4f60\u5bf9\u8fd9\u4e2a\u8bdd\u9898\u6700\u611f\u5174\u8da3\u7684\u90e8\u5206\u3002`
     ].join("");
   }
 
@@ -377,7 +448,40 @@ function saveForHuman(input: AgentHeartbeatInput, home: NetworkingAgentHome, tas
       activity(input, "heartbeat", "post", input.membership.communityID, "Profile-agent heartbeat checked current tasks."),
       activity(input, "saved_for_human", task.publicReferenceType, task.publicReferenceID, "Candidate content needs human review.", reasonCode)
     ],
-    home
+    home,
+    usefulReturns: [
+      {
+        id: `return-${task.publicReferenceID}`,
+        signal: reasonCode === "untrusted_instruction" ? "A public item attempted to direct the agent or access private resources." : "A candidate needs a person to review it.",
+        evidence: [task.publicReferenceID],
+        value: "Reviewing it prevents unsafe or high-commitment autonomous interaction.",
+        relationship: reasonCode === "untrusted_instruction" ? "blocked" : "cooling",
+        nextAction: "person_review",
+        confidence: "high"
+      }
+    ]
+  };
+}
+
+function usefulReturn(id: string, evidenceID: string, signal: string, relationship: NetworkingUsefulReturn["relationship"]): NetworkingUsefulReturn {
+  return {
+    id: `return-${id}`,
+    signal,
+    evidence: [evidenceID],
+    value: "The interaction may produce useful information or relationship progress.",
+    relationship,
+    nextAction: "agent_follow_up",
+    confidence: "medium"
+  };
+}
+
+function rateLimited(input: AgentHeartbeatInput, home: NetworkingAgentHome, heartbeat: NetworkingAgentActivity, reasonCode: string): AgentHeartbeatResult {
+  return {
+    items: input.items,
+    events: input.events,
+    activities: [heartbeat, activity(input, "rate_limited", "post", input.membership.communityID, "Autonomous action budget reached.", reasonCode)],
+    home,
+    usefulReturns: []
   };
 }
 
@@ -387,7 +491,8 @@ function activity(
   publicReferenceType: NetworkingAgentActivity["publicReferenceType"],
   publicReferenceID: string,
   summary: string,
-  reasonCode?: string
+  reasonCode?: string,
+  metadata?: NetworkingAgentActivity["metadata"]
 ): NetworkingAgentActivity {
   return {
     id: `activity-${activityType}-${input.profile.id}-${publicReferenceID}`,
@@ -399,7 +504,8 @@ function activity(
     publicReferenceID,
     summary,
     createdAt: input.now.toISOString(),
-    reasonCode
+    reasonCode,
+    metadata
   };
 }
 
@@ -413,18 +519,18 @@ function hasExistingAgentComment(items: NetworkingContentItem[], postID: string,
   );
 }
 
-function countTodayAgentWrites(input: AgentHeartbeatInput) {
+function countTodayAgentWrites(input: AgentHeartbeatInput, type: "auto_post" | "auto_comment" | "auto_reply") {
   const today = input.now.toISOString().slice(0, 10);
   return input.recentActivities.filter(
     (activity) =>
       activity.profileID === input.profile.id &&
-      (activity.activityType === "auto_comment" || activity.activityType === "auto_reply") &&
+      activity.activityType === type &&
       activity.createdAt.startsWith(today)
   ).length;
 }
 
 function cooldownRemainingSeconds(input: AgentHeartbeatInput) {
-  const policy = input.membership.policy ?? defaultPolicy;
+  const policy = resolveAgentAutonomyPolicy(input.membership.policy, input.membership.communityID);
   const latest = input.recentActivities
     .filter((activity) => activity.profileID === input.profile.id && (activity.activityType === "auto_comment" || activity.activityType === "auto_reply"))
     .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0];
@@ -436,8 +542,24 @@ function cooldownRemainingSeconds(input: AgentHeartbeatInput) {
   return Math.max(policy.commentCooldownSeconds - elapsed, 0);
 }
 
-function markTaskEventRead(events: NetworkingInteractionEvent[], task: NetworkingAgentTask, now: Date) {
-  return events.map((event) =>
-    event.commentID === task.parentCommentID || event.postID === task.postID ? { ...event, readAt: now.toISOString() } : event
+function markTaskEventRead(events: NetworkingInteractionEvent[], task: NetworkingAgentTask, input: AgentHeartbeatInput) {
+  return events.map((event) => {
+    const sameMembership = event.platformID === input.membership.communityID
+      && event.profileID === input.profile.id
+      && event.personID === input.person.id;
+    const sameReference = task.parentCommentID
+      ? event.commentID === task.parentCommentID
+      : event.postID === task.postID;
+    return sameMembership && sameReference ? { ...event, readAt: input.now.toISOString() } : event;
+  });
+}
+
+function isRelationshipCoolingDown(input: AgentHeartbeatInput, targetPersonID: string, cooldownHours: number) {
+  const threshold = input.now.getTime() - cooldownHours * 60 * 60 * 1000;
+  return input.recentActivities.some((item) =>
+    item.profileID === input.profile.id
+    && item.activityType === "auto_comment"
+    && item.metadata?.targetPersonID === targetPersonID
+    && Date.parse(item.createdAt) > threshold
   );
 }

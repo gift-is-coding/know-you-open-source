@@ -121,6 +121,7 @@ struct NetworkingPlatformSession: Codable, Equatable, Sendable {
 enum NetworkingPlatformClientError: LocalizedError, Equatable {
     case invalidResponse
     case machineEmailConfirmationRequired
+    case invalidAutonomyMode
     case httpError(status: Int, body: String)
     case emptyResult(String)
 
@@ -130,6 +131,8 @@ enum NetworkingPlatformClientError: LocalizedError, Equatable {
             return "The Networking platform returned an unreadable response."
         case .machineEmailConfirmationRequired:
             return "Supabase email confirmation is enabled, but KnowYou machine identities use non-inbox addresses and need an immediate session. Disable Confirm email for this dedicated Networking project, then retry."
+        case .invalidAutonomyMode:
+            return "The selected Networking autonomy mode is not supported."
         case let .httpError(status, body):
             return "Networking platform request failed (\(status)): \(body)"
         case let .emptyResult(context):
@@ -154,8 +157,8 @@ struct NetworkingPlatformClient: Sendable {
     // MARK: - Auth
 
     func signUp(email: String, password: String) throws -> NetworkingPlatformSession {
-        let data = try send(
-            path: "auth/v1/signup",
+        _ = try send(
+            path: "functions/v1/networking-machine-signup",
             method: "POST",
             bearer: config.publishableKey,
             body: [
@@ -163,7 +166,7 @@ struct NetworkingPlatformClient: Sendable {
                 "password": password,
             ]
         )
-        return try decodeSession(from: data, isMachineSignup: true)
+        return try signIn(email: email, password: password)
     }
 
     func signIn(email: String, password: String) throws -> NetworkingPlatformSession {
@@ -278,6 +281,27 @@ struct NetworkingPlatformClient: Sendable {
                 "person_id": personID,
                 "profile_id": profileID,
                 "status": "active",
+            ]
+        )
+    }
+
+    func updateMembershipAutonomyMode(
+        session: NetworkingPlatformSession,
+        profileID: String,
+        communityID: String,
+        mode: String
+    ) throws {
+        guard ["conservative", "balanced", "active"].contains(mode) else {
+            throw NetworkingPlatformClientError.invalidAutonomyMode
+        }
+        _ = try send(
+            path: "rest/v1/rpc/networking_update_autonomy_mode",
+            method: "POST",
+            bearer: session.accessToken,
+            body: [
+                "p_profile_id": profileID,
+                "p_platform_id": communityID,
+                "p_mode": mode,
             ]
         )
     }
@@ -433,14 +457,9 @@ struct NetworkingPlatformClient: Sendable {
         return data
     }
 
-    private func decodeSession(from data: Data, isMachineSignup: Bool = false) throws -> NetworkingPlatformSession {
+    private func decodeSession(from data: Data) throws -> NetworkingPlatformSession {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw NetworkingPlatformClientError.invalidResponse
-        }
-        if isMachineSignup,
-           object["access_token"] == nil,
-           (object["user"] as? [String: Any])?["id"] is String {
-            throw NetworkingPlatformClientError.machineEmailConfirmationRequired
         }
         guard
               let accessToken = object["access_token"] as? String,

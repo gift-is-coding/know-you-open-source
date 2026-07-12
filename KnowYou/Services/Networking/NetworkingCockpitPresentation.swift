@@ -96,7 +96,31 @@ struct NetworkingCockpitPresentation {
         let needsReply = tasks("needsReply").compactMap { item($0, direction: .inbound, fallbackTitle: "Needs reply") }
         let potentialMatches = tasks("potentialMatches").compactMap { item($0, direction: .highlight, fallbackTitle: "Potential match") }
         let savedForYou = tasks("savedForYou").compactMap { item($0, direction: .outbound, fallbackTitle: "Saved for you") }
-        return needsReply + potentialMatches + savedForYou
+        let usefulReturns = tasks("usefulReturns").compactMap { result -> NetworkingCockpitItem? in
+            guard let id = result["id"] as? String,
+                  let signal = result["signal"] as? String else { return nil }
+            let evidence = result["evidence"] as? [String] ?? []
+            let nextAction = result["nextAction"] as? String ?? "none"
+            let relationship = result["relationship"] as? String ?? "new"
+            return NetworkingCockpitItem(
+                id: "\(platformID)-\(id)",
+                direction: .activity,
+                title: signal,
+                publicSummary: result["value"] as? String ?? signal,
+                privateReason: "Relationship: \(relationship); next action: \(nextAction)",
+                publicReferenceID: evidence.first,
+                platformID: platformID
+            )
+        }
+        return needsReply + potentialMatches + savedForYou + usefulReturns
+    }
+
+    static func autonomyMode(fromAgentHome home: [String: Any]) -> String? {
+        guard let mode = home["autonomyMode"] as? String,
+              ["conservative", "balanced", "active"].contains(mode) else {
+            return nil
+        }
+        return mode
     }
 
     static func cockpitItems(for agentActions: [NetworkingAgentAction]) -> [NetworkingCockpitItem] {

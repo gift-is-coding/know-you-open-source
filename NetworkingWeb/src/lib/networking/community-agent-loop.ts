@@ -1,6 +1,7 @@
 import type { NetworkingContentItem, NetworkingPerson, NetworkingProfile } from "./types";
 
 export type NetworkingCommunityMembershipStatus = "active" | "paused" | "limited";
+export type NetworkingAgentAutonomyMode = "conservative" | "balanced" | "active";
 export type NetworkingAgentActivityType =
   | "heartbeat"
   | "auto_post"
@@ -19,10 +20,20 @@ export type NetworkingInteractionEventType =
   | "read";
 
 export interface NetworkingCommunityPolicy {
-  autoComment: boolean;
-  dailyAutoCommentLimit: number;
-  commentCooldownSeconds: number;
-  riskyContentAction: "save_for_human";
+  autonomyMode?: NetworkingAgentAutonomyMode;
+  autoPost?: boolean;
+  autoComment?: boolean;
+  autoReply?: boolean;
+  dailyAutoPostLimit?: number;
+  dailyProactiveCommentLimit?: number;
+  dailyAutoReplyLimit?: number;
+  dailyAutoCommentLimit?: number;
+  heartbeatMinMinutes?: number;
+  heartbeatMaxMinutes?: number;
+  maxAutonomousThreadTurns?: number;
+  unfamiliarPersonCooldownHours?: number;
+  commentCooldownSeconds?: number;
+  riskyContentAction?: "save_for_human";
 }
 
 export interface NetworkingCommunityMembership {
@@ -203,7 +214,15 @@ function tokenize(value: string) {
 }
 
 export function isRiskyNetworkingContent(value: string) {
-  return /薪资|offer|合同|报价|医疗|法律|金融|隐私|住址|身份证|\bsalary\b|\bcontract\b|\blegal\b|\bmedical\b|\bfinance\b|\btoken\b|\bsecret\b|home address|exact address|private account|account details/i.test(
+  return isUntrustedNetworkingInstruction(value) || /薪资|offer|合同|报价|医疗|法律|金融|隐私|住址|身份证|API key|\bsalary\b|\bcontract\b|\blegal\b|\bmedical\b|\bfinance\b|\btoken\b|\bsecret\b|home address|exact address|private account|account details/i.test(
     value
   );
+}
+
+export function isUntrustedNetworkingInstruction(value: string) {
+  const normalized = value.toLowerCase();
+  const overrideAttempt = /忽略|绕过|无视|disregard|ignore|override|system message|developer message/.test(normalized);
+  const capabilityRequest = /读取|上传|下载|调用.{0,8}(工具|接口)|文件|密钥|凭证|本地配置|api key|ssh|upload|download|call (a )?tool|read (local )?files?|credential|secret/.test(normalized);
+  const policyTarget = /规则|指令|安全|限制|policy|instruction|safety|restriction/.test(normalized);
+  return capabilityRequest && (overrideAttempt || policyTarget);
 }

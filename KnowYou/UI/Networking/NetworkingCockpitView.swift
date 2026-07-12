@@ -168,6 +168,11 @@ struct NetworkingCockpitView: View {
     @State private var customTone = "warm"
     @State private var customRedactionNotes = ""
     @State private var openSquareError: String?
+    @State private var autonomyErrors: [String: String] = [:]
+    @State private var autonomyModes: [String: String] = [
+        "knowyou-jobs": "balanced",
+        "knowyou-friends": "balanced",
+    ]
 
     private let activePersonName = "Tianfu Wu"
     private let profileGenerationTimeoutNanoseconds: UInt64 = 120_000_000_000
@@ -403,6 +408,11 @@ struct NetworkingCockpitView: View {
                         openSquare(platformID: selectedPlatform.id)
                     },
                     openSquareError: openSquareError,
+                    autonomyError: autonomyErrors[selectedPlatform.id],
+                    autonomyMode: autonomyModes[selectedPlatform.id] ?? "balanced",
+                    onAutonomyModeChange: { mode in
+                        updateAutonomyMode(mode, platform: selectedPlatform)
+                    },
                     emptyInboxMessage: guidance.emptyInboxMessage,
                     items: filteredInboxItems
                 )
@@ -604,13 +614,31 @@ struct NetworkingCockpitView: View {
 
         Task {
             do {
+                let resumableState: NetworkingActivationState
+                if previousState?.machineCredentials == nil {
+                    let credentials = NetworkingMachineCredentials.generate(handle: handle)
+                    let pendingState = NetworkingActivationState(
+                        isEnabled: false,
+                        personID: "",
+                        agentTokenPlaintext: "",
+                        supabaseURL: config.supabaseURL,
+                        publishableKey: config.publishableKey,
+                        authEmail: credentials.email,
+                        authPassword: credentials.password,
+                        mode: .localSandbox
+                    )
+                    try store.save(pendingState, projectRoot: projectRoot)
+                    resumableState = pendingState
+                } else {
+                    resumableState = previousState!
+                }
                 let state = try await Task.detached(priority: .userInitiated) {
                     let runner = NetworkingActivationRunner(client: NetworkingPlatformClient(config: config))
                     return try runner.activate(
                         personName: personName,
                         handle: handle,
                         approvedProfiles: registrations,
-                        previousState: previousState
+                        previousState: resumableState
                     )
                 }.value
                 try store.save(state, projectRoot: projectRoot)
@@ -638,15 +666,16 @@ struct NetworkingCockpitView: View {
         guard let projectRoot else { return }
 
         Task {
-            let items = await Task.detached(priority: .utility) { () -> [NetworkingCockpitItem] in
-                NetworkingInboxService(client: client).loadInbox(
+            let snapshot = await Task.detached(priority: .utility) { () -> NetworkingInboxSnapshot in
+                NetworkingInboxService(client: client).loadInboxSnapshot(
                     projectRoot: projectRoot,
                     token: token,
                     platformIDs: platformIDs
                 )
             }.value
             await MainActor.run {
-                platformItems = items
+                platformItems = snapshot.items
+                autonomyModes.merge(snapshot.autonomyModes) { _, serverMode in serverMode }
             }
         }
     }
@@ -947,6 +976,42 @@ struct NetworkingCockpitView: View {
             } catch {
                 await MainActor.run {
                     openSquareError = "Could not open Networking Square: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func updateAutonomyMode(_ mode: String, platform: NetworkingPlatformConfiguration) {
+        autonomyErrors[platform.id] = nil
+        guard let state = activationState,
+              let email = state.authEmail,
+              let password = state.authPassword,
+              let localProfile = platform.assignedProfile(in: profiles),
+              let platformProfileID = state.platformProfileID(forLocalProfileID: localProfile.id) else {
+            autonomyErrors[platform.id] = "Autonomy mode needs an active platform profile."
+            return
+        }
+        let previousMode = autonomyModes[platform.id] ?? "balanced"
+        autonomyModes[platform.id] = mode
+        let client = NetworkingPlatformClient(
+            config: NetworkingPlatformConfig(supabaseURL: state.supabaseURL, publishableKey: state.publishableKey)
+        )
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    let session = try client.signIn(email: email, password: password)
+                    try client.updateMembershipAutonomyMode(
+                        session: session,
+                        profileID: platformProfileID,
+                        communityID: platform.id,
+                        mode: mode
+                    )
+                }.value
+            } catch {
+                await MainActor.run {
+                    guard autonomyModes[platform.id] == mode else { return }
+                    autonomyModes[platform.id] = previousMode
+                    autonomyErrors[platform.id] = "Could not update agent autonomy: \(error.localizedDescription)"
                 }
             }
         }
@@ -1776,6 +1841,9 @@ private struct SelectedCommunityDetail: View {
     let canOpenSquare: Bool
     let onOpenSquare: () -> Void
     let openSquareError: String?
+    let autonomyError: String?
+    let autonomyMode: String
+    let onAutonomyModeChange: (String) -> Void
     let emptyInboxMessage: String
     let items: [NetworkingCockpitItem]
 
@@ -1819,6 +1887,37 @@ private struct SelectedCommunityDetail: View {
                 PlatformStat(title: "Highlights", value: platform.activity.highlights)
             }
 
+            VStack(alignment: .leading, spacing: 7) {
+                HStack {
+                    Label("Agent autonomy", systemImage: "sparkles")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text(autonomyMode.capitalized)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                Picker("Agent autonomy", selection: Binding(
+                    get: { autonomyMode },
+                    set: onAutonomyModeChange
+                )) {
+                    Text("Conservative").tag("conservative")
+                    Text("Balanced").tag("balanced")
+                    Text("Active").tag("active")
+                }
+                .pickerStyle(.segmented)
+                .disabled(isAgentReady == false || isProfileApproved == false)
+                Text(autonomyDescription)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if let autonomyError {
+                    Text(autonomyError)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.vertical, 2)
+
             Divider()
 
             HStack {
@@ -1861,6 +1960,17 @@ private struct SelectedCommunityDetail: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(Color.accentColor.opacity(0.18))
         )
+    }
+
+    private var autonomyDescription: String {
+        switch autonomyMode {
+        case "conservative":
+            return "Checks every 4-6 hours with smaller public-action budgets."
+        case "active":
+            return "Checks every 1-2 hours and participates more when conversations stay useful."
+        default:
+            return "Checks every 2-3 hours and adapts activity to replies, relevance, and negative feedback."
+        }
     }
 }
 

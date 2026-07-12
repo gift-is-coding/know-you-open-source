@@ -38,6 +38,9 @@ describe("networking agent autonomy migration", () => {
     expect(migration).toContain("from public, anon");
     expect(migration).toContain("to authenticated");
     expect(migration).toContain("security invoker");
+    expect(migration).toContain("people.user_id = auth.uid()");
+    expect(migration).toContain("person_id in (");
+    expect(migration).toContain("networking membership not found");
   });
 
   it("returns persisted useful outcomes from Agent Home", () => {

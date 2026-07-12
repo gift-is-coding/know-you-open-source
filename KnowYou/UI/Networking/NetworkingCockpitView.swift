@@ -173,6 +173,11 @@ struct NetworkingCockpitView: View {
         "knowyou-jobs": "balanced",
         "knowyou-friends": "balanced",
     ]
+    @State private var autonomyUpdateTasks: [String: Task<Void, Never>] = [:]
+    @State private var autonomyRequestGenerations: [String: Int] = [:]
+    @State private var confirmedAutonomyModes: [String: String] = [:]
+    @State private var networkingSession: NetworkingPlatformSession?
+    @State private var networkingSessionTask: Task<NetworkingPlatformSession, Error>?
 
     private let activePersonName = "Tianfu Wu"
     private let profileGenerationTimeoutNanoseconds: UInt64 = 120_000_000_000
@@ -676,6 +681,7 @@ struct NetworkingCockpitView: View {
             await MainActor.run {
                 platformItems = snapshot.items
                 autonomyModes.merge(snapshot.autonomyModes) { _, serverMode in serverMode }
+                confirmedAutonomyModes.merge(snapshot.autonomyModes) { _, serverMode in serverMode }
             }
         }
     }
@@ -991,15 +997,45 @@ struct NetworkingCockpitView: View {
             autonomyErrors[platform.id] = "Autonomy mode needs an active platform profile."
             return
         }
-        let previousMode = autonomyModes[platform.id] ?? "balanced"
         autonomyModes[platform.id] = mode
+        let generation = (autonomyRequestGenerations[platform.id] ?? 0) + 1
+        autonomyRequestGenerations[platform.id] = generation
         let client = NetworkingPlatformClient(
             config: NetworkingPlatformConfig(supabaseURL: state.supabaseURL, publishableKey: state.publishableKey)
         )
-        Task {
+        let previousTask = autonomyUpdateTasks[platform.id]
+        autonomyUpdateTasks[platform.id] = Task {
+            _ = await previousTask?.result
+            guard Task.isCancelled == false else { return }
+            let isLatestRequest = await MainActor.run {
+                autonomyModes[platform.id] == mode && autonomyRequestGenerations[platform.id] == generation
+            }
+            guard isLatestRequest else { return }
             do {
+                let session: NetworkingPlatformSession
+                let cachedSession = await MainActor.run { networkingSession }
+                if let cachedSession {
+                    session = cachedSession
+                } else {
+                    let sessionTask = await MainActor.run { () -> Task<NetworkingPlatformSession, Error> in
+                        if let networkingSessionTask { return networkingSessionTask }
+                        let task = Task.detached(priority: .userInitiated) {
+                            try client.signIn(email: email, password: password)
+                        }
+                        networkingSessionTask = task
+                        return task
+                    }
+                    session = try await sessionTask.value
+                    await MainActor.run {
+                        networkingSession = session
+                        networkingSessionTask = nil
+                    }
+                }
+                let shouldSend = await MainActor.run {
+                    autonomyModes[platform.id] == mode && autonomyRequestGenerations[platform.id] == generation
+                }
+                guard shouldSend else { return }
                 try await Task.detached(priority: .userInitiated) {
-                    let session = try client.signIn(email: email, password: password)
                     try client.updateMembershipAutonomyMode(
                         session: session,
                         profileID: platformProfileID,
@@ -1007,10 +1043,19 @@ struct NetworkingCockpitView: View {
                         mode: mode
                     )
                 }.value
+                await MainActor.run {
+                    confirmedAutonomyModes[platform.id] = mode
+                }
             } catch {
                 await MainActor.run {
-                    guard autonomyModes[platform.id] == mode else { return }
-                    autonomyModes[platform.id] = previousMode
+                    networkingSessionTask = nil
+                    if let platformError = error as? NetworkingPlatformClientError,
+                       case .httpError(status: 401, body: _) = platformError {
+                        networkingSession = nil
+                    }
+                    guard autonomyModes[platform.id] == mode,
+                          autonomyRequestGenerations[platform.id] == generation else { return }
+                    autonomyModes[platform.id] = confirmedAutonomyModes[platform.id] ?? "balanced"
                     autonomyErrors[platform.id] = "Could not update agent autonomy: \(error.localizedDescription)"
                 }
             }

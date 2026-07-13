@@ -118,6 +118,22 @@ struct NetworkingPlatformSession: Codable, Equatable, Sendable {
     let userID: String
 }
 
+struct NetworkingDeviceRecord: Codable, Equatable, Sendable {
+    let id: String
+    let deviceID: String
+    let displayName: String
+    let lastActiveAt: String
+    let revokedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case deviceID = "device_id"
+        case displayName = "display_name"
+        case lastActiveAt = "last_active_at"
+        case revokedAt = "revoked_at"
+    }
+}
+
 enum NetworkingPlatformClientError: LocalizedError, Equatable {
     case invalidResponse
     case machineEmailConfirmationRequired
@@ -190,6 +206,32 @@ struct NetworkingPlatformClient: Sendable {
             method: "POST",
             bearer: config.publishableKey,
             body: ["refresh_token": refreshToken]
+        )
+        return try decodeSession(from: data)
+    }
+
+    func requestEmailOTP(email: String) throws {
+        _ = try send(
+            path: "auth/v1/otp",
+            method: "POST",
+            bearer: config.publishableKey,
+            body: [
+                "email": email,
+                "create_user": true,
+            ]
+        )
+    }
+
+    func verifyEmailOTP(email: String, token: String) throws -> NetworkingPlatformSession {
+        let data = try send(
+            path: "auth/v1/verify",
+            method: "POST",
+            bearer: config.publishableKey,
+            body: [
+                "type": "email",
+                "email": email,
+                "token": token,
+            ]
         )
         return try decodeSession(from: data)
     }
@@ -303,6 +345,47 @@ struct NetworkingPlatformClient: Sendable {
                 "p_platform_id": communityID,
                 "p_mode": mode,
             ]
+        )
+    }
+
+    func registerDevice(
+        session: NetworkingPlatformSession,
+        deviceID: String,
+        displayName: String,
+        tokenHash: String
+    ) throws -> NetworkingDeviceRecord {
+        let data = try send(
+            path: "rest/v1/rpc/networking_register_device",
+            method: "POST",
+            bearer: session.accessToken,
+            body: [
+                "p_device_id": deviceID,
+                "p_display_name": displayName,
+                "p_token_hash": tokenHash,
+            ]
+        )
+        return try decodeDevice(from: data)
+    }
+
+    func listDevices(session: NetworkingPlatformSession) throws -> [NetworkingDeviceRecord] {
+        let data = try send(
+            path: "rest/v1/rpc/networking_list_devices",
+            method: "POST",
+            bearer: session.accessToken,
+            body: [:]
+        )
+        guard let devices = try? JSONDecoder().decode([NetworkingDeviceRecord].self, from: data) else {
+            throw NetworkingPlatformClientError.invalidResponse
+        }
+        return devices
+    }
+
+    func revokeDevice(session: NetworkingPlatformSession, deviceID: String) throws {
+        _ = try send(
+            path: "rest/v1/rpc/networking_revoke_device",
+            method: "POST",
+            bearer: session.accessToken,
+            body: ["p_device_id": deviceID]
         )
     }
 
@@ -469,6 +552,13 @@ struct NetworkingPlatformClient: Sendable {
             throw NetworkingPlatformClientError.invalidResponse
         }
         return NetworkingPlatformSession(accessToken: accessToken, refreshToken: refreshToken, userID: userID)
+    }
+
+    private func decodeDevice(from data: Data) throws -> NetworkingDeviceRecord {
+        guard let device = try? JSONDecoder().decode(NetworkingDeviceRecord.self, from: data) else {
+            throw NetworkingPlatformClientError.invalidResponse
+        }
+        return device
     }
 
     private func firstRowID(from data: Data, context: String) throws -> String {

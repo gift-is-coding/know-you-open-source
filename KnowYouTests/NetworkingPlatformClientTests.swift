@@ -71,6 +71,74 @@ final class NetworkingPlatformClientTests: XCTestCase {
         XCTAssertEqual(body["password"] as? String, machineAuthFixture.passphrase)
     }
 
+    func testRequestEmailOTPUsesPasswordlessAuthWithoutAccountEnumerationFields() throws {
+        let recorder = TransportRecorder(responses: [.json([:])])
+        var client = NetworkingPlatformClient(config: config)
+        client.transport = recorder.transport
+
+        try client.requestEmailOTP(email: "person@example.com")
+
+        let request = try XCTUnwrap(recorder.requests.first)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.path, "/auth/v1/otp")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer publishable-key")
+        let body = try bodyJSON(of: request)
+        XCTAssertEqual(body["email"] as? String, "person@example.com")
+        XCTAssertEqual(body["create_user"] as? Bool, true)
+        XCTAssertNil(body["password"])
+    }
+
+    func testVerifyEmailOTPUsesEmailTypeAndDecodesSession() throws {
+        let recorder = TransportRecorder(responses: [.json([
+            "access_token": "otp-access",
+            "refresh_token": "otp-refresh",
+            "user": ["id": "otp-user"],
+        ])])
+        var client = NetworkingPlatformClient(config: config)
+        client.transport = recorder.transport
+
+        let session = try client.verifyEmailOTP(email: "person@example.com", token: "481296")
+
+        XCTAssertEqual(session, NetworkingPlatformSession(accessToken: "otp-access", refreshToken: "otp-refresh", userID: "otp-user"))
+        let request = try XCTUnwrap(recorder.requests.first)
+        XCTAssertEqual(request.url?.path, "/auth/v1/verify")
+        let body = try bodyJSON(of: request)
+        XCTAssertEqual(body["type"] as? String, "email")
+        XCTAssertEqual(body["email"] as? String, "person@example.com")
+        XCTAssertEqual(body["token"] as? String, "481296")
+    }
+
+    func testRegisterListAndRevokeDeviceUseAuthenticatedRPCs() throws {
+        let recorder = TransportRecorder(responses: [
+            .json(["id": "row-1", "device_id": "mac-1", "display_name": "MacBook Pro", "last_active_at": "2026-07-12T08:00:00Z", "revoked_at": NSNull()]),
+            .json([["id": "row-1", "device_id": "mac-1", "display_name": "MacBook Pro", "last_active_at": "2026-07-12T08:00:00Z", "revoked_at": NSNull()]]),
+            .rawJSON("null"),
+        ])
+        var client = NetworkingPlatformClient(config: config)
+        client.transport = recorder.transport
+        let session = NetworkingPlatformSession(accessToken: "user-access", refreshToken: "refresh", userID: "user-1")
+
+        let registered = try client.registerDevice(
+            session: session,
+            deviceID: "mac-1",
+            displayName: "MacBook Pro",
+            tokenHash: String(repeating: "a", count: 64)
+        )
+        let devices = try client.listDevices(session: session)
+        try client.revokeDevice(session: session, deviceID: "mac-1")
+
+        XCTAssertEqual(registered.deviceID, "mac-1")
+        XCTAssertEqual(devices, [registered])
+        XCTAssertEqual(recorder.requests.map { $0.url?.path }, [
+            "/rest/v1/rpc/networking_register_device",
+            "/rest/v1/rpc/networking_list_devices",
+            "/rest/v1/rpc/networking_revoke_device",
+        ])
+        XCTAssertTrue(recorder.requests.allSatisfy { $0.value(forHTTPHeaderField: "Authorization") == "Bearer user-access" })
+        let revokeBody = try bodyJSON(of: recorder.requests[2])
+        XCTAssertEqual(revokeBody["p_device_id"] as? String, "mac-1")
+    }
+
     func testHandoffURLUsesFragmentSessionAndPlatformThenOmitsTokensFromQuery() throws {
         let config = NetworkingBackendConfiguration(
             supabaseURL: URL(string: "https://example.supabase.co")!,

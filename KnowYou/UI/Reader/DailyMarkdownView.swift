@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import CoreImage
 
 struct DailyMarkdownView: View {
     let story: DailyStory?
@@ -16,10 +17,18 @@ struct DailyMarkdownView: View {
     let onAddTodoCandidate: (String) -> Void
     let onRefresh: () -> Void
     let onTodayFullRefresh: () -> Void
+    var onShareDiary: (Bool, DiaryShareAction) -> Bool = { _, _ in false }
+    var onShareParagraph: (DailyStoryParagraph, Bool, DiaryShareAction) -> Bool = { _, _, _ in false }
     let canFullRefresh: Bool
     let fullRefreshMenuTitle: String
 
     @State private var hoveredParagraphID: String?
+    @State private var showsSharePopover = false
+    @State private var shareRedacted = true
+    @State private var shareRequest: DiaryShareRequest = .fullStory
+    @State private var shareCopyFeedbackMessage: String?
+    @State private var shareCopyFeedbackSucceeded = true
+    @State private var shareToast: DiaryShareToast?
 
     var body: some View {
         let presentation = DailyMarkdownPresentation(
@@ -28,6 +37,7 @@ struct DailyMarkdownView: View {
             isGenerating: isGenerating,
             searchQuery: searchQuery
         )
+        let sharePresentation = DiarySharePresentation(story: story, redacted: shareRedacted)
         let refreshPresentation = DayRefreshProgressPresentation(refreshJob: refreshJob)
 
         Group {
@@ -36,104 +46,134 @@ struct DailyMarkdownView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
                             // Date header row
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(formattedDayKey)
-                                    .font(.title2.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                VStack(alignment: .trailing, spacing: 6) {
-                                    HStack(spacing: 6) {
-                                        Button {
-                                            onRefresh()
-                                        } label: {
-                                            if isRefreshing {
-                                                ProgressView()
-                                                    .controlSize(.small)
-                                            } else {
-                                                Image(systemName: "arrow.clockwise")
-                                                    .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(formattedDayKey)
+                                        .font(.title2.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    VStack(alignment: .trailing, spacing: 6) {
+                                        HStack(spacing: 6) {
+                                            Button {
+                                                openFullStorySharePopover()
+                                            } label: {
+                                                ShareToolbarLabel(presentation: sharePresentation)
                                             }
-                                        }
-                                        .buttonStyle(.plain)
-                                        .disabled(isRefreshing || dayKey == OnboardingDemoStory.demoDayKey)
-                                        .help(dayKey == OnboardingDemoStory.demoDayKey ? "Demo Day is read-only" : "Regenerate this day's journal")
+                                            .buttonStyle(.plain)
+                                            .disabled(!sharePresentation.canShare || dayKey == OnboardingDemoStory.demoDayKey)
+                                            .help(sharePresentation.disabledReason ?? sharePresentation.modeTitle)
 
-                                        Menu {
-                                            Button(fullRefreshMenuTitle) {
-                                                onTodayFullRefresh()
-                                            }
-                                            .disabled(isRefreshing || !canFullRefresh)
-                                        } label: {
-                                            Image(systemName: "chevron.down")
-                                                .font(.caption2.weight(.semibold))
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        .menuStyle(.borderlessButton)
-                                        .menuIndicator(.hidden)
-                                        .fixedSize()
-                                        .help(canFullRefresh
-                                            ? "Run a full refresh in 50-event batches"
-                                            : "Full refresh is unavailable for Demo Day")
-                                    }
-
-                                    if refreshPresentation.showsSteps {
-                                        VStack(alignment: .trailing, spacing: 4) {
-                                            ForEach(refreshPresentation.steps) { step in
-                                                HStack(spacing: 6) {
-                                                    Image(systemName: step.symbolName)
-                                                        .font(.caption2)
-                                                        .foregroundStyle(step.color)
-                                                    Text(step.title)
-                                                        .font(.caption)
-                                                        .foregroundStyle(step.color)
+                                            Button {
+                                                onRefresh()
+                                            } label: {
+                                                if isRefreshing {
+                                                    ProgressView()
+                                                        .controlSize(.small)
+                                                } else {
+                                                    Image(systemName: "arrow.clockwise")
+                                                        .foregroundStyle(.secondary)
                                                 }
-                                                .frame(maxWidth: 220, alignment: .trailing)
                                             }
+                                            .buttonStyle(.plain)
+                                            .disabled(isRefreshing || dayKey == OnboardingDemoStory.demoDayKey)
+                                            .help(dayKey == OnboardingDemoStory.demoDayKey ? "Demo Day is read-only" : "Regenerate this day's journal")
 
-                                            if let currentDetail = refreshPresentation.currentDetail {
-                                                Text(currentDetail)
-                                                    .font(.caption)
+                                            Menu {
+                                                Button(fullRefreshMenuTitle) {
+                                                    onTodayFullRefresh()
+                                                }
+                                                .disabled(isRefreshing || !canFullRefresh)
+                                            } label: {
+                                                Image(systemName: "chevron.down")
+                                                    .font(.caption2.weight(.semibold))
                                                     .foregroundStyle(.secondary)
-                                                    .multilineTextAlignment(.trailing)
-                                                    .frame(maxWidth: 220, alignment: .trailing)
                                             }
-
-                                            if let refreshLogNotice {
-                                                Text(refreshLogNotice)
-                                                    .font(.caption2)
-                                                    .foregroundStyle(.secondary)
-                                                    .multilineTextAlignment(.trailing)
-                                                    .frame(maxWidth: 220, alignment: .trailing)
-                                            }
+                                            .menuStyle(.borderlessButton)
+                                            .menuIndicator(.hidden)
+                                            .fixedSize()
+                                            .help(canFullRefresh
+                                                ? "Run a full refresh in 50-event batches"
+                                                : "Full refresh is unavailable for Demo Day")
                                         }
-                                    } else if let summaryText = refreshPresentation.summaryText {
-                                        VStack(alignment: .trailing, spacing: 4) {
-                                            Text(summaryText)
-                                                .font(.caption)
-                                                .foregroundStyle(refreshPresentation.summaryColor)
+
+                                        if refreshPresentation.showsSteps {
+                                            VStack(alignment: .trailing, spacing: 4) {
+                                                ForEach(refreshPresentation.steps) { step in
+                                                    HStack(spacing: 6) {
+                                                        Image(systemName: step.symbolName)
+                                                            .font(.caption2)
+                                                            .foregroundStyle(step.color)
+                                                        Text(step.title)
+                                                            .font(.caption)
+                                                            .foregroundStyle(step.color)
+                                                    }
+                                                    .frame(maxWidth: 220, alignment: .trailing)
+                                                }
+
+                                                if let currentDetail = refreshPresentation.currentDetail {
+                                                    Text(currentDetail)
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                        .multilineTextAlignment(.trailing)
+                                                        .frame(maxWidth: 220, alignment: .trailing)
+                                                }
+
+                                                if let refreshLogNotice {
+                                                    Text(refreshLogNotice)
+                                                        .font(.caption2)
+                                                        .foregroundStyle(.secondary)
+                                                        .multilineTextAlignment(.trailing)
+                                                        .frame(maxWidth: 220, alignment: .trailing)
+                                                }
+                                            }
+                                        } else if let summaryText = refreshPresentation.summaryText {
+                                            VStack(alignment: .trailing, spacing: 4) {
+                                                Text(summaryText)
+                                                    .font(.caption)
+                                                    .foregroundStyle(refreshPresentation.summaryColor)
+                                                    .multilineTextAlignment(.trailing)
+                                                    .frame(maxWidth: 220, alignment: .trailing)
+
+                                                if let refreshLogNotice {
+                                                    Text(refreshLogNotice)
+                                                        .font(.caption2)
+                                                        .foregroundStyle(.secondary)
+                                                        .multilineTextAlignment(.trailing)
+                                                        .frame(maxWidth: 220, alignment: .trailing)
+                                                }
+                                            }
+                                        } else if let refreshLogNotice {
+                                            Text(refreshLogNotice)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
                                                 .multilineTextAlignment(.trailing)
                                                 .frame(maxWidth: 220, alignment: .trailing)
-
-                                            if let refreshLogNotice {
-                                                Text(refreshLogNotice)
-                                                    .font(.caption2)
-                                                    .foregroundStyle(.secondary)
-                                                    .multilineTextAlignment(.trailing)
-                                                    .frame(maxWidth: 220, alignment: .trailing)
-                                            }
                                         }
-                                    } else if let refreshLogNotice {
-                                        Text(refreshLogNotice)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                            .multilineTextAlignment(.trailing)
-                                            .frame(maxWidth: 220, alignment: .trailing)
                                     }
                                 }
+
                             }
                             .padding(.horizontal, 28)
                             .padding(.top, 24)
                             .padding(.bottom, 16)
+                            .onChange(of: sharePresentation.canShare) { _, canShare in
+                                if !canShare {
+                                    showsSharePopover = false
+                                }
+                            }
+                            .onChange(of: dayKey) { _, _ in
+                                showsSharePopover = false
+                                shareRedacted = true
+                                shareRequest = .fullStory
+                                shareCopyFeedbackMessage = nil
+                                shareCopyFeedbackSucceeded = true
+                            }
+                            .onChange(of: showsSharePopover) { _, isShowing in
+                                if !isShowing {
+                                    shareCopyFeedbackMessage = nil
+                                    shareCopyFeedbackSucceeded = true
+                                }
+                            }
 
                             Divider()
                                 .padding(.horizontal, 28)
@@ -174,6 +214,27 @@ struct DailyMarkdownView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .popover(isPresented: $showsSharePopover, arrowEdge: .top) {
+            sharePopover(sharePresentation)
+        }
+        .overlay(alignment: .topTrailing) {
+            if let shareToast {
+                diaryShareToast(shareToast)
+                    .padding(.top, 18)
+                    .padding(.trailing, 26)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeOut(duration: 0.18), value: shareToast)
+        .task(id: shareToast?.id) {
+            guard let toastID = shareToast?.id else { return }
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+            await MainActor.run {
+                if shareToast?.id == toastID {
+                    shareToast = nil
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -187,29 +248,36 @@ struct DailyMarkdownView: View {
         let paragraphTodoCandidates = todoCandidates.filter { $0.paragraphID == paragraph.id }
 
         VStack(alignment: .leading, spacing: 0) {
-            Button {
+            HStack(alignment: .top, spacing: 0) {
+                Rectangle()
+                    .fill(paragraphAccentColor(isSelected: isSelected, isSearchHighlighted: isSearchHighlighted))
+                    .frame(width: 2)
+                    .padding(.vertical, 4)
+
+                MarkdownPreviewContent(markdown: paragraph.text, highlightQuery: searchQuery)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+            }
+            .background(paragraphBackgroundColor(
+                isSelected: isSelected,
+                isSearchHighlighted: isSearchHighlighted,
+                isHovered: isHovered
+            ))
+            .contentShape(Rectangle())
+            .onTapGesture {
                 onFocusStory()
                 onSelectParagraph(paragraph.id)
-            } label: {
-                HStack(alignment: .top, spacing: 0) {
-                    Rectangle()
-                        .fill(paragraphAccentColor(isSelected: isSelected, isSearchHighlighted: isSearchHighlighted))
-                        .frame(width: 2)
-                        .padding(.vertical, 4)
-
-                    MarkdownPreviewContent(markdown: paragraph.text, highlightQuery: searchQuery)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                }
-                .background(paragraphBackgroundColor(
-                    isSelected: isSelected,
-                    isSearchHighlighted: isSearchHighlighted,
-                    isHovered: isHovered
-                ))
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .contextMenu {
+                Button(shareMenuTitle(redacted: true, for: paragraph)) {
+                    openParagraphSharePopover(paragraph, redacted: true)
+                }
+                Button(shareMenuTitle(redacted: false, for: paragraph)) {
+                    openParagraphSharePopover(paragraph, redacted: false)
+                }
+            }
 
             if !paragraphTodoCandidates.isEmpty {
                 DailyTodoCandidateActionsView(
@@ -224,6 +292,127 @@ struct DailyMarkdownView: View {
         .onHover { hovering in
             hoveredParagraphID = hovering ? paragraph.id : nil
         }
+    }
+
+    private func sharePopover(_ presentation: DiarySharePresentation) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(presentation.redactionToggleTitle, isOn: $shareRedacted)
+                .toggleStyle(.checkbox)
+                .font(.callout)
+            Text(presentation.modeTitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if let payload = activeSharePayload {
+                DiarySharePreviewImage(payload: payload)
+            }
+
+            DiaryShareEncouragementView(presentation: presentation)
+
+            HStack(spacing: 10) {
+                Button(presentation.copyButtonTitle) {
+                    let copied = performShareAction(.copyImage)
+                    shareCopyFeedbackSucceeded = copied
+                    shareCopyFeedbackMessage = copied ? presentation.copySuccessMessage : presentation.copyFailureMessage
+                    shareToast = DiaryShareToast(
+                        message: copied ? presentation.copySuccessMessage : presentation.copyFailureMessage,
+                        succeeded: copied
+                    )
+                }
+                .disabled(!presentation.canShare)
+
+                Button(presentation.saveButtonTitle) {
+                    shareCopyFeedbackMessage = nil
+                    _ = performShareAction(.saveImage)
+                }
+                .disabled(!presentation.canShare)
+            }
+
+            if let shareCopyFeedbackMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: shareCopyFeedbackSucceeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(shareCopyFeedbackSucceeded ? .green : .orange)
+                    Text(shareCopyFeedbackMessage)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+            }
+        }
+        .padding(14)
+        .frame(width: 340, alignment: .leading)
+    }
+
+    private func openFullStorySharePopover() {
+        shareRequest = .fullStory
+        shareRedacted = true
+        resetShareFeedback()
+        showsSharePopover = true
+    }
+
+    private func openParagraphSharePopover(_ paragraph: DailyStoryParagraph, redacted: Bool) {
+        shareRequest = .paragraph(DiaryShareSelectedTextResolver().paragraphForSharing(paragraph))
+        shareRedacted = redacted
+        resetShareFeedback()
+        showsSharePopover = true
+    }
+
+    private func resetShareFeedback() {
+        shareCopyFeedbackMessage = nil
+        shareCopyFeedbackSucceeded = true
+    }
+
+    private func performShareAction(_ action: DiaryShareAction) -> Bool {
+        switch shareRequest {
+        case .fullStory:
+            return onShareDiary(shareRedacted, action)
+        case .paragraph(let paragraph):
+            return onShareParagraph(paragraph, shareRedacted, action)
+        }
+    }
+
+    private var activeSharePayload: DiarySharePayload? {
+        switch shareRequest {
+        case .fullStory:
+            guard let story else { return nil }
+            return DiaryShareContentBuilder().payload(source: .fullStory(story), redacted: shareRedacted)
+        case .paragraph(let paragraph):
+            let resolvedDayKey = dayKey ?? story?.dayKey ?? ISO8601DayKey.format(Date())
+            return DiaryShareContentBuilder().payload(
+                source: .paragraph(paragraph, dayKey: resolvedDayKey),
+                redacted: shareRedacted
+            )
+        }
+    }
+
+    private func diaryShareToast(_ toast: DiaryShareToast) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: toast.succeeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(toast.succeeded ? .green : .orange)
+            Text(toast.message)
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .frame(maxWidth: 300, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.16), radius: 10, y: 5)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func shareMenuTitle(redacted: Bool, for paragraph: DailyStoryParagraph) -> String {
+        return redacted ? "Share Redacted" : "Share Original"
     }
 
     private func paragraphAccentColor(
@@ -284,6 +473,116 @@ struct DailyMarkdownView: View {
 
     private var isRefreshing: Bool {
         refreshJob?.inFlight == true
+    }
+}
+
+enum DiaryShareButtonTone: Equatable {
+    case prominent
+    case disabled
+}
+
+private struct DiaryShareToast: Equatable, Identifiable {
+    let id = UUID()
+    let message: String
+    let succeeded: Bool
+}
+
+private enum DiaryShareRequest: Equatable {
+    case fullStory
+    case paragraph(DailyStoryParagraph)
+}
+
+private struct ShareToolbarLabel: View {
+    let presentation: DiarySharePresentation
+
+    var body: some View {
+        Label {
+            Text(presentation.buttonTitle)
+                .font(.callout.weight(.semibold))
+        } icon: {
+            Image(systemName: "square.and.arrow.up")
+                .font(.callout.weight(.semibold))
+        }
+        .labelStyle(.titleAndIcon)
+        .foregroundStyle(presentation.buttonTone == .prominent ? Color.accentColor : Color.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background {
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.accentColor.opacity(presentation.buttonTone == .prominent ? 0.18 : 0.06),
+                            Color.cyan.opacity(presentation.buttonTone == .prominent ? 0.10 : 0.04),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        }
+        .overlay {
+            Capsule()
+                .stroke(Color.accentColor.opacity(presentation.buttonTone == .prominent ? 0.30 : 0.10), lineWidth: 1)
+        }
+    }
+}
+
+private struct DiaryShareEncouragementView: View {
+    let presentation: DiarySharePresentation
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "paperplane.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 18, height: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(presentation.encouragementTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(presentation.encouragementDetail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.accentColor.opacity(0.12), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct DiarySharePreviewImage: View {
+    let payload: DiarySharePayload
+
+    var body: some View {
+        let image = DiaryShareImageRenderer().image(for: payload)
+        let aspectRatio = image.size.width / max(image.size.height, 1)
+
+        ScrollView(.vertical) {
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(aspectRatio, contentMode: .fit)
+                .frame(width: 306)
+                .accessibilityHidden(true)
+        }
+        .scrollIndicators(.visible)
+        .frame(maxWidth: .infinity)
+        .frame(height: 240)
+        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Share image preview")
+        .accessibilityHint("Scrollable preview of the image that will be copied or saved")
     }
 }
 
@@ -497,6 +796,339 @@ struct DailyMarkdownPresentation: Equatable {
         return paragraphs.first { paragraph in
             MarkdownSearchHighlightPresentation.textContainsQuery(paragraph.text, query: query)
         }?.id
+    }
+}
+
+enum DiaryShareAction: Equatable {
+    case copyImage
+    case saveImage
+}
+
+struct DiarySharePresentation: Equatable {
+    let canShare: Bool
+    let buttonTitle: String
+    let buttonTone: DiaryShareButtonTone
+    let redactionToggleTitle: String
+    let copyButtonTitle: String
+    let saveButtonTitle: String
+    let modeTitle: String
+    let encouragementTitle: String
+    let encouragementDetail: String
+    let copySuccessMessage: String
+    let copyFailureMessage: String
+    let disabledReason: String?
+
+    init(story: DailyStory?, redacted: Bool) {
+        let paragraphs = story?.sections.flatMap(\.paragraphs) ?? []
+        canShare = paragraphs.contains { paragraph in
+            paragraph.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+        disabledReason = canShare ? nil : "No diary text to share yet."
+        buttonTitle = "Share Redacted"
+        buttonTone = canShare ? .prominent : .disabled
+        redactionToggleTitle = "Redact sensitive details"
+        copyButtonTitle = "Copy Image"
+        saveButtonTitle = "Save Image"
+        modeTitle = redacted ? "Redacted share" : "Original share"
+        encouragementTitle = "Share the interesting parts."
+        encouragementDetail = "Keep the rest private."
+        copySuccessMessage = "Copied. You can paste it elsewhere."
+        copyFailureMessage = "Could not copy share image"
+    }
+}
+
+struct DiaryShareSelectedTextResolver {
+    @MainActor
+    func paragraphForSharing(_ paragraph: DailyStoryParagraph) -> DailyStoryParagraph {
+        guard let selectedText = selectedTextFromKeyWindow(containedBy: paragraph) else {
+            return paragraph
+        }
+        return DailyStoryParagraph(
+            id: "\(paragraph.id)-selection",
+            text: selectedText,
+            sourceEventIDs: paragraph.sourceEventIDs
+        )
+    }
+
+    func selectedText(
+        in text: String,
+        ranges: [NSRange],
+        fallbackParagraph paragraph: DailyStoryParagraph
+    ) -> String? {
+        let selected = ranges
+            .filter { $0.length > 0 }
+            .compactMap { range -> String? in
+                guard let stringRange = Range(range, in: text) else { return nil }
+                return String(text[stringRange])
+            }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard selected.isEmpty == false else { return nil }
+        guard selection(selected, belongsTo: paragraph) else { return nil }
+        return selected
+    }
+
+    @MainActor
+    private func selectedTextFromKeyWindow(containedBy paragraph: DailyStoryParagraph) -> String? {
+        guard let textView = NSApp.keyWindow?.firstResponder as? NSTextView else {
+            return nil
+        }
+        return selectedText(
+            in: textView.string,
+            ranges: textView.selectedRanges.map(\.rangeValue),
+            fallbackParagraph: paragraph
+        )
+    }
+
+    private func selection(_ selected: String, belongsTo paragraph: DailyStoryParagraph) -> Bool {
+        if paragraph.text.contains(selected) {
+            return true
+        }
+
+        let plainParagraph = DailyMarkdownRenderer.blocks(from: paragraph.text)
+            .map(Self.plainText)
+            .joined(separator: "\n")
+        return plainParagraph.contains(selected)
+    }
+
+    private static func plainText(from block: DailyMarkdownRenderer.Block) -> String {
+        switch block {
+        case .heading(_, let content):
+            content.plainText
+        case .paragraph(let content):
+            content.plainText
+        case .bulletList(let items):
+            items.map(\.plainText).joined(separator: "\n")
+        case .orderedList(let items):
+            items.map(\.content.plainText).joined(separator: "\n")
+        case .taskList(let items):
+            items.map(\.content.plainText).joined(separator: "\n")
+        case .quote(let items):
+            items.map(\.plainText).joined(separator: "\n")
+        case .table(let table):
+            (table.headers + table.rows.flatMap { $0 }).map(\.plainText).joined(separator: "\n")
+        case .codeBlock(let text):
+            text
+        }
+    }
+}
+
+protocol DiarySharePasteboardWriting: AnyObject {
+    @discardableResult
+    func clearContents() -> Int
+    func setData(_ data: Data?, forType dataType: NSPasteboard.PasteboardType) -> Bool
+}
+
+extension NSPasteboard: DiarySharePasteboardWriting {}
+
+extension NSPasteboard.PasteboardType {
+    static let knowYouPNG = NSPasteboard.PasteboardType("public.png")
+}
+
+struct DiarySharePasteboardWriter {
+    let pasteboard: DiarySharePasteboardWriting
+
+    init(pasteboard: DiarySharePasteboardWriting = NSPasteboard.general) {
+        self.pasteboard = pasteboard
+    }
+
+    func write(image: NSImage) -> Bool {
+        guard let pngData = DiaryShareImageRenderer().pngData(from: image),
+              let tiffData = image.tiffRepresentation else {
+            return false
+        }
+
+        pasteboard.clearContents()
+        let wrotePNG = pasteboard.setData(pngData, forType: .knowYouPNG)
+        let wroteTIFF = pasteboard.setData(tiffData, forType: .tiff)
+        return wrotePNG && wroteTIFF
+    }
+}
+
+struct DiaryShareImageRenderer {
+    private let cardWidth: CGFloat = 900
+    private let minimumCardHeight: CGFloat = 1_200
+    private let margin: CGFloat = 72
+    private let bodyWidth: CGFloat = 680
+    private let primaryTextColor = NSColor(calibratedWhite: 0.12, alpha: 1)
+    private let secondaryTextColor = NSColor(calibratedWhite: 0.36, alpha: 1)
+
+    func qrImage(for url: URL, size: CGFloat = 144) -> NSImage? {
+        let filter = CIFilter(name: "CIQRCodeGenerator")
+        filter?.setValue(Data(url.absoluteString.utf8), forKey: "inputMessage")
+        filter?.setValue("M", forKey: "inputCorrectionLevel")
+        guard let outputImage = filter?.outputImage else { return nil }
+
+        let scale = size / max(outputImage.extent.width, outputImage.extent.height)
+        let transformed = outputImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        let representation = NSCIImageRep(ciImage: transformed)
+        let image = NSImage(size: representation.size)
+        image.addRepresentation(representation)
+        return image
+    }
+
+    func image(for payload: DiarySharePayload) -> NSImage {
+        let bodyText = plainText(from: payload.body)
+        let bodyHeight = measuredTextHeight(
+            bodyText,
+            width: bodyWidth,
+            font: .systemFont(ofSize: 28, weight: .regular)
+        )
+        let cardHeight = max(minimumCardHeight, 510 + bodyHeight)
+        let cardSize = NSSize(width: cardWidth, height: cardHeight)
+        let image = NSImage(size: cardSize)
+        image.lockFocus()
+        defer { image.unlockFocus() }
+
+        NSColor(calibratedRed: 0.98, green: 0.97, blue: 0.94, alpha: 1).setFill()
+        NSRect(origin: .zero, size: cardSize).fill()
+
+        let contentRect = NSRect(
+            x: margin,
+            y: margin,
+            width: cardSize.width - margin * 2,
+            height: cardSize.height - margin * 2
+        )
+        let cardPath = NSBezierPath(roundedRect: contentRect, xRadius: 18, yRadius: 18)
+        NSColor.white.setFill()
+        cardPath.fill()
+
+        drawText(
+            "KnowYou Diary",
+            in: NSRect(x: 110, y: cardHeight - 170, width: 420, height: 44),
+            font: .systemFont(ofSize: 32, weight: .semibold),
+            color: primaryTextColor
+        )
+        drawText(
+            "\(payload.dayKey) · \(modeTitle(for: payload.mode))",
+            in: NSRect(x: 110, y: cardHeight - 212, width: 520, height: 32),
+            font: .systemFont(ofSize: 18, weight: .medium),
+            color: secondaryTextColor
+        )
+        drawText(
+            bodyText,
+            in: NSRect(x: 110, y: 255, width: bodyWidth, height: cardHeight - 510),
+            font: .systemFont(ofSize: 28, weight: .regular),
+            color: primaryTextColor
+        )
+
+        if let qr = qrImage(for: payload.downloadURL, size: 128) {
+            qr.draw(in: NSRect(x: 640, y: 108, width: 128, height: 128))
+        }
+
+        drawText(
+            "Shared from KnowYou",
+            in: NSRect(x: 110, y: 170, width: 360, height: 30),
+            font: .systemFont(ofSize: 19, weight: .semibold),
+            color: primaryTextColor
+        )
+        drawText(
+            payload.downloadURL.hostAndPathDisplay,
+            in: NSRect(x: 110, y: 138, width: 460, height: 28),
+            font: .systemFont(ofSize: 18, weight: .regular),
+            color: secondaryTextColor
+        )
+
+        return image
+    }
+
+    func pngData(for payload: DiarySharePayload) -> Data? {
+        pngData(from: image(for: payload))
+    }
+
+    func pngData(from image: NSImage) -> Data? {
+        guard let tiffData = image.tiffRepresentation,
+              let representation = NSBitmapImageRep(data: tiffData) else {
+            return nil
+        }
+        return representation.representation(using: .png, properties: [:])
+    }
+
+    private func drawText(_ text: String, in rect: NSRect, font: NSFont, color: NSColor) {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byWordWrapping
+        paragraphStyle.lineSpacing = 5
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: color,
+            .paragraphStyle: paragraphStyle,
+        ]
+        NSString(string: text).draw(in: rect, withAttributes: attributes)
+    }
+
+    private func measuredTextHeight(_ text: String, width: CGFloat, font: NSFont) -> CGFloat {
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byWordWrapping
+        paragraphStyle.lineSpacing = 5
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .paragraphStyle: paragraphStyle,
+        ]
+        let boundingRect = NSString(string: text).boundingRect(
+            with: NSSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attributes
+        )
+        return max(44, ceil(boundingRect.height) + 16)
+    }
+
+    private func plainText(from markdown: String) -> String {
+        DailyMarkdownRenderer.blocks(from: markdown)
+            .map { block in
+                switch block {
+                case .heading(_, let content):
+                    content.plainText
+                case .paragraph(let content):
+                    content.plainText
+                case .bulletList(let items):
+                    items.map { "- \($0.plainText)" }.joined(separator: "\n")
+                case .orderedList(let items):
+                    items.map { "\($0.index). \($0.content.plainText)" }.joined(separator: "\n")
+                case .taskList(let items):
+                    items.map { "- [\($0.isCompleted ? "x" : " ")] \($0.content.plainText)" }.joined(separator: "\n")
+                case .quote(let items):
+                    items.map { "> \($0.plainText)" }.joined(separator: "\n")
+                case .codeBlock(let code):
+                    code
+                case .table(let table):
+                    (table.headers + table.rows.flatMap { $0 }).map(\.plainText).joined(separator: " · ")
+                }
+            }
+            .joined(separator: "\n\n")
+    }
+
+    private func modeTitle(for mode: DiaryShareMode) -> String {
+        switch mode {
+        case .redacted: "Redacted share"
+        case .original: "Original share"
+        }
+    }
+}
+
+struct DiaryShareExportFilename {
+    static func defaultName(dayKey: String, mode: DiaryShareMode) -> String {
+        let modeSuffix: String
+        switch mode {
+        case .redacted:
+            modeSuffix = "redacted"
+        case .original:
+            modeSuffix = "original"
+        }
+
+        let safeDayKey = dayKey
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        let datePart = safeDayKey.isEmpty ? ISO8601DayKey.format(Date()) : safeDayKey
+        return "KnowYou-\(datePart)-\(modeSuffix)-share.png"
+    }
+}
+
+private extension URL {
+    var hostAndPathDisplay: String {
+        guard let host else { return absoluteString }
+        return host + path
     }
 }
 

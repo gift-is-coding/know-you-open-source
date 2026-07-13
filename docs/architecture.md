@@ -52,6 +52,9 @@ flowchart LR
     K --> L
     L --> M[write .story.json]
     L --> N[compose Markdown]
+    L --> DS[DiaryShareContentBuilder]
+    DS --> DR[DiaryShareRedactor optional]
+    DR --> DI[DiaryShareImageRenderer / QR]
     N --> O[write .md]
     L --> TB[TodoReconciler / TodoCompletionSweep]
     TB --> TC[TodoStore / Vault/Todo.md]
@@ -160,7 +163,7 @@ Add Source 与 Daily Memory Export 是边界不同的能力。Daily Memory Expor
 
 ### 3.4 Other Source Navigation
 
-主窗口左侧导航现在把 `My Wiki`、`Other Source`、`My Diary` 渲染为同一组一级 root row。`My Wiki` 只切换中间内容区，不替换窗口框架；右上角 engine selector 始终保留在全局 toolbar 中，不随左侧入口切换移动。`Other Source` 复用既有 Add Source/source management route；`My Diary` 是内置来源，负责按天生成的 diary 内容；Local Folder、Obsidian、Feishu/Lark、Notion、Google Drive 等连接器添加后也作为平行的一级来源出现。连接器 root 和 folder 点击只展开或折叠本地路径推导出的文件树，不会在主区域打开第二份索引；点击 Markdown/TXT 叶子后，主区域直接进入 Markdown preview。侧边栏优先使用已有品牌 logo，并在从本地路径推导文件树时去掉重复的 connector root 文件夹名，避免 Obsidian vault 下多出一层同名目录。
+主窗口左侧导航现在把 `My Wiki`、`Other Source`、`My Diary` 渲染为同一组一级 root row。`My Wiki` 只切换中间内容区，不替换窗口框架；右上角 engine selector 始终保留在全局 toolbar 中，不随左侧入口切换移动。The engine selector can show a voice input nudge on its left: when launch or foreground activation does not detect a known voice input, dictation, or Chinese input-method process, and the user has not chosen `Later` or `Don't show again`, KnowYou shows a noticeable non-red amber exclamation badge. Clicking it opens an English popover that explains `Voice input -> clipboard -> KnowYou reads the clipboard and drafts your diary.`, then recommends only Typeless and 闪电说 with real product logos and official download links. This nudge improves input quality; it does not replace clipboard ingestion and does not indicate a Diary Engine error. `Other Source` 复用既有 Add Source/source management route；`My Diary` 是内置来源，负责按天生成的 diary 内容；Local Folder、Obsidian、Feishu/Lark、Notion、Google Drive 等连接器添加后也作为平行的一级来源出现。连接器 root 和 folder 点击只展开或折叠本地路径推导出的文件树，不会在主区域打开第二份索引；点击 Markdown/TXT 叶子后，主区域直接进入 Markdown preview。侧边栏优先使用已有品牌 logo，并在从本地路径推导文件树时去掉重复的 connector root 文件夹名，避免 Obsidian vault 下多出一层同名目录。
 
 `Other Source` 主页面只呈现一个 `Sources` 列表。Local Folder 和 Obsidian 直接指向本地目录；Feishu/Lark、Notion、Google Drive 的主动作是 `Generate Prompt`，用弹窗展示 prompt 生成器，默认 daily 且本地时间 11:00，让用户复制到 Codex / Claude Code 创建每日或每周定时同步任务。Prompt 明确要求外部自动化环境先检查 Feishu、Notion、Google Drive 所需 CLI、MCP 或本地工具是否安装并已授权，缺失时在外部环境安装并引导授权；复制后显示 `ExternalPromptRunGuide` 引导图。Daily Memory Export 保留底层能力和独立配置面板，但不再与 Other Source 的导入入口混在一起。
 
@@ -194,7 +197,15 @@ Networking Web 的两个社区是同一 KnowYou 身份体系下的两个独立 d
 
 双目的地视觉实现进一步使用独立 DOM 架构：Careers 渲染职业 identity、中心动态和 Agent/privacy 三栏；Friends 渲染公开人物发现带、明亮动态流和计划/Agent/privacy 侧栏。人物发现仅由公开 post/profile 去重生成，不推断年龄、距离或匹配分数；两个目的地复用同一套 server-side composer、reply ownership、Agent Home 和 handoff 契约，不为视觉模仿增加无后端能力的控件。
 
-### 3.6 Unified Todo
+### 3.6 Diary Share
+
+Diary share 是阅读器上的本地导出能力，不参与采集、生成或 source detail 链路。分享入口只消费当前 UI 已加载的 `DailyStory` 和 `DailyStoryParagraph` 文本：顶部按钮生成全文分享，段落右键菜单生成段落分享。该路径不读取 SQLite 原始事件、不读取右侧 source detail、不上传内容，也不改变 `.story.json`、`.md` 或 `Vault/Todo.md`。
+
+分享状态保留在 `DailyMarkdownView`：分享 popover 的 `Redact sensitive details` checkbox 默认开启，用户可以取消后生成 original share。顶部全文分享和段落右键分享都进入同一个 popover，并在 `Copy Image` / `Save Image` 上方显示当前分享图片预览；右键分享优先使用当前 AppKit selection，无法稳定取得时回退当前段落。`MainWindowView` 只负责把当前 story/paragraph 交给 `DiaryShareContentBuilder`，再按用户动作复制到剪贴板或通过 `NSSavePanel` 保存 PNG。
+
+展示层脱敏由 `DiaryShareRedactor` 完成，和入库用 `PrivacyFilter` 分开。`PrivacyFilter` 是持久化安全边界，可能 drop 内容；`DiaryShareRedactor` 是分享图片的可读性保护，只做 email、长数字、secret key/value、private key block、URL query/fragment 等保守替换，并使用明显遮挡块替代敏感片段。分享图片由 `DiaryShareImageRenderer` 在本机生成，包含日记正文、日期、redacted/original 标记、`giiift.site/know-you/download` 下载地址和 CoreImage 生成的二维码；正文高度按内容测量，长日记会生成更高图片而不是截断。
+
+### 3.7 Unified Todo
 
 统一 Todo inbox 的权威状态在 `Vault/Todo.md`，不是每日 Markdown 的派生状态。每日 `# 待办事项` 只保留“候选待办”的叙事职责，`Todo.md` 记录 open/completed、来源日期、来源事件、创建/完成时间、完成证据、归集方式与完成方式。旧 SQLite `todo_items` 表保留为兼容和首次 seed 来源：当 `Todo.md` 不存在但 SQLite 里已有 todo 时，`TodoStore` 会先写出 Markdown 文件。
 

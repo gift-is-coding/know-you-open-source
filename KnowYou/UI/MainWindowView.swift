@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 private enum MainWindowMode {
     case home
@@ -165,6 +166,7 @@ struct MainWindowView: View {
     @Environment(AppState.self) private var appState
     @State private var keyMonitor: Any?
     @State private var isShowingEnginePanel = false
+    @State private var isShowingVoiceInputNudge = false
     @State private var isShowingAPIDetail = false
     @State private var apiConfigDraft = SummarizerConfig.load()
     @State private var apiProviderStatuses: [LLMAPIProviderID: EngineRuntimeStatus] = [:]
@@ -182,6 +184,7 @@ struct MainWindowView: View {
     @State private var pendingGlobalSearchQuery: String?
     @State private var globalSearchErrorMessage: String?
     @State private var activeGlobalSearchTarget: GlobalSearchNavigationTarget?
+    @State private var runningVoiceInputApplications: [VoiceInputRunningApplication] = []
     @FocusState private var isGlobalSearchFieldFocused: Bool
     let showsOnboardingEngineButton: Bool
     let onOpenEngineSetup: (() -> Void)?
@@ -235,7 +238,10 @@ struct MainWindowView: View {
                 }
             }
             ToolbarItem(placement: .primaryAction) {
-                diaryEngineToolbarSelector
+                HStack(spacing: 8) {
+                    voiceInputNudgeToolbarButton
+                    diaryEngineToolbarSelector
+                }
             }
         }
         .sheet(
@@ -314,6 +320,10 @@ struct MainWindowView: View {
         }
         .onAppear {
             startKeyMonitor()
+            refreshRunningVoiceInputApplications()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshRunningVoiceInputApplications()
         }
         .onReceive(NotificationCenter.default.publisher(for: GlobalSearchCommandPolicy.notificationName)) { _ in
             openGlobalSearch(focusingField: true)
@@ -386,6 +396,33 @@ struct MainWindowView: View {
             .background(.ultraThinMaterial, in: Capsule())
             .allowsHitTesting(false)
             .accessibilityIdentifier("build-version-badge")
+    }
+
+    @ViewBuilder
+    private var voiceInputNudgeToolbarButton: some View {
+        if let presentation = voiceInputNudgePresentation {
+            VoiceInputNudgeButton {
+                refreshRunningVoiceInputApplications()
+                isShowingVoiceInputNudge = true
+            }
+            .accessibilityIdentifier("voice-input-nudge-button")
+            .popover(isPresented: $isShowingVoiceInputNudge, arrowEdge: .top) {
+                VoiceInputNudgePopover(
+                    presentation: presentation,
+                    onOpen: { url in
+                        NSWorkspace.shared.open(url)
+                    },
+                    onLater: {
+                        appState.snoozeVoiceInputNudge()
+                        isShowingVoiceInputNudge = false
+                    },
+                    onNever: {
+                        appState.dismissVoiceInputNudgePermanently()
+                        isShowingVoiceInputNudge = false
+                    }
+                )
+            }
+        }
     }
 
     private var diaryEngineToolbarSelector: some View {
@@ -725,6 +762,12 @@ struct MainWindowView: View {
         )
     }
 
+    private var voiceInputNudgePresentation: VoiceInputNudgePresentation? {
+        appState.voiceInputNudgePresentation(
+            runningApplications: runningVoiceInputApplications
+        )
+    }
+
     private var selectedRefreshJob: DayRefreshJob? {
         guard let selectedDate = appState.selectedDate else { return nil }
         return appState.refreshJob(for: selectedDate)
@@ -768,12 +811,95 @@ struct MainWindowView: View {
                     await appState.refreshSelectedDayFullRecovery()
                 }
             },
+            onShareDiary: { redacted, action in
+                guard let story = appState.selectedStory else {
+                    appState.statusMessage = "No diary text to share yet."
+                    return false
+                }
+                return shareDiary(source: .fullStory(story), redacted: redacted, action: action)
+            },
+            onShareParagraph: { paragraph, redacted, action in
+                let resolvedDayKey = appState.selectedDate ?? appState.selectedStory?.dayKey ?? ISO8601DayKey.format(Date())
+                return shareDiary(source: .paragraph(paragraph, dayKey: resolvedDayKey), redacted: redacted, action: action)
+            },
             canFullRefresh: appState.selectedDate != nil && appState.selectedDate != OnboardingDemoStory.demoDayKey,
             fullRefreshMenuTitle: appState.selectedDate == ISO8601DayKey.format(Date())
                 ? "Full Refresh Today (Overwriting)"
                 : "Full Refresh (Overwriting)"
         )
         .onboardingCoachmarkTarget(.storyPanel)
+    }
+
+    private func shareDiary(source: DiaryShareSource, redacted: Bool, action: DiaryShareAction) -> Bool {
+        guard let payload = DiaryShareContentBuilder().payload(source: source, redacted: redacted) else {
+            appState.statusMessage = "No diary text to share yet."
+            return false
+        }
+
+        switch action {
+        case .copyImage:
+            return copyDiaryShareImage(payload)
+        case .saveImage:
+            return saveDiaryShareImage(payload)
+        }
+    }
+
+    private func copyDiaryShareImage(_ payload: DiarySharePayload) -> Bool {
+        let image = DiaryShareImageRenderer().image(for: payload)
+        if DiarySharePasteboardWriter().write(image: image) {
+            appState.statusMessage = diaryShareStatusMessage(payload: payload, action: .copyImage, succeeded: true)
+            return true
+        } else {
+            appState.statusMessage = diaryShareStatusMessage(payload: payload, action: .copyImage, succeeded: false)
+            return false
+        }
+    }
+
+    private func saveDiaryShareImage(_ payload: DiarySharePayload) -> Bool {
+        guard let data = DiaryShareImageRenderer().pngData(for: payload) else {
+            appState.statusMessage = diaryShareStatusMessage(payload: payload, action: .saveImage, succeeded: false)
+            return false
+        }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.png]
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.nameFieldStringValue = DiaryShareExportFilename.defaultName(
+            dayKey: payload.dayKey,
+            mode: payload.mode
+        )
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            appState.statusMessage = "Share image save canceled"
+            return false
+        }
+
+        do {
+            try data.write(to: url, options: .atomic)
+            appState.statusMessage = diaryShareStatusMessage(payload: payload, action: .saveImage, succeeded: true)
+            return true
+        } catch {
+            appState.statusMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func diaryShareStatusMessage(
+        payload _: DiarySharePayload,
+        action: DiaryShareAction,
+        succeeded: Bool
+    ) -> String {
+        switch (action, succeeded) {
+        case (.copyImage, true):
+            return "Copied. You can paste it elsewhere."
+        case (.copyImage, false):
+            return "Could not copy share image"
+        case (.saveImage, true):
+            return "Share image saved"
+        case (.saveImage, false):
+            return "Could not save share image"
+        }
     }
 
     private var detailPane: some View {
@@ -1207,6 +1333,10 @@ struct MainWindowView: View {
                 }
             }
         }
+    }
+
+    private func refreshRunningVoiceInputApplications() {
+        runningVoiceInputApplications = VoiceInputAppDetector.detectRunningApplications()
     }
 
     private func openSyncMemoryPanel() {

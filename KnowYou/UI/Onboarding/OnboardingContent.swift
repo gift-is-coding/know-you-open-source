@@ -166,7 +166,10 @@ struct OnboardingPermissionBypassPolicy {
 
     static func allowsFullDiskAccessBypass(bundleURL: URL) -> Bool {
         let components = Set(bundleURL.pathComponents)
-        return (components.contains("DerivedData") || components.contains(".derived-data"))
+        let isDevelopmentDerivedData = components.contains("DerivedData")
+            || components.contains(".derived-data")
+
+        return isDevelopmentDerivedData
             && components.contains("Build")
             && components.contains("Products")
             && components.contains("Debug")

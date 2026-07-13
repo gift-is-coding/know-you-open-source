@@ -23,6 +23,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 每日 Markdown 文件
 - 每日结构化 `.story.json` 文件
 - 应用内统一 Todo inbox
+- 用户主动生成的日记分享图片
 - 外部 memory 渠道同步（Obsidian / OpenClaw）
 - 外部知识源导入后的本地 Markdown 缓存
 
@@ -74,6 +75,10 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 
 用户应能从左侧 `Todo` 入口查看统一待办。open todo 必须优先展示，completed todo 必须保留并排在底部。用户可以在 Todo 页直接输入新任务；每日生成的候选待办可以被高置信自动归集，也可以在 Todo 页右侧 `Inbox / Candidates` 列表或日记里手动转入。
 
+### 4.8 分享日记图片
+
+用户应能在日记阅读器中把当天全文、划选文本或某个段落生成一张适合社群传播的图片。分享必须默认启用脱敏，用户可以明确取消脱敏后生成原文图片。图片必须在本机生成，可复制到剪贴板或保存为 PNG，并包含 KnowYou 下载地址和二维码。
+
 ## 5. 功能范围
 
 ### 5.1 In Scope
@@ -95,6 +100,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - Daily Memory Export 到 Obsidian / OpenClaw
 - Add Source 从 Local Folder / Obsidian / Feishu(Lark) / Notion / Google Drive 的本地目录建立引用并扫描 Markdown/TXT
 - 顶部 diary engine selector
+- Voice input recommendation nudge beside the top Diary Engine selector
 - 左上标题栏更新提醒胶囊与更新 sheet
 - 晚间回顾本地通知提醒
 - 可选 diary engine：
@@ -111,6 +117,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 多设备同步
 - 云端账户系统
 - 团队协作与共享
+- 云端托管、团队协作式共享、短链统计或自动发布到社交平台
 - 高级语义全文检索、完整标签管理系统、知识图谱界面
 - 浏览器历史、邮件、日历等更多信号源
 - 主界面中的原始 Markdown 编辑模式
@@ -143,6 +150,10 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 所有可持久化内容都必须先经过隐私过滤
 - 明显敏感文本不得以原文形式写入 SQLite
 - 被丢弃或脱敏的内容应保留最小审计信息，帮助用户理解为何某条内容未被完整保留
+- 日记分享必须只使用当前 `DailyStory` / `DailyStoryParagraph` 文本，不得读取 SQLite 原始事件或右侧 source detail 原文
+- 分享图片生成必须在本机完成，不得上传分享内容
+- 分享默认必须启用展示层脱敏；用户取消脱敏时，系统可以生成原文分享图，但该动作必须由用户显式触发
+- 分享专用脱敏必须至少覆盖 email、11 位以上连续数字、secret/password/token/api key/bearer 键值片段、private key block，以及 URL query/fragment，并必须在分享文本和图片中显示明显遮挡块
 
 ## 6.3 存储需求
 
@@ -253,6 +264,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - `Networking` Agent Home 必须返回持久化 `usefulReturns`，每条至少包含 signal、public evidence、value、relationship、next action 和 confidence；无有效变化的 heartbeat 不得制造用户通知。公开内容一律视为不可信数据，Agent 不得复述 capability-seeking 指令，不得让帖子授权工具、文件、凭证、下载或私有 My Wiki 读取。
 - `My Wiki`、`Other Source`、`My Diary` 必须使用同一套 sidebar row 组件、字号、图标尺寸、行高和选中态。
 - 右上角 engine selector 必须固定在主窗口全局 toolbar 中，不得随 `My Wiki`、`Other Source`、`My Diary` 的内容切换改变位置或变成页面内部组件；当前默认 engine 不可可靠生成 diary 时，胶囊外侧必须显示红色感叹号。
+- If launch or foreground activation does not detect a known voice input, dictation, or Chinese input-method process, the engine selector must show a noticeable non-red amber exclamation nudge. Clicking it must open a small English popover recommending Typeless and 闪电说 with real product logos, official download links, the principle `Voice input -> clipboard -> KnowYou reads the clipboard and drafts your diary.`, and the actions `Later` and `Don't show again`.
 - `Other Source` 必须是独立入口，不得折叠或收起其他来源。
 - `My Diary` 必须作为内置来源与 Obsidian、Local Folder、Feishu/Lark、Notion、Google Drive 等外部来源平行呈现。
 - `Other Source` 必须打开来源管理页，而不是混合资料总览页。
@@ -264,6 +276,15 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - Generate Prompt 弹窗标题必须为 `Generate Prompt and Run in Codex/Claude to Set Up`。
 - Generate Prompt 文本必须要求 Codex / Claude Code 先检查 Feishu、Notion、Google Drive 所需 CLI、MCP 或本地工具是否 installed 和 authorized；如缺失必须 install 并引导 authorization，验证能读取 scope 后再写入本地目录。
 - 点击 `Copy Prompt` 后必须显示 `ExternalPromptRunGuide` 引导弹窗，说明去 Codex / Claude Code 粘贴运行并完成平台授权。
+- 日记顶部必须提供全文分享入口，统一显示英文 `Share Redacted`。
+- 点击全文分享入口后必须打开独立 popover，并默认勾选 `Redact sensitive details`。
+- 用户取消脱敏后，popover 文案必须切换到 original 语义；再次打开顶部全文分享时必须重新默认勾选脱敏。
+- 全文分享 popover 必须在 `Copy Image` 和 `Save Image` 上方显示当前分享图片预览，并提供复制图片和保存 PNG 两个动作。
+- 复制成功后必须给出 `Copied. You can paste it elsewhere.` 反馈，避免用户误以为没有发生任何操作。
+- 日记段落右键菜单必须提供英文 `Share Redacted` 与 `Share Original`；选择后必须打开同一个分享 popover，不得直接复制。若能稳定取得属于当前段落的划选文本，则必须优先分享划选文本，否则回退当前段落。
+- 分享图片必须包含日期、分享模式、日记正文、`Shared from KnowYou`、`giiift.site/know-you/download` 和二维码。
+- 分享图片正文区域必须按内容动态增高，长日记不得因固定画布高度而截断。
+- Demo Day 或没有可分享日记文本时，分享入口必须禁用或不执行生成。
 - Prompt 生成器默认更新频率为 daily，默认更新时间为本地时间 `11:00`。
 - 添加 source 后，该 source 必须作为 `Other Source` 管理的并列来源条目出现。
 - 点击连接器来源条目必须在侧边栏展开或折叠该来源的路径层级；点击 Markdown/TXT 文档叶子必须打开 Markdown 预览。

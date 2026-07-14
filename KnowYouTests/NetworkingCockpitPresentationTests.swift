@@ -763,6 +763,23 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertNil(loaded.refreshToken)
     }
 
+    func testCurrentDeviceRevocationClearsLocalSecretsButKeepsDeviceIdentity() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouRevokedDevice", directoryHint: .isDirectory)
+        let keychain = NetworkingTestKeychain()
+        let store = NetworkingActivationStateStore(keychain: keychain, keychainService: "networking-tests")
+        let state = readyPlatformActivationState()
+        try store.save(state, projectRoot: projectRoot)
+
+        let sanitized = try XCTUnwrap(store.clearSecretsForReauthentication(projectRoot: projectRoot))
+        let reloaded = try XCTUnwrap(store.load(projectRoot: projectRoot))
+
+        XCTAssertEqual(sanitized.deviceID, state.deviceID)
+        XCTAssertEqual(reloaded.deviceID, state.deviceID)
+        XCTAssertTrue(reloaded.agentTokenPlaintext.isEmpty)
+        XCTAssertNil(reloaded.refreshToken)
+        XCTAssertNil(reloaded.deviceToken)
+    }
+
     func testTimedOutActivationLoadCannotOverwriteFreshCredentialsWhenItEventuallyReturns() async throws {
         let projectRoot = temporaryDirectory().appending(path: "KnowYouBlockedKeychain", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
@@ -904,6 +921,27 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertEqual(
             NetworkingAccountActivationPresentation.deviceID(existing: nil, generated: "device-new"),
             "device-new"
+        )
+    }
+
+    func testCurrentDeviceRevocationRequiresReauthentication() {
+        XCTAssertTrue(
+            NetworkingAccountActivationPresentation.isCurrentDevice(
+                "device-current",
+                currentDeviceID: "device-current"
+            )
+        )
+        XCTAssertFalse(
+            NetworkingAccountActivationPresentation.isCurrentDevice(
+                "device-other",
+                currentDeviceID: "device-current"
+            )
+        )
+        XCTAssertFalse(
+            NetworkingAccountActivationPresentation.isCurrentDevice(
+                "device-current",
+                currentDeviceID: nil
+            )
         )
     }
 

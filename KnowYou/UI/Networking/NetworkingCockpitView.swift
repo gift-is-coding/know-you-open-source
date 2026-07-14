@@ -998,6 +998,11 @@ struct NetworkingCockpitView: View {
             isAccountActivationWorking = false
             return
         }
+        let isRevokingCurrentDevice = NetworkingAccountActivationPresentation.isCurrentDevice(
+            deviceID,
+            currentDeviceID: pendingActivationDeviceID ?? activationState?.deviceID
+        )
+        let projectRootForCleanup = projectRoot
         isAccountActivationWorking = true
         accountActivationError = nil
         Task {
@@ -1006,6 +1011,42 @@ struct NetworkingCockpitView: View {
                     let client = NetworkingPlatformClient(config: config)
                     try client.revokeDevice(session: session, deviceID: deviceID)
                 }.value
+                if isRevokingCurrentDevice {
+                    let cleanupResult = await Task.detached(priority: .userInitiated) { () -> Result<Void, Error> in
+                        guard let projectRootForCleanup else {
+                            return .failure(CocoaError(.fileNoSuchFile))
+                        }
+                        return Result {
+                            _ = try NetworkingActivationStateStore().clearSecretsForReauthentication(
+                                projectRoot: projectRootForCleanup
+                            )
+                        }
+                    }.value
+                    let cleanupSucceeded: Bool
+                    if case .success = cleanupResult {
+                        cleanupSucceeded = true
+                    } else {
+                        cleanupSucceeded = false
+                    }
+                    await MainActor.run {
+                        activationState = nil
+                        networkingSession = nil
+                        networkingSessionTask = nil
+                        verifiedActivationSession = nil
+                        verifiedActivationEmail = nil
+                        activeNetworkingDevices = []
+                        isNetworkingDeviceListReliable = false
+                        deviceListWarning = nil
+                        pendingActivationDeviceID = deviceID
+                        accountActivationPhase = .email
+                        accountActivationError = cleanupSucceeded
+                            ? "This Mac was revoked. Verify your email to authorize it again."
+                            : "This Mac was revoked, but its old local credentials could not be cleared. Verify your email after resolving local secure storage."
+                        activationStatus = .pending
+                        isAccountActivationWorking = false
+                    }
+                    return
+                }
                 let result = await Task.detached(priority: .userInitiated) { () -> Result<[NetworkingDeviceRecord], Error> in
                     Result { try NetworkingPlatformClient(config: config).listDevices(session: session) }
                 }.value

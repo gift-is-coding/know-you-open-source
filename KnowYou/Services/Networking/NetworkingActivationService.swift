@@ -105,6 +105,11 @@ enum NetworkingAccountActivationPresentation {
         return generated()
     }
 
+    static func isCurrentDevice(_ deviceID: String, currentDeviceID: String?) -> Bool {
+        guard let currentDeviceID, currentDeviceID.isEmpty == false else { return false }
+        return deviceID == currentDeviceID
+    }
+
     static func deviceCapacityMessage(
         activeCount: Int,
         isReliable: Bool,
@@ -388,15 +393,23 @@ struct NetworkingActivationStateStore: @unchecked Sendable {
     func discardLegacySecretsForReauthentication(projectRoot: URL) throws -> NetworkingActivationState? {
         guard let persisted = try persistedState(projectRoot: projectRoot) else { return nil }
         guard persisted.containsLegacyPlaintextSecrets else { return persisted }
-        let sanitized = persisted.removingSecretsForReauthentication()
+        return try clearSecretsForReauthentication(projectRoot: projectRoot)
+    }
+
+    @discardableResult
+    func clearSecretsForReauthentication(projectRoot: URL) throws -> NetworkingActivationState? {
+        let persisted = try persistedState(projectRoot: projectRoot)
+        let sanitized = persisted?.removingSecretsForReauthentication()
         let keys = secretKeys(projectRoot: projectRoot)
         keychain.delete(forKey: keys.agentToken, service: keychainService)
         keychain.delete(forKey: keys.refreshToken, service: keychainService)
         keychain.delete(forKey: keys.authPassword, service: keychainService)
         keychain.delete(forKey: keys.deviceToken, service: keychainService)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(sanitized).write(to: stateURL(projectRoot: projectRoot), options: .atomic)
+        if let sanitized {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(sanitized).write(to: stateURL(projectRoot: projectRoot), options: .atomic)
+        }
         return sanitized
     }
 

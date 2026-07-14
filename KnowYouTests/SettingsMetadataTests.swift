@@ -84,6 +84,15 @@ final class SettingsMetadataTests: XCTestCase {
         XCTAssertEqual(profile.keychainService, "dev.knowyou.newuser")
     }
 
+    func testRuntimeProfileIsolatesRegressionBundleWithoutEnvironmentOverrides() {
+        let bundleIdentifier = "dev.knowyou.regression.networking-gui"
+        let profile = AppRuntimeProfile(bundleIdentifier: bundleIdentifier)
+
+        XCTAssertEqual(profile.displayName, "KnowYou Regression")
+        XCTAssertEqual(profile.supportDirectoryName, "KnowYou Regression-networking-gui")
+        XCTAssertEqual(profile.keychainService, bundleIdentifier)
+    }
+
     func testRuntimeProfileUsesRegressionProfileRootAndKeychainOverride() throws {
         let profileRoot = URL(fileURLWithPath: NSTemporaryDirectory())
             .appending(path: "KnowYouRegression-\(UUID().uuidString)", directoryHint: .isDirectory)

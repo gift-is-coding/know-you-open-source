@@ -14,6 +14,26 @@ enum KeychainHelper {
 
     static let shared: KeychainStoring = SystemKeychainStore()
 
+    static func loadQuery(forKey key: String, service: String) -> [CFString: Any] {
+        [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service,
+            kSecAttrAccount: key,
+            kSecReturnData: true,
+            kSecMatchLimit: kSecMatchLimitOne,
+            kSecUseAuthenticationUI: kSecUseAuthenticationUIFail,
+        ]
+    }
+
+    static func deleteQuery(forKey key: String, service: String) -> [CFString: Any] {
+        [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service,
+            kSecAttrAccount: key,
+            kSecUseAuthenticationUI: kSecUseAuthenticationUIFail,
+        ]
+    }
+
     private struct SystemKeychainStore: KeychainStoring {
         func save(_ value: String, forKey key: String, service: String) {
             let data = Data(value.utf8)
@@ -22,19 +42,13 @@ enum KeychainHelper {
                 kSecAttrService: service,
                 kSecAttrAccount: key,
             ]
-            SecItemDelete(query as CFDictionary)
+            SecItemDelete(KeychainHelper.deleteQuery(forKey: key, service: service) as CFDictionary)
             let attributes = query.merging([kSecValueData: data]) { _, new in new }
             SecItemAdd(attributes as CFDictionary, nil)
         }
 
         func load(forKey key: String, service: String) -> String? {
-            let query: [CFString: Any] = [
-                kSecClass: kSecClassGenericPassword,
-                kSecAttrService: service,
-                kSecAttrAccount: key,
-                kSecReturnData: true,
-                kSecMatchLimit: kSecMatchLimitOne,
-            ]
+            let query = KeychainHelper.loadQuery(forKey: key, service: service)
             var result: AnyObject?
             let status = SecItemCopyMatching(query as CFDictionary, &result)
             guard status == errSecSuccess, let data = result as? Data else { return nil }
@@ -42,12 +56,7 @@ enum KeychainHelper {
         }
 
         func delete(forKey key: String, service: String) {
-            let query: [CFString: Any] = [
-                kSecClass: kSecClassGenericPassword,
-                kSecAttrService: service,
-                kSecAttrAccount: key,
-            ]
-            SecItemDelete(query as CFDictionary)
+            SecItemDelete(KeychainHelper.deleteQuery(forKey: key, service: service) as CFDictionary)
         }
     }
 }

@@ -92,15 +92,15 @@ struct NetworkingBackendConfiguration: Equatable, Sendable {
 struct NetworkingWebHandoffURLBuilder: Sendable {
     let configuration: NetworkingBackendConfiguration
 
-    func handoffURL(session: NetworkingPlatformSession, platformID: String) throws -> URL {
+    func handoffURL(handoff: NetworkingWebHandoff, platformID: String) throws -> URL {
         var components = URLComponents(
             url: configuration.webBaseURL.appending(path: "auth/handoff"),
             resolvingAgainstBaseURL: false
         )
         var fragment = URLComponents()
         fragment.queryItems = [
-            URLQueryItem(name: "access_token", value: session.accessToken),
-            URLQueryItem(name: "refresh_token", value: session.refreshToken),
+            URLQueryItem(name: "token_hash", value: handoff.tokenHash),
+            URLQueryItem(name: "handoff_secret", value: handoff.handoffSecret),
             URLQueryItem(name: "platform", value: platformID),
         ]
         components?.fragment = fragment.percentEncodedQuery
@@ -110,6 +110,11 @@ struct NetworkingWebHandoffURLBuilder: Sendable {
         }
         return url
     }
+}
+
+struct NetworkingWebHandoff: Equatable, Sendable {
+    let tokenHash: String
+    let handoffSecret: String
 }
 
 struct NetworkingPlatformSession: Codable, Equatable, Sendable {
@@ -140,6 +145,10 @@ enum NetworkingPlatformClientError: LocalizedError, Equatable {
     case invalidAutonomyMode
     case httpError(status: Int, body: String)
     case emptyResult(String)
+    case invalidOrExpiredOTP
+    case invalidOrExpiredSession
+    case emailOTPThrottled
+    case deviceLimitReached
 
     var errorDescription: String? {
         switch self {
@@ -153,7 +162,21 @@ enum NetworkingPlatformClientError: LocalizedError, Equatable {
             return "Networking platform request failed (\(status)): \(body)"
         case let .emptyResult(context):
             return "Networking platform returned no data for \(context)."
+        case .invalidOrExpiredOTP:
+            return "That verification code is invalid or expired. Request a new code and try again."
+        case .invalidOrExpiredSession:
+            return "Your Networking session expired. Verify your email to reconnect this Mac."
+        case .emailOTPThrottled:
+            return "Too many verification attempts. Wait a moment before requesting another code."
+        case .deviceLimitReached:
+            return "This account already has three active devices. Revoke one before authorizing this Mac."
         }
+    }
+
+    var requiresReauthentication: Bool {
+        if case .invalidOrExpiredSession = self { return true }
+        if case let .httpError(status, _) = self, status == 401 { return true }
+        return false
     }
 }
 
@@ -200,18 +223,26 @@ struct NetworkingPlatformClient: Sendable {
     }
 
     func refreshSession(refreshToken: String) throws -> NetworkingPlatformSession {
-        let data = try send(
-            path: "auth/v1/token",
-            query: [URLQueryItem(name: "grant_type", value: "refresh_token")],
-            method: "POST",
-            bearer: config.publishableKey,
-            body: ["refresh_token": refreshToken]
-        )
+        let data: Data
+        do {
+            data = try send(
+                path: "auth/v1/token",
+                query: [URLQueryItem(name: "grant_type", value: "refresh_token")],
+                method: "POST",
+                bearer: config.publishableKey,
+                body: ["refresh_token": refreshToken]
+            )
+        } catch let error as NetworkingPlatformClientError {
+            if case let .httpError(status, _) = error, [400, 401, 403, 422].contains(status) {
+                throw NetworkingPlatformClientError.invalidOrExpiredSession
+            }
+            throw error
+        }
         return try decodeSession(from: data)
     }
 
     func requestEmailOTP(email: String) throws {
-        _ = try send(
+        do { _ = try send(
             path: "auth/v1/otp",
             method: "POST",
             bearer: config.publishableKey,
@@ -219,42 +250,102 @@ struct NetworkingPlatformClient: Sendable {
                 "email": email,
                 "create_user": true,
             ]
-        )
+        ) } catch let error as NetworkingPlatformClientError {
+            if case let .httpError(status, _) = error, status == 429 { throw NetworkingPlatformClientError.emailOTPThrottled }
+            throw error
+        }
     }
 
     func verifyEmailOTP(email: String, token: String) throws -> NetworkingPlatformSession {
+        let data: Data
+        do {
+            data = try send(
+                path: "auth/v1/verify",
+                method: "POST",
+                bearer: config.publishableKey,
+                body: ["type": "email", "email": email, "token": token]
+            )
+        } catch let error as NetworkingPlatformClientError {
+            if case let .httpError(status, _) = error, [400, 401, 403, 422].contains(status) { throw NetworkingPlatformClientError.invalidOrExpiredOTP }
+            if case let .httpError(status, _) = error, status == 429 { throw NetworkingPlatformClientError.emailOTPThrottled }
+            throw error
+        }
+        return try decodeSession(from: data)
+    }
+
+    func createWebHandoff(
+        session: NetworkingPlatformSession,
+        deviceID: String,
+        deviceToken: String
+    ) throws -> NetworkingWebHandoff {
         let data = try send(
-            path: "auth/v1/verify",
+            path: "functions/v1/networking-web-handoff",
             method: "POST",
-            bearer: config.publishableKey,
+            bearer: session.accessToken,
+            body: ["device_id": deviceID, "device_token": deviceToken]
+        )
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tokenHash = object["token_hash"] as? String,
+              tokenHash.isEmpty == false,
+              let handoffSecret = object["handoff_secret"] as? String,
+              handoffSecret.isEmpty == false else {
+            throw NetworkingPlatformClientError.invalidResponse
+        }
+        return NetworkingWebHandoff(tokenHash: tokenHash, handoffSecret: handoffSecret)
+    }
+
+    func bindCurrentDeviceSession(
+        session: NetworkingPlatformSession,
+        deviceID: String,
+        deviceToken: String
+    ) throws {
+        _ = try send(
+            path: "rest/v1/rpc/networking_bind_current_device_session",
+            method: "POST",
+            bearer: session.accessToken,
             body: [
-                "type": "email",
-                "email": email,
-                "token": token,
+                "p_device_id": deviceID,
+                "p_device_token_hash": Self.tokenHash(deviceToken),
             ]
         )
-        return try decodeSession(from: data)
     }
 
     // MARK: - Owner writes (authenticated machine user, gated by RLS)
 
-    func upsertPerson(session: NetworkingPlatformSession, displayName: String, handle: String) throws -> String {
-        let data = try send(
-            path: "rest/v1/people",
-            query: [
-                URLQueryItem(name: "on_conflict", value: "user_id"),
-                URLQueryItem(name: "select", value: "id"),
-            ],
-            method: "POST",
-            bearer: session.accessToken,
-            preferHeader: "resolution=merge-duplicates,return=representation",
-            body: [
-                "user_id": session.userID,
-                "display_name": displayName,
-                "handle": handle,
-            ]
-        )
-        return try firstRowID(from: data, context: "people upsert")
+    func beginActivation(
+        session: NetworkingPlatformSession,
+        displayName: String,
+        handle: String,
+        deviceID: String,
+        deviceDisplayName: String,
+        deviceTokenHash: String,
+        agentTokenHash: String,
+        agentTokenLabel: String
+    ) throws -> String {
+        let data: Data
+        do {
+            data = try send(
+                path: "rest/v1/rpc/networking_begin_activation",
+                method: "POST",
+                bearer: session.accessToken,
+                body: [
+                    "p_display_name": displayName,
+                    "p_handle": handle,
+                    "p_device_id": deviceID,
+                    "p_device_display_name": deviceDisplayName,
+                    "p_device_token_hash": deviceTokenHash,
+                    "p_agent_token_hash": agentTokenHash,
+                    "p_agent_token_label": agentTokenLabel,
+                ]
+            )
+        } catch let error as NetworkingPlatformClientError {
+            if case let .httpError(status, body) = error,
+               status == 409 || body.contains("networking_device_limit_reached") {
+                throw NetworkingPlatformClientError.deviceLimitReached
+            }
+            throw error
+        }
+        return try scalarString(from: data, context: "activation person")
     }
 
     func upsertProfile(
@@ -284,26 +375,6 @@ struct NetworkingPlatformClient: Sendable {
             ]
         )
         return try firstRowID(from: data, context: "profiles upsert")
-    }
-
-    func registerAgentToken(
-        session: NetworkingPlatformSession,
-        personID: String,
-        tokenPlaintext: String,
-        label: String
-    ) throws {
-        _ = try send(
-            path: "rest/v1/agent_tokens",
-            method: "POST",
-            bearer: session.accessToken,
-            preferHeader: "return=minimal",
-            body: [
-                "person_id": personID,
-                "label": label,
-                "token_hash": Self.tokenHash(tokenPlaintext),
-                "scope": ["profile:write"],
-            ]
-        )
     }
 
     func activateMembership(
@@ -346,25 +417,6 @@ struct NetworkingPlatformClient: Sendable {
                 "p_mode": mode,
             ]
         )
-    }
-
-    func registerDevice(
-        session: NetworkingPlatformSession,
-        deviceID: String,
-        displayName: String,
-        tokenHash: String
-    ) throws -> NetworkingDeviceRecord {
-        let data = try send(
-            path: "rest/v1/rpc/networking_register_device",
-            method: "POST",
-            bearer: session.accessToken,
-            body: [
-                "p_device_id": deviceID,
-                "p_display_name": displayName,
-                "p_token_hash": tokenHash,
-            ]
-        )
-        return try decodeDevice(from: data)
     }
 
     func listDevices(session: NetworkingPlatformSession) throws -> [NetworkingDeviceRecord] {

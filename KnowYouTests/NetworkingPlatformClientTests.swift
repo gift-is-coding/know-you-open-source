@@ -2,6 +2,23 @@ import XCTest
 @testable import KnowYou
 
 final class NetworkingPlatformClientTests: XCTestCase {
+    func testSessionExpiryClassificationOnlyMatchesExplicitAuthFailures() {
+        XCTAssertTrue(NetworkingPlatformClientError.invalidOrExpiredSession.requiresReauthentication)
+        XCTAssertTrue(NetworkingPlatformClientError.httpError(status: 401, body: "expired JWT").requiresReauthentication)
+        XCTAssertFalse(NetworkingPlatformClientError.httpError(status: 503, body: "unavailable").requiresReauthentication)
+        XCTAssertFalse(NetworkingPlatformClientError.invalidResponse.requiresReauthentication)
+    }
+
+    func testRefreshSessionMapsUnprocessableTokenToReauthentication() {
+        let recorder = TransportRecorder(responses: [.failure(status: 422, body: "expired")])
+        var client = NetworkingPlatformClient(config: config)
+        client.transport = recorder.transport
+
+        XCTAssertThrowsError(try client.refreshSession(refreshToken: "expired-refresh")) { error in
+            XCTAssertEqual(error as? NetworkingPlatformClientError, .invalidOrExpiredSession)
+        }
+    }
+
     private let config = NetworkingPlatformConfig(
         supabaseURL: URL(string: "https://example.supabase.co")!,
         publishableKey: "publishable-key"
@@ -108,9 +125,8 @@ final class NetworkingPlatformClientTests: XCTestCase {
         XCTAssertEqual(body["token"] as? String, "481296")
     }
 
-    func testRegisterListAndRevokeDeviceUseAuthenticatedRPCs() throws {
+    func testListAndRevokeDeviceUseAuthenticatedRPCs() throws {
         let recorder = TransportRecorder(responses: [
-            .json(["id": "row-1", "device_id": "mac-1", "display_name": "MacBook Pro", "last_active_at": "2026-07-12T08:00:00Z", "revoked_at": NSNull()]),
             .json([["id": "row-1", "device_id": "mac-1", "display_name": "MacBook Pro", "last_active_at": "2026-07-12T08:00:00Z", "revoked_at": NSNull()]]),
             .rawJSON("null"),
         ])
@@ -118,45 +134,97 @@ final class NetworkingPlatformClientTests: XCTestCase {
         client.transport = recorder.transport
         let session = NetworkingPlatformSession(accessToken: "user-access", refreshToken: "refresh", userID: "user-1")
 
-        let registered = try client.registerDevice(
-            session: session,
-            deviceID: "mac-1",
-            displayName: "MacBook Pro",
-            tokenHash: String(repeating: "a", count: 64)
-        )
         let devices = try client.listDevices(session: session)
         try client.revokeDevice(session: session, deviceID: "mac-1")
 
-        XCTAssertEqual(registered.deviceID, "mac-1")
-        XCTAssertEqual(devices, [registered])
+        XCTAssertEqual(devices.map(\.deviceID), ["mac-1"])
         XCTAssertEqual(recorder.requests.map { $0.url?.path }, [
-            "/rest/v1/rpc/networking_register_device",
             "/rest/v1/rpc/networking_list_devices",
             "/rest/v1/rpc/networking_revoke_device",
         ])
         XCTAssertTrue(recorder.requests.allSatisfy { $0.value(forHTTPHeaderField: "Authorization") == "Bearer user-access" })
-        let revokeBody = try bodyJSON(of: recorder.requests[2])
+        let revokeBody = try bodyJSON(of: recorder.requests[1])
         XCTAssertEqual(revokeBody["p_device_id"] as? String, "mac-1")
     }
 
-    func testHandoffURLUsesFragmentSessionAndPlatformThenOmitsTokensFromQuery() throws {
+    func testHandoffURLUsesOneTimeTokenAndNeverEmbedsSessionTokens() throws {
         let config = NetworkingBackendConfiguration(
             supabaseURL: URL(string: "https://example.supabase.co")!,
             publishableKey: "publishable-key",
             webBaseURL: URL(string: "https://networking.knowyou.app")!
         )
-        let session = NetworkingPlatformSession(accessToken: "access-token", refreshToken: "refresh-token", userID: "user-1")
-
         let url = try NetworkingWebHandoffURLBuilder(configuration: config)
-            .handoffURL(session: session, platformID: "knowyou-jobs")
+            .handoffURL(
+                handoff: NetworkingWebHandoff(
+                    tokenHash: "one-time-token-hash",
+                    handoffSecret: "one-time-device-binding-secret"
+                ),
+                platformID: "knowyou-jobs"
+            )
 
         XCTAssertEqual(url.scheme, "https")
         XCTAssertEqual(url.host, "networking.knowyou.app")
         XCTAssertEqual(url.path, "/auth/handoff")
         XCTAssertNil(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
-        XCTAssertTrue(url.fragment?.contains("access_token=access-token") == true)
-        XCTAssertTrue(url.fragment?.contains("refresh_token=refresh-token") == true)
+        XCTAssertTrue(url.fragment?.contains("token_hash=one-time-token-hash") == true)
+        XCTAssertTrue(url.fragment?.contains("handoff_secret=one-time-device-binding-secret") == true)
+        XCTAssertFalse(url.absoluteString.contains("access-token"))
+        XCTAssertFalse(url.absoluteString.contains("refresh-token"))
         XCTAssertTrue(url.fragment?.contains("platform=knowyou-jobs") == true)
+    }
+
+    func testCreateWebHandoffUsesAuthenticatedEdgeFunctionAndReturnsOneTimeHash() throws {
+        let recorder = TransportRecorder(responses: [.json([
+            "token_hash": "one-time-token-hash",
+            "handoff_secret": "one-time-device-binding-secret",
+        ])])
+        var client = NetworkingPlatformClient(config: config)
+        client.transport = recorder.transport
+        let session = NetworkingPlatformSession(accessToken: "access-token", refreshToken: "refresh-token", userID: "user-1")
+
+        let handoff = try client.createWebHandoff(
+            session: session,
+            deviceID: "device-uuid",
+            deviceToken: "device-token"
+        )
+
+        XCTAssertEqual(handoff.tokenHash, "one-time-token-hash")
+        XCTAssertEqual(handoff.handoffSecret, "one-time-device-binding-secret")
+        let request = try XCTUnwrap(recorder.requests.first)
+        XCTAssertEqual(request.url?.path, "/functions/v1/networking-web-handoff")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer access-token")
+        XCTAssertFalse(String(decoding: request.httpBody ?? Data(), as: UTF8.self).contains("refresh-token"))
+        let body = try bodyJSON(of: request)
+        XCTAssertEqual(body["device_id"] as? String, "device-uuid")
+        XCTAssertEqual(body["device_token"] as? String, "device-token")
+    }
+
+    func testBindCurrentDeviceSessionHashesTheDeviceCredential() throws {
+        let recorder = TransportRecorder(responses: [.json([:])])
+        var client = NetworkingPlatformClient(config: config)
+        client.transport = recorder.transport
+        let session = NetworkingPlatformSession(
+            accessToken: "access-token",
+            refreshToken: "refresh-token",
+            userID: "user-1"
+        )
+
+        try client.bindCurrentDeviceSession(
+            session: session,
+            deviceID: "device-uuid",
+            deviceToken: "device-token"
+        )
+
+        let request = try XCTUnwrap(recorder.requests.first)
+        XCTAssertEqual(request.url?.path, "/rest/v1/rpc/networking_bind_current_device_session")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer access-token")
+        let body = try bodyJSON(of: request)
+        XCTAssertEqual(body["p_device_id"] as? String, "device-uuid")
+        XCTAssertEqual(
+            body["p_device_token_hash"] as? String,
+            NetworkingPlatformClient.tokenHash("device-token")
+        )
+        XCTAssertFalse(String(decoding: request.httpBody ?? Data(), as: UTF8.self).contains("\"device-token\""))
     }
 
     func testBackendConfigurationResolvedUsesConfiguredWebBaseURL() throws {
@@ -222,49 +290,6 @@ final class NetworkingPlatformClientTests: XCTestCase {
         try Data("{not-json".utf8).write(to: configURL)
 
         XCTAssertEqual(store.load(projectRoot: projectRoot), .bundledDefault)
-    }
-
-    func testUpsertPersonUsesMergeDuplicatesAndReturnsRowID() throws {
-        let recorder = TransportRecorder(responses: [
-            .json([["id": "person-uuid"]]),
-        ])
-        var client = NetworkingPlatformClient(config: config)
-        client.transport = recorder.transport
-        let session = NetworkingPlatformSession(accessToken: "access-1", refreshToken: "refresh-1", userID: "user-1")
-
-        let personID = try client.upsertPerson(session: session, displayName: "Tianfu Wu", handle: "tianfu-wu")
-
-        XCTAssertEqual(personID, "person-uuid")
-        let request = try XCTUnwrap(recorder.requests.first)
-        XCTAssertEqual(request.url?.path, "/rest/v1/people")
-        XCTAssertTrue(request.url?.query?.contains("on_conflict=user_id") ?? false)
-        XCTAssertEqual(request.value(forHTTPHeaderField: "Prefer"), "resolution=merge-duplicates,return=representation")
-        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer access-1")
-        let body = try bodyJSON(of: request)
-        XCTAssertEqual(body["user_id"] as? String, "user-1")
-        XCTAssertEqual(body["handle"] as? String, "tianfu-wu")
-    }
-
-    func testRegisterAgentTokenSendsHashNotPlaintext() throws {
-        let recorder = TransportRecorder(responses: [.json([])])
-        var client = NetworkingPlatformClient(config: config)
-        client.transport = recorder.transport
-        let session = NetworkingPlatformSession(accessToken: "access-1", refreshToken: "refresh-1", userID: "user-1")
-
-        try client.registerAgentToken(
-            session: session,
-            personID: "person-uuid",
-            tokenPlaintext: "knw_agent_secret",
-            label: "Local KnowYou Networking agent"
-        )
-
-        let request = try XCTUnwrap(recorder.requests.first)
-        XCTAssertEqual(request.url?.path, "/rest/v1/agent_tokens")
-        let body = try bodyJSON(of: request)
-        XCTAssertEqual(body["token_hash"] as? String, NetworkingPlatformClient.tokenHash("knw_agent_secret"))
-        XCTAssertEqual(body["scope"] as? [String], ["profile:write"])
-        let raw = String(decoding: request.httpBody ?? Data(), as: UTF8.self)
-        XCTAssertFalse(raw.contains("knw_agent_secret"))
     }
 
     func testCreateAgentCommentSendsExplicitNullParent() throws {
@@ -373,32 +398,23 @@ final class NetworkingPlatformClientTests: XCTestCase {
         }
     }
 
-    func testActivationRunnerHappyPathBuildsPlatformState() throws {
+    func testActivationRunnerUsesVerifiedSessionAndRegistersDevice() throws {
         let recorder = TransportRecorder(responses: [
-            .json(["created": true]),
-            .json([
-                "access_token": "access-1",
-                "refresh_token": "refresh-1",
-                "user": ["id": "user-1"],
-            ]),
-            .json([["id": "person-uuid"]]),
+            .rawJSON("\"person-uuid\""),
             .json([["id": "career-uuid"]]),
-            .json([]),
             .json([]),
         ])
         var client = NetworkingPlatformClient(config: config)
         client.transport = recorder.transport
         var runner = NetworkingActivationRunner(client: client)
-        let authFixture = machineAuthFixture
         runner.tokenGenerator = { "knw_agent_fixed" }
-        runner.credentialGenerator = { _ in
-            NetworkingMachineCredentials(
-                email: authFixture.email,
-                password: authFixture.passphrase
-            )
-        }
+        runner.deviceTokenGenerator = { "device-token-fixed" }
 
         let state = try runner.activate(
+            session: NetworkingPlatformSession(accessToken: "access-1", refreshToken: "refresh-1", userID: "user-1"),
+            email: "person@example.com",
+            deviceID: "device-uuid",
+            deviceDisplayName: "Tianfu's Mac",
             personName: "Tianfu Wu",
             handle: "tianfu-wu",
             approvedProfiles: [
@@ -419,136 +435,47 @@ final class NetworkingPlatformClientTests: XCTestCase {
         XCTAssertEqual(state.mode, .platform)
         XCTAssertEqual(state.personID, "person-uuid")
         XCTAssertEqual(state.userID, "user-1")
-        XCTAssertEqual(state.authEmail, authFixture.email)
-        XCTAssertEqual(state.authPassword, authFixture.passphrase)
+        XCTAssertEqual(state.authEmail, "person@example.com")
+        XCTAssertNil(state.authPassword)
+        XCTAssertEqual(state.deviceID, "device-uuid")
+        XCTAssertEqual(state.deviceToken, "device-token-fixed")
         XCTAssertEqual(state.agentTokenPlaintext, "knw_agent_fixed")
         XCTAssertEqual(state.platformProfileID(forLocalProfileID: "profile-career"), "career-uuid")
-        XCTAssertEqual(recorder.requests.count, 6)
-        XCTAssertEqual(recorder.requests.last?.url?.path, "/rest/v1/community_memberships")
+        XCTAssertEqual(recorder.requests.count, 3)
+        XCTAssertFalse(recorder.requests.contains { $0.url?.path.contains("auth/v1") == true })
+        let deviceRequest = try XCTUnwrap(recorder.requests.first { $0.url?.path == "/rest/v1/rpc/networking_begin_activation" })
+        let deviceBody = try bodyJSON(of: deviceRequest)
+        XCTAssertEqual(deviceBody["p_display_name"] as? String, "Tianfu Wu")
+        XCTAssertEqual(deviceBody["p_handle"] as? String, "tianfu-wu")
+        XCTAssertEqual(deviceBody["p_device_token_hash"] as? String, NetworkingPlatformClient.tokenHash("device-token-fixed"))
+        XCTAssertEqual(deviceBody["p_agent_token_hash"] as? String, NetworkingPlatformClient.tokenHash("knw_agent_fixed"))
     }
 
-    func testActivationRunnerReusesStoredMachineCredentialsWithSignIn() throws {
+    func testActivationRunnerReportsDeviceAuthorizationFailureWithoutAuthFallback() {
         let recorder = TransportRecorder(responses: [
-            .json([
-                "access_token": "access-existing",
-                "refresh_token": "refresh-existing",
-                "user": ["id": "user-existing"],
-            ]),
-            .json([["id": "person-uuid"]]),
-            .json([]),
-        ])
-        var client = NetworkingPlatformClient(config: config)
-        client.transport = recorder.transport
-        var runner = NetworkingActivationRunner(client: client)
-        let unusedCredential = ["unused"].joined()
-        runner.credentialGenerator = { _ in
-            XCTFail("stored credentials should be used instead of generating a fresh machine user")
-            return NetworkingMachineCredentials(email: "unused@example.com", password: unusedCredential)
-        }
-        let previousState = NetworkingActivationState(
-            isEnabled: true,
-            personID: "person-uuid",
-            agentTokenPlaintext: "old-agent-token",
-            supabaseURL: config.supabaseURL,
-            publishableKey: config.publishableKey,
-            authEmail: machineAuthFixture.email,
-            authPassword: machineAuthFixture.passphrase,
-            mode: .platform
-        )
-
-        let state = try runner.activate(
-            personName: "Tianfu Wu",
-            handle: "tianfu-wu",
-            approvedProfiles: [],
-            previousState: previousState
-        )
-
-        XCTAssertEqual(state.authEmail, machineAuthFixture.email)
-        XCTAssertEqual(state.authPassword, machineAuthFixture.passphrase)
-        XCTAssertEqual(state.userID, "user-existing")
-        XCTAssertEqual(recorder.requests.first?.url?.path, "/auth/v1/token")
-        XCTAssertTrue(recorder.requests.first?.url?.query?.contains("grant_type=password") ?? false)
-        XCTAssertFalse(recorder.requests.contains { $0.url?.path == "/auth/v1/signup" })
-    }
-
-    func testActivationRunnerRetriesPendingStoredCredentialsThroughIdempotentSignup() throws {
-        let recorder = TransportRecorder(responses: [
-            .json(["created": false, "alreadyExists": true]),
-            .json([
-                "access_token": "access-retry",
-                "refresh_token": "refresh-retry",
-                "user": ["id": "user-retry"],
-            ]),
-            .json([["id": "person-retry"]]),
-            .json([]),
+            .failure(status: 409, body: "device limit reached"),
         ])
         var client = NetworkingPlatformClient(config: config)
         client.transport = recorder.transport
         let runner = NetworkingActivationRunner(client: client)
-        let pendingState = NetworkingActivationState(
-            isEnabled: false,
-            personID: "",
-            agentTokenPlaintext: "",
-            supabaseURL: config.supabaseURL,
-            publishableKey: config.publishableKey,
-            authEmail: machineAuthFixture.email,
-            authPassword: machineAuthFixture.passphrase,
-            mode: .localSandbox
-        )
-
-        let state = try runner.activate(
-            personName: "Tianfu Wu",
-            handle: "tianfu-wu",
-            approvedProfiles: [],
-            previousState: pendingState
-        )
-
-        XCTAssertEqual(recorder.requests.first?.url?.path, "/functions/v1/networking-machine-signup")
-        XCTAssertEqual(state.authEmail, machineAuthFixture.email)
-        XCTAssertEqual(state.userID, "user-retry")
-    }
-
-    func testActivationRunnerReportsFailingStep() {
-        let recorder = TransportRecorder(responses: [
-            .failure(status: 422, body: "machine user rejected"),
-        ])
-        var client = NetworkingPlatformClient(config: config)
-        client.transport = recorder.transport
-        var runner = NetworkingActivationRunner(client: client)
-        let authFixture = machineAuthFixture
-        runner.credentialGenerator = { _ in
-            NetworkingMachineCredentials(
-                email: authFixture.email,
-                password: authFixture.passphrase
-            )
-        }
 
         XCTAssertThrowsError(
-            try runner.activate(personName: "Tianfu Wu", handle: "tianfu-wu", approvedProfiles: [])
+            try runner.activate(
+                session: NetworkingPlatformSession(accessToken: "access", refreshToken: "refresh", userID: "user"),
+                email: "person@example.com",
+                deviceID: "device-uuid",
+                deviceDisplayName: "My Mac",
+                personName: "Tianfu Wu",
+                handle: "tianfu-wu",
+                approvedProfiles: []
+            )
         ) { error in
-            XCTAssertTrue(error.localizedDescription.contains("machine platform identity"))
-            XCTAssertTrue(error.localizedDescription.contains("422"))
-            XCTAssertFalse(error.localizedDescription.contains("sign-in failed"))
+            XCTAssertTrue(error.localizedDescription.contains("authorizing this Mac"))
+            XCTAssertTrue(error.localizedDescription.contains("three active devices"))
         }
-        XCTAssertEqual(recorder.requests.count, 1)
-    }
-
-    func testActivationRunnerDoesNotCreateReplacementIdentityWhenStoredCredentialsAreMissing() {
-        let recorder = TransportRecorder(responses: [])
-        var client = NetworkingPlatformClient(config: config)
-        client.transport = recorder.transport
-        let runner = NetworkingActivationRunner(client: client)
-        let previousState = NetworkingActivationState(
-            isEnabled: true, personID: "existing-person", agentTokenPlaintext: "",
-            supabaseURL: config.supabaseURL, publishableKey: config.publishableKey, mode: .platform
-        )
-
-        XCTAssertThrowsError(try runner.activate(
-            personName: "Tianfu Wu", handle: "tianfu-wu", approvedProfiles: [], previousState: previousState
-        )) { error in
-            XCTAssertTrue(error.localizedDescription.contains("secure credentials are unavailable"))
-        }
-        XCTAssertTrue(recorder.requests.isEmpty)
+        XCTAssertFalse(recorder.requests.contains { $0.url?.path.contains("auth/v1") == true })
+        XCTAssertEqual(recorder.requests.map(\.url?.path), ["/rest/v1/rpc/networking_begin_activation"])
+        XCTAssertFalse(recorder.requests.contains { $0.url?.path == "/rest/v1/people" || $0.url?.path == "/rest/v1/profiles" })
     }
 
     func testActivationStateDecodesLegacyJSONWithoutNewFields() throws {

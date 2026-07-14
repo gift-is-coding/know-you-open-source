@@ -30,29 +30,29 @@
 - Consumes: authenticated `auth.uid()`, existing `public.people`, and `extensions.digest`.
 - Produces: `public.networking_devices`, `networking_register_device(p_device_id, p_display_name, p_token_hash)`, `networking_revoke_device(p_device_id)`, and `networking_list_devices()`.
 
-- [ ] **Step 1: Write migration contract tests**
+- [x] **Step 1: Write migration contract tests**
 
 Assert the migration defines RLS, owner predicates, unique active device IDs, a transactional three-device check, explicit grants, token hashing input validation, and revoked-device filtering.
 
-- [ ] **Step 2: Run the contract test and verify RED**
+- [x] **Step 2: Run the contract test and verify RED**
 
 Run: `cd NetworkingWeb && npm test -- tests/networking-verified-devices-migration.test.ts`
 
 Expected: FAIL because the migration does not exist.
 
-- [ ] **Step 3: Generate and implement the migration**
+- [x] **Step 3: Generate and implement the migration**
 
 Run: `cd NetworkingWeb && supabase migration new networking_verified_devices`
 
 Implement the table and RPCs so every owner operation derives ownership from `(select auth.uid())`; revoke execute from `public` and `anon`; grant only to `authenticated`; reject blank IDs/names, malformed SHA-256 hashes, duplicate active devices, and a fourth active device.
 
-- [ ] **Step 4: Run migration tests and local database verification**
+- [x] **Step 4: Run migration tests and local database verification**
 
 Run: `cd NetworkingWeb && npm test -- tests/networking-verified-devices-migration.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add NetworkingWeb/supabase/migrations NetworkingWeb/tests/networking-verified-devices-migration.test.ts
@@ -69,27 +69,27 @@ git commit -m "feat: add verified networking devices"
 - Produces: `requestEmailOTP(email:)`, `verifyEmailOTP(email:token:) -> NetworkingPlatformSession`, `registerDevice(session:deviceID:displayName:tokenHash:)`, `listDevices(session:)`, and `revokeDevice(session:deviceID:)`.
 - Produces: `NetworkingDeviceRecord` and typed OTP/device errors suitable for UI recovery states.
 
-- [ ] **Step 1: Add failing request-shape tests**
+- [x] **Step 1: Add failing request-shape tests**
 
 Test `/auth/v1/otp` email requests, `/auth/v1/verify` with `type=email`, authenticated device RPC calls, decoding device records, and HTTP errors for invalid, expired, throttled, and capacity responses.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/NetworkingPlatformClientTests`
 
 Expected: FAIL because the OTP and device APIs are absent.
 
-- [ ] **Step 3: Implement the minimal client APIs**
+- [x] **Step 3: Implement the minimal client APIs**
 
 Use the existing transport and JSON decoding path. Never log OTPs, access tokens, refresh tokens, or device plaintext tokens. Keep password signup methods only long enough to decode legacy persisted state; do not invoke them from new activation.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run the same `xcodebuild test` command.
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add KnowYou/Services/Networking/NetworkingPlatformClient.swift KnowYouTests/NetworkingPlatformClientTests.swift
@@ -105,25 +105,25 @@ git commit -m "feat: add networking email otp client"
 - Modify: `KnowYouTests/NetworkingPlatformClientTests.swift`
 
 **Interfaces:**
-- Produces: `NetworkingAccountActivationPhase` state machine for email entry, OTP pending, profile approval, device capacity, device authorization, and ready.
+- Produces: `NetworkingAccountActivationPhase` state machine for a pre-registration introduction, email entry, OTP pending, profile approval, device capacity, device authorization, and ready.
 - Produces: activation input accepting a verified `NetworkingPlatformSession` and device metadata instead of generated email/password credentials.
 - Persists: email and non-secret device metadata in activation JSON; refresh token, agent token, and device token in Keychain only.
 
-- [ ] **Step 1: Add failing state and persistence tests**
+- [x] **Step 1: Add failing state and persistence tests**
 
 Cover phase transitions, resumable verified sessions, refresh-token restoration, absence of password in new state, device token Keychain isolation, migration of legacy machine credentials without automatic signup, and fail-closed behavior when secrets are missing.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/NetworkingCockpitPresentationTests -only-testing:KnowYouTests/NetworkingPlatformClientTests`
 
 Expected: FAIL on the new phase and persistence assertions.
 
-- [ ] **Step 3: Implement the activation state machine and runner**
+- [x] **Step 3: Implement the activation state machine and runner**
 
 Remove generated machine credentials from the new path. After OTP verification and profile approval, generate one high-entropy device token, register its SHA-256 hash, create or update the existing person/profile rows, register the existing agent token, and save the resulting state atomically.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run the same focused `xcodebuild test` command.
 
@@ -145,23 +145,23 @@ git commit -m "feat: activate networking with verified accounts"
 
 **Interfaces:**
 - Consumes: `NetworkingAccountActivationPhase` and client/runner closures injected by the cockpit.
-- Produces: entry, email, six-digit OTP, profile review, device authorization/capacity, completion, retry, and recovery UI states.
+- Produces: visual introduction, email, six-digit OTP, profile review, device authorization/capacity, completion, retry, and recovery UI states.
 
-- [ ] **Step 1: Add failing presentation tests**
+- [x] **Step 1: Add failing presentation tests**
 
 Test exact primary actions and privacy copy for every phase, OTP validation/paste behavior, device-slot copy, recoverable error actions, and that an unverified account cannot enter the active cockpit.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run: `xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/NetworkingCockpitPresentationTests`
 
 Expected: FAIL because the activation presentation is absent.
 
-- [ ] **Step 3: Implement the SwiftUI flow**
+- [x] **Step 3: Implement the SwiftUI flow**
 
-Match the approved five-screen visual design. Use native controls, keyboard focus, paste/autofill-friendly OTP input, VoiceOver labels, visible progress, clear retry actions, and explicit local-versus-public privacy copy. Do not reset existing onboarding, login, or My Wiki state.
+Precede the five security steps with a visual explanation of Friends, Career, Agent value, registration purpose, and local-versus-public data boundaries. Use native controls, keyboard focus, paste/autofill-friendly OTP input, VoiceOver labels, visible progress, clear retry actions, and explicit privacy copy. Do not reset existing onboarding, login, Keychain, or My Wiki state.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run the same focused test command.
 

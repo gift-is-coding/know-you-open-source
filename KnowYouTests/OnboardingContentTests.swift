@@ -112,19 +112,17 @@ final class OnboardingContentTests: XCTestCase {
     }
 
     func testRegressionDocsUseInstalledNewUserAppForPermissionCleanRuns() throws {
-        let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
+        let resources = try XCTUnwrap(Bundle(for: Self.self).resourceURL)
         let readme = try String(
-            contentsOf: repoRoot.appending(path: "docs/regression/README.md"),
+            contentsOf: resources.appending(path: "regression/README.md"),
             encoding: .utf8
         )
         let firstRun = try String(
-            contentsOf: repoRoot.appending(path: "docs/regression/test-cases/01-first-run-onboarding.md"),
+            contentsOf: resources.appending(path: "regression/test-cases/01-first-run-onboarding.md"),
             encoding: .utf8
         )
         let installer = try String(
-            contentsOf: repoRoot.appending(path: "scripts/install-new-user-app.sh"),
+            contentsOf: resources.appending(path: "install-new-user-app.sh"),
             encoding: .utf8
         )
 
@@ -144,12 +142,13 @@ final class OnboardingContentTests: XCTestCase {
     }
 
     func testFullDiskAccessGuideImageAssetIsBundled() {
-        let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let assetURL = repoRoot.appending(path: "KnowYou/Assets.xcassets/FullDiskAccessAddGuide.imageset/Contents.json")
+        let assetURL = Bundle(for: Self.self).resourceURL?
+            .appending(path: "FullDiskAccessAddGuide.imageset/Contents.json")
 
-        XCTAssertTrue(FileManager.default.fileExists(atPath: assetURL.path), "Missing \(assetURL.path)")
+        XCTAssertTrue(
+            assetURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false,
+            "Missing bundled FullDiskAccessAddGuide.imageset/Contents.json"
+        )
     }
 
     func testApplicationInstallPolicyRequiresApplicationsKnowYouBundle() {
@@ -240,13 +239,8 @@ final class OnboardingContentTests: XCTestCase {
             isRunningUnderXCTest: false
         )
 
-        XCTAssertEqual(
-            request,
-            ApplicationInstallMoveRequest(
-                sourceURL: URL(fileURLWithPath: "/Volumes/KnowYou New User/KnowYou New User.app"),
-                targetURL: URL(fileURLWithPath: "/Applications/KnowYou New User.app")
-            )
-        )
+        XCTAssertEqual(request?.sourceURL.path, "/Volumes/KnowYou New User/KnowYou New User.app")
+        XCTAssertEqual(request?.targetURL.path, "/Applications/KnowYou New User.app")
     }
 
     func testApplicationInstallAutoMovePolicySkipsTestsCliAndDerivedData() {

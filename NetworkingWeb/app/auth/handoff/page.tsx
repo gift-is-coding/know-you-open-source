@@ -14,26 +14,35 @@ export default function AppHandoffPage() {
         ? window.location.hash.slice(1)
         : window.location.hash;
       const params = new URLSearchParams(fragment);
-      const accessToken = params.get("access_token");
-      const refreshToken = params.get("refresh_token");
+      const tokenHash = params.get("token_hash");
+      const handoffSecret = params.get("handoff_secret");
       const platform = params.get("platform") ?? "knowyou-jobs";
 
       history.replaceState(null, "", "/auth/handoff");
 
-      if (!accessToken || !refreshToken) {
+      if (!tokenHash || !handoffSecret) {
         setMessage("Open this page from the KnowYou App to continue.");
         return;
       }
 
       try {
         const supabase = createClient();
-        const { error } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken
+        const { error } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: "email"
         });
 
         if (error) {
           setMessage("Could not connect this App session. Return to KnowYou and try again.");
+          return;
+        }
+
+        const { error: bindError } = await supabase.rpc("networking_bind_web_session", {
+          p_handoff_secret: handoffSecret
+        });
+        if (bindError) {
+          await supabase.auth.signOut();
+          setMessage("This device authorization is no longer valid. Return to KnowYou and try again.");
           return;
         }
 
@@ -51,7 +60,7 @@ export default function AppHandoffPage() {
       <section className="center">
         <p className="eyebrow">App handoff</p>
         <h1 className="h1">Opening your Networking square.</h1>
-        <p className="lede">{message}</p>
+        <p className="lede" role="status" aria-live="polite">{message}</p>
       </section>
     </main>
   );

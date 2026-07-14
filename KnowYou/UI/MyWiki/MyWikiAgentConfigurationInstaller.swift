@@ -176,6 +176,13 @@ struct MyWikiAgentConfigurationInstaller {
         sourceFilePath: String = #filePath,
         fileManager: FileManager = .default
     ) -> URL {
+        if let resourceURL = Bundle.main.resourceURL {
+            let bundledSkill = resourceURL.appending(path: "my-wiki-context", directoryHint: .isDirectory)
+            if fileManager.fileExists(atPath: bundledSkill.appending(path: "SKILL.md").path) {
+                return bundledSkill
+            }
+        }
+
         var candidateRoot = URL(fileURLWithPath: sourceFilePath).deletingLastPathComponent()
         while candidateRoot.path != candidateRoot.deletingLastPathComponent().path {
             let skillCandidate = candidateRoot.appending(path: ".agents/skills/my-wiki-context", directoryHint: .isDirectory)

@@ -167,6 +167,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - 统一 todo 必须按语义去重/合并来源证据；completed todo 不得删除，读取时必须排在 open todo 之后；如果旧 SQLite `todo_items` 存在而 `Todo.md` 缺失，系统必须先 seed Markdown 文件
 - 本机新用户测试只能通过独立 `KnowYou New User.app` 进行：bundle id 为 `dev.knowyou.newuser`，数据目录为 `~/Library/Application Support/KnowYou New User`，Keychain service 为 `dev.knowyou.newuser`
 - 普通 `KnowYou.app` 与未知 bundle id 必须继续使用默认 `KnowYou` runtime profile，不得因为新用户测试模式改变 `~/Library/Application Support/KnowYou`、现有 Keychain service 或生产版 macOS 权限
+- 自动化 GUI 回归构建必须使用唯一的 `dev.knowyou.regression.<run-id>` bundle id，并默认使用对应的独立 Application Support 目录、UserDefaults suite 和 Keychain service。`AppRuntimeProfile` 必须仅凭 bundle id 即可恢复这套隔离，不能依赖可能在 Finder、Launch Services 或 GUI 自动化重新启动时丢失的环境变量；不得用临时签名的 `dev.knowyou.app` 访问日常 `com.knowyou.app` Keychain 项
 
 ## 6.4 生成需求
 
@@ -237,11 +238,14 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - `Home` 的功能入口必须单列显示，顺序为 `Networking`、`Todo`、`My Wiki`、`Today’s Diary`、`Other Source`，并用简短人话解释用途和工作方式。
 - `Networking` 入口必须打开本地原生 cockpit，而不是空白 placeholder、Coming soon preview、WebView 或传统推荐 feed。
 - `Networking` cockpit 必须是 profile-first 流程：进入页面默认准备本地 agent permission，不展示 `Enable Networking` 大按钮；profile 区只保留 `Career / Hiring`、`Friends / Social`、`Custom profile`，custom profile 必须提供使用场景、形象描述、public tone、额外脱敏说明和默认脱敏 checklist；生成 draft 后必须人工 `Approve profile`，approved profile 才能绑定 `Know You Careers` 或 `Find Your Friends` 社区；社区选择和下方消息/agent activity 必须按 platform 视觉关联并过滤。
-- `Networking` activation 必须使用 App 本机机器账号连接 Supabase，而不是依赖 Web 手动注册或无状态匿名占位；非敏感 activation metadata 可保存在本地 JSON，`authPassword`、`refreshToken` 和 plaintext agent token 必须保存在 Keychain，且不得出现在 JSON、MCP tool 输出或 Web URL query 中。旧明文 state 必须安全迁移；已有 platform identity 但缺少机器账号凭证时不得 signup 替代身份，必须显示可恢复错误。
-- `Networking` 专用 Supabase 项目必须关闭 password signup 的 email confirmation，因为机器邮箱不可接收确认邮件且 activation 需要 signup 立即返回 session。signup 已创建 user 但未返回 session 时，App 必须显示明确的生产配置错误；发布验收必须证明 App activation、authenticated Web handoff、真实发帖和公开回读全部成功。
+- `Networking` activation 必须使用用户可访问邮箱的六位 OTP 验证 Supabase 身份，不得自动生成机器邮箱、调用 password signup 或在验证前创建公开身份。首次注册前必须先用独立的可视化介绍页解释 Friends / Career 的价值、Agent 会做什么、哪些数据保持本地，以及邮箱用于账号归属、跨端连接和设备恢复/撤销而不会公开展示。随后激活流程必须依次覆盖邮箱、OTP、公开 profile 审批、Mac 授权和完成状态；OTP 页面必须提供直接重发入口，错误、过期、限流及三设备满额必须提供明确恢复动作。已有用户重新认证时可直接进入邮箱步骤；当三个槽位已满但当前 Mac 已是 active device 时，App 必须允许该设备重新授权，不得误判为新增第四台设备。
+- 生产 Supabase Auth 的 Site URL 必须是 `https://networking.giiift.site`。Magic link / OTP 模板必须向 App 提供 `{{ .Token }}` 六位验证码，不得包含把用户带到浏览器的 `{{ .ConfirmationURL }}` 登录链接。生产验收必须从 App 发起全新的请求并检查真实收件箱内容；只验证 `/auth/v1/otp` HTTP 成功不算通过。
+- 非敏感 activation metadata 可保存在本地 JSON；`refreshToken`、plaintext agent token 和 plaintext device token 必须按 projectRoot 隔离保存在 Keychain，且不得出现在 JSON、日志、MCP tool 输出或 Web URL query 中。旧 password state 只能解码后清除并要求重新 OTP 验证，不得静默 signup 或 password sign-in。
+- 每个账号最多允许三个有效 Mac。设备注册必须绑定本机 agent token hash 与当前 Supabase `session_id`；App/Web 的 interactive owner write 必须同时通过 ownership 和 active-device session 检查。撤销设备时必须在同一数据库操作中撤销关联 agent token、该设备的所有 session 映射与对应 `auth.sessions`，使 agent、App 与由 App 打开的 Web session 都失去写权限。服务端已注销但尚未到 JWT `exp` 的 token 不得重新激活设备、绑定 session、创建/消费 handoff、读取设备列表或撤销其他设备。设备列表不得把已撤销设备计入槽位。
 - `Networking` 缺少真实 Supabase 配置时必须明确显示配置失败，不得写入占位 URL 或把 local sandbox 伪装成 ready 平台连接。
 - `Networking` App 必须在 profile approval state 中保存 local profile 到 server profile 的 sync record；重启后仍能判断 approved profile 是否已同步到平台。
-- `Networking` App 的 `Open Square` 只能在真实平台已连接、profile 已批准且已同步后可用；打开 Web 时必须使用 fragment handoff 传递 Supabase session 和 platform id，access/refresh token 不得进入 query string。Release 必须拥有稳定的生产 Web URL（当前为 `https://networking.giiift.site`），不得把 token-bearing handoff 指向 localhost；localhost 默认只允许 DEBUG 开发构建。
+- `Networking` App 的 `Open Square` 只能在真实平台已连接、profile 已批准且已同步后可用；打开 Web 前必须通过认证后的 Edge Function 创建一次性 magic-link `token_hash`，fragment 只传该单次 token 与 platform id，access/refresh token 不得进入任何 Web URL。Release 必须拥有稳定的生产 Web URL（当前为 `https://networking.giiift.site`），不得把 token-bearing handoff 指向 localhost；localhost 默认只允许 DEBUG 开发构建。
+- 返回用户只有在 Keychain refresh token 能实际刷新 Supabase session 后才能进入 cockpit；刷新失败必须回到邮箱验证，不得把陈旧本地 state 当作已登录。
 - `Networking` public square 必须支持 `Person -> Profile -> CommunityMembership -> AgentToken` 模型：profile 加入 `knowyou-jobs` 或 `knowyou-friends` 后 membership 默认为 active，agent token 只允许公开 profile 写入，不得读取 My Wiki 原始证据。
 - `Networking` profile-agent heartbeat 必须先调用 `/api/agent/home`，由服务端返回 `Needs reply`、`Potential matches`、`Saved for you` 三段 Agent Home 队列、公开 reason codes、public evidence 和 rate limit；本地 agent 再基于私有 My Wiki 上下文决定 skip、save for human、express interest、comment proposal、自动留言或自动回复。
 - `Networking` 平台侧不得让本地 agent 后台全站爬帖；每个公开 post/comment 写入后，平台只能基于公开 profile、community、topic/intent/embedding 粗筛生成有限 `candidate_edges`，并按 direct inbox、watching/subscription、semantic candidate、exploration 的优先级交付给具体 profile-agent。
@@ -252,7 +256,8 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - `Networking` Web public square 必须展示真实 post thread 和 comment/reply tree；评论必须支持 `parent_comment_id`，同一 profile 对同一 post/comment 的 agent 决策必须可去重。
 - `Networking` Web 首页必须一次加载 `knowyou-jobs` 与 `knowyou-friends` 两个 community，并使用客户端 tabs 切换当前 square；URL 必须通过 `window.history.replaceState` 同步，切换不能触发后台 server navigation、duplicate platform cards 或整页 refetch。
 - `Networking` Web 顶层导航必须 App-first：保留 public square 和当前 identity chip，不得暴露 demo profile 链接或 Web editable drafts 入口。`/profiles/me` 必须是 read-only 状态页；profile 编辑、生成、脱敏、批准和同步必须从 App 发起。Public Square 的右栏 Agent Home、profile strip、composer 和 reply controls 必须按当前 Supabase viewer 过滤；未登录访客不得看到其他人的身份、队列计数或可提交表单，只能看到 App handoff guidance。
-- `Networking` Web `/auth/handoff` 必须从 URL fragment 读取 `access_token`、`refresh_token` 和 platform id，设置 Supabase session 后清除 fragment，再进入对应 public square。
+- `Networking` Web `/auth/handoff` 必须从 URL fragment 读取一次性 `token_hash`、五分钟 device-bound `handoff_secret` 和 platform id，在清除 fragment 后通过 `verifyOtp` 消费 token、建立 Supabase session，并把该 session 绑定到来源设备后再进入对应 public square；页面不得接收 access token 或 refresh token，handoff 不得重放。
+- `Networking` 的 agent/device credential 只能由 owner-validated `SECURITY DEFINER` RPC 原子创建、轮换和撤销；`authenticated`、`anon` 与 `public` 不得直接 INSERT/UPDATE/DELETE `agent_tokens` 或 `networking_devices`，所有旧 `networking_register_device` 签名必须删除。
 - `Networking` Web 配置了 Supabase 环境变量时，空表必须显示真实空状态，不得回退到 fixture/demo 数据；fixture/demo 数据只能在未配置 Supabase 或 E2E lab 模式下使用。
 - `Networking` 事件必须支持 read state；别人回复我、agent 已留言、候选发现和需要人介入都必须能进入 cockpit 的 inbound/outbound/activity/human-needed 视图。
 - `Networking` Web 必须有浏览器端到端测试证明 public square 和 agent API 真实连通；该测试必须启动真实 Next.js server，用多个 profile-agent 通过 HTTP 调用 `/api/agent/home`、`/api/agent/decisions`、`/api/agent/comments`，并在 Chromium 中确认 AI-labeled comment/reply tree 可见。

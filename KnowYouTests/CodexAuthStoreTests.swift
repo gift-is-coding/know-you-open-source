@@ -1,3 +1,4 @@
+import Security
 import XCTest
 @testable import KnowYou
 
@@ -16,6 +17,24 @@ final class CodexAuthStoreTests: XCTestCase {
     override func tearDownWithError() throws {
         try? FileManager.default.removeItem(at: temporaryDirectoryURL)
         try super.tearDownWithError()
+    }
+
+    func testKeychainReadFailsInsteadOfBlockingForAuthenticationUI() {
+        let query = KeychainHelper.loadQuery(forKey: "networking", service: "dev.knowyou.test")
+
+        XCTAssertEqual(
+            query[kSecUseAuthenticationUI] as? String,
+            kSecUseAuthenticationUIFail as String
+        )
+    }
+
+    func testKeychainDeleteFailsInsteadOfBlockingForAuthenticationUI() {
+        let query = KeychainHelper.deleteQuery(forKey: "networking", service: "dev.knowyou.test")
+
+        XCTAssertEqual(
+            query[kSecUseAuthenticationUI] as? String,
+            kSecUseAuthenticationUIFail as String
+        )
     }
 
     func testComputesKeychainAccountFromCodexHome() {

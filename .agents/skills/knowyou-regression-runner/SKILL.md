@@ -12,6 +12,7 @@ The runner is Codex-driven: native macOS app flows must be inspected through Cod
 
 - Do not create or rely on Xcode UI test targets or third-party UI automation libraries.
 - Do not reset, delete, or modify the daily `dev.knowyou.app` permissions, Keychain service, UserDefaults, app container, or login items.
+- Never launch an ad-hoc or DerivedData `KnowYou.app` against the daily `com.knowyou.app` Keychain service. A rebuilt ad-hoc signature has a different code identity and can trigger a macOS Keychain password prompt. Use `app-clean` isolation for GUI verification, or a stable signed release for the daily profile.
 - Do not treat `app-clean` as proof of fresh macOS permissions. Only `permission-clean` or `true-clean` can cover first-permission behavior.
 - Do not grant Full Disk Access automatically in pre-push automation. Verify the product guidance and blocked/degraded path instead.
 - Do not modify real Codex, Claude Code, Cursor, Gemini, OpenClaw, browser, OAuth, or external account config during automated regression.
@@ -47,6 +48,7 @@ If the user gives no level, default to `app-clean` pre-push coverage plus the `p
 3. Build or launch the current app using the repo's existing macOS workflow. Prefer `./scripts/run-dev-app.sh` for a development launch when no regression runner script exists yet.
    - If `scripts/regression/run-user-journey.sh` exists, prefer it for regression setup because it writes the run directory, isolated environment, Computer Use prompt, and evidence paths.
    - Use `scripts/regression/run-user-journey.sh --app-clean` for My Diary, Todo, Other Source, My Wiki, and Settings pre-push coverage.
+   - For any Codex GUI inspection of a freshly rebuilt or ad-hoc app, use `--app-clean`; do not invoke the DerivedData executable directly and do not open it with the daily Keychain service.
    - Use `scripts/regression/run-user-journey.sh --permission-clean --reset-new-user-state` when explicitly validating the missing Full Disk Access first-run path for `dev.knowyou.newuser`.
 4. Prepare the selected environment without touching daily `dev.knowyou.app` state.
    - For `permission-clean`, do not run multiple worktrees in parallel because the last install intentionally overwrites `/Applications/KnowYou New User.app`.

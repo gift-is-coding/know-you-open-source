@@ -25,28 +25,7 @@ enum NetworkingActivationRunnerError: LocalizedError {
     }
 }
 
-struct NetworkingMachineCredentials: Equatable, Sendable {
-    let email: String
-    let password: String
-
-    static func generate(handle: String) -> NetworkingMachineCredentials {
-        let safeHandle = handle
-            .lowercased()
-            .unicodeScalars
-            .map { CharacterSet.alphanumerics.contains($0) ? Character($0) : "-" }
-            .reduce(into: "") { $0.append($1) }
-            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-        let prefix = safeHandle.isEmpty ? "person" : safeHandle
-        let suffix = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        let credentialValue = "knw_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
-        return NetworkingMachineCredentials(
-            email: "knw-\(prefix)-\(suffix)@users.knowyou.app",
-            password: credentialValue
-        )
-    }
-}
-
-/// Executes a real platform activation: machine-user sign-in, person/profile sync,
+/// Executes activation after Supabase has verified the human email: person/profile sync,
 /// agent token registration (hash only reaches the platform), and community
 /// membership activation. The plaintext token stays in local activation state.
 struct NetworkingActivationRunner: Sendable {
@@ -54,48 +33,36 @@ struct NetworkingActivationRunner: Sendable {
     var tokenGenerator: @Sendable () -> String = {
         "knw_agent_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
     }
-    var credentialGenerator: @Sendable (_ handle: String) -> NetworkingMachineCredentials = NetworkingMachineCredentials.generate
+    var deviceTokenGenerator: @Sendable () -> String = {
+        "knw_device_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+    }
 
     func activate(
+        session: NetworkingPlatformSession,
+        email: String,
+        deviceID: String,
+        deviceDisplayName: String,
         personName: String,
         handle: String,
-        approvedProfiles: [NetworkingProfileRegistration],
-        previousState: NetworkingActivationState? = nil
+        approvedProfiles: [NetworkingProfileRegistration]
     ) throws -> NetworkingActivationState {
-        if previousState?.isPlatformConnected == true, previousState?.machineCredentials == nil {
-            throw NetworkingActivationRunnerError.missingStoredIdentityCredentials
-        }
-        let credentials = previousState?.machineCredentials ?? credentialGenerator(handle)
-        let session: NetworkingPlatformSession
-        let hasCompletedStoredIdentity = previousState?.userID != nil || (
-            previousState?.isPlatformConnected == true && previousState?.personID.isEmpty == false
-        )
-        if previousState?.machineCredentials != nil, hasCompletedStoredIdentity {
-            do {
-                session = try client.signIn(email: credentials.email, password: credentials.password)
-            } catch let signInError {
-                throw NetworkingActivationRunnerError.activationFailed(
-                    step: "signing in the machine platform identity",
-                    underlying: signInError.localizedDescription
-                )
-            }
-        } else {
-            do {
-                session = try client.signUp(email: credentials.email, password: credentials.password)
-            } catch {
-                throw NetworkingActivationRunnerError.activationFailed(
-                    step: "creating the machine platform identity",
-                    underlying: error.localizedDescription
-                )
-            }
-        }
-
+        let tokenPlaintext = tokenGenerator()
+        let deviceToken = deviceTokenGenerator()
         let personID: String
         do {
-            personID = try client.upsertPerson(session: session, displayName: personName, handle: handle)
+            personID = try client.beginActivation(
+                session: session,
+                displayName: personName,
+                handle: handle,
+                deviceID: deviceID,
+                deviceDisplayName: deviceDisplayName,
+                deviceTokenHash: NetworkingPlatformClient.tokenHash(deviceToken),
+                agentTokenHash: NetworkingPlatformClient.tokenHash(tokenPlaintext),
+                agentTokenLabel: "Local KnowYou Networking agent"
+            )
         } catch {
             throw NetworkingActivationRunnerError.activationFailed(
-                step: "syncing the public person record",
+                step: "authorizing this Mac",
                 underlying: error.localizedDescription
             )
         }
@@ -115,21 +82,6 @@ struct NetworkingActivationRunner: Sendable {
                     underlying: error.localizedDescription
                 )
             }
-        }
-
-        let tokenPlaintext = tokenGenerator()
-        do {
-            try client.registerAgentToken(
-                session: session,
-                personID: personID,
-                tokenPlaintext: tokenPlaintext,
-                label: "Local KnowYou Networking agent"
-            )
-        } catch {
-            throw NetworkingActivationRunnerError.activationFailed(
-                step: "registering the local agent token",
-                underlying: error.localizedDescription
-            )
         }
 
         for registration in approvedProfiles {
@@ -157,24 +109,14 @@ struct NetworkingActivationRunner: Sendable {
             agentTokenPlaintext: tokenPlaintext,
             supabaseURL: client.config.supabaseURL,
             publishableKey: client.config.publishableKey,
-            authEmail: credentials.email,
-            authPassword: credentials.password,
+            authEmail: email,
             mode: .platform,
             userID: session.userID,
             refreshToken: session.refreshToken,
+            deviceID: deviceID,
+            deviceDisplayName: deviceDisplayName,
+            deviceToken: deviceToken,
             profileIDMapping: profileIDMapping
         )
-    }
-}
-
-extension NetworkingActivationState {
-    var machineCredentials: NetworkingMachineCredentials? {
-        guard let authEmail,
-              authEmail.isEmpty == false,
-              let authPassword,
-              authPassword.isEmpty == false else {
-            return nil
-        }
-        return NetworkingMachineCredentials(email: authEmail, password: authPassword)
     }
 }

@@ -158,14 +158,36 @@ describe("networking web copy contract", () => {
     expect(authSource).toContain("profile-required");
   });
 
-  it("implements App handoff auth by setting the Supabase session from a URL fragment and clearing it", () => {
+  it("implements App handoff with a one-time token hash and clears the fragment", () => {
     const handoffSource = readFileSync(join(process.cwd(), "app/auth/handoff/page.tsx"), "utf8");
+    const edgeSource = readFileSync(
+      join(process.cwd(), "supabase/functions/networking-web-handoff/index.ts"),
+      "utf8",
+    );
 
     expect(handoffSource).toContain('"use client"');
-    expect(handoffSource).toContain("setSession");
+    expect(handoffSource).toContain('verifyOtp({\n          token_hash: tokenHash,\n          type: "email"');
+    expect(edgeSource).toContain('generateLink({ type: "magiclink", email })');
     expect(handoffSource).toContain("history.replaceState");
-    expect(handoffSource).toContain("access_token");
-    expect(handoffSource).toContain("refresh_token");
+    expect(handoffSource).toContain("token_hash");
+    expect(handoffSource).toContain("handoff_secret");
+    expect(handoffSource).toContain("networking_bind_web_session");
+    expect(handoffSource).toContain('aria-live="polite"');
+    expect(handoffSource).not.toContain('params.get("access_token")');
+    expect(handoffSource).not.toContain('params.get("refresh_token")');
+  });
+
+  it("binds each generated handoff to the requesting active device", () => {
+    const edgeSource = readFileSync(
+      join(process.cwd(), "supabase/functions/networking-web-handoff/index.ts"),
+      "utf8",
+    );
+
+    expect(edgeSource).toContain("networking_create_web_handoff");
+    expect(edgeSource).toContain("p_device_token_hash");
+    expect(edgeSource).toContain("handoff_secret");
+    expect(edgeSource).not.toContain("refresh_token:");
+    expect(edgeSource).not.toContain("access_token:");
   });
 
   it("keeps /auth as an App-first explanation with no anonymous debug sign-in", () => {

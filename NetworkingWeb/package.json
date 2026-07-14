@@ -13,6 +13,7 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "e2e:networking": "playwright test tests/e2e/networking-agent-lab.spec.ts --project=chromium",
     "e2e:destinations": "playwright test tests/e2e/networking-destinations.spec.ts --project=chromium",
+    "test:integration:device-revocation": "test -n \"$SUPABASE_DB_URL\" && psql \"$SUPABASE_DB_URL\" -v ON_ERROR_STOP=1 -f tests/integration/networking-device-revocation.sql",
     "lint": "eslint .",
     "test": "vitest",
     "typecheck": "tsc --noEmit"

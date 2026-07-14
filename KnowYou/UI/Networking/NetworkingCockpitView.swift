@@ -1,6 +1,18 @@
 import AppKit
 import SwiftUI
 
+private struct NetworkingSessionPersistenceError: LocalizedError {
+    var errorDescription: String? {
+        "The refreshed Networking session could not be saved securely."
+    }
+}
+
+private struct NetworkingSessionRefreshResult: Sendable {
+    let session: NetworkingPlatformSession
+    let state: NetworkingActivationState
+    let wasPersisted: Bool
+}
+
 enum NetworkingCockpitGuidanceStep: String, CaseIterable, Identifiable, Equatable {
     case generateProfile
     case approveAndSync
@@ -177,7 +189,19 @@ struct NetworkingCockpitView: View {
     @State private var autonomyRequestGenerations: [String: Int] = [:]
     @State private var confirmedAutonomyModes: [String: String] = [:]
     @State private var networkingSession: NetworkingPlatformSession?
-    @State private var networkingSessionTask: Task<NetworkingPlatformSession, Error>?
+    @State private var networkingSessionTask: Task<NetworkingSessionRefreshResult, Error>?
+    @State private var networkingSessionTaskGeneration = 0
+    @State private var accountActivationPhase: NetworkingAccountActivationPhase = .introduction
+    @State private var accountActivationError: String?
+    @State private var isAccountActivationWorking = false
+    @State private var verifiedActivationSession: NetworkingPlatformSession?
+    @State private var verifiedActivationEmail: String?
+    @State private var activationConfig: NetworkingPlatformConfig?
+    @State private var activeNetworkingDevices: [NetworkingDeviceRecord] = []
+    @State private var isNetworkingDeviceListReliable = false
+    @State private var pendingActivationDeviceID: String?
+    @State private var deviceListWarning: String?
+    @State private var accountActivationGeneration = 0
 
     private let activePersonName = "Tianfu Wu"
     private let profileGenerationTimeoutNanoseconds: UInt64 = 120_000_000_000
@@ -191,26 +215,50 @@ struct NetworkingCockpitView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header
-                privacyNotice
-                cockpitGuidanceStrip
-                generateProfilesStep
-                communitiesAndMessagesStep
+        Group {
+            if activationStatus.isReady {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        header
+                        privacyNotice
+                        cockpitGuidanceStrip
+                        generateProfilesStep
+                        communitiesAndMessagesStep
+                    }
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 28)
+                }
+                .safeAreaInset(edge: .top) {
+                    Color.clear.frame(height: 18)
+                }
+            } else {
+                ScrollView {
+                    NetworkingAccountActivationView(
+                        phase: accountActivationPhase,
+                        errorMessage: accountActivationError,
+                        warningMessage: accountActivationPhase.progressStep >= 4 ? deviceListWarning : nil,
+                        isDeviceListReliable: isNetworkingDeviceListReliable,
+                        currentDeviceID: pendingActivationDeviceID,
+                        isWorking: isAccountActivationWorking,
+                        onBegin: { accountActivationPhase = .email },
+                        onRequestOTP: requestNetworkingOTP,
+                        onVerifyOTP: verifyNetworkingOTP,
+                        onApproveProfile: approveNetworkingProfile,
+                        onAuthorizeDevice: authorizeNetworkingDevice,
+                        onRevokeDevice: revokeNetworkingDevice,
+                        onRefreshDevices: refreshNetworkingDevices,
+                        onContinue: finishNetworkingActivation
+                    )
+                    .frame(maxWidth: .infinity)
+                }
             }
-            .padding(.horizontal, 28)
-            .padding(.bottom, 28)
-        }
-        .safeAreaInset(edge: .top) {
-            Color.clear.frame(height: 18)
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .accessibilityIdentifier("networking-cockpit-native")
         .task {
             loadDraftState()
             loadApprovalState()
-            ensureActivationState()
+            await ensureActivationState()
             autoGenerateSelectedProfileIfNeeded()
             runDailyProfileUpdateIfNeeded()
         }
@@ -575,18 +623,35 @@ struct NetworkingCockpitView: View {
         return approvedProfileIDs.contains(profileID) ? .active : .paused
     }
 
-    private func ensureActivationState() {
+    private func ensureActivationState() async {
         guard let projectRoot else {
             activationStatus = .failed("My Wiki project is not ready yet.")
+            accountActivationError = "My Wiki project is not ready yet."
             return
         }
 
         let store = NetworkingActivationStateStore()
-        let storedState = store.load(projectRoot: projectRoot)
+        let storedState: NetworkingActivationState?
+        do {
+            if try store.persistedState(projectRoot: projectRoot)?.containsLegacyPlaintextSecrets == true {
+                storedState = try store.discardLegacySecretsForReauthentication(projectRoot: projectRoot)
+                accountActivationError = "Networking security was upgraded. Verify your email once to reconnect this Mac."
+            } else {
+                storedState = try await store.load(projectRoot: projectRoot, timeout: 2)
+            }
+        } catch NetworkingActivationStateStoreError.secureStorageTimedOut {
+            storedState = try? store.persistedState(projectRoot: projectRoot)
+            accountActivationError = "Secure credentials are taking too long to unlock. Verify your email to reconnect this Mac without waiting."
+        } catch {
+            activationStatus = .failed("Networking credentials could not be securely migrated.")
+            accountActivationError = "Networking credentials could not be securely migrated: \(error.localizedDescription)"
+            return
+        }
+        let pendingDevice = try? NetworkingPendingDeviceAuthorizationStore().load(projectRoot: projectRoot)
+        pendingActivationDeviceID = storedState?.deviceID ?? pendingDevice?.deviceID
         if let state = storedState, state.isReadyForPlatformHandoff {
-            activationState = state
-            activationStatus = .ready
-            loadPlatformInbox()
+            try? NetworkingPendingDeviceAuthorizationStore().clear(projectRoot: projectRoot)
+            restorePlatformActivation(state, store: store, projectRoot: projectRoot)
             return
         }
 
@@ -595,68 +660,394 @@ struct NetworkingCockpitView: View {
             activationStatus = .failed(
                 "Networking platform is not configured. Set KNOWYOU_NETWORKING_SUPABASE_URL and KNOWYOU_NETWORKING_SUPABASE_PUBLISHABLE_KEY, or save a platform config for this My Wiki root."
             )
+            accountActivationError = activationStatus.message
             return
         }
-
-        runPlatformActivation(
-            config: backendConfiguration.platformConfig,
-            store: store,
-            projectRoot: projectRoot,
-            previousState: storedState
-        )
+        activationConfig = backendConfiguration.platformConfig
+        activationStatus = .pending
+        accountActivationPhase = .introduction
     }
 
-    private func runPlatformActivation(
-        config: NetworkingPlatformConfig,
+    private func restorePlatformActivation(
+        _ state: NetworkingActivationState,
         store: NetworkingActivationStateStore,
-        projectRoot: URL,
-        previousState: NetworkingActivationState? = nil
+        projectRoot: URL
     ) {
+        guard let refreshToken = state.refreshToken else {
+            pendingActivationDeviceID = state.deviceID
+            accountActivationPhase = .email
+            accountActivationError = "Your secure session is unavailable. Verify your email to reconnect this Mac."
+            activationStatus = .pending
+            return
+        }
         activationStatus = .pending
-        let registrations = approvedProfileRegistrations()
-        let personName = activePersonName
-        let handle = personName.lowercased().replacingOccurrences(of: " ", with: "-")
-
+        let config = NetworkingPlatformConfig(supabaseURL: state.supabaseURL, publishableKey: state.publishableKey)
+        activationConfig = config
         Task {
+            let session: NetworkingPlatformSession
             do {
-                let resumableState: NetworkingActivationState
-                if previousState?.machineCredentials == nil {
-                    let credentials = NetworkingMachineCredentials.generate(handle: handle)
-                    let pendingState = NetworkingActivationState(
-                        isEnabled: false,
-                        personID: "",
-                        agentTokenPlaintext: "",
-                        supabaseURL: config.supabaseURL,
-                        publishableKey: config.publishableKey,
-                        authEmail: credentials.email,
-                        authPassword: credentials.password,
-                        mode: .localSandbox
+                session = try await Task.detached(priority: .userInitiated) {
+                    let client = NetworkingPlatformClient(config: config)
+                    let refreshed = try client.refreshSession(refreshToken: refreshToken)
+                    guard let deviceID = state.deviceID, let deviceToken = state.deviceToken else {
+                        throw NetworkingPlatformClientError.invalidOrExpiredSession
+                    }
+                    try client.bindCurrentDeviceSession(
+                        session: refreshed,
+                        deviceID: deviceID,
+                        deviceToken: deviceToken
                     )
-                    try store.save(pendingState, projectRoot: projectRoot)
-                    resumableState = pendingState
-                } else {
-                    resumableState = previousState!
-                }
-                let state = try await Task.detached(priority: .userInitiated) {
-                    let runner = NetworkingActivationRunner(client: NetworkingPlatformClient(config: config))
-                    return try runner.activate(
-                        personName: personName,
-                        handle: handle,
-                        approvedProfiles: registrations,
-                        previousState: resumableState
-                    )
+                    return refreshed
                 }.value
-                try store.save(state, projectRoot: projectRoot)
+            } catch {
+                guard (error as? NetworkingPlatformClientError)?.requiresReauthentication == true else {
+                    await MainActor.run {
+                        activationState = state
+                        pendingActivationDeviceID = state.deviceID
+                        accountActivationPhase = .sessionRecovery
+                        accountActivationError = "Networking could not be reached. Check your connection and retry; your saved credentials are unchanged."
+                        activationStatus = .pending
+                        isAccountActivationWorking = false
+                    }
+                    return
+                }
+                let disconnectedState = NetworkingActivationState(
+                    isEnabled: false, personID: state.personID, agentTokenPlaintext: "",
+                    supabaseURL: state.supabaseURL, publishableKey: state.publishableKey,
+                    authEmail: state.authEmail, mode: .platform, userID: state.userID,
+                    deviceID: state.deviceID, deviceDisplayName: state.deviceDisplayName,
+                    profileIDMapping: state.profileIDMapping
+                )
+                let cleanupError: Error?
+                do {
+                    try store.save(disconnectedState, projectRoot: projectRoot)
+                    cleanupError = nil
+                } catch {
+                    cleanupError = error
+                }
                 await MainActor.run {
-                    activationState = state
+                    activationState = nil
+                    verifiedActivationSession = nil
+                    verifiedActivationEmail = nil
+                    activeNetworkingDevices = []
+                    isNetworkingDeviceListReliable = false
+                    deviceListWarning = nil
+                    pendingActivationDeviceID = state.deviceID
+                    accountActivationPhase = .email
+                    accountActivationError = cleanupError == nil
+                        ? "Your secure session expired. Verify your email to reconnect this Mac."
+                        : "Your session expired, but old credentials could not be cleared: \(cleanupError!.localizedDescription)"
+                    activationStatus = .pending
+                    isAccountActivationWorking = false
+                }
+                return
+            }
+
+            let refreshedState = state.refreshed(with: session)
+            do {
+                try store.save(refreshedState, projectRoot: projectRoot)
+                await MainActor.run {
+                    activationState = refreshedState
+                    networkingSession = session
+                    accountActivationPhase = .ready
+                    accountActivationError = nil
                     activationStatus = .ready
+                    isAccountActivationWorking = false
                     loadPlatformInbox()
                 }
             } catch {
                 await MainActor.run {
-                    activationStatus = .failed(error.localizedDescription)
+                    activationState = refreshedState
+                    networkingSession = session
+                    accountActivationPhase = .ready
+                    accountActivationError = "Your session was refreshed, but KnowYou could not save it securely. Resolve the local storage issue, then choose Enter Networking to retry."
+                    activationStatus = .pending
+                    isAccountActivationWorking = false
                 }
             }
+        }
+    }
+
+    private func requestNetworkingOTP(email: String) {
+        accountActivationGeneration += 1
+        let generation = accountActivationGeneration
+        guard email.isEmpty == false else {
+            accountActivationPhase = .email
+            accountActivationError = nil
+            verifiedActivationSession = nil
+            verifiedActivationEmail = nil
+            activeNetworkingDevices = []
+            isNetworkingDeviceListReliable = false
+            deviceListWarning = nil
+            isAccountActivationWorking = false
+            return
+        }
+        guard let config = activationConfig else {
+            accountActivationError = "Networking platform configuration is unavailable. Reopen Networking and try again."
+            isAccountActivationWorking = false
+            return
+        }
+        accountActivationError = nil
+        isAccountActivationWorking = true
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try NetworkingPlatformClient(config: config).requestEmailOTP(email: email)
+                }.value
+                await MainActor.run {
+                    guard accountActivationGeneration == generation else { return }
+                    accountActivationPhase = .otp(email: email)
+                    isAccountActivationWorking = false
+                }
+            } catch {
+                await MainActor.run {
+                    guard accountActivationGeneration == generation else { return }
+                    accountActivationError = NetworkingAccountActivationPresentation.safeErrorMessage(error)
+                    isAccountActivationWorking = false
+                }
+            }
+        }
+    }
+
+    private func verifyNetworkingOTP(email: String, token: String) {
+        guard NetworkingAccountActivationPresentation.isValidOTP(token) else {
+            accountActivationError = "Enter the complete six-digit verification code."
+            return
+        }
+        guard let config = activationConfig else {
+            accountActivationError = "Networking platform configuration is unavailable. Reopen Networking and try again."
+            return
+        }
+        accountActivationGeneration += 1
+        let generation = accountActivationGeneration
+        accountActivationError = nil
+        isAccountActivationWorking = true
+        Task {
+            do {
+                let session = try await Task.detached(priority: .userInitiated) {
+                    let client = NetworkingPlatformClient(config: config)
+                    return try client.verifyEmailOTP(email: email, token: token)
+                }.value
+                let deviceResult = await Task.detached(priority: .userInitiated) { () -> Result<[NetworkingDeviceRecord], Error> in
+                    Result { try NetworkingPlatformClient(config: config).listDevices(session: session) }
+                }.value
+                await MainActor.run {
+                    guard accountActivationGeneration == generation else { return }
+                    verifiedActivationSession = session
+                    verifiedActivationEmail = email
+                    activeNetworkingDevices = (try? deviceResult.get()) ?? []
+                    if case .success = deviceResult {
+                        isNetworkingDeviceListReliable = true
+                    } else {
+                        isNetworkingDeviceListReliable = false
+                    }
+                    accountActivationPhase = .profileApproval
+                    if case .failure = deviceResult {
+                        deviceListWarning = "Active devices could not be loaded; the server will still enforce the three-device limit."
+                    } else {
+                        deviceListWarning = nil
+                    }
+                    isAccountActivationWorking = false
+                }
+            } catch {
+                await MainActor.run {
+                    guard accountActivationGeneration == generation else { return }
+                    accountActivationError = NetworkingAccountActivationPresentation.safeErrorMessage(error)
+                    isAccountActivationWorking = false
+                }
+            }
+        }
+    }
+
+    private func approveNetworkingProfile() {
+        guard let config = activationConfig, let session = verifiedActivationSession else {
+            accountActivationError = "Your verified session is unavailable. Return to email verification and try again."
+            return
+        }
+        accountActivationError = nil
+        isAccountActivationWorking = true
+        Task {
+            let result = await Task.detached(priority: .userInitiated) { () -> Result<[NetworkingDeviceRecord], Error> in
+                Result { try NetworkingPlatformClient(config: config).listDevices(session: session) }
+            }.value
+            await MainActor.run {
+                if case let .success(devices) = result {
+                    activeNetworkingDevices = devices
+                    isNetworkingDeviceListReliable = true
+                    deviceListWarning = nil
+                } else {
+                    isNetworkingDeviceListReliable = false
+                    deviceListWarning = "Active devices could not be refreshed; the server will still enforce the three-device limit."
+                }
+                accountActivationError = nil
+                accountActivationPhase = .deviceAuthorization(activeDevices: activeNetworkingDevices)
+                isAccountActivationWorking = false
+            }
+        }
+    }
+
+    private func refreshNetworkingDevices() {
+        guard let config = activationConfig, let session = verifiedActivationSession else {
+            accountActivationError = "Your verified session is unavailable. Return to email verification and try again."
+            return
+        }
+        accountActivationError = nil
+        isAccountActivationWorking = true
+        Task {
+            let result = await Task.detached(priority: .userInitiated) { () -> Result<[NetworkingDeviceRecord], Error> in
+                Result { try NetworkingPlatformClient(config: config).listDevices(session: session) }
+            }.value
+            await MainActor.run {
+                if case let .success(devices) = result {
+                    activeNetworkingDevices = devices
+                    isNetworkingDeviceListReliable = true
+                    deviceListWarning = nil
+                } else {
+                    isNetworkingDeviceListReliable = false
+                    deviceListWarning = "Active devices still could not be loaded. Check your connection and retry."
+                }
+                accountActivationPhase = .deviceAuthorization(activeDevices: activeNetworkingDevices)
+                isAccountActivationWorking = false
+            }
+        }
+    }
+
+    private func authorizeNetworkingDevice(displayName: String) {
+        guard isNetworkingDeviceListReliable else {
+            accountActivationError = "Refresh active devices before authorizing this Mac."
+            return
+        }
+        guard let config = activationConfig,
+              let session = verifiedActivationSession,
+              let projectRoot else {
+            accountActivationError = "Your verified session is unavailable. Return to email verification and try again."
+            isAccountActivationWorking = false
+            return
+        }
+        isAccountActivationWorking = true
+        let registrations = approvedProfileRegistrations()
+        let personName = activePersonName
+        let handle = personName.lowercased().replacingOccurrences(of: " ", with: "-")
+        let deviceID = NetworkingAccountActivationPresentation.deviceID(
+            existing: pendingActivationDeviceID,
+            generated: UUID().uuidString.lowercased()
+        )
+        let email = verifiedActivationEmail ?? ""
+        do {
+            try NetworkingPendingDeviceAuthorizationStore().save(
+                NetworkingPendingDeviceAuthorization(
+                    deviceID: deviceID,
+                    deviceDisplayName: displayName
+                ),
+                projectRoot: projectRoot
+            )
+            pendingActivationDeviceID = deviceID
+        } catch {
+            accountActivationError = "KnowYou could not save this Mac's pending authorization. Check local storage and try again."
+            isAccountActivationWorking = false
+            return
+        }
+        Task {
+            do {
+                let state = try await Task.detached(priority: .userInitiated) {
+                    let runner = NetworkingActivationRunner(client: NetworkingPlatformClient(config: config))
+                    return try runner.activate(
+                        session: session,
+                        email: email,
+                        deviceID: deviceID,
+                        deviceDisplayName: displayName,
+                        personName: personName,
+                        handle: handle,
+                        approvedProfiles: registrations
+                    )
+                }.value
+                await MainActor.run {
+                    activationState = state
+                    pendingActivationDeviceID = state.deviceID
+                    networkingSession = session
+                    accountActivationPhase = .ready
+                    isAccountActivationWorking = false
+                }
+                do {
+                    try NetworkingActivationStateStore().save(state, projectRoot: projectRoot)
+                } catch {
+                    await MainActor.run {
+                        accountActivationError = "This Mac was authorized, but KnowYou could not save its credentials securely. Resolve the local storage issue, then choose Enter Networking to retry."
+                        activationStatus = .pending
+                    }
+                    return
+                }
+                try? NetworkingPendingDeviceAuthorizationStore().clear(projectRoot: projectRoot)
+                await MainActor.run {
+                    accountActivationError = nil
+                    deviceListWarning = nil
+                    isNetworkingDeviceListReliable = true
+                }
+            } catch {
+                await MainActor.run {
+                    accountActivationError = NetworkingAccountActivationPresentation.safeErrorMessage(error)
+                    isAccountActivationWorking = false
+                }
+            }
+        }
+    }
+
+    private func revokeNetworkingDevice(deviceID: String) {
+        guard let config = activationConfig, let session = verifiedActivationSession else {
+            accountActivationError = "Your verified session is unavailable. Return to email verification and try again."
+            isAccountActivationWorking = false
+            return
+        }
+        isAccountActivationWorking = true
+        accountActivationError = nil
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    let client = NetworkingPlatformClient(config: config)
+                    try client.revokeDevice(session: session, deviceID: deviceID)
+                }.value
+                let result = await Task.detached(priority: .userInitiated) { () -> Result<[NetworkingDeviceRecord], Error> in
+                    Result { try NetworkingPlatformClient(config: config).listDevices(session: session) }
+                }.value
+                await MainActor.run {
+                    activeNetworkingDevices.removeAll { $0.deviceID == deviceID }
+                    if case let .success(devices) = result {
+                        activeNetworkingDevices = devices
+                        isNetworkingDeviceListReliable = true
+                        deviceListWarning = nil
+                    } else {
+                        isNetworkingDeviceListReliable = false
+                        deviceListWarning = "The device was revoked, but active devices could not be refreshed. Retry before authorizing this Mac."
+                    }
+                    accountActivationPhase = .deviceAuthorization(activeDevices: activeNetworkingDevices)
+                    isAccountActivationWorking = false
+                }
+            } catch {
+                await MainActor.run {
+                    accountActivationError = NetworkingAccountActivationPresentation.safeErrorMessage(error)
+                    isAccountActivationWorking = false
+                }
+            }
+        }
+    }
+
+    private func finishNetworkingActivation() {
+        if accountActivationPhase == .sessionRecovery,
+           let state = activationState,
+           let projectRoot {
+            accountActivationError = nil
+            isAccountActivationWorking = true
+            restorePlatformActivation(state, store: NetworkingActivationStateStore(), projectRoot: projectRoot)
+            return
+        }
+        guard let state = activationState, state.isReadyForPlatformHandoff, let projectRoot else { return }
+        do {
+            try NetworkingActivationStateStore().save(state, projectRoot: projectRoot)
+            accountActivationError = nil
+            activationStatus = .ready
+            loadPlatformInbox()
+        } catch {
+            accountActivationError = "KnowYou still cannot save the verified session securely. Check local storage and try again."
         }
     }
 
@@ -710,7 +1101,7 @@ struct NetworkingCockpitView: View {
         guard let projectRoot,
               let state = activationState,
               state.isPlatformConnected,
-              let refreshToken = state.refreshToken,
+              state.refreshToken != nil,
               let registration = profileRegistration(for: profile) else {
             return
         }
@@ -722,9 +1113,13 @@ struct NetworkingCockpitView: View {
 
         Task {
             do {
-                let published = try await Task.detached(priority: .userInitiated) { () -> (profileID: String, refreshToken: String) in
-                    let session = try client.refreshSession(refreshToken: refreshToken)
-                    let platformProfileID = try client.upsertProfile(
+                let session = try await refreshAndPersistNetworkingSession(
+                    from: state,
+                    client: client,
+                    projectRoot: projectRoot
+                )
+                let platformProfileID = try await Task.detached(priority: .userInitiated) {
+                    let profileID = try client.upsertProfile(
                         session: session,
                         personID: personID,
                         registration: registration
@@ -733,32 +1128,20 @@ struct NetworkingCockpitView: View {
                         try client.activateMembership(
                             session: session,
                             personID: personID,
-                            profileID: platformProfileID,
+                            profileID: profileID,
                             communityID: communityID
                         )
                     }
-                    return (platformProfileID, session.refreshToken)
+                    return profileID
                 }.value
 
-                var mapping = state.profileIDMapping
-                mapping[registration.localProfileID] = published.profileID
-                let nextState = NetworkingActivationState(
-                    isEnabled: state.isEnabled,
-                    personID: state.personID,
-                    agentTokenPlaintext: state.agentTokenPlaintext,
-                    supabaseURL: state.supabaseURL,
-                    publishableKey: state.publishableKey,
-                    authEmail: state.authEmail,
-                    authPassword: state.authPassword,
-                    mode: state.mode,
-                    userID: state.userID,
-                    refreshToken: published.refreshToken,
-                    profileIDMapping: mapping
-                )
+                var nextState = activationState ?? state.refreshed(with: session)
+                nextState.profileIDMapping[registration.localProfileID] = platformProfileID
+                activationState = nextState
                 try NetworkingActivationStateStore().save(nextState, projectRoot: projectRoot)
                 let nextApprovalState = profileApprovalState.recordingSync(
                     localProfileID: registration.localProfileID,
-                    serverProfileID: published.profileID
+                    serverProfileID: platformProfileID
                 )
                 try NetworkingProfileApprovalStateStore().save(nextApprovalState, projectRoot: projectRoot)
                 await MainActor.run {
@@ -768,9 +1151,14 @@ struct NetworkingCockpitView: View {
                     loadPlatformInbox()
                 }
             } catch {
-                await MainActor.run {
+                if error is NetworkingSessionPersistenceError {
+                    return
+                } else if (error as? NetworkingPlatformClientError)?.requiresReauthentication == true {
+                    transitionToNetworkingReauthentication(from: state, projectRoot: projectRoot)
+                } else {
                     activationStatus = .failed(
-                        "Profile approved locally, but publishing to the platform failed: \(error.localizedDescription)"
+                        "Profile approved locally, but publishing to the platform failed. "
+                            + NetworkingAccountActivationPresentation.safeErrorMessage(error)
                     )
                 }
             }
@@ -951,8 +1339,10 @@ struct NetworkingCockpitView: View {
         openSquareError = nil
         guard let state = activationState,
               state.isReadyForPlatformHandoff,
-              let email = state.authEmail,
-              let password = state.authPassword else {
+              state.refreshToken != nil,
+              let deviceID = state.deviceID,
+              let deviceToken = state.deviceToken,
+              let projectRoot else {
             openSquareError = "Open Square needs a refreshed platform identity from the latest Networking activation."
             return
         }
@@ -972,26 +1362,129 @@ struct NetworkingCockpitView: View {
 
         Task {
             do {
-                let url = try await Task.detached(priority: .userInitiated) {
-                    let session = try client.signIn(email: email, password: password)
-                    return try builder.handoffURL(session: session, platformID: platformID)
+                let session = try await refreshAndPersistNetworkingSession(
+                    from: state,
+                    client: client,
+                    projectRoot: projectRoot
+                )
+                let handoff = try await Task.detached(priority: .userInitiated) {
+                    try client.createWebHandoff(
+                        session: session,
+                        deviceID: deviceID,
+                        deviceToken: deviceToken
+                    )
                 }.value
-                await MainActor.run {
-                    _ = NSWorkspace.shared.open(url)
-                }
+                let url = try builder.handoffURL(handoff: handoff, platformID: platformID)
+                _ = NSWorkspace.shared.open(url)
             } catch {
-                await MainActor.run {
+                if error is NetworkingSessionPersistenceError {
+                    return
+                } else if (error as? NetworkingPlatformClientError)?.requiresReauthentication == true {
+                    transitionToNetworkingReauthentication(from: state, projectRoot: projectRoot)
+                } else {
                     openSquareError = "Could not open Networking Square: \(error.localizedDescription)"
                 }
             }
         }
     }
 
+    private func refreshAndPersistNetworkingSession(
+        from state: NetworkingActivationState,
+        client: NetworkingPlatformClient,
+        projectRoot: URL
+    ) async throws -> NetworkingPlatformSession {
+        let task: Task<NetworkingSessionRefreshResult, Error>
+        let generation: Int
+        if let existingTask = networkingSessionTask {
+            task = existingTask
+            generation = networkingSessionTaskGeneration
+        } else {
+            guard let refreshToken = state.refreshToken else {
+                throw NetworkingPlatformClientError.invalidOrExpiredSession
+            }
+            networkingSessionTaskGeneration += 1
+            generation = networkingSessionTaskGeneration
+            task = Task.detached(priority: .userInitiated) {
+                let session = try client.refreshSession(refreshToken: refreshToken)
+                let refreshedState = state.refreshed(with: session)
+                do {
+                    try NetworkingActivationStateStore().save(refreshedState, projectRoot: projectRoot)
+                    return NetworkingSessionRefreshResult(session: session, state: refreshedState, wasPersisted: true)
+                } catch {
+                    return NetworkingSessionRefreshResult(session: session, state: refreshedState, wasPersisted: false)
+                }
+            }
+            networkingSessionTask = task
+        }
+        do {
+            let result = try await task.value
+            if networkingSessionTaskGeneration == generation {
+                networkingSessionTask = nil
+            }
+            activationState = result.state
+            networkingSession = result.session
+            if result.wasPersisted == false {
+                accountActivationPhase = .ready
+                accountActivationError = "Your session was refreshed, but KnowYou could not save it securely. Resolve the local storage issue, then choose Enter Networking to retry."
+                activationStatus = .pending
+                isAccountActivationWorking = false
+                throw NetworkingSessionPersistenceError()
+            }
+            return result.session
+        } catch {
+            if networkingSessionTaskGeneration == generation {
+                networkingSessionTask = nil
+            }
+            throw error
+        }
+    }
+
+    private func transitionToNetworkingReauthentication(
+        from state: NetworkingActivationState,
+        projectRoot: URL
+    ) {
+        let disconnectedState = NetworkingActivationState(
+            isEnabled: false,
+            personID: state.personID,
+            agentTokenPlaintext: "",
+            supabaseURL: state.supabaseURL,
+            publishableKey: state.publishableKey,
+            authEmail: state.authEmail,
+            mode: .platform,
+            userID: state.userID,
+            deviceID: state.deviceID,
+            deviceDisplayName: state.deviceDisplayName,
+            profileIDMapping: state.profileIDMapping
+        )
+        let cleanupError: Error?
+        do {
+            try NetworkingActivationStateStore().save(disconnectedState, projectRoot: projectRoot)
+            cleanupError = nil
+        } catch {
+            cleanupError = error
+        }
+        activationState = nil
+        networkingSession = nil
+        networkingSessionTask = nil
+        verifiedActivationSession = nil
+        verifiedActivationEmail = nil
+        activeNetworkingDevices = []
+        isNetworkingDeviceListReliable = false
+        deviceListWarning = nil
+        pendingActivationDeviceID = state.deviceID
+        accountActivationPhase = .email
+        accountActivationError = cleanupError == nil
+            ? "Your secure session expired. Verify your email to reconnect this Mac."
+            : "Your session expired, but old credentials could not be cleared: \(cleanupError!.localizedDescription)"
+        activationStatus = .pending
+        isAccountActivationWorking = false
+    }
+
     private func updateAutonomyMode(_ mode: String, platform: NetworkingPlatformConfiguration) {
         autonomyErrors[platform.id] = nil
         guard let state = activationState,
-              let email = state.authEmail,
-              let password = state.authPassword,
+              state.refreshToken != nil,
+              let projectRoot,
               let localProfile = platform.assignedProfile(in: profiles),
               let platformProfileID = state.platformProfileID(forLocalProfileID: localProfile.id) else {
             autonomyErrors[platform.id] = "Autonomy mode needs an active platform profile."
@@ -1017,19 +1510,11 @@ struct NetworkingCockpitView: View {
                 if let cachedSession {
                     session = cachedSession
                 } else {
-                    let sessionTask = await MainActor.run { () -> Task<NetworkingPlatformSession, Error> in
-                        if let networkingSessionTask { return networkingSessionTask }
-                        let task = Task.detached(priority: .userInitiated) {
-                            try client.signIn(email: email, password: password)
-                        }
-                        networkingSessionTask = task
-                        return task
-                    }
-                    session = try await sessionTask.value
-                    await MainActor.run {
-                        networkingSession = session
-                        networkingSessionTask = nil
-                    }
+                    session = try await refreshAndPersistNetworkingSession(
+                        from: state,
+                        client: client,
+                        projectRoot: projectRoot
+                    )
                 }
                 let shouldSend = await MainActor.run {
                     autonomyModes[platform.id] == mode && autonomyRequestGenerations[platform.id] == generation
@@ -1048,10 +1533,11 @@ struct NetworkingCockpitView: View {
                 }
             } catch {
                 await MainActor.run {
-                    networkingSessionTask = nil
-                    if let platformError = error as? NetworkingPlatformClientError,
-                       case .httpError(status: 401, body: _) = platformError {
-                        networkingSession = nil
+                    if error is NetworkingSessionPersistenceError {
+                        return
+                    } else if (error as? NetworkingPlatformClientError)?.requiresReauthentication == true {
+                        transitionToNetworkingReauthentication(from: state, projectRoot: projectRoot)
+                        return
                     }
                     guard autonomyModes[platform.id] == mode,
                           autonomyRequestGenerations[platform.id] == generation else { return }

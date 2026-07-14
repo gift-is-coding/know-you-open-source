@@ -61,6 +61,9 @@ if [[ -z "$run_id" ]]; then
   run_id="$(date +%Y%m%dT%H%M%S)-$mode"
 fi
 
+regression_bundle_suffix="$(printf '%s' "$run_id" | tr -c '[:alnum:].-' '-')"
+regression_bundle_identifier="dev.knowyou.regression.$regression_bundle_suffix"
+
 run_dir="$repo_root/build/regression/$run_id"
 profile_root="$run_dir/profile"
 evidence_dir="$run_dir/evidence"
@@ -79,8 +82,8 @@ json_escape() {
 
 write_env_file() {
   local environment="$1"
-  local suite="dev.knowyou.regression.$run_id"
-  local keychain_service="dev.knowyou.regression.$run_id"
+  local suite="$regression_bundle_identifier"
+  local keychain_service="$regression_bundle_identifier"
 
   cat >"$env_file" <<EOF
 export KNOWYOU_REGRESSION_MODE=1
@@ -189,6 +192,7 @@ build_app_clean_app() {
     -scheme KnowYou \
     -destination 'platform=macOS' \
     -derivedDataPath "$derived_data" \
+    PRODUCT_BUNDLE_IDENTIFIER="$regression_bundle_identifier" \
     CODE_SIGNING_ALLOWED=NO \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGN_IDENTITY=
@@ -196,7 +200,7 @@ build_app_clean_app() {
 
 launch_app_clean_app() {
   source "$env_file"
-  env \
+  nohup env \
     KNOWYOU_REGRESSION_MODE="$KNOWYOU_REGRESSION_MODE" \
     KNOWYOU_REGRESSION_ENVIRONMENT="$KNOWYOU_REGRESSION_ENVIRONMENT" \
     KNOWYOU_PROFILE_ROOT="$KNOWYOU_PROFILE_ROOT" \
@@ -204,7 +208,7 @@ launch_app_clean_app() {
     KNOWYOU_KEYCHAIN_SERVICE="$KNOWYOU_KEYCHAIN_SERVICE" \
     KYUpdateMetadataURL="$KYUpdateMetadataURL" \
     KYUpdateChannel="$KYUpdateChannel" \
-    "$app_clean_app_path/Contents/MacOS/KnowYou" >"$run_dir/app.stdout.log" 2>"$run_dir/app.stderr.log" &
+    "$app_clean_app_path/Contents/MacOS/KnowYou" >"$run_dir/app.stdout.log" 2>"$run_dir/app.stderr.log" </dev/null &
   echo $! >"$run_dir/app.pid"
 }
 

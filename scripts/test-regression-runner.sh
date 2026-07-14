@@ -37,12 +37,15 @@ test_file "$app_clean_run_dir/assertions.md"
 assert_contains "$app_clean_run_dir/env.sh" "KNOWYOU_PROFILE_ROOT="
 assert_contains "$app_clean_run_dir/env.sh" "KNOWYOU_USER_DEFAULTS_SUITE=dev.knowyou.regression.$app_clean_run_id"
 assert_contains "$app_clean_run_dir/env.sh" "KNOWYOU_KEYCHAIN_SERVICE=dev.knowyou.regression.$app_clean_run_id"
+assert_contains "$runner" 'PRODUCT_BUNDLE_IDENTIFIER="$regression_bundle_identifier"'
 assert_contains "$app_clean_run_dir/computer-use-prompt.md" "Codex GUI / Computer Use"
 assert_contains "$app_clean_run_dir/computer-use-prompt.md" "02-my-diary-reader-refresh"
 assert_contains "$app_clean_run_dir/computer-use-prompt.md" "06-engine-settings-status"
 assert_contains "$app_clean_run_dir/computer-use-prompt.md" "Do not drive the UI through XCUITest"
 assert_contains "$app_clean_run_dir/run-metadata.json" "\"environment\": \"app-clean\""
 assert_contains "$app_clean_run_dir/assertions.md" "daily dev.knowyou.app state untouched"
+assert_contains "$runner" "nohup env"
+assert_contains "$runner" "</dev/null &"
 
 if [[ -d "$repo_root/.derived-data/regression/$app_clean_run_id" ]]; then
   echo "Dry run should not build derived data." >&2

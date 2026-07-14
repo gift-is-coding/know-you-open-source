@@ -4,6 +4,7 @@ import XCTest
 final class MyWikiAgentConfigurationTests: XCTestCase {
     func testBundledMyWikiSkillHasDiscoverableFrontmatter() throws {
         let skillDirectory = MyWikiAgentConfigurationInstaller.defaultMyWikiSkillSourceDirectory()
+        XCTAssertTrue(skillDirectory.path.contains("KnowYou.app/Contents/Resources/my-wiki-context"))
         let skill = try String(contentsOf: skillDirectory.appending(path: "SKILL.md"), encoding: .utf8)
 
         XCTAssertTrue(skill.hasPrefix("---\nname: my-wiki-context\n"))

@@ -17,6 +17,7 @@ struct AppSupportMetadata {
 
 struct AppRuntimeProfile {
     static let newUserBundleIdentifier = "dev.knowyou.newuser"
+    static let regressionBundleIdentifierPrefix = "dev.knowyou.regression."
     static let profileRootEnvironmentKey = "KNOWYOU_PROFILE_ROOT"
     static let userDefaultsSuiteEnvironmentKey = "KNOWYOU_USER_DEFAULTS_SUITE"
     static let keychainServiceEnvironmentKey = "KNOWYOU_KEYCHAIN_SERVICE"
@@ -38,6 +39,12 @@ struct AppRuntimeProfile {
             displayName = "KnowYou New User"
             supportDirectoryName = "KnowYou New User"
             defaultKeychainService = Self.newUserBundleIdentifier
+        } else if let bundleIdentifier,
+                  bundleIdentifier.hasPrefix(Self.regressionBundleIdentifierPrefix) {
+            let suffix = String(bundleIdentifier.dropFirst(Self.regressionBundleIdentifierPrefix.count))
+            displayName = "KnowYou Regression"
+            supportDirectoryName = "KnowYou Regression-\(suffix)"
+            defaultKeychainService = bundleIdentifier
         } else {
             displayName = "KnowYou"
             supportDirectoryName = "KnowYou"

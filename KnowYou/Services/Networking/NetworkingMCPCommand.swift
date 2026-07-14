@@ -17,7 +17,7 @@ struct NetworkingMCPCommand {
     ) -> NetworkingMCPCommandResult {
         do {
             let projectRoot = try parseProjectRoot(arguments: arguments)
-            let storedState = activationState ?? NetworkingActivationStateStore().load(projectRoot: projectRoot)
+            let storedState = try activationState ?? NetworkingActivationStateStore().load(projectRoot: projectRoot)
             let output = input
                 .components(separatedBy: .newlines)
                 .compactMap { line -> String? in
@@ -56,7 +56,13 @@ struct NetworkingMCPCommand {
             return 2
         }
 
-        let activationState = NetworkingActivationStateStore().load(projectRoot: projectRoot)
+        let activationState: NetworkingActivationState?
+        do {
+            activationState = try NetworkingActivationStateStore().load(projectRoot: projectRoot)
+        } catch {
+            write("Failed to load Networking credentials: \(error.localizedDescription)\n", to: errorHandle)
+            return 2
+        }
         while let line = input() {
             guard let response = responseLine(
                 for: line,

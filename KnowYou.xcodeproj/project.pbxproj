@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		910001010000000000000002 /* AppIcon.appiconset in Resources */ = {isa = PBXBuildFile; fileRef = 910001010000000000000003 /* AppIcon.appiconset */; };
+		910001010000000000000005 /* my-wiki-context in Resources */ = {isa = PBXBuildFile; fileRef = 910001010000000000000004 /* my-wiki-context */; };
+		910001010000000000000006 /* my-wiki-context in Resources */ = {isa = PBXBuildFile; fileRef = 910001010000000000000004 /* my-wiki-context */; };
+		910001010000000000000008 /* regression in Resources */ = {isa = PBXBuildFile; fileRef = 910001010000000000000007 /* regression */; };
+		91000101000000000000000A /* install-new-user-app.sh in Resources */ = {isa = PBXBuildFile; fileRef = 910001010000000000000009 /* install-new-user-app.sh */; };
+		91000101000000000000000C /* FullDiskAccessAddGuide.imageset in Resources */ = {isa = PBXBuildFile; fileRef = 91000101000000000000000B /* FullDiskAccessAddGuide.imageset */; };
 		5CD500F8D621611083D406AD /* KnowledgeOntologyPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7177E38EFF3DA333280EFBA /* KnowledgeOntologyPanel.swift */; };
 		830000010000000000000001 /* MyWikiProjectExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830001010000000000000001 /* MyWikiProjectExporter.swift */; };
 		830000010000000000000002 /* MyWikiMarkdownStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 830001010000000000000002 /* MyWikiMarkdownStoreTests.swift */; };
@@ -181,6 +187,7 @@
 		BB0000010000000000000004 /* NetworkingActivationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000004 /* NetworkingActivationService.swift */; };
 		BB0000010000000000000005 /* NetworkingMCPCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000005 /* NetworkingMCPCommand.swift */; };
 		BB0000010000000000000006 /* NetworkingCockpitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000006 /* NetworkingCockpitView.swift */; };
+		BB0000010000000000000016 /* NetworkingAccountActivationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000016 /* NetworkingAccountActivationView.swift */; };
 		BB0000010000000000000007 /* NetworkingCockpitPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000007 /* NetworkingCockpitPresentationTests.swift */; };
 		BB0000010000000000000008 /* NetworkingPlatformClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000008 /* NetworkingPlatformClient.swift */; };
 		BB0000010000000000000009 /* NetworkingActivationRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0001010000000000000009 /* NetworkingActivationRunner.swift */; };
@@ -254,6 +261,11 @@
 		A10001010000000000000008 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A10001010000000000000009 /* MainWindowViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowViewModelTests.swift; sourceTree = "<group>"; };
 		910001010000000000000001 /* AppIconAssetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconAssetTests.swift; sourceTree = "<group>"; };
+		910001010000000000000003 /* AppIcon.appiconset */ = {isa = PBXFileReference; explicitFileType = folder; path = ../KnowYou/Assets.xcassets/AppIcon.appiconset; sourceTree = "<group>"; };
+		910001010000000000000004 /* my-wiki-context */ = {isa = PBXFileReference; explicitFileType = folder; path = ../.agents/skills/my-wiki-context; sourceTree = "<group>"; };
+		910001010000000000000007 /* regression */ = {isa = PBXFileReference; explicitFileType = folder; path = ../docs/regression; sourceTree = "<group>"; };
+		910001010000000000000009 /* install-new-user-app.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = ../scripts/install-new-user-app.sh; sourceTree = "<group>"; };
+		91000101000000000000000B /* FullDiskAccessAddGuide.imageset */ = {isa = PBXFileReference; explicitFileType = folder; path = ../KnowYou/Assets.xcassets/FullDiskAccessAddGuide.imageset; sourceTree = "<group>"; };
 		A1000101000000000000000A /* PrivacyFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyFilterTests.swift; sourceTree = "<group>"; };
 		A1000101000000000000000B /* EventRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventRecord.swift; sourceTree = "<group>"; };
 		A1000101000000000000000C /* PrivacyFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyFilter.swift; sourceTree = "<group>"; };
@@ -373,6 +385,7 @@
 		BB0001010000000000000004 /* NetworkingActivationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingActivationService.swift; sourceTree = "<group>"; };
 		BB0001010000000000000005 /* NetworkingMCPCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingMCPCommand.swift; sourceTree = "<group>"; };
 		BB0001010000000000000006 /* NetworkingCockpitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingCockpitView.swift; sourceTree = "<group>"; };
+		BB0001010000000000000016 /* NetworkingAccountActivationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingAccountActivationView.swift; sourceTree = "<group>"; };
 		BB0001010000000000000007 /* NetworkingCockpitPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingCockpitPresentationTests.swift; sourceTree = "<group>"; };
 		BB0001010000000000000008 /* NetworkingPlatformClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingPlatformClient.swift; sourceTree = "<group>"; };
 		BB0001010000000000000009 /* NetworkingActivationRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingActivationRunner.swift; sourceTree = "<group>"; };
@@ -466,6 +479,7 @@
 			isa = PBXGroup;
 			children = (
 				BB0001010000000000000006 /* NetworkingCockpitView.swift */,
+				BB0001010000000000000016 /* NetworkingAccountActivationView.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -572,6 +586,11 @@
 		A10000060000000000000010 /* KnowYouTests */ = {
 			isa = PBXGroup;
 			children = (
+				910001010000000000000003 /* AppIcon.appiconset */,
+				910001010000000000000004 /* my-wiki-context */,
+				910001010000000000000007 /* regression */,
+				910001010000000000000009 /* install-new-user-app.sh */,
+				91000101000000000000000B /* FullDiskAccessAddGuide.imageset */,
 				A10001010000000000000009 /* MainWindowViewModelTests.swift */,
 				910001010000000000000001 /* AppIconAssetTests.swift */,
 				A1000101000000000000000A /* PrivacyFilterTests.swift */,
@@ -967,6 +986,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				DB2772FFED33760F5D742D9B /* Assets.xcassets in Resources */,
+				910001010000000000000006 /* my-wiki-context in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -974,6 +994,11 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				910001010000000000000002 /* AppIcon.appiconset in Resources */,
+				910001010000000000000005 /* my-wiki-context in Resources */,
+				910001010000000000000008 /* regression in Resources */,
+				91000101000000000000000A /* install-new-user-app.sh in Resources */,
+				91000101000000000000000C /* FullDiskAccessAddGuide.imageset in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1113,6 +1138,7 @@
 				E60000010000000000000008 /* MyWikiAgentConnectionSheet.swift in Sources */,
 				E60000010000000000000009 /* MyWikiAgentInstructionLauncher.swift in Sources */,
 				BB0000010000000000000006 /* NetworkingCockpitView.swift in Sources */,
+				BB0000010000000000000016 /* NetworkingAccountActivationView.swift in Sources */,
 				C9F400816BDCE324EFF86EE3 /* KnowledgeOntologyProjectExporter.swift in Sources */,
 				5CD500F8D621611083D406AD /* KnowledgeOntologyPanel.swift in Sources */,
 			);

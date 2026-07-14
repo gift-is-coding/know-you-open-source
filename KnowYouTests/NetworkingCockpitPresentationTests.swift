@@ -21,6 +21,29 @@ private final class NetworkingTestKeychain: KeychainStoring, @unchecked Sendable
     }
 }
 
+private final class BlockingNetworkingTestKeychain: KeychainStoring, @unchecked Sendable {
+    let loadStarted = DispatchSemaphore(value: 0)
+    let unblockLoad = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var shouldBlockNextLoad = true
+
+    func save(_ value: String, forKey key: String, service: String) {}
+
+    func load(forKey key: String, service: String) -> String? {
+        lock.lock()
+        let shouldBlock = shouldBlockNextLoad
+        shouldBlockNextLoad = false
+        lock.unlock()
+        if shouldBlock {
+            loadStarted.signal()
+            unblockLoad.wait()
+        }
+        return nil
+    }
+
+    func delete(forKey key: String, service: String) {}
+}
+
 final class NetworkingCockpitPresentationTests: XCTestCase {
     func testProfileDraftRequiresHumanApprovalBeforePublicSync() {
         let draft = NetworkingProfileDraft(
@@ -670,7 +693,7 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertEqual(activation.agentTokenLabel, "Local KnowYou Networking agent")
     }
 
-    func testActivationStateStorePersistsEnabledStateForNetworkingMCP() throws {
+    func testActivationStateStoreKeepsVerifiedSecretsOutOfActivationJSON() throws {
         let projectRoot = temporaryDirectory().appending(path: "KnowYouContext", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
         let state = NetworkingActivationState(
@@ -679,18 +702,40 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
             agentTokenPlaintext: "knw_agent_real_user",
             supabaseURL: URL(string: "https://local.knowyou.invalid")!,
             publishableKey: "local-dev",
-            authEmail: "knw-person@users.knowyou.app",
-            authPassword: Self.machinePassphrase
+            authEmail: "person@example.com",
+            mode: .platform,
+            userID: "user-uuid",
+            refreshToken: "refresh-token",
+            deviceID: "device-uuid",
+            deviceDisplayName: "Tianfu's Mac",
+            deviceToken: "device-token"
         )
 
         let keychain = NetworkingTestKeychain()
         let store = NetworkingActivationStateStore(keychain: keychain, keychainService: "networking-tests")
         try store.save(state, projectRoot: projectRoot)
 
-        XCTAssertEqual(store.load(projectRoot: projectRoot), state)
+        XCTAssertEqual(try store.load(projectRoot: projectRoot), state)
         let disk = try String(contentsOf: store.stateURL(projectRoot: projectRoot), encoding: .utf8)
         XCTAssertFalse(disk.contains("knw_agent_real_user"))
-        XCTAssertFalse(disk.contains(Self.machinePassphrase))
+        XCTAssertFalse(disk.contains("refresh-token"))
+        XCTAssertFalse(disk.contains("device-token"))
+        XCTAssertFalse(disk.contains("authPassword"))
+    }
+
+    func testPendingDeviceAuthorizationPersistsAcrossRetryAndCanBeCleared() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouPendingDevice", directoryHint: .isDirectory)
+        let store = NetworkingPendingDeviceAuthorizationStore()
+        let pending = NetworkingPendingDeviceAuthorization(
+            deviceID: "pending-device-uuid",
+            deviceDisplayName: "Tianfu's Mac"
+        )
+
+        try store.save(pending, projectRoot: projectRoot)
+
+        XCTAssertEqual(try store.load(projectRoot: projectRoot), pending)
+        try store.clear(projectRoot: projectRoot)
+        XCTAssertNil(try store.load(projectRoot: projectRoot))
     }
 
     func testActivationStateStoreDoesNotResurrectClearedKeychainSecrets() throws {
@@ -718,6 +763,86 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertNil(loaded.refreshToken)
     }
 
+    func testTimedOutActivationLoadCannotOverwriteFreshCredentialsWhenItEventuallyReturns() async throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouBlockedKeychain", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: projectRoot, withIntermediateDirectories: true)
+        let staleState = NetworkingActivationState(
+            isEnabled: true, personID: "stale-person", agentTokenPlaintext: "stale-agent-token",
+            supabaseURL: URL(string: "https://local.knowyou.invalid")!, publishableKey: "local-dev",
+            authEmail: "old@example.com", mode: .platform, userID: "stale-user",
+            refreshToken: "stale-refresh", deviceID: "stale-device", deviceToken: "stale-device-token"
+        )
+        let seedStore = NetworkingActivationStateStore(
+            keychain: NetworkingTestKeychain(),
+            keychainService: "networking-seed-tests"
+        )
+        try seedStore.save(staleState, projectRoot: projectRoot)
+
+        let keychain = BlockingNetworkingTestKeychain()
+        let store = NetworkingActivationStateStore(keychain: keychain, keychainService: "networking-tests")
+        let loadTask = Task {
+            try await store.load(projectRoot: projectRoot, timeout: 0.05)
+        }
+        XCTAssertEqual(keychain.loadStarted.wait(timeout: .now() + 1), .success)
+
+        do {
+            _ = try await loadTask.value
+            XCTFail("Expected secure storage timeout")
+        } catch {
+            XCTAssertEqual(error as? NetworkingActivationStateStoreError, .secureStorageTimedOut)
+        }
+
+        let freshState = NetworkingActivationState(
+            isEnabled: true, personID: "fresh-person", agentTokenPlaintext: "fresh-agent-token",
+            supabaseURL: URL(string: "https://local.knowyou.invalid")!, publishableKey: "local-dev",
+            authEmail: "fresh@example.com", mode: .platform, userID: "fresh-user",
+            refreshToken: "fresh-refresh", deviceID: "fresh-device", deviceToken: "fresh-device-token"
+        )
+        let freshStore = NetworkingActivationStateStore(
+            keychain: NetworkingTestKeychain(),
+            keychainService: "networking-fresh-tests"
+        )
+        try freshStore.save(freshState, projectRoot: projectRoot)
+        keychain.unblockLoad.signal()
+        try await Task.sleep(for: .milliseconds(100))
+
+        let persisted = try XCTUnwrap(freshStore.persistedState(projectRoot: projectRoot))
+        XCTAssertEqual(persisted.personID, "fresh-person")
+        XCTAssertEqual(persisted.deviceID, "fresh-device")
+    }
+
+    func testLegacyPlaintextSecretsAreDiscardedBeforeEmailReauthentication() throws {
+        let projectRoot = temporaryDirectory().appending(path: "KnowYouLegacySecrets", directoryHint: .isDirectory)
+        let store = NetworkingActivationStateStore(
+            keychain: NetworkingTestKeychain(),
+            keychainService: "networking-tests"
+        )
+        let legacyState = NetworkingActivationState(
+            isEnabled: true, personID: "legacy-person", agentTokenPlaintext: "legacy-agent-token",
+            supabaseURL: URL(string: "https://local.knowyou.invalid")!, publishableKey: "local-dev",
+            authEmail: "legacy@example.com", authPassword: "legacy-password", mode: .platform,
+            userID: "legacy-user", refreshToken: "legacy-refresh", deviceID: "legacy-device",
+            deviceToken: "legacy-device-token"
+        )
+        let stateURL = store.stateURL(projectRoot: projectRoot)
+        try store.save(legacyState, projectRoot: projectRoot)
+        try JSONEncoder().encode(legacyState).write(to: stateURL, options: .atomic)
+
+        let sanitized = try XCTUnwrap(store.discardLegacySecretsForReauthentication(projectRoot: projectRoot))
+        let reloaded = try XCTUnwrap(store.load(projectRoot: projectRoot))
+        let disk = try String(contentsOf: stateURL, encoding: .utf8)
+
+        XCTAssertFalse(sanitized.containsLegacyPlaintextSecrets)
+        XCTAssertEqual(sanitized.deviceID, "legacy-device")
+        XCTAssertFalse(disk.contains("legacy-agent-token"))
+        XCTAssertFalse(disk.contains("legacy-password"))
+        XCTAssertFalse(disk.contains("legacy-refresh"))
+        XCTAssertFalse(disk.contains("legacy-device-token"))
+        XCTAssertTrue(reloaded.agentTokenPlaintext.isEmpty)
+        XCTAssertNil(reloaded.refreshToken)
+        XCTAssertNil(reloaded.deviceToken)
+    }
+
     func testActivationStateRequiresPlatformCredentialsBeforeReadyHandoff() {
         let sandbox = NetworkingActivationState(
             isEnabled: true,
@@ -740,6 +865,132 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         XCTAssertFalse(sandbox.isReadyForPlatformHandoff)
         XCTAssertFalse(missingCredentials.isReadyForPlatformHandoff)
         XCTAssertTrue(ready.isReadyForPlatformHandoff)
+    }
+
+    func testAccountActivationPhaseProgressAndCopy() {
+        XCTAssertEqual(NetworkingAccountActivationPhase.introduction.progressStep, 0)
+        XCTAssertEqual(NetworkingAccountActivationPhase.email.progressStep, 1)
+        XCTAssertEqual(NetworkingAccountActivationPhase.otp(email: "person@example.com").progressStep, 2)
+        XCTAssertEqual(NetworkingAccountActivationPhase.profileApproval.progressStep, 3)
+        XCTAssertEqual(NetworkingAccountActivationPhase.deviceAuthorization(activeDevices: []).progressStep, 4)
+        XCTAssertEqual(NetworkingAccountActivationPhase.ready.progressStep, 5)
+        XCTAssertEqual(NetworkingAccountActivationPhase.sessionRecovery.progressStep, 5)
+        XCTAssertTrue(NetworkingAccountActivationPhase.introduction.privacyCopy.contains("stay on this Mac"))
+        XCTAssertTrue(NetworkingAccountActivationPhase.profileApproval.privacyCopy.contains("Only approved profile information"))
+    }
+
+    func testAccountActivationIntroductionExplainsValueAndRegistrationReason() {
+        let presentation = NetworkingAccountActivationIntroduction.presentation
+
+        XCTAssertEqual(presentation.destinations.map(\.title), ["Friends", "Career"])
+        XCTAssertTrue(presentation.destinations[0].summary.contains("people"))
+        XCTAssertTrue(presentation.destinations[1].summary.contains("opportunities"))
+        XCTAssertTrue(presentation.registrationReason.contains("email"))
+        XCTAssertTrue(presentation.registrationReason.contains("devices"))
+    }
+
+    func testOTPInputAcceptsExactlySixDigitsAndNormalizesPaste() {
+        XCTAssertEqual(NetworkingAccountActivationPresentation.normalizedOTP(" 12-34 56 "), "123456")
+        XCTAssertTrue(NetworkingAccountActivationPresentation.isValidOTP("123456"))
+        XCTAssertFalse(NetworkingAccountActivationPresentation.isValidOTP("12345"))
+        XCTAssertFalse(NetworkingAccountActivationPresentation.isValidOTP("12345a"))
+    }
+
+    func testReauthenticationReusesExistingDeviceID() {
+        XCTAssertEqual(
+            NetworkingAccountActivationPresentation.deviceID(existing: "device-existing", generated: "device-new"),
+            "device-existing"
+        )
+        XCTAssertEqual(
+            NetworkingAccountActivationPresentation.deviceID(existing: nil, generated: "device-new"),
+            "device-new"
+        )
+    }
+
+    func testActivationErrorsDoNotExposeBackendResponseBodies() {
+        let raw = NetworkingPlatformClientError.httpError(status: 500, body: "secret database detail")
+        let message = NetworkingAccountActivationPresentation.safeErrorMessage(raw)
+
+        XCTAssertFalse(message.contains("secret database detail"))
+        XCTAssertTrue(message.contains("Please try again"))
+        XCTAssertTrue(NetworkingAccountActivationPresentation.safeErrorMessage(NetworkingPlatformClientError.deviceLimitReached).contains("three active devices"))
+    }
+
+    func testDeviceCapacityPresentationDoesNotReportUnknownCountAsZero() {
+        XCTAssertEqual(
+            NetworkingAccountActivationPresentation.deviceCapacityMessage(activeCount: 0, isReliable: false),
+            "Device usage is temporarily unavailable. Retry before authorizing this Mac."
+        )
+        XCTAssertFalse(
+            NetworkingAccountActivationPresentation.canAuthorizeDevice(
+                activeCount: 0,
+                isReliable: false,
+                deviceName: "My Mac"
+            )
+        )
+        XCTAssertTrue(
+            NetworkingAccountActivationPresentation.canAuthorizeDevice(
+                activeCount: 2,
+                isReliable: true,
+                deviceName: "My Mac"
+            )
+        )
+        XCTAssertFalse(
+            NetworkingAccountActivationPresentation.canAuthorizeDevice(
+                activeCount: 3,
+                isReliable: true,
+                deviceName: "My Mac",
+                isReauthorizingExistingDevice: false
+            )
+        )
+        XCTAssertTrue(
+            NetworkingAccountActivationPresentation.canAuthorizeDevice(
+                activeCount: 3,
+                isReliable: true,
+                deviceName: "My Mac",
+                isReauthorizingExistingDevice: true
+            )
+        )
+        XCTAssertEqual(
+            NetworkingAccountActivationPresentation.deviceCapacityMessage(
+                activeCount: 3,
+                isReliable: true,
+                isReauthorizingExistingDevice: true
+            ),
+            "This Mac is already authorized and can reconnect. All 3 device slots are in use."
+        )
+    }
+
+    func testActivationViewOffersOTPResendAndRedactsPublishFailures() throws {
+        let activationView = try String(
+            contentsOf: networkingSourceURL("KnowYou/UI/Networking/NetworkingAccountActivationView.swift"),
+            encoding: .utf8
+        )
+        let cockpitView = try String(
+            contentsOf: networkingSourceURL("KnowYou/UI/Networking/NetworkingCockpitView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(activationView.contains("Button(\"Resend code\")"))
+        XCTAssertTrue(cockpitView.contains("NetworkingAccountActivationPresentation.safeErrorMessage(error)"))
+        XCTAssertFalse(cockpitView.contains("publishing to the platform failed: \\(error.localizedDescription)"))
+    }
+
+    func testRefreshedActivationStateKeepsDeviceCredentialsAndRotatesRefreshToken() {
+        let state = readyPlatformActivationState()
+        let session = NetworkingPlatformSession(
+            accessToken: "new-access",
+            refreshToken: "new-refresh",
+            userID: "user-uuid"
+        )
+
+        let refreshed = state.refreshed(with: session)
+
+        XCTAssertEqual(refreshed.refreshToken, "new-refresh")
+        XCTAssertEqual(refreshed.userID, "user-uuid")
+        XCTAssertEqual(refreshed.agentTokenPlaintext, state.agentTokenPlaintext)
+        XCTAssertEqual(refreshed.deviceToken, state.deviceToken)
+        XCTAssertEqual(refreshed.deviceID, state.deviceID)
     }
 
     func testCockpitGuidanceHighlightsCurrentIncompleteStep() {
@@ -1352,9 +1603,13 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
             agentTokenPlaintext: "agent-token",
             supabaseURL: URL(string: "https://example.supabase.co")!,
             publishableKey: "sb_publishable_test",
-            authEmail: "knw-person@users.knowyou.app",
-            authPassword: Self.machinePassphrase,
+            authEmail: "person@example.com",
             mode: .platform,
+            userID: "user-uuid",
+            refreshToken: "refresh-token",
+            deviceID: "device-uuid",
+            deviceDisplayName: "Tianfu's Mac",
+            deviceToken: "device-token",
             profileIDMapping: profileIDMapping
         )
     }
@@ -1366,6 +1621,13 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         )
         try contents.write(to: url, atomically: true, encoding: .utf8)
     }
+}
+
+private func networkingSourceURL(_ path: String) -> URL {
+    URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent(path)
 }
 
 private struct StubNetworkingMyWikiContextProvider: NetworkingMyWikiContextProviding {

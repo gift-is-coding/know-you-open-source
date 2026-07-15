@@ -6,9 +6,10 @@ This is the shortest reliable route for an AI coding agent to understand KnowYou
 
 1. [README.md](../README.md) for product scope and repository layout.
 2. [AGENTS.md](../AGENTS.md) for repository execution rules.
-3. [architecture.md](architecture.md) for runtime boundaries and data flow.
-4. [requirements-spec.md](requirements-spec.md) for behavior that must remain true.
-5. The focused tests beside the subsystem being changed.
+3. [open-source-readiness.md](open-source-readiness.md) for the latest public-release gates and verified limitations.
+4. [architecture.md](architecture.md) for runtime boundaries and data flow.
+5. [requirements-spec.md](requirements-spec.md) for behavior that must remain true.
+6. The focused tests beside the subsystem being changed.
 
 Historical files under `docs/superpowers/` explain why earlier decisions were made, but they are not automatically current. Prefer implementation, current tests, architecture, and requirements when they disagree.
 
@@ -35,6 +36,7 @@ Historical files under `docs/superpowers/` explain why earlier decisions were ma
 - Preserve source paths and citations when producing My Wiki context.
 - Report degraded or failed semantic pipelines explicitly; do not fake successful ontology output with keyword rules.
 - Never reset user onboarding, authentication, engines, Keychain, or app containers as a routine build step.
+- Preserve GPL-3.0 and third-party notices when copying, modifying, or distributing repository code.
 
 ## Working method
 

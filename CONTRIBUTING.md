@@ -84,3 +84,7 @@ Include:
 - known limitations or follow-up work
 
 Maintainers may ask for architecture and requirements updates when behavior or system boundaries change.
+
+## Contribution license
+
+KnowYou is licensed under [GPL-3.0](LICENSE). By submitting a contribution, you confirm that you have the right to provide it and agree that it may be distributed under the same license.

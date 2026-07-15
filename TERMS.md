@@ -1,6 +1,6 @@
 # KnowYou 使用条款
 
-最后更新：2026-04-11
+最后更新：2026-07-15
 
 ## 1. 接受条款
 
@@ -62,4 +62,6 @@ KnowYou 不对第三方服务的可用性、输出质量、数据政策或服务
 
 ## 9. 版权
 
-Copyright © 2026 Shanghai Erren Beiwu Software Co., Ltd. All rights reserved.
+Copyright © 2026 Shanghai Erren Beiwu Software Co., Ltd.
+
+KnowYou 的源代码依据 GNU General Public License v3.0 发布，具体授权范围和义务以仓库根目录的 [LICENSE](LICENSE) 为准。第三方组件仍适用其各自许可证；KnowYou 名称、品牌标识以及另行标注的内容不因源代码许可证而自动获得额外授权。

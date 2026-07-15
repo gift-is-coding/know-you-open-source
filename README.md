@@ -4,7 +4,7 @@ KnowYou is a local-first macOS app that turns the context you already create on 
 
 It captures clipboard text and supported Notification Center records, applies a privacy filter before persistence, stores data locally, and can use either a local fallback or an optional LLM engine to produce structured daily stories. My Wiki turns those stories and user-selected local sources into cited context that people and AI agents can reuse.
 
-> Project status: active development. Review the privacy boundary and back up important data before using KnowYou with sensitive work. The repository is not ready for public open-source release until a root software license is selected.
+> Project status: active development. Review the privacy boundary and back up important data before using KnowYou with sensitive work. The repository is licensed under GPL-3.0; see [LICENSE](LICENSE) and the current [open-source readiness review](docs/open-source-readiness.md).
 
 ## What is included
 
@@ -161,7 +161,11 @@ Some real-LLM, Supabase integration, notarization, and GUI checks require creden
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change. Keep changes focused, add tests first for behavior changes, preserve local user state during app verification, and never commit credentials, personal diary data, or generated runtime state.
 
-Third-party source and binary obligations are tracked in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The bundled PDFium binaries now have exact provenance, checksums, and license notices. The root license still must be selected with the bundled GPL-3.0 My Wiki source in mind before public release.
+Third-party source and binary obligations are tracked in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The bundled PDFium binaries have exact provenance, checksums, and license notices.
+
+## License
+
+KnowYou is licensed under the [GNU General Public License v3.0](LICENSE). If you distribute a modified version, review the GPL source-availability and notice obligations before publishing it. Third-party components remain subject to the licenses listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Release signing
 

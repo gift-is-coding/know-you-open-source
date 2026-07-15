@@ -1,4 +1,5 @@
 import Foundation
+import LocalAuthentication
 import Security
 
 protocol KeychainStoring: Sendable {
@@ -21,7 +22,7 @@ enum KeychainHelper {
             kSecAttrAccount: key,
             kSecReturnData: true,
             kSecMatchLimit: kSecMatchLimitOne,
-            kSecUseAuthenticationUI: kSecUseAuthenticationUIFail,
+            kSecUseAuthenticationContext: nonInteractiveAuthenticationContext(),
         ]
     }
 
@@ -30,8 +31,14 @@ enum KeychainHelper {
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
             kSecAttrAccount: key,
-            kSecUseAuthenticationUI: kSecUseAuthenticationUIFail,
+            kSecUseAuthenticationContext: nonInteractiveAuthenticationContext(),
         ]
+    }
+
+    private static func nonInteractiveAuthenticationContext() -> LAContext {
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        return context
     }
 
     private struct SystemKeychainStore: KeychainStoring {

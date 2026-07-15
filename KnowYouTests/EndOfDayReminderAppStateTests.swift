@@ -63,8 +63,8 @@ final class EndOfDayReminderAppStateTests: XCTestCase {
         let dayKey = "2026-04-21"
         let story = makeStory(dayKey: dayKey, generatedAt: makeDate(hour: 20, minute: 10), sourceID: harness.event.id)
 
-        try harness.environment.writeDailyStory(story)
-        try harness.environment.writeDailyNote(dayKey: dayKey, markdown: "# 你今天做得很棒\n\nTest")
+        _ = try harness.environment.writeDailyStory(story)
+        _ = try harness.environment.writeDailyNote(dayKey: dayKey, markdown: "# 你今天做得很棒\n\nTest")
         try harness.environment.databaseWriter.insert(harness.event)
 
         harness.appState.selectDate(dayKey)
@@ -238,7 +238,7 @@ final class EndOfDayReminderAppStateTests: XCTestCase {
             contentHash: "end-of-day-review-relaunch"
         )
         try firstHarness.environment.databaseWriter.insert(event)
-        try firstHarness.environment.writeDailyStory(
+        _ = try firstHarness.environment.writeDailyStory(
             makeStory(dayKey: dayKey, generatedAt: storyVersion, sourceID: event.id)
         )
         let persistedStates = [
@@ -275,8 +275,8 @@ final class EndOfDayReminderAppStateTests: XCTestCase {
         let story = makeStory(dayKey: dayKey, generatedAt: makeDate(hour: 20, minute: 10), sourceID: harness.event.id)
 
         try harness.environment.databaseWriter.insert(harness.event)
-        try harness.environment.writeDailyStory(story)
-        try harness.environment.writeDailyNote(dayKey: dayKey, markdown: "# Story\n\nLoaded from reminder")
+        _ = try harness.environment.writeDailyStory(story)
+        _ = try harness.environment.writeDailyNote(dayKey: dayKey, markdown: "# Story\n\nLoaded from reminder")
 
         harness.appState.openDayFromEndOfDayReminder(dayKey, action: .review)
 

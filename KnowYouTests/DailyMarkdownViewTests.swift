@@ -117,6 +117,7 @@ final class DailyMarkdownViewTests: XCTestCase {
         XCTAssertEqual(Array(presentation.rootItems.prefix(2)).map(\.id), ["home", "search"])
     }
 
+    @MainActor
     func testSidebarPresentationSelectsSearchRootItem() {
         let presentation = DateSidebarPresentation(
             dates: [],
@@ -1102,10 +1103,6 @@ final class DailyMarkdownViewTests: XCTestCase {
     }
 
     func testDiaryShareRendererKeepsTextVisibleInDarkAppearance() throws {
-        let previousAppearance = NSAppearance.current
-        NSAppearance.current = try XCTUnwrap(NSAppearance(named: .darkAqua))
-        defer { NSAppearance.current = previousAppearance }
-
         let payload = DiarySharePayload(
             dayKey: "2026-06-12",
             sourceTitle: "Full diary",
@@ -1114,7 +1111,12 @@ final class DailyMarkdownViewTests: XCTestCase {
             downloadURL: DiaryShareContentBuilder.defaultDownloadURL
         )
 
-        let image = DiaryShareImageRenderer().image(for: payload)
+        let appearance = try XCTUnwrap(NSAppearance(named: .darkAqua))
+        var renderedImage: NSImage?
+        appearance.performAsCurrentDrawingAppearance {
+            renderedImage = DiaryShareImageRenderer().image(for: payload)
+        }
+        let image = try XCTUnwrap(renderedImage)
         let representation = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation)))
 
         XCTAssertGreaterThan(

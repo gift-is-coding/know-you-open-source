@@ -131,10 +131,10 @@ final class ManualDiaryRefreshTests: XCTestCase {
             }
             .joined(separator: " | ")
         let resolvedPathSummary = [
-            "codex=\(resolvedPaths[.codexCLI] ?? "<nil>")",
-            "claude=\(resolvedPaths[.claudeCLI] ?? "<nil>")",
-            "gemini=\(resolvedPaths[.geminiCLI] ?? "<nil>")",
-            "openclaw=\(resolvedPaths[.openclawCLI] ?? "<nil>")",
+            "codex=\(resolvedPaths[.codexCLI].flatMap { $0 } ?? "<nil>")",
+            "claude=\(resolvedPaths[.claudeCLI].flatMap { $0 } ?? "<nil>")",
+            "gemini=\(resolvedPaths[.geminiCLI].flatMap { $0 } ?? "<nil>")",
+            "openclaw=\(resolvedPaths[.openclawCLI].flatMap { $0 } ?? "<nil>")",
         ].joined(separator: " | ")
         try? """
         phase=before-refresh

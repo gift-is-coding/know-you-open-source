@@ -766,11 +766,15 @@ private enum RecordingLoginItemError: LocalizedError {
     }
 }
 
+private struct SendableUserDefaultsBox: @unchecked Sendable {
+    let value: UserDefaults
+}
+
 @MainActor
 final class MainWindowViewModelTests: XCTestCase {
-    private var engineDefaultsSuiteName: String!
-    private var engineDefaults: UserDefaults!
-    private var engineKeychain: AppStateTestKeychainStore!
+    nonisolated(unsafe) private var engineDefaultsSuiteName: String!
+    nonisolated(unsafe) private var engineDefaults: UserDefaults!
+    nonisolated(unsafe) private var engineKeychain: AppStateTestKeychainStore!
     nonisolated(unsafe) private var standardDefaultsSnapshot: [String: Any] = [:]
     nonisolated(unsafe) private var missingStandardDefaultsKeys: Set<String> = []
 
@@ -782,33 +786,38 @@ final class MainWindowViewModelTests: XCTestCase {
         AppState.UserDefaultsKeys.launchAtLoginDefaultRegistrationAttempted,
     ]
 
-    private func markOnboardingComplete(in defaults: UserDefaults) {
+    nonisolated private func markOnboardingComplete(in defaults: UserDefaults) {
         defaults.set(true, forKey: AppState.UserDefaultsKeys.hasCompletedOnboarding)
         defaults.set(OnboardingProgressState.complete.rawValue, forKey: AppState.UserDefaultsKeys.onboardingProgressState)
         defaults.set(OnboardingBootstrapState.complete.rawValue, forKey: AppState.UserDefaultsKeys.onboardingBootstrapState)
         defaults.removeObject(forKey: AppState.UserDefaultsKeys.onboardingBootstrapDayKeys)
     }
 
-    override func setUp() async throws {
-        try await super.setUp()
+    override func setUp() {
+        super.setUp()
         engineDefaultsSuiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
         engineDefaults = UserDefaults(suiteName: engineDefaultsSuiteName)!
         engineKeychain = AppStateTestKeychainStore()
         snapshotStandardDefaults()
         markOnboardingComplete(in: engineDefaults)
-        AppState.setDefaultUserDefaultsForTesting(engineDefaults)
+        let defaults = SendableUserDefaultsBox(value: engineDefaults)
+        MainActor.assumeIsolated {
+            AppState.setDefaultUserDefaultsForTesting(defaults.value)
+        }
     }
 
-    override func tearDown() async throws {
+    override func tearDown() {
         MainWindowStubURLProtocol.reset()
-        AppState.setDefaultUserDefaultsForTesting(nil)
+        MainActor.assumeIsolated {
+            AppState.setDefaultUserDefaultsForTesting(nil)
+        }
         restoreStandardDefaults()
         if let engineDefaultsSuiteName {
             engineDefaults.removePersistentDomain(forName: engineDefaultsSuiteName)
         }
         standardDefaultsSnapshot = [:]
         missingStandardDefaultsKeys = []
-        try await super.tearDown()
+        super.tearDown()
     }
 
     nonisolated private func snapshotStandardDefaults() {

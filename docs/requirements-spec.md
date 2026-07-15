@@ -474,6 +474,12 @@ onboarding 的配置约束为：
 - 发布验证必须至少包含 `codesign --verify --deep --strict --verbose=2`、`stapler validate`、`spctl --assess --type execute -vv`
 - 对外下载主 artifact 必须是包含真实 `KnowYou.app` 的 DMG；DMG 不依赖 `Applications` alias 或箭头坐标，背景文案引导用户双击 app，app 自己复制到 `/Applications` 后重启
 - Release 构建必须配置 Sparkle EdDSA public key；该公钥可以作为安全默认值进入项目配置，私钥必须留在发版用户 Keychain；发布脚本必须使用 Sparkle `sign_update` 为 DMG enclosure 生成签名属性
+- 私有仓库必须是产品代码的权威来源；公开仓库只能从已提交 ref 通过显式白名单生成，不得直接复制私有工作区或进行无审查的双向自动合并
+- `docs/investor-pitch/` 与 `docs/fundraising/` 必须从公开仓库全部可达历史中移除，并由独立拒绝列表持续阻止重新进入公开快照
+- 首次公开历史清理必须只发生在新建 clone 中，不得原地改写私有仓库；清理后必须删除 rewrite backup refs、reflog 和不可达对象，并验证拒绝路径在所有 refs 中均不可达
+- 每次公开同步必须在改变公开 checkout 前完成白名单、拒绝路径、敏感文件名、GPL-3.0 和 Gitleaks 验证；目标 checkout 非干净状态时必须失败
+- 公开同步提交必须记录完整 private source SHA；同步工具不得自动 push 或 force-push，必须由维护者审查后通过公开仓库 PR 合并
+- 公开仓库 CI 必须覆盖当前树与完整历史泄密扫描、拒绝路径、许可证、macOS App、Networking Web、My Wiki、Rust backend 与 My Wiki MCP 验证
 - `fullRecovery` 成功写盘前必须执行一次规范化，以保证新生成 `Details` 保持 paragraph-level workstream 结构
 
 ## 6.9 状态反馈需求

@@ -1,0 +1,3 @@
+# Repository-relative path prefixes that must never exist in the public export.
+docs/investor-pitch
+docs/fundraising

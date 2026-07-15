@@ -1,0 +1,3 @@
+# Intentionally empty. Classified public and synthetic values are constrained by
+# exact path-and-value allowlists in .gitleaks.toml so line-number changes cannot
+# silently broaden an exception.

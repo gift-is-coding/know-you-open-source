@@ -37,6 +37,7 @@ Historical files under `docs/superpowers/` explain why earlier decisions were ma
 - Report degraded or failed semantic pipelines explicitly; do not fake successful ontology output with keyword rules.
 - Never reset user onboarding, authentication, engines, Keychain, or app containers as a routine build step.
 - Preserve GPL-3.0 and third-party notices when copying, modifying, or distributing repository code.
+- Treat `config/public-files.txt` as a fail-closed export allowlist and `config/public-deny-paths.txt` as an invariant. Never place private fundraising paths in a public sync proposal.
 
 ## Working method
 
@@ -47,5 +48,7 @@ Historical files under `docs/superpowers/` explain why earlier decisions were ma
 5. Implement the smallest coherent fix.
 6. Run targeted checks, then the full applicable verification listed in [CONTRIBUTING.md](../CONTRIBUTING.md).
 7. Review `git diff` for accidental personal paths, credentials, generated files, and unrelated edits.
+
+For public-mirror work, read [public-repository-sync.md](public-repository-sync.md), use the repository scripts rather than ad hoc copying, and stop before push so the maintainer can review the prepared public branch.
 
 Do not claim completion without fresh verification output from the current worktree. If Xcode, credentials, browsers, or production services are unavailable, name the unverified gate explicitly.

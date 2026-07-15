@@ -163,6 +163,8 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change. Keep changes fo
 
 Third-party source and binary obligations are tracked in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The bundled PDFium binaries have exact provenance, checksums, and license notices.
 
+Maintainers publishing the independent public mirror must follow [docs/public-repository-sync.md](docs/public-repository-sync.md). The workflow uses a committed allowlist, hard-denied private paths, Gitleaks, source-SHA mapping, and a reviewed public pull request; it never pushes or rewrites the private repository automatically.
+
 ## License
 
 KnowYou is licensed under the [GNU General Public License v3.0](LICENSE). If you distribute a modified version, review the GPL source-availability and notice obligations before publishing it. Third-party components remain subject to the licenses listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

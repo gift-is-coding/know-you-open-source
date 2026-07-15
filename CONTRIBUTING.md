@@ -85,6 +85,8 @@ Include:
 
 Maintainers may ask for architecture and requirements updates when behavior or system boundaries change.
 
+Public pull requests are imported into the private canonical repository before the next public snapshot. Maintainers should follow [docs/public-repository-sync.md](docs/public-repository-sync.md); contributors do not need access to the private repository.
+
 ## Contribution license
 
 KnowYou is licensed under [GPL-3.0](LICENSE). By submitting a contribution, you confirm that you have the right to provide it and agree that it may be distributed under the same license.

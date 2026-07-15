@@ -1,0 +1,36 @@
+title = "KnowYou public repository Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Supabase publishable client key in the Networking app configuration"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = ['''sb_publishable_6yAykRpUoIKb5XB4GBV9MQ_XOr0_zM8''']
+paths = ['''^KnowYou/Services/Networking/NetworkingPlatformClient\.swift$''']
+
+[[allowlists]]
+description = "Sparkle public EdDSA verification key"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = ['''DPaKuqvU48UAoI0rOvKtWaStpzMsX9fwypStdx4md/M=''' ]
+paths = ['''^(KnowYou\.xcodeproj/project\.pbxproj|scripts/(release-common|test-release-common)\.sh)$''']
+
+[[allowlists]]
+description = "Synthetic legacy API key used by migration tests"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = ['''sk-legacy-123''']
+paths = ['''^KnowYouTests/SummarizerConfigTests\.swift$''']
+
+[[allowlists]]
+description = "Synthetic JWT used by the privacy filter test"
+condition = "AND"
+targetRules = ["jwt"]
+regexTarget = "line"
+regexes = ['''eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0\.signature123''']
+paths = ['''^KnowYouTests/PrivacyFilterTests\.swift$''']

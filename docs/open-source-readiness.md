@@ -8,7 +8,7 @@ This document is a release gate for maintainers and agents. It records what was 
 
 ## Current decision
 
-The code and documentation are suitable for a public release candidate. No known major functional, performance, or credential-exposure issue remains from this review. Publication is still gated on creating a sanitized public mirror and rerunning the checks below against that mirror.
+The code and documentation are suitable for a public release candidate. No known major functional, performance, or credential-exposure issue remains from this review. The repository now includes tested history-sanitization, allowlisted snapshot export, secret scanning, and public CI gates. Publication is still gated on running that workflow against the actual public mirror and reviewing the result before its first push.
 
 | Area | Result | Evidence |
 | --- | --- | --- |
@@ -94,6 +94,7 @@ Do not waive a new finding merely because the same rule was classified as safe h
 - [Contributing](../CONTRIBUTING.md): contributor workflow and review standard
 - [Security policy](../SECURITY.md): private vulnerability reporting
 - [Release signing](release-signing.md): maintainer-only signing and notarization inputs
+- [Public repository synchronization](public-repository-sync.md): private-to-public history creation, routine sync, and contribution backflow
 - [Third-party notices](../THIRD_PARTY_NOTICES.md): bundled source and binary licensing
 - [Terms](../TERMS.md) and [privacy policy](../PRIVACY.md): user-facing legal and privacy boundaries
 
@@ -111,6 +112,8 @@ After the history is sanitized:
 3. verify the root `LICENSE`, `TERMS.md`, README links, and third-party notices
 4. rerun the deterministic test/build commands applicable to the mirror
 5. inspect `git diff` and the final tracked-file list before the first push
+
+Use `scripts/create-public-history.sh` for the one-time disposable history rewrite and `scripts/export-public-repo.sh` for later allowlisted snapshot commits. Both scripts verify before mutation, refuse unsafe destinations, record the private source SHA, and intentionally perform no push.
 
 The confirmed public support contacts are `cestlouiswu@gmail.com` and [@TianfuW49629](https://x.com/TianfuW49629).
 

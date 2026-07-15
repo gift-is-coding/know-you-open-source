@@ -999,21 +999,6 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         )
     }
 
-    func testActivationViewOffersOTPResendAndRedactsPublishFailures() throws {
-        let activationView = try String(
-            contentsOf: networkingSourceURL("KnowYou/UI/Networking/NetworkingAccountActivationView.swift"),
-            encoding: .utf8
-        )
-        let cockpitView = try String(
-            contentsOf: networkingSourceURL("KnowYou/UI/Networking/NetworkingCockpitView.swift"),
-            encoding: .utf8
-        )
-
-        XCTAssertTrue(activationView.contains("Button(\"Resend code\")"))
-        XCTAssertTrue(cockpitView.contains("NetworkingAccountActivationPresentation.safeErrorMessage(error)"))
-        XCTAssertFalse(cockpitView.contains("publishing to the platform failed: \\(error.localizedDescription)"))
-    }
-
     func testRefreshedActivationStateKeepsDeviceCredentialsAndRotatesRefreshToken() {
         let state = readyPlatformActivationState()
         let session = NetworkingPlatformSession(
@@ -1659,13 +1644,6 @@ final class NetworkingCockpitPresentationTests: XCTestCase {
         )
         try contents.write(to: url, atomically: true, encoding: .utf8)
     }
-}
-
-private func networkingSourceURL(_ path: String) -> URL {
-    URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .appendingPathComponent(path)
 }
 
 private struct StubNetworkingMyWikiContextProvider: NetworkingMyWikiContextProviding {

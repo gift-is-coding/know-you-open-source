@@ -774,7 +774,7 @@ final class MainWindowViewModelTests: XCTestCase {
     nonisolated(unsafe) private var standardDefaultsSnapshot: [String: Any] = [:]
     nonisolated(unsafe) private var missingStandardDefaultsKeys: Set<String> = []
 
-    nonisolated(unsafe) private let standardDefaultsKeysTouchedByTests = [
+    private let standardDefaultsKeysTouchedByTests = [
         AppState.UserDefaultsKeys.hasCompletedOnboarding,
         AppState.UserDefaultsKeys.onboardingProgressState,
         AppState.UserDefaultsKeys.onboardingBootstrapState,
@@ -789,8 +789,8 @@ final class MainWindowViewModelTests: XCTestCase {
         defaults.removeObject(forKey: AppState.UserDefaultsKeys.onboardingBootstrapDayKeys)
     }
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         engineDefaultsSuiteName = "MainWindowViewModelTests-\(UUID().uuidString)"
         engineDefaults = UserDefaults(suiteName: engineDefaultsSuiteName)!
         engineKeychain = AppStateTestKeychainStore()
@@ -799,7 +799,7 @@ final class MainWindowViewModelTests: XCTestCase {
         AppState.setDefaultUserDefaultsForTesting(engineDefaults)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         MainWindowStubURLProtocol.reset()
         AppState.setDefaultUserDefaultsForTesting(nil)
         restoreStandardDefaults()
@@ -808,7 +808,7 @@ final class MainWindowViewModelTests: XCTestCase {
         }
         standardDefaultsSnapshot = [:]
         missingStandardDefaultsKeys = []
-        super.tearDown()
+        try await super.tearDown()
     }
 
     nonisolated private func snapshotStandardDefaults() {

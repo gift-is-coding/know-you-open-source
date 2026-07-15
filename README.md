@@ -161,7 +161,7 @@ Some real-LLM, Supabase integration, notarization, and GUI checks require creden
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change. Keep changes focused, add tests first for behavior changes, preserve local user state during app verification, and never commit credentials, personal diary data, or generated runtime state.
 
-Third-party source and binary obligations are tracked in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The bundled GPL-3.0 My Wiki source and unpinned PDFium binaries must be resolved as part of the root-license decision before public release.
+Third-party source and binary obligations are tracked in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The bundled PDFium binaries now have exact provenance, checksums, and license notices. The root license still must be selected with the bundled GPL-3.0 My Wiki source in mind before public release.
 
 ## Release signing
 

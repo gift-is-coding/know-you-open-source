@@ -15,12 +15,11 @@ KnowYou carries and modifies this source to build the bundled MyWikiRunner. The 
 
 ### PDFium binaries
 
-The repository currently contains prebuilt PDFium libraries for macOS, Linux, and Windows under `ThirdParty/llm_wiki/src-tauri/pdfium`. Source comments reference the `bblanchon/pdfium-binaries` distribution, but the checked-in directory does not contain a pinned upstream version, checksums, source URL, license, or third-party notices.
+The repository contains prebuilt PDFium libraries for macOS, Linux, and Windows under `ThirdParty/llm_wiki/src-tauri/pdfium`. They come from the MIT-licensed [`bblanchon/pdfium-binaries`](https://github.com/bblanchon/pdfium-binaries) distribution and contain PDFium and its transitive native dependencies under their respective licenses.
 
-This is an open-source release blocker. Before distribution, either:
+The exact upstream release, binary and archive SHA-256 digests, reproduction instructions, distributor license, and bundled dependency notices are recorded in `ThirdParty/llm_wiki/src-tauri/pdfium/README.md`, `SHA256SUMS`, `LICENSE`, and `licenses/`.
 
-1. replace the checked-in binaries with a reproducible fetch/build process that pins the source and verifies checksums; or
-2. add exact provenance, version, license text, and all required notices for each binary.
+The existing files span three weekly upstream releases. This is now documented and verifiable, but maintainers should converge all platforms on one pinned release during the next PDFium update.
 
 ## Swift packages
 

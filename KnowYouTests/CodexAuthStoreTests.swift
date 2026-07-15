@@ -1,3 +1,4 @@
+import LocalAuthentication
 import Security
 import XCTest
 @testable import KnowYou
@@ -19,22 +20,20 @@ final class CodexAuthStoreTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    func testKeychainReadFailsInsteadOfBlockingForAuthenticationUI() {
+    func testKeychainReadUsesNonInteractiveAuthenticationContext() throws {
         let query = KeychainHelper.loadQuery(forKey: "networking", service: "dev.knowyou.test")
 
-        XCTAssertEqual(
-            query[kSecUseAuthenticationUI] as? String,
-            kSecUseAuthenticationUIFail as String
-        )
+        let context = try XCTUnwrap(query[kSecUseAuthenticationContext] as? LAContext)
+        XCTAssertTrue(context.interactionNotAllowed)
+        XCTAssertNil(query[kSecUseAuthenticationUI])
     }
 
-    func testKeychainDeleteFailsInsteadOfBlockingForAuthenticationUI() {
+    func testKeychainDeleteUsesNonInteractiveAuthenticationContext() throws {
         let query = KeychainHelper.deleteQuery(forKey: "networking", service: "dev.knowyou.test")
 
-        XCTAssertEqual(
-            query[kSecUseAuthenticationUI] as? String,
-            kSecUseAuthenticationUIFail as String
-        )
+        let context = try XCTUnwrap(query[kSecUseAuthenticationContext] as? LAContext)
+        XCTAssertTrue(context.interactionNotAllowed)
+        XCTAssertNil(query[kSecUseAuthenticationUI])
     }
 
     func testComputesKeychainAccountFromCodexHome() {

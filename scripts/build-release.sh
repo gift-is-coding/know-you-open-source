@@ -9,6 +9,7 @@ require_command xcodebuild
 require_command ditto
 require_command codesign
 require_sparkle_public_key
+require_release_signing_identity
 
 prepare_release_dir
 rm -rf "$archive_path" "$app_path" "$(release_zip_path)" "$(notarized_zip_path)"

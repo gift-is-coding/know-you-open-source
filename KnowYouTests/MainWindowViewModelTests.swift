@@ -451,6 +451,7 @@ private func requestBodyData(from request: URLRequest) throws -> Data {
 private final class RecordingNotificationReader: NotificationDatabaseReading, @unchecked Sendable {
     private(set) var requestedSince: Date?
     private(set) var requestedUpperBound: NotificationFetchUpperBound?
+    private(set) var fetchRanOnMainThread: Bool?
     var snapshots: [NotificationSnapshot] = []
     var fetchError: Error?
     var fetchHandler: ((Date, NotificationFetchUpperBound?) throws -> [NotificationSnapshot])?
@@ -464,6 +465,7 @@ private final class RecordingNotificationReader: NotificationDatabaseReading, @u
     }
 
     func fetchDeliveredNotifications(from startDate: Date, upperBound: NotificationFetchUpperBound?) throws -> [NotificationSnapshot] {
+        fetchRanOnMainThread = Thread.isMainThread
         requestedSince = startDate
         requestedUpperBound = upperBound
         if let fetchError {
@@ -1752,6 +1754,34 @@ final class MainWindowViewModelTests: XCTestCase {
         XCTAssertEqual(try writer.fetchEvents(dayKey: dayKey).count, 1)
         XCTAssertEqual(appState.lastNotificationImportAt, now)
         XCTAssertEqual(appState.notificationStatus.lastImportedCount, 1)
+    }
+
+    func testRunNotificationCatchUpReadsNotificationDatabaseOffMainThread() async throws {
+        let writer = try DatabaseWriter.inMemory()
+        let reader = RecordingNotificationReader()
+        let calendar = Calendar(identifier: .gregorian)
+        let now = DateComponents(calendar: calendar, year: 2026, month: 4, day: 11, hour: 13).date!
+        let environment = AppEnvironment(
+            databaseURL: URL(fileURLWithPath: "/tmp/\(UUID().uuidString).sqlite"),
+            vaultURL: URL.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory),
+            databaseWriter: writer,
+            summarizer: nil,
+            notificationReader: reader,
+            dailyAutomationPlanner: DailyAutomationPlanner(
+                backfillPlanner: BackfillPlanner(calendar: calendar)
+            )
+        )
+        let appState = AppState(
+            environment: environment,
+            bootstrapServices: false,
+            userDefaults: engineDefaults,
+            keychain: engineKeychain,
+            keychainService: "MainWindowViewModelTests"
+        )
+
+        await appState.runNotificationCatchUp(now: now)
+
+        XCTAssertEqual(reader.fetchRanOnMainThread, false)
     }
 
     func testRunNotificationCatchUpUsesOverlapBufferWithoutDuplicatingNotifications() async throws {

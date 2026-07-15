@@ -21,10 +21,10 @@ Example MCP config:
   "mcpServers": {
     "knowyou-my-wiki": {
       "command": "node",
-      "args": ["/Users/wutianfu/Documents/code/know-you-my-wiki-agent-access/Tools/MyWikiMCP/src/server.mjs"],
+      "args": ["/absolute/path/to/know-you/Tools/MyWikiMCP/src/server.mjs"],
       "env": {
-        "KNOWYOU_APP": "/Users/wutianfu/Library/Developer/Xcode/DerivedData/KnowYou-dpvgnhkxjremclebngxqgkgsifwm/Build/Products/Debug/KnowYou.app",
-        "KNOWYOU_MY_WIKI_PROJECT": "/Users/wutianfu/Library/Application Support/KnowYou/KnowledgeOntology/KnowYouContext"
+        "KNOWYOU_APP": "/absolute/path/to/KnowYou.app",
+        "KNOWYOU_MY_WIKI_PROJECT": "/absolute/path/to/your/KnowYouContext"
       }
     }
   }

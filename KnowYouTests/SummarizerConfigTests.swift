@@ -195,6 +195,30 @@ final class SummarizerConfigTests: XCTestCase {
         XCTAssertNil(config.makeSummarizer())
     }
 
+    func testMakeSummarizerRejectsInsecureRemoteHTTPBaseURL() {
+        var config = SummarizerConfig.load(from: defaults)
+        config.defaultEngine = .llmAPI
+        config.activeLLMAPIProviderID = .customOpenAICompatible
+        config.apiBaseURL = "http://llm.example.com/v1"
+        config.apiModel = "custom-model"
+        config.apiToken = "token-test-123"
+
+        XCTAssertFalse(config.apiConfigurationIsComplete)
+        XCTAssertNil(config.makeSummarizer())
+    }
+
+    func testMakeSummarizerAllowsLoopbackHTTPBaseURL() throws {
+        var config = SummarizerConfig.load(from: defaults)
+        config.defaultEngine = .llmAPI
+        config.activeLLMAPIProviderID = .customOpenAICompatible
+        config.apiBaseURL = "http://127.0.0.1:11434/v1"
+        config.apiModel = "local-model"
+        config.apiToken = "local-token"
+
+        let summarizer = try XCTUnwrap(config.makeSummarizer() as? CloudSummarizer)
+        XCTAssertEqual(summarizer.apiURL, URL(string: "http://127.0.0.1:11434/v1"))
+    }
+
     func testMakeSummarizerPlumbsCustomAPIBaseURLAndModelIntoCloudSummarizer() throws {
         var config = SummarizerConfig.load(from: defaults)
         config.defaultEngine = .llmAPI

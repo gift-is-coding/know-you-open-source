@@ -490,7 +490,7 @@ final class DailyMarkdownComposerTests: XCTestCase {
             makeEvent(app: "Feishu", offset: 300, text: "仓库\t快递单号\t货物概述"),
             makeEvent(app: "Ghostty", offset: 360, text: "KnowYou clipboard sentinel: knowyou-verify-20260408T132014"),
             makeEvent(app: "Ghostty", offset: 420, text: "KnowYou clipboard sentinel: knowyou-verify-20260408T132021"),
-            makeEvent(app: "Finder", offset: 480, text: "/Users/wutianfu/Code/know-you"),
+            makeEvent(app: "Finder", offset: 480, text: "/Users/test/Code/know-you"),
             makeEvent(app: "Google Chrome", offset: 540, text: "Av. Paulista, 2537 - Bela Vista"),
         ].enumerated().map { index, event in
             EventRecord(

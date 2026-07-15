@@ -8,6 +8,7 @@ struct PrivacyFilterResult: Equatable {
 
 struct PrivacyFilter {
     private let sensitiveNumberPattern = #/\d{16,}/#
+    private static let highConfidenceCredentialPattern = #"\b(?:sk-(?:proj-|ant-|or-v1-)?[A-Za-z0-9_-]{12,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|sb_secret_[A-Za-z0-9_-]{12,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})\b"#
 
     func classify(_ input: String) -> PrivacyFilterResult {
         let lowered = input.lowercased()
@@ -15,13 +16,21 @@ struct PrivacyFilter {
         if lowered.contains("password")
             || lowered.contains("otp")
             || lowered.contains("api_key")
+            || lowered.contains("api key")
+            || lowered.contains("api-key")
             || lowered.contains("session=")
             || lowered.contains("secret")
             || lowered.contains("token")
             || lowered.contains("bearer")
             || lowered.contains("private_key")
+            || lowered.contains("private key")
+            || lowered.contains("private-key")
             || lowered.contains("begin private key")
-            || lowered.contains("-----begin") {
+            || lowered.contains("-----begin")
+            || input.range(
+                of: Self.highConfidenceCredentialPattern,
+                options: .regularExpression
+            ) != nil {
             return PrivacyFilterResult(
                 action: .drop,
                 persistedText: nil,

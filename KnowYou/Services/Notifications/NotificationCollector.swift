@@ -6,13 +6,13 @@ struct NotificationSnapshot {
     let body: String
 }
 
-struct NotificationImportResult {
+struct NotificationImportResult: Sendable {
     let importedCount: Int
     let importedAt: Date
     let accessStatus: NotificationDatabaseAccessStatus
 }
 
-final class NotificationCollector {
+final class NotificationCollector: @unchecked Sendable {
     private let privacyFilter: PrivacyFilter
     private let databaseWriter: EventWriting
     private let databaseReader: NotificationDatabaseReading?
@@ -89,6 +89,15 @@ final class NotificationCollector {
             importedAt: Date(),
             accessStatus: accessStatus
         )
+    }
+
+    func importDeliveredNotificationsInBackground(
+        from startDate: Date,
+        upperBound: NotificationFetchUpperBound? = nil
+    ) async throws -> NotificationImportResult {
+        try await Task.detached(priority: .utility) { [self] in
+            try importDeliveredNotifications(from: startDate, upperBound: upperBound)
+        }.value
     }
 
     func importDeliveredNotifications(from startDate: Date, through endDate: Date) throws -> NotificationImportResult {

@@ -84,6 +84,7 @@ flowchart LR
 - Release 启用 hardened runtime
 - 分发脚本通过 `scripts/build-release.sh`、`scripts/embed-mywiki-runner.sh`、`scripts/notarize-release.sh`、`scripts/build-dmg.sh`、`scripts/verify-release.sh` 串起 archive、内置 MyWikiRunner、压缩、notarize、staple、Gatekeeper 验证与 DMG 打包
 - Apple notarization 凭据通过本机 keychain 中的 `notarytool` profile 管理，而不是保存在仓库里
+- 仓库不提供维护者的 Team ID、证书指纹或 Developer ID 默认值；正式发布必须显式设置 `KNOWYOU_DEVELOPER_TEAM` 与 `KNOWYOU_DEVELOPER_ID_IDENTITY`
 
 这条链路的目标是让仓库能稳定产出可上传到下载页的 macOS DMG，同时不影响 Debug/测试阶段的日常签名配置。DMG 内只放真实 `.app` 和最小 Finder metadata；用户双击 DMG 内 app 时，交互式启动会复制到 `/Applications/KnowYou.app` 或 `/Applications/KnowYou New User.app`、打开目标 app，并退出临时实例。复制失败时不阻塞启动，仍回到 onboarding 的手动安装兜底。
 
@@ -91,7 +92,7 @@ flowchart LR
 
 ### 3.1 App 启动
 
-应用入口是 [KnowYouApp.swift](/Users/wutianfu/Code/know-you/KnowYou/KnowYouApp.swift)。
+应用入口是 [KnowYouApp.swift](../KnowYou/KnowYouApp.swift)。
 
 启动后会创建单例式的 `AppState`，并挂接三个界面入口：
 
@@ -107,7 +108,7 @@ flowchart LR
 
 ### 3.2 AppState 作为编排中心
 
-[AppState.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppState.swift) 是当前实现的运行时编排中心，负责：
+[AppState.swift](../KnowYou/App/AppState.swift) 是当前实现的运行时编排中心，负责：
 
 - 创建并持有 `AppEnvironment`
 - 启动剪贴板监听
@@ -119,7 +120,7 @@ flowchart LR
 - 维护统一 Todo inbox 状态、每日候选待办的归集状态，以及日记刷新后的自动归集/完成 sweep
 - 持久化 onboarding 进度，并在首次确认后触发一次性最近 3 天 bootstrap；已完成 onboarding 但升级时错过 bootstrap 的老用户，会通过最近 3 天缺失检测重新进入同一补生成路径
 
-`AppEnvironment` 本身则负责组装主要依赖，包括数据库、隐私过滤器、采集器、composer 与 summarizer，见 [AppEnvironment.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppEnvironment.swift)。
+`AppEnvironment` 本身则负责组装主要依赖，包括数据库、隐私过滤器、采集器、composer 与 summarizer，见 [AppEnvironment.swift](../KnowYou/App/AppEnvironment.swift)。
 
 当前 `AppState` 还负责日记引擎状态编排：
 
@@ -269,7 +270,7 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 ### 4.1 剪贴板采集
 
-[ClipboardWatcher.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Clipboard/ClipboardWatcher.swift) 基于 `NSPasteboard.general` 轮询系统剪贴板。
+[ClipboardWatcher.swift](../KnowYou/Services/Clipboard/ClipboardWatcher.swift) 基于 `NSPasteboard.general` 轮询系统剪贴板。
 
 当前实现特征：
 
@@ -285,8 +286,8 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 通知采集分为读取与导入两段：
 
-- [NotificationDatabaseReader.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Notifications/NotificationDatabaseReader.swift)
-- [NotificationCollector.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Notifications/NotificationCollector.swift)
+- [NotificationDatabaseReader.swift](../KnowYou/Services/Notifications/NotificationDatabaseReader.swift)
+- [NotificationCollector.swift](../KnowYou/Services/Notifications/NotificationCollector.swift)
 
 `NotificationDatabaseReader` 负责：
 
@@ -302,12 +303,13 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 - 在写入前执行隐私过滤
 - 通过数据库写入层持久化
 - 依赖 `contentHash` 与存储层去重，让重叠时间窗扫描保持幂等
+- 将每 30 秒执行的高频增量补同步放在 utility 后台任务中，避免复制和查询 Notification Center SQLite 时阻塞主线程
 
 通知事件的来源类型为 `notification`。
 
 ## 5. 隐私与数据边界
 
-[PrivacyFilter.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Privacy/PrivacyFilter.swift) 是所有持久化前的统一边界。
+[PrivacyFilter.swift](../KnowYou/Services/Privacy/PrivacyFilter.swift) 是所有持久化前的统一边界。
 
 当前规则比较直接，分为三类：
 
@@ -315,14 +317,15 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 - `redact`：对长数字做掩码后持久化
 - `drop`：对明显敏感内容不保留原文，只写审计文本
 
-当前会直接判为 `drop` 的关键词包括：
+当前会直接判为 `drop` 的内容包括：
 
 - `password`
 - `otp`
-- `api_key`
+- `api_key`、`api key`、`api-key`
 - `token`
 - `bearer`
-- `private_key`
+- `private_key`、`private key`、`private-key`
+- 高置信度 credential 格式，例如 OpenAI/Anthropic/OpenRouter 风格 `sk-`、GitHub token、Slack token、AWS access key、Supabase secret key 与独立 JWT
 
 这意味着系统遵循“先过滤，后持久化”的边界，原始敏感文本不应进入 SQLite 或最终导出工件。这个边界也会在 onboarding 的隐私与权限说明中显式解释给用户，而不是只留在实现内部。
 
@@ -332,7 +335,7 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 ### 6.1 事件与运行记录
 
-[DatabaseWriter.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Storage/DatabaseWriter.swift) 基于 GRDB 封装 SQLite。
+[DatabaseWriter.swift](../KnowYou/Services/Storage/DatabaseWriter.swift) 基于 GRDB 封装 SQLite。
 
 当前主要职责：
 
@@ -349,7 +352,7 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 - `todo_items`，仅作为统一 Todo 的兼容/seed 表
 - `Vault/Todo.md`，作为统一 Todo 的权威 Markdown 文件
 
-事件的核心结构定义在 [EventRecord.swift](/Users/wutianfu/Code/know-you/KnowYou/Domain/EventRecord.swift)：
+事件的核心结构定义在 [EventRecord.swift](../KnowYou/Domain/EventRecord.swift)：
 
 - `id`
 - `sourceType`
@@ -363,7 +366,7 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 ### 6.2 文件工件
 
-文件工件由 [AppEnvironment.swift](/Users/wutianfu/Code/know-you/KnowYou/App/AppEnvironment.swift) 写入 vault 目录。
+文件工件由 [AppEnvironment.swift](../KnowYou/App/AppEnvironment.swift) 写入 vault 目录。
 
 当前默认位置：
 
@@ -388,7 +391,7 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 ### 7.1 DailyStory 数据模型
 
-结构定义在 [DailyNote.swift](/Users/wutianfu/Code/know-you/KnowYou/Domain/DailyNote.swift)。
+结构定义在 [DailyNote.swift](../KnowYou/Domain/DailyNote.swift)。
 
 当前模型为：
 
@@ -445,7 +448,7 @@ Settings 除了状态与配置外，还承接了一组对外信息入口：
 
 ### 7.3 Fallback story
 
-[DailyMarkdownComposer.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Composer/DailyMarkdownComposer.swift) 同时承担：
+[DailyMarkdownComposer.swift](../KnowYou/Services/Composer/DailyMarkdownComposer.swift) 同时承担：
 
 - fallback story 生成
 - summarizer prompt 构造
@@ -468,7 +471,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 ### 7.4 Summarizer 抽象
 
-总结器协议定义在 [CloudSummarizer.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Summary/CloudSummarizer.swift)：
+总结器协议定义在 [CloudSummarizer.swift](../KnowYou/Services/Summary/CloudSummarizer.swift)：
 
 - `SummaryGenerating`
 
@@ -478,7 +481,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - `CLISummarizer`
 - `CodexDirectSummarizer`
 
-配置入口定义在 [SummarizerConfig.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Summary/SummarizerConfig.swift)，支持：
+配置入口定义在 [SummarizerConfig.swift](../KnowYou/Services/Summary/SummarizerConfig.swift)，支持：
 
 - `None`
 - `LLM API`
@@ -494,6 +497,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 - `defaultEngine`、CLI 路径、active LLM API provider、provider URL/model/wire format 存 UserDefaults；旧 `apiBaseURL`、`apiModel` 仍作为迁移/回退兼容字段保留
 - `CloudSummarizer` 走 active `LLMAPIProviderConfig`，不再依赖启动时读取 `OPENAI_API_KEY`
 - `LLMAPIClient` 支持 OpenAI Responses、OpenAI-compatible Chat Completions、Anthropic Messages、Gemini generateContent 四类 wire format
+- provider base URL 的远端连接必须使用 HTTPS；纯 HTTP 只允许 `localhost`、`127.0.0.1` 和 `::1` 本地模型服务，避免明文发送 API token
 - `CodexDirectSummarizer` 复用 Codex CLI 的本地登录状态：优先读取 macOS Keychain 中 service=`Codex Auth`、account=`cli|sha256(CODEX_HOME).prefix(16)` 的记录，找不到时回退到 `<CODEX_HOME或~/.codex>/auth.json`
 - `CodexDirectSummarizer` 会用 refresh token 通过 `https://auth.openai.com/oauth/token` 刷新 access token，并以 `chatgpt-account-id`、`originator: pi`、`OpenAI-Beta: responses=experimental` 等 header 直连 `https://chatgpt.com/backend-api/codex/responses`
 - OpenAI Responses provider 已兼容两类文本返回形式：
@@ -506,7 +510,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 ## 8. 调度与自动化
 
-[DailyAutomationPlanner.swift](/Users/wutianfu/Code/know-you/KnowYou/Services/Scheduling/DailyAutomationPlanner.swift) 现在只负责判断“今天是否允许自动增量”，不再驱动历史补跑。
+[DailyAutomationPlanner.swift](../KnowYou/Services/Scheduling/DailyAutomationPlanner.swift) 现在只负责判断“今天是否允许自动增量”，不再驱动历史补跑。
 
 自动化行为由 `AppState.startAutomation()` 触发，规则是：
 
@@ -541,7 +545,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 ### 9.1 Onboarding
 
-[OnboardingView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Onboarding/OnboardingView.swift) 当前把 onboarding 叠加在真实主阅读器之上，由 [OnboardingContent.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Onboarding/OnboardingContent.swift) 提供 coachmark 内容，由 [OnboardingDemoStory.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Onboarding/OnboardingDemoStory.swift) 提供 Demo Day 数据。
+[OnboardingView.swift](../KnowYou/UI/Onboarding/OnboardingView.swift) 当前把 onboarding 叠加在真实主阅读器之上，由 [OnboardingContent.swift](../KnowYou/UI/Onboarding/OnboardingContent.swift) 提供 coachmark 内容，由 [OnboardingDemoStory.swift](../KnowYou/UI/Onboarding/OnboardingDemoStory.swift) 提供 Demo Day 数据。
 
 步骤顺序固定为：
 
@@ -587,7 +591,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 ### 9.2 主阅读器
 
-主阅读器入口在 [MainWindowView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/MainWindowView.swift)，当前是三栏结构：
+主阅读器入口在 [MainWindowView.swift](../KnowYou/UI/MainWindowView.swift)，当前是三栏结构：
 
 - 左栏：日期列表
 - 中栏：DailyStory 段落阅读
@@ -595,9 +599,9 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 对应子视图：
 
-- [DateSidebarView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Sidebar/DateSidebarView.swift)
-- [DailyMarkdownView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Reader/DailyMarkdownView.swift)
-- [TodoInboxView.swift](/Users/wutianfu/Documents/code/know-you/KnowYou/UI/Todo/TodoInboxView.swift)
+- [DateSidebarView.swift](../KnowYou/UI/Sidebar/DateSidebarView.swift)
+- [DailyMarkdownView.swift](../KnowYou/UI/Reader/DailyMarkdownView.swift)
+- [TodoInboxView.swift](../KnowYou/UI/Todo/TodoInboxView.swift)
 
 当前界面能力包括：
 
@@ -630,8 +634,8 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 更新提醒 UI 由以下两个新视图承担：
 
-- [UpdatePillView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Updates/UpdatePillView.swift)：标题栏胶囊
-- [UpdateSheet.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Updates/UpdateSheet.swift)：更新详情 sheet
+- [UpdatePillView.swift](../KnowYou/UI/Updates/UpdatePillView.swift)：标题栏胶囊
+- [UpdateSheet.swift](../KnowYou/UI/Updates/UpdateSheet.swift)：更新详情 sheet
 
 它们共享同一套视觉壳，但主按钮文案和主动作来自 `UpdateOffer.actionKind`，因此 direct build 与 App Store build 的交互能保持一致外观、不同动作。
 当前胶囊文案固定为 `new updates`，版本号与发布时间放在更新 sheet 与右下角 build badge 中承载，而不是挤在左上角提示里。
@@ -655,7 +659,7 @@ fallback 逻辑会尝试把事件压缩成少量日记段落，而不是一条�
 
 ### 9.4 设置页与菜单栏
 
-[SettingsView.swift](/Users/wutianfu/Code/know-you/KnowYou/UI/Settings/SettingsView.swift) 提供：
+[SettingsView.swift](../KnowYou/UI/Settings/SettingsView.swift) 提供：
 
 - 服务状态检查
 - Full Disk Access 跳转
@@ -771,16 +775,16 @@ My Wiki 是 KnowYou 左侧栏里的独立入口，不是产品名。它的职责
 - `MyWikiDuplicateService` 负责主动发现疑似重复项，并在用户确认后合并 sources、aliases、related 与正文；合并前写入 `.llm-wiki/page-history/` 备份，合并后重写 wiki 内部引用并刷新 dashboard snapshot
 - [MyWikiPipelineBridge.swift](../KnowYou/Services/MyWiki/MyWikiPipelineBridge.swift) 启动 app bundle 内置的 `Contents/Resources/MyWikiRunner`。runner 托管 llm_wiki 原生 `autoIngest`，并把 Source Catalog manifest 作为 `--manifest` 传入；所有 LLM 调用通过 My Wiki Diary Engine bridge 回到 KnowYou 已保存的 engine 配置。`scripts/embed-mywiki-runner.sh` 会把 bundled Node 与 `mywiki-runner.js` 放入 release、New User QA 和 dev-launch app；`scripts/build-dmg.sh` 会拒绝缺少 runner 的 app。产品构建不包含额外 GUI 工作台、`node_modules` 或 `ThirdParty/llm_wiki` 源码作为运行依赖。仅测试和本地开发可以显式注入开发源码 fallback；普通用户 UI 不会走该路径，也不需要安装 Node/npm。默认每次只处理 3 个 source，方便用户逐步重跑和检查质量。pipeline 不可用或失败时只写入 `.llm-wiki/last-ingest-status.json` 的 failed 状态，不生成 keyword/regex fallback 本体页，也不把降级结果标记为成功
 - [ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts](../ThirdParty/llm_wiki/src/headless/knowyou-ingest.ts) 只做运行壳：解析 `--manifest`、`--max-sources`、`--skip-indexed`、`--continue-on-error` 和 `knowyou-bridge` provider 参数，选择 source，重置运行状态，删除旧 KnowYou prompt context 文件，然后直接调用 llm_wiki 原生 `autoIngest`。提供 manifest 时，headless runner 只处理 manifest 内列出的 project-relative `raw/sources` 路径，并把 `folderContext` 通过原生 `autoIngest` 参数传入；没有 manifest 且限定 `--max-sources` 时，优先选择尚未生成 `wiki/sources/<source>.md` 的最新 raw source，再回退到已索引 source。[ingest.ts](../ThirdParty/llm_wiki/src/lib/ingest.ts) 的生成目标保持 LLM Wiki 原生 `wiki/sources`、`wiki/entities`、`wiki/concepts`，cache key 使用 native-contextless pipeline version，避免复用旧 schema-injected 输出
-- [MyWikiAgentContextProvider.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/Services/MyWiki/MyWikiAgentContextProvider.swift) 输出给 Codex、Claude、Cowork 等 agent 使用的最小必要背景摘要
-- [MyWikiContextPackService.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/Services/MyWiki/MyWikiContextPackService.swift) 根据第三方 agent 提供的一段背景信息生成 compact context pack。它读取 `wiki/` 和 `raw/sources/` 下的 Markdown，构建 query plan，优先排序已整理的 wiki 页面，并为每个 item 返回 excerpt、matched terms 和 citation
+- [MyWikiAgentContextProvider.swift](../KnowYou/Services/MyWiki/MyWikiAgentContextProvider.swift) 输出给 Codex、Claude、Cowork 等 agent 使用的最小必要背景摘要
+- [MyWikiContextPackService.swift](../KnowYou/Services/MyWiki/MyWikiContextPackService.swift) 根据第三方 agent 提供的一段背景信息生成 compact context pack。它读取 `wiki/` 和 `raw/sources/` 下的 Markdown，构建 query plan，优先排序已整理的 wiki 页面，并为每个 item 返回 excerpt、matched terms 和 citation
 - [MyWikiSearchService.swift](../KnowYou/Services/MyWiki/MyWikiSearchService.swift) 提供 My Wiki 面板内的 V1 本地搜索索引。它同步扫描 `wiki/` 和 `raw/sources/` 下的 Markdown / text 文件，使用直接关键词、CJK n-gram 和简单字段权重生成分组结果与 snippet；该层不依赖服务端 embedding、不下载模型，也不替代 LLM Wiki 的本体抽取或 agent context 语义管线
-- [MyWikiContextPackCommand.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/Services/MyWiki/MyWikiContextPackCommand.swift) 提供 headless CLI：`KnowYou --my-wiki-context --project-root <path> --background <text>`。该模式只输出 JSON 并退出，不启动主窗口或后台采集服务
-- [MyWikiMCPCommand.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/Services/MyWiki/MyWikiMCPCommand.swift) 提供内置 stdio MCP server：`KnowYou --my-wiki-mcp --project-root <path>`。它直接向 agent 暴露 `my_wiki_context` 和 `my_wiki_read_page`，不依赖 Node、npm、下载依赖或外部 helper。MCP 不由 KnowYou UI 常驻启动，而由 Codex、Claude Code、Claude Desktop、Cursor、Gemini CLI、OpenClaw 等 MCP client 在需要 tool 时启动一个轻量 KnowYou 子进程
+- [MyWikiContextPackCommand.swift](../KnowYou/Services/MyWiki/MyWikiContextPackCommand.swift) 提供 headless CLI：`KnowYou --my-wiki-context --project-root <path> --background <text>`。该模式只输出 JSON 并退出，不启动主窗口或后台采集服务
+- [MyWikiMCPCommand.swift](../KnowYou/Services/MyWiki/MyWikiMCPCommand.swift) 提供内置 stdio MCP server：`KnowYou --my-wiki-mcp --project-root <path>`。它直接向 agent 暴露 `my_wiki_context` 和 `my_wiki_read_page`，不依赖 Node、npm、下载依赖或外部 helper。MCP 不由 KnowYou UI 常驻启动，而由 Codex、Claude Code、Claude Desktop、Cursor、Gemini CLI、OpenClaw 等 MCP client 在需要 tool 时启动一个轻量 KnowYou 子进程
 - `Tools/MyWikiMCP` 只保留为开发期/兼容性 wrapper，不是用户默认配置路径；`.agents/skills/my-wiki-context` 是给支持 Skill 的 agent 的使用说明
-- [MyWikiAgentConnectionSheet.swift](/Users/wutianfu/Documents/code/know-you/.worktrees/my-wiki-redesign-agent-context/KnowYou/UI/MyWiki/MyWikiAgentConnectionSheet.swift) 提供 `Use My Wiki in Agents` 入口。默认 UX 是选择内置 agent 后点击 `Add My Wiki`：Codex 写入带 `# BEGIN/END KnowYou My Wiki MCP` 标记的 `~/.codex/config.toml` 受控配置块；Claude Code、Claude Desktop、Cursor、Gemini CLI 和 OpenClaw 合并写入各自 JSON MCP 配置；Codex、Claude Code、Cursor、Gemini CLI 和 OpenClaw 同步安装 `my-wiki-context` Skill；generic MCP 配置保留在 `Advanced MCP Config`
+- [MyWikiAgentConnectionSheet.swift](../KnowYou/UI/MyWiki/MyWikiAgentConnectionSheet.swift) 提供 `Use My Wiki in Agents` 入口。默认 UX 是选择内置 agent 后点击 `Add My Wiki`：Codex 写入带 `# BEGIN/END KnowYou My Wiki MCP` 标记的 `~/.codex/config.toml` 受控配置块；Claude Code、Claude Desktop、Cursor、Gemini CLI 和 OpenClaw 合并写入各自 JSON MCP 配置；Codex、Claude Code、Cursor、Gemini CLI 和 OpenClaw 同步安装 `my-wiki-context` Skill；generic MCP 配置保留在 `Advanced MCP Config`
 - [MyWikiSourceLibrary.swift](../KnowYou/Services/MyWiki/MyWikiSourceLibrary.swift) 与 [MyWikiSourceLibraryView.swift](../KnowYou/UI/MyWiki/MyWikiSourceLibraryView.swift) 提供分层 Source Library 管理入口。UI 从 Source Catalog snapshot 渲染 diary、external documents 和 manual imports，支持 title/path 搜索、status filter、目录三态选择、include/exclude/invert visible 批量操作和 summary 链接；手动导入支持选择文件夹、多文件导入和拖拽，新文件仍放入 `raw/sources/Manual Imports`，但展示 root 是 `Manual Uploads`。导入只刷新 catalog，不触发 ingest；选择变更自动保存，`Update My Wiki` 才运行处理
 - [MyWikiPanel.swift](../KnowYou/UI/MyWiki/MyWikiPanel.swift) 提供黑底 My Wiki 工作区：左侧是高密度可折叠索引，分类顺序为 `Entities`、`Concepts`、`Sources`，每个分类默认显示 10 个 name-only 条目；超过 10 个时用当前分类底部的 `Show more (N)` 原地展开，并用 `Show less` 收回，不再进入分类全量列表页。搜索框为空时保留分类索引，输入关键词后切到 V1 本地搜索结果，按日期、My Wiki 或 source root 分组显示 snippet；wiki 结果进入详情，raw source 结果打开原文件。左侧顶部显示 `My Wiki digest` 状态条，明确说明 digest 会在 Diary 和 Todo 就绪后每日自动更新，也可点击 `Update Now` 手动触发，并同时显示上次与下次更新时间；点击后按钮立即进入 `Generating...` 禁用状态，并在 status/progress 区域先显示本地 running placeholder，随后轮询 `.llm-wiki/last-ingest-status.json` 替换为真实进度；My Wiki folder 尚不可用时按钮显示 `Unavailable` 并给出可见状态。source/progress 区域把进度卡作为纯状态展示，旁边提供 `Manage Sources` 按钮；每个分类的 tag 筛选从当前条目 frontmatter `tags` 动态统计，按频次降序、同频按名称排序，`other` 排在具体 tag 后；默认只显示前 6 个 tag，剩余可展开；无 tags 时不显示筛选。Header 和详情页 `More` 菜单都提供 `Use My Wiki in Agents`
-- [MyWikiDetailView.swift](/Users/wutianfu/Documents/code/know-you-my-wiki-redesign/KnowYou/UI/MyWiki/MyWikiDetailView.swift) 提供 LLM Wiki 风格详情页，顶部 header 展示 summary，正文区域默认展示完整 `markdownBody`，并保留 Recent Mentions、Related、Duplicate Suggestions 等 metadata 区；不再重复渲染独立 Summary 卡片；`Sources` 放在详情最后，仍可点击打开原 source
+- [MyWikiDetailView.swift](../KnowYou/UI/MyWiki/MyWikiDetailView.swift) 提供 LLM Wiki 风格详情页，顶部 header 展示 summary，正文区域默认展示完整 `markdownBody`，并保留 Recent Mentions、Related、Duplicate Suggestions 等 metadata 区；不再重复渲染独立 Summary 卡片；`Sources` 放在详情最后，仍可点击打开原 source
 
 数据流如下：
 

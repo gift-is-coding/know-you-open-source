@@ -2997,9 +2997,9 @@ final class AppState {
         updateNotificationAccessStatus(using: environment.notificationReader)
 
         do {
-            let result = try environment.notificationCollector.importDeliveredNotifications(
+            let result = try await environment.notificationCollector.importDeliveredNotificationsInBackground(
                 from: importStart,
-                through: now
+                upperBound: .inclusive(now)
             )
             applyNotificationAccessStatus(result.accessStatus)
             lastImportedNotificationCount = result.importedCount

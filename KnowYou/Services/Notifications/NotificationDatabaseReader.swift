@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-enum NotificationFetchUpperBound: Equatable {
+enum NotificationFetchUpperBound: Equatable, Sendable {
     case exclusive(Date)
     case inclusive(Date)
 }
@@ -40,8 +40,8 @@ extension NotificationDatabaseReading {
     }
 }
 
-struct NotificationDatabaseAccessStatus: Equatable {
-    enum State: Equatable {
+struct NotificationDatabaseAccessStatus: Equatable, Sendable {
+    enum State: Equatable, Sendable {
         case available
         case permissionDenied
         case missing

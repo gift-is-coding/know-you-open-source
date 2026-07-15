@@ -9,8 +9,8 @@ release_dir="${KNOWYOU_RELEASE_DIR:-$repo_root/build/release}"
 archive_path="${KNOWYOU_ARCHIVE_PATH:-$release_dir/KnowYou.xcarchive}"
 app_path="${KNOWYOU_APP_PATH:-$release_dir/KnowYou.app}"
 notary_profile="${KNOWYOU_NOTARY_PROFILE:-know-you-notary}"
-developer_team="${KNOWYOU_DEVELOPER_TEAM:-3DY726RPHL}"
-developer_id_identity="${KNOWYOU_DEVELOPER_ID_IDENTITY:-Developer ID Application: danhu ouyang (3DY726RPHL)}"
+developer_team="${KNOWYOU_DEVELOPER_TEAM:-}"
+developer_id_identity="${KNOWYOU_DEVELOPER_ID_IDENTITY:-}"
 download_repo="${KNOWYOU_DOWNLOAD_REPO:-gift-is-coding/know-you-downloads}"
 default_sparkle_public_ed_key="DPaKuqvU48UAoI0rOvKtWaStpzMsX9fwypStdx4md/M="
 
@@ -19,6 +19,13 @@ require_command() {
     echo "Missing required command: $1" >&2
     exit 1
   }
+}
+
+require_release_signing_identity() {
+  if [[ -z "$developer_team" || -z "$developer_id_identity" ]]; then
+    echo "Missing release signing configuration. Set KNOWYOU_DEVELOPER_TEAM and KNOWYOU_DEVELOPER_ID_IDENTITY." >&2
+    exit 1
+  fi
 }
 
 require_sparkle_public_key() {

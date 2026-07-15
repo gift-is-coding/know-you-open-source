@@ -149,6 +149,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 
 - 所有可持久化内容都必须先经过隐私过滤
 - 明显敏感文本不得以原文形式写入 SQLite
+- 独立复制的高置信度 credential（包括常见 `sk-`、GitHub、Slack、AWS、Supabase secret key 与 JWT 格式）必须直接丢弃，即使文本中没有 `token` 或 `api key` 标签
 - 被丢弃或脱敏的内容应保留最小审计信息，帮助用户理解为何某条内容未被完整保留
 - 日记分享必须只使用当前 `DailyStory` / `DailyStoryParagraph` 文本，不得读取 SQLite 原始事件或右侧 source detail 原文
 - 分享图片生成必须在本机完成，不得上传分享内容
@@ -394,6 +395,7 @@ KnowYou 是一个原生 macOS 桌面应用，不是浏览器扩展，不是 Obsi
 - vault 目录
 - diary engine 默认项
 - diary engine 对应的 API token、CLI 路径，或 Codex Auth 本地登录状态
+- LLM API 的远端 base URL 必须使用 HTTPS；HTTP 只能用于 `localhost`、`127.0.0.1` 或 `::1` 本地服务
 
 配置入口包括：
 
@@ -448,6 +450,7 @@ onboarding 的配置约束为：
 - 系统必须每 30 秒执行一次今天的通知增量补同步
 - 自动刷新应先尝试导入通知，再生成内容
 - 30 秒通知补同步必须使用带重叠缓冲的增量时间窗，而不是全量扫描
+- 30 秒通知补同步中的 Notification Center 快照复制、查询和入库不得在主线程执行
 - 30 秒通知补同步不得直接触发文档生成；它只负责把今天的新通知补入本地事件库
 - 自动刷新不得因为“今天存在 note 文件”就无条件重写今天
 - 当今天已有成功模型 story 时，自动刷新只允许做今天的增量更新，不允许整天重建

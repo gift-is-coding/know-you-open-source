@@ -10,8 +10,8 @@ Store Apple notarization credentials in the login keychain:
 
 ```bash
 xcrun notarytool store-credentials "know-you-notary" \
-  --apple-id "danhua_ouyang@outlook.com" \
-  --team-id "3DY726RPHL" \
+  --apple-id "<release-apple-id>" \
+  --team-id "<developer-team-id>" \
   --password "<app-specific-password>"
 ```
 
@@ -26,8 +26,12 @@ xcrun notarytool history --keychain-profile "know-you-notary"
 For the normal public release path, run the single publish script:
 
 ```bash
+export KNOWYOU_DEVELOPER_TEAM="<developer-team-id>"
+export KNOWYOU_DEVELOPER_ID_IDENTITY="Developer ID Application: <maintainer name> (<developer-team-id>)"
 ./scripts/publish-release.sh
 ```
+
+Both signing variables are required. They intentionally have no repository default, so a contributor build cannot accidentally use a maintainer identity.
 
 It will build the Release archive, notarize it, verify the stapled app, package a drag-to-Applications DMG, upload the DMG plus `.sha256` to `gift-is-coding/know-you-downloads`, update that repo's download landing page metadata, and publish both `update-feed/latest.json` and `update-feed/appcast.xml` for in-app update checks.
 
@@ -113,5 +117,5 @@ Everything lands under `build/release/`:
 ## Notes
 
 - Debug and day-to-day development stay on the existing local signing flow.
-- Release packaging intentionally forces `Developer ID Application: danhu ouyang (3DY726RPHL)`.
+- Release packaging uses the `KNOWYOU_DEVELOPER_ID_IDENTITY` supplied by the release maintainer.
 - The release app uses hardened runtime because notarization requires it.

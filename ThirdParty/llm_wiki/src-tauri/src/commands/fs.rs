@@ -1461,12 +1461,12 @@ mod tests {
     // would be surfaced here and then wrongly deleted downstream.
 
     fn make_wiki(files: &[(&str, &str)]) -> std::path::PathBuf {
+        static NEXT_WIKI_ID: std::sync::atomic::AtomicU64 =
+            std::sync::atomic::AtomicU64::new(0);
+        let wiki_id = NEXT_WIKI_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!(
-            "wiki-test-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+            "wiki-test-{}-{wiki_id}",
+            std::process::id()
         ));
         fs::create_dir_all(&dir).unwrap();
         for (rel, body) in files {

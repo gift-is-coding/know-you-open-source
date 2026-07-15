@@ -264,9 +264,14 @@ struct LLMAPIProviderConfig: Identifiable, Codable, Equatable, Sendable {
             let components = URLComponents(string: trimmedBaseURL),
             let scheme = components.scheme?.lowercased(),
             scheme == "http" || scheme == "https",
-            components.host != nil,
+            let host = components.host?.lowercased(),
             let url = components.url
         else {
+            return nil
+        }
+
+        if scheme == "http",
+           !["localhost", "127.0.0.1", "::1"].contains(host) {
             return nil
         }
 

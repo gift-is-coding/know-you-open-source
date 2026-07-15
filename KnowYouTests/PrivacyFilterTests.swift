@@ -48,6 +48,42 @@ final class PrivacyFilterTests: XCTestCase {
         XCTAssertEqual(result.action, .drop)
     }
 
+    func testStandaloneAPIKeyIsDropped() {
+        let filter = PrivacyFilter()
+
+        let result = filter.classify("sk-proj-exampleKeyMaterial1234567890")
+
+        XCTAssertEqual(result.action, .drop)
+        XCTAssertNil(result.persistedText)
+    }
+
+    func testStandaloneGitHubTokenIsDropped() {
+        let filter = PrivacyFilter()
+
+        let result = filter.classify("ghp_abcdefghijklmnopqrstuvwxyz123456")
+
+        XCTAssertEqual(result.action, .drop)
+        XCTAssertNil(result.persistedText)
+    }
+
+    func testStandaloneJWTIsDropped() {
+        let filter = PrivacyFilter()
+
+        let result = filter.classify("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature123")
+
+        XCTAssertEqual(result.action, .drop)
+        XCTAssertNil(result.persistedText)
+    }
+
+    func testSpacedAPIKeyLabelIsDropped() {
+        let filter = PrivacyFilter()
+
+        let result = filter.classify("API key: example-value")
+
+        XCTAssertEqual(result.action, .drop)
+        XCTAssertNil(result.persistedText)
+    }
+
     func testLongNumericRunIsRedactedWithoutLeakingTrailingDigits() {
         let filter = PrivacyFilter()
 

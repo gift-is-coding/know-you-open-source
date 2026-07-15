@@ -55,6 +55,15 @@ assert_eq "KnowYou-1.2.3-145" "$(artifact_basename)" "artifact_basename"
 assert_eq "$repo_root/build/test-release/KnowYou-1.2.3-145.zip" "$(release_zip_path)" "release_zip_path"
 assert_eq "$repo_root/build/test-release/KnowYou-1.2.3-145-notarized.zip" "$(notarized_zip_path)" "notarized_zip_path"
 assert_eq "$repo_root/build/test-release/KnowYou-1.2.3-145.dmg" "$(release_dmg_path)" "release_dmg_path"
+assert_eq "" "$developer_team" "developer team has no repository default"
+assert_eq "" "$developer_id_identity" "Developer ID identity has no repository default"
+if (require_release_signing_identity >/dev/null 2>&1); then
+  echo "Expected missing release signing identity to fail" >&2
+  exit 1
+fi
+developer_team="TESTTEAM123"
+developer_id_identity="Developer ID Application: Example Maintainer (TESTTEAM123)"
+require_release_signing_identity
 
 fake_derived_data_root="$KNOWYOU_RELEASE_DIR/fake-derived-data"
 fake_sign_update="$fake_derived_data_root/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update"

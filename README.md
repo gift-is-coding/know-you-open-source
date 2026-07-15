@@ -1,106 +1,177 @@
 # KnowYou
 
-KnowYou is a native macOS app that captures daily computer context and turns it into a story-first daily journal with source-linked evidence.
+KnowYou is a local-first macOS app that turns the context you already create on your computer into a source-linked daily diary and a reusable personal knowledge base.
 
-The current project includes:
+It captures clipboard text and supported Notification Center records, applies a privacy filter before persistence, stores data locally, and can use either a local fallback or an optional LLM engine to produce structured daily stories. My Wiki turns those stories and user-selected local sources into cited context that people and AI agents can reuse.
 
-- clipboard capture with privacy filtering
-- read-only import from the local macOS Notification Center SQLite store when a supported database path is available
-- SQLite persistence via GRDB for events and run history
-- launch-time refresh plus a 15-minute automation loop for backfill and regeneration
-- fallback local story synthesis when no external summarizer is available
-- optional summarizers via OpenAI API, Claude Code CLI, Codex CLI, or Gemini CLI
-- daily output written as both `YYYY-MM-DD.story.json` and `YYYY-MM-DD.md`
-- a three-pane reader with dates on the left, story paragraphs in the center, and linked raw sources on the right
-- onboarding and settings flows for vault path, summarizer config, and service diagnostics
+> Project status: active development. Review the privacy boundary and back up important data before using KnowYou with sensitive work. The repository is not ready for public open-source release until a root software license is selected.
 
-## Local Development
+## What is included
 
-1. Open `KnowYou.xcodeproj` in Xcode, or use `xcodebuild`.
-2. Optionally export `OPENAI_API_KEY` before launching if you want cloud summaries.
-3. Build the app:
+- Native SwiftUI/AppKit macOS app
+- Local SQLite event and run storage through GRDB
+- Clipboard and Notification Center capture with pre-persistence filtering
+- Daily Markdown and structured `.story.json` output
+- Local search across Diary, Todo, My Wiki, and imported sources
+- My Wiki ingestion, cited retrieval, and built-in MCP/CLI access for agents
+- Optional LLM engines through API providers or local Claude, Codex, Gemini, and OpenClaw CLIs
+- Optional Networking profile and public-square experience, with private My Wiki evidence kept on the Mac
+- Sparkle-based direct updates and maintainer-only notarized release tooling
+
+## Privacy model
+
+KnowYou is local-first, not local-only:
+
+- Raw capture, SQLite storage, diary files, source indexes, and My Wiki live on the user's Mac by default.
+- Clipboard and notification text passes through `PrivacyFilter` before it reaches SQLite.
+- API credentials and Networking session/device credentials are stored in macOS Keychain, not in repository files or `UserDefaults`.
+- Enabling an external LLM sends the prepared diary or My Wiki prompt to that provider.
+- Enabling Networking sends approved public profile data and public interactions to the configured Supabase-backed service. Private My Wiki evidence and private match reasoning must remain local.
+
+See [PRIVACY.md](PRIVACY.md) for the user-facing policy and [SECURITY.md](SECURITY.md) for vulnerability reporting.
+
+## Architecture at a glance
+
+```mermaid
+flowchart LR
+    A["Clipboard and notifications"] --> B["Privacy filter"]
+    B --> C["Local SQLite events"]
+    C --> D["Diary generation"]
+    D --> E["Markdown and story JSON"]
+    E --> F["Reader, Todo, and Search"]
+    E --> G["My Wiki pipeline"]
+    G --> H["Cited context for people and agents"]
+    G --> I["Approved public Networking profile"]
+    I --> J["Supabase public square"]
+```
+
+The macOS app is orchestrated by `AppState`, with services separated by capture, storage, summary, My Wiki, search, sync, reminders, and Networking responsibilities. The bundled TypeScript My Wiki pipeline lives under `ThirdParty/llm_wiki`; the optional public-square web app lives under `NetworkingWeb`.
+
+Read [docs/architecture.md](docs/architecture.md) for implementation detail and [docs/requirements-spec.md](docs/requirements-spec.md) for current product contracts.
+
+## Repository map
+
+| Path | Purpose |
+| --- | --- |
+| `KnowYou/` | Native macOS application code |
+| `KnowYouTests/` | XCTest unit and integration coverage |
+| `ThirdParty/llm_wiki/` | Bundled My Wiki ingestion and retrieval pipeline |
+| `NetworkingWeb/` | Optional Next.js/Supabase public square |
+| `Tools/MyWikiMCP/` | Legacy standalone MCP adapter; the app also has a built-in MCP mode |
+| `scripts/` | Development, verification, packaging, and release scripts |
+| `docs/` | Architecture, requirements, operations, and historical design records |
+
+AI agents should start with [docs/agent-guide.md](docs/agent-guide.md) before changing code.
+
+## Requirements
+
+- macOS 14 or later
+- A recent Xcode with the macOS SDK and Swift 6 support
+- Node.js and npm for the bundled My Wiki runner and Networking Web
+- Full Disk Access only if Notification Center import is enabled
+
+GRDB and Sparkle are resolved through Swift Package Manager when the Xcode project is opened or built.
+
+## Build the macOS app
 
 ```bash
+git clone https://github.com/gift-is-coding/know-you.git
+cd know-you
 xcodebuild build -scheme KnowYou -destination 'platform=macOS'
 ```
 
-By default, the app stores runtime data under:
+For a fresh worktree-specific development build that also embeds MyWikiRunner:
 
-- database: `~/Library/Application Support/KnowYou/events.sqlite`
-- vault: `~/Library/Application Support/KnowYou/Vault`
+```bash
+./scripts/run-dev-app.sh --fresh
+```
 
-## Running Tests
+The script uses `.derived-data/dev` inside the worktree so it never opens a stale app from another checkout. If local signing is unavailable, it retries the development build without code signing.
 
-Run the full suite:
+Runtime data defaults to:
+
+- Database: `~/Library/Application Support/KnowYou/events.sqlite`
+- Vault: `~/Library/Application Support/KnowYou/Vault`
+
+## Configure optional services
+
+LLM API tokens should be entered in the app's Settings UI. They are saved to macOS Keychain. Do not put real credentials in `KnowYou/Config/Secrets.example.xcconfig` or any tracked file.
+
+For Networking Web development:
+
+```bash
+cd NetworkingWeb
+cp .env.example .env.local
+npm ci
+npm run dev
+```
+
+Use a dedicated development Supabase project. Production configuration is rejected in local development unless the explicit one-off override documented in [NetworkingWeb/README.md](NetworkingWeb/README.md) is set.
+
+## Verify changes
+
+macOS app:
 
 ```bash
 xcodebuild test -scheme KnowYou -destination 'platform=macOS'
+xcodebuild build -scheme KnowYou -destination 'platform=macOS'
 ```
 
-Run a focused test target while iterating:
+Networking Web:
 
 ```bash
-xcodebuild test -scheme KnowYou -destination 'platform=macOS' -only-testing:KnowYouTests/MainWindowViewModelTests
+cd NetworkingWeb
+npm ci
+npm audit --audit-level=high
+npm run typecheck
+npm run lint
+npm test -- --run
 ```
 
-## Real-Machine Verification
-
-For a real clipboard + notification smoke test on this Mac, run:
+Bundled My Wiki runner:
 
 ```bash
-./scripts/verify-real-machine.sh
+cd ThirdParty/llm_wiki
+npm ci
+npm audit --audit-level=high
+npm run typecheck
+npm run test:mocks
 ```
 
-The harness prints the exact SQLite and Markdown follow-up commands and documents the notification persistence fallback in [`docs/real-machine-verification.md`](docs/real-machine-verification.md).
-
-For reproducibility, the harness relaunches the app and relies on launch-time clipboard bootstrap plus launch-time refresh to verify the real clipboard -> SQLite -> Markdown path on this Mac.
-
-## Release Signing
-
-KnowYou now ships through a dedicated Developer ID release path rather than the local debug signing flow.
-
-One-time notarization setup on a release machine:
+Bundled My Wiki desktop backend:
 
 ```bash
-xcrun notarytool store-credentials "know-you-notary" \
-  --apple-id "ouyang_danhua@outlook.com" \
-  --team-id "3DY726RPHL" \
-  --password "<app-specific-password>"
+cd ThirdParty/llm_wiki/src-tauri
+cargo check --locked
+cargo test --locked
 ```
 
-Release commands:
+Standalone My Wiki MCP adapter:
 
 ```bash
-./scripts/build-release.sh
-./scripts/notarize-release.sh
-./scripts/verify-release.sh
+cd Tools/MyWikiMCP
+npm ci
+npm audit --audit-level=high
+npm test
 ```
 
-See [`docs/release-signing.md`](docs/release-signing.md) for the full flow and artifact layout.
+Some real-LLM, Supabase integration, notarization, and GUI checks require credentials or machine capabilities and are intentionally separate from the deterministic default suite.
 
-## Project Docs
+## Contributing
 
-- [Architecture](docs/architecture.md)
-- [Requirements Spec](docs/requirements-spec.md)
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change. Keep changes focused, add tests first for behavior changes, preserve local user state during app verification, and never commit credentials, personal diary data, or generated runtime state.
 
-## Contact
+Third-party source and binary obligations are tracked in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The bundled GPL-3.0 My Wiki source and unpinned PDFium binaries must be resolved as part of the root-license decision before public release.
 
-- X / Twitter: https://x.com/TianfuW49629
-- Email: cestlouiswu@gmail.com
+## Release signing
 
-## Community
+Public contributors do not need the maintainer's Apple identity. A notarized release requires the maintainer to provide signing configuration through environment variables and a local Keychain profile; the repository contains no private signing credential.
 
-Discord 是 KnowYou 当前规划的主社区形态，适合讨论产品想法、反馈体验、分享你的日记工作流。
+See [docs/release-signing.md](docs/release-signing.md). Do not run publish scripts against production services from an unreviewed branch.
 
-- 社区说明与频道建议见 [COMMUNITY.md](COMMUNITY.md)
-- 当前社区链接：https://discord.gg/ZrqF5jwQ
+## Community and contact
 
-## Privacy
-
-KnowYou 是本地优先的 macOS 应用。隐私边界、数据来源、过滤时机与第三方总结器说明见 [PRIVACY.md](PRIVACY.md)。
-
-## Support
-
-- 隐私问题或不适合公开讨论的内容，请直接发邮件联系
-- 产品建议、使用体验和公开反馈，优先进入 Discord 社区
-- 正式上线前的剩余准备项见 [LAUNCH-CHECKLIST.md](LAUNCH-CHECKLIST.md)
+- [Community guide](COMMUNITY.md)
+- [Discord](https://discord.gg/ZrqF5jwQ)
+- [X / Twitter](https://x.com/TianfuW49629)
+- Email: `cestlouiswu@gmail.com`

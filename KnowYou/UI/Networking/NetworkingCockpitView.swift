@@ -2470,7 +2470,9 @@ private struct SelectedCommunityDetail: View {
                 }
                 Picker("Agent autonomy", selection: Binding(
                     get: { autonomyMode },
-                    set: onAutonomyModeChange
+                    set: { mode in
+                        onAutonomyModeChange(mode)
+                    }
                 )) {
                     Text("Conservative").tag("conservative")
                     Text("Balanced").tag("balanced")

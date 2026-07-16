@@ -142,10 +142,13 @@ tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/knowyou-public-history.XXXXXX")"
 trap 'rm -rf "$tmp_root"' EXIT
 deny_file="$tmp_root/public-deny-paths.txt"
 allow_file="$tmp_root/public-files.txt"
+author_map_file="$tmp_root/public-history-author-map.txt"
 git -C "$source_repo" show "$source_commit:config/public-files.txt" >"$allow_file" \
   || fail 'source branch is missing config/public-files.txt'
 git -C "$source_repo" show "$source_commit:config/public-deny-paths.txt" >"$deny_file" \
   || fail 'source branch is missing config/public-deny-paths.txt'
+git -C "$source_repo" show "$source_commit:config/public-history-author-map.txt" >"$author_map_file" \
+  || fail 'source branch is missing config/public-history-author-map.txt'
 
 deny_paths=()
 while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
@@ -172,6 +175,22 @@ while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
   allow_paths+=("$allow_path")
 done <"$allow_file"
 [[ ${#allow_paths[@]} -gt 0 ]] || fail 'public allowlist must not be empty'
+
+private_author_emails=()
+normalized_author_map_file="$tmp_root/public-history-author-map.normalized.txt"
+: >"$normalized_author_map_file"
+while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
+  author_mapping="$(trim_config_line "$raw_line")"
+  [[ -n "$author_mapping" ]] || continue
+  read -r private_email public_email extra <<<"$author_mapping"
+  [[ -n "$private_email" && -n "$public_email" && -z "${extra:-}" ]] \
+    || fail "invalid author email mapping: $author_mapping"
+  [[ "$private_email" == *@* && "$public_email" == *@* ]] \
+    || fail "author email mapping must contain email addresses: $author_mapping"
+  private_author_emails+=("$private_email")
+  printf '%s %s\n' "$private_email" "$public_email" >>"$normalized_author_map_file"
+done <"$author_map_file"
+[[ ${#private_author_emails[@]} -gt 0 ]] || fail 'author email mapping must not be empty'
 
 normalized_allow_file="$tmp_root/public-files.normalized.txt"
 normalized_deny_file="$tmp_root/public-deny-paths.normalized.txt"
@@ -200,11 +219,26 @@ fi
 printf -v index_filter '%q %q' "$repo_root/scripts/create-public-history.sh" '__filter-index'
 export PUBLIC_HISTORY_ALLOW_FILE="$normalized_allow_file"
 export PUBLIC_HISTORY_DENY_FILE="$normalized_deny_file"
+export PUBLIC_HISTORY_EMAIL_MAP_FILE="$normalized_author_map_file"
+
+env_filter='while read private_email public_email extra; do
+  test -n "$private_email" || continue
+  test -z "$extra" || exit 1
+  if test "$GIT_AUTHOR_EMAIL" = "$private_email"; then
+    GIT_AUTHOR_EMAIL="$public_email"
+    export GIT_AUTHOR_EMAIL
+  fi
+  if test "$GIT_COMMITTER_EMAIL" = "$private_email"; then
+    GIT_COMMITTER_EMAIL="$public_email"
+    export GIT_COMMITTER_EMAIL
+  fi
+done < "$PUBLIC_HISTORY_EMAIL_MAP_FILE"'
 
 FILTER_BRANCH_SQUELCH_WARNING=1 \
   git -C "$destination" filter-branch \
     --force \
     --prune-empty \
+    --env-filter "$env_filter" \
     --index-filter "$index_filter" \
     -- --all >/dev/null
 
@@ -221,6 +255,12 @@ git -C "$destination" gc --prune=now --quiet
 reachable_denied_commits="$(git -C "$destination" log --all --format=%H -- "${deny_paths[@]}")"
 [[ -z "$reachable_denied_commits" ]] \
   || fail 'one or more denied paths remain reachable after history rewrite'
+for private_author_email in "${private_author_emails[@]}"; do
+  if git -C "$destination" log --all --format='%ae%n%ce' \
+    | grep -Fqx "$private_author_email"; then
+    fail "private author email remains reachable after history rewrite: $private_author_email"
+  fi
+done
 
 export_args=(
   --source-repo "$source_repo"

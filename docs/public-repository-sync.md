@@ -39,11 +39,12 @@ The command:
 2. clones only the selected private branch without tags
 3. removes the private remote before rewriting anything
 4. applies the current public allowlist to every reachable commit and removes every denied or unlisted path
-5. deletes rewrite backup refs, expires reflogs, and prunes unreachable objects
-6. replaces the current tree with the public allowlisted snapshot
-7. records the private source SHA in `.public-sync/source.json` and the sync commit trailer
-8. verifies the current tree and scans the sanitized history with Gitleaks
-9. leaves a clean local repository with no remote and performs no push
+5. replaces private author emails listed in the non-exported `config/public-history-author-map.txt` with public noreply addresses
+6. deletes rewrite backup refs, expires reflogs, and prunes unreachable objects
+7. replaces the current tree with the public allowlisted snapshot
+8. records the private source SHA in `.public-sync/source.json` and the sync commit trailer
+9. verifies the current tree and scans the sanitized history with Gitleaks
+10. leaves a clean local repository with no remote and performs no push
 
 Before the first push, inspect the result:
 

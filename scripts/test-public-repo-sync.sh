@@ -47,7 +47,10 @@ commit_all() {
   local repository="$1"
   local message="$2"
   git -C "$repository" add .
-  git -C "$repository" -c user.name='Public Sync Test' -c user.email='public-sync@example.invalid' commit -q -m "$message"
+  git -C "$repository" \
+    -c user.name='Public Sync Test' \
+    -c user.email="${PUBLIC_SYNC_TEST_EMAIL:-public-sync@example.invalid}" \
+    commit -q -m "$message"
 }
 
 source_repo="$tmp_root/private"
@@ -71,7 +74,11 @@ write_file "$source_repo/docs/fundraising/private.txt" 'private fundraising mate
 write_file "$source_repo/private-notes.txt" 'unlisted private material'
 write_file "$source_repo/config/public-files.txt" $'.gitattributes\n.gitleaks.toml\n.gitleaksignore\nREADME.md\nLICENSE\nSECURITY.md\nTERMS.md\nTHIRD_PARTY_NOTICES.md\nKnowYou\ndocs/agent-guide.md\nconfig/public-files.txt\nconfig/public-deny-paths.txt'
 write_file "$source_repo/config/public-deny-paths.txt" $'docs/investor-pitch\ndocs/fundraising'
+write_file "$source_repo/config/public-history-author-map.txt" \
+  'private-author@example.com 12345+public-author@users.noreply.github.com'
+export PUBLIC_SYNC_TEST_EMAIL='private-author@example.com'
 commit_all "$source_repo" 'fixture source'
+unset PUBLIC_SYNC_TEST_EMAIL
 source_commit="$(git -C "$source_repo" rev-parse HEAD)"
 
 write_file "$public_repo/obsolete.txt" 'remove me during sync'
@@ -126,6 +133,12 @@ assert_absent "$history_repo/docs/fundraising"
   || fail 'denied paths remain reachable in sanitized history'
 [[ -z "$(git -C "$history_repo" log --all --format=%H -- private-notes.txt)" ]] \
   || fail 'unlisted path remains reachable in sanitized history'
+[[ -z "$(git -C "$history_repo" log --all --format='%ae%n%ce' | grep -Fx 'private-author@example.com' || true)" ]] \
+  || fail 'private author email remains reachable in sanitized history'
+git -C "$history_repo" log --all --format='%ae%n%ce' \
+  | grep -Fxq '12345+public-author@users.noreply.github.com' \
+  || fail 'public noreply author email was not written into sanitized history'
+assert_absent "$history_repo/config/public-history-author-map.txt"
 [[ -z "$(git -C "$history_repo" remote)" ]] || fail 'sanitized history retained the private remote'
 [[ -z "$(git -C "$history_repo" status --porcelain)" ]] || fail 'sanitized history repository is dirty'
 

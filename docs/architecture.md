@@ -88,7 +88,7 @@ flowchart LR
 
 这条链路的目标是让仓库能稳定产出可上传到下载页的 macOS DMG，同时不影响 Debug/测试阶段的日常签名配置。DMG 内只放真实 `.app` 和最小 Finder metadata；用户双击 DMG 内 app 时，交互式启动会复制到 `/Applications/KnowYou.app` 或 `/Applications/KnowYou New User.app`、打开目标 app，并退出临时实例。复制失败时不阻塞启动，仍回到 onboarding 的手动安装兜底。
 
-源码公开采用独立于二进制发布的单向镜像链路。私有仓库 `main` 是产品代码权威来源；`config/public-files.txt` 定义失败关闭式公开白名单，`config/public-deny-paths.txt` 定义任何情况下都不得进入公开树或公开历史的路径前缀。首次发布由 `scripts/create-public-history.sh` 在全新本地 clone 中对每个可达提交应用当前白名单、删除全部拒绝或未列出路径、清理旧引用和 reflog，再调用 `scripts/export-public-repo.sh` 生成当前白名单快照。后续同步只从已提交 private ref 生成 public sync commit，并在 `.public-sync/source.json` 与 commit trailer 中记录 private SHA。两个脚本均先验证 staged export、拒绝脏目标工作区且不执行 push；公开 GitHub 仓库通过 `.github/workflows/public-repository-gate.yml` 复查路径、GPL、Gitleaks 和完整测试。公开贡献必须先回流私有权威分支，再进入下一次快照，避免双向自动 merge 把私有材料重新带出。
+源码公开采用独立于二进制发布的单向镜像链路。私有仓库 `main` 是产品代码权威来源；`config/public-files.txt` 定义失败关闭式公开白名单，`config/public-deny-paths.txt` 定义任何情况下都不得进入公开树或公开历史的路径前缀。首次发布由 `scripts/create-public-history.sh` 在全新本地 clone 中对每个可达提交应用当前白名单、删除全部拒绝或未列出路径，并依据不导出的 `config/public-history-author-map.txt` 将私人提交邮箱替换为公开 noreply 地址；随后清理旧引用和 reflog，再调用 `scripts/export-public-repo.sh` 生成当前白名单快照。后续同步只从已提交 private ref 生成 public sync commit，并在 `.public-sync/source.json` 与 commit trailer 中记录 private SHA。两个脚本均先验证 staged export、拒绝脏目标工作区且不执行 push；公开 GitHub 仓库通过 `.github/workflows/public-repository-gate.yml` 复查路径、GPL、Gitleaks 和完整测试。公开贡献必须先回流私有权威分支，再进入下一次快照，避免双向自动 merge 把私有材料重新带出。
 
 ## 3. 运行时入口
 

@@ -134,12 +134,14 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.95.0 --profile minimal --no-self-update
       - name: Check Rust backend
         working-directory: ThirdParty/llm_wiki/src-tauri
-        run: cargo check --locked
+        run: cargo +1.95.0 check --locked
       - name: Test Rust backend
         working-directory: ThirdParty/llm_wiki/src-tauri
-        run: cargo test --locked
+        run: cargo +1.95.0 test --locked
 
   my-wiki-mcp:
     name: My Wiki MCP

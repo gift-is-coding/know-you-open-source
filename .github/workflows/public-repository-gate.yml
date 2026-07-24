@@ -121,6 +121,19 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm run test:mocks
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
       - name: Check Rust backend
         working-directory: ThirdParty/llm_wiki/src-tauri
         run: cargo check --locked

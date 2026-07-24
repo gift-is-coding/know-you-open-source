@@ -133,7 +133,8 @@ jobs:
             libxdo-dev \
             libssl-dev \
             libayatana-appindicator3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            protobuf-compiler
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.95.0 --profile minimal --no-self-update
       - name: Check Rust backend

@@ -121,12 +121,28 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm run test:mocks
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            protobuf-compiler
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.95.0 --profile minimal --no-self-update
       - name: Check Rust backend
         working-directory: ThirdParty/llm_wiki/src-tauri
-        run: cargo check --locked
+        run: cargo +1.95.0 check --locked
       - name: Test Rust backend
         working-directory: ThirdParty/llm_wiki/src-tauri
-        run: cargo test --locked
+        run: cargo +1.95.0 test --locked
 
   my-wiki-mcp:
     name: My Wiki MCP

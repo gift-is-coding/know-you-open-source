@@ -76,7 +76,7 @@ GRDB and Sparkle are resolved through Swift Package Manager when the Xcode proje
 
 ```bash
 git clone https://github.com/gift-is-coding/know-you-open-source.git
-cd know-you
+cd know-you-open-source
 xcodebuild build -scheme KnowYou -destination 'platform=macOS'
 ```
 

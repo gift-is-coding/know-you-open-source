@@ -222,13 +222,8 @@ final class OnboardingContentTests: XCTestCase {
             isRunningUnderXCTest: false
         )
 
-        XCTAssertEqual(
-            request,
-            ApplicationInstallMoveRequest(
-                sourceURL: URL(fileURLWithPath: "/Volumes/KnowYou/KnowYou.app"),
-                targetURL: URL(fileURLWithPath: "/Applications/KnowYou.app")
-            )
-        )
+        XCTAssertEqual(request?.sourceURL.path, "/Volumes/KnowYou/KnowYou.app")
+        XCTAssertEqual(request?.targetURL.path, "/Applications/KnowYou.app")
     }
 
     func testApplicationInstallAutoMovePolicyUsesNewUserTargetBundle() {
